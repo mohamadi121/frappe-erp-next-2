@@ -1,0 +1,21 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Account Mapping",
+  "module": "ASOUD ERP",
+  "autoname": "format:{account}-{detail_group}",
+  "track_changes": 1,
+  "field_order": ["company", "account", "detail_group", "allow_floating_detail", "disabled"],
+  "fields": [
+    {"fieldname": "company", "label": "Company", "fieldtype": "Link", "options": "Company", "reqd": 1},
+    {"fieldname": "account", "label": "Account", "fieldtype": "Link", "options": "Account", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "detail_group", "label": "Detail Group", "fieldtype": "Link", "options": "ASOUD Detail Group", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "allow_floating_detail", "label": "Allow Floating Detail", "fieldtype": "Check", "default": "1"},
+    {"fieldname": "disabled", "label": "Disabled", "fieldtype": "Check", "default": "0"}
+  ],
+  "permissions": [
+    {"role": "System Manager", "create": 1, "read": 1, "write": 1, "delete": 1},
+    {"role": "Accounts Manager", "create": 1, "read": 1, "write": 1},
+    {"role": "Accounts User", "read": 1}
+  ]
+}
+

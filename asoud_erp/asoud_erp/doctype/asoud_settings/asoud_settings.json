@@ -1,0 +1,23 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Settings",
+  "module": "ASOUD ERP",
+  "issingle": 1,
+  "track_changes": 1,
+  "field_order": ["accounting_basis", "display_currency", "auto_generate_account_code", "group_code_digits", "general_code_digits", "ledger_code_digits", "auto_generate_detail_code", "detail_code_digits"],
+  "fields": [
+    {"fieldname": "accounting_basis", "label": "Accounting Basis", "fieldtype": "Data", "default": "Accrual", "read_only": 1},
+    {"fieldname": "display_currency", "label": "Display Currency", "fieldtype": "Select", "options": "Rial\nToman", "default": "Rial", "reqd": 1},
+    {"fieldname": "auto_generate_account_code", "label": "Auto Generate Account Code", "fieldtype": "Check", "default": "1"},
+    {"fieldname": "group_code_digits", "label": "Group Code Digits", "fieldtype": "Int", "default": "1", "reqd": 1},
+    {"fieldname": "general_code_digits", "label": "General Code Digits", "fieldtype": "Int", "default": "2", "reqd": 1},
+    {"fieldname": "ledger_code_digits", "label": "Ledger Code Digits", "fieldtype": "Int", "default": "2", "reqd": 1},
+    {"fieldname": "auto_generate_detail_code", "label": "Auto Generate Detail Code", "fieldtype": "Check", "default": "1"},
+    {"fieldname": "detail_code_digits", "label": "Detail Code Digits", "fieldtype": "Int", "default": "5", "reqd": 1}
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1},
+    {"role": "Accounts Manager", "read": 1, "write": 1},
+    {"role": "Accounts User", "read": 1}
+  ]
+}

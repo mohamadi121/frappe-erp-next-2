@@ -1,0 +1,3 @@
+recursive-include asoud_erp *.css *.csv *.html *.ico *.js *.json *.md *.png *.py *.svg *.txt
+recursive-exclude asoud_erp *.pyc
+

@@ -1,0 +1,25 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Floating Detail",
+  "module": "ASOUD ERP",
+  "autoname": "field:detail_code",
+  "title_field": "title",
+  "search_fields": "detail_code,title",
+  "track_changes": 1,
+  "field_order": ["detail_code", "title", "detail_type", "detail_group", "linked_doctype", "linked_document", "disabled"],
+  "fields": [
+    {"fieldname": "detail_code", "label": "Detail Code", "fieldtype": "Data", "reqd": 1, "unique": 1, "in_list_view": 1},
+    {"fieldname": "title", "label": "Title", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "detail_type", "label": "Detail Type", "fieldtype": "Select", "options": "Customer\nSupplier\nEmployee\nBank\nCash\nCost Center\nProject\nOther", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "detail_group", "label": "Detail Group", "fieldtype": "Link", "options": "ASOUD Detail Group", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "linked_doctype", "label": "Linked DocType", "fieldtype": "Link", "options": "DocType"},
+    {"fieldname": "linked_document", "label": "Linked Document", "fieldtype": "Dynamic Link", "options": "linked_doctype"},
+    {"fieldname": "disabled", "label": "Disabled", "fieldtype": "Check", "default": "0", "in_list_view": 1}
+  ],
+  "permissions": [
+    {"role": "System Manager", "create": 1, "read": 1, "write": 1, "delete": 1},
+    {"role": "Accounts Manager", "create": 1, "read": 1, "write": 1},
+    {"role": "Accounts User", "create": 1, "read": 1, "write": 1}
+  ]
+}
+
