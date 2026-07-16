@@ -1,0 +1,33 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Company Setup",
+  "module": "ASOUD ERP",
+  "autoname": "field:company",
+  "title_field": "company",
+  "track_changes": 1,
+  "field_order": [
+    "company", "office_type", "national_id", "economic_code", "office_saved",
+    "accounting_basis", "display_currency", "fiscal_year_start_month", "chart_template",
+    "auto_generate_detail_code", "accounting_saved", "enabled_roles_json", "roles_saved"
+  ],
+  "fields": [
+    {"fieldname": "company", "label": "Company", "fieldtype": "Link", "options": "Company", "reqd": 1, "unique": 1, "in_list_view": 1},
+    {"fieldname": "office_type", "label": "Office Type", "fieldtype": "Select", "options": "Personal\nLegal", "reqd": 1},
+    {"fieldname": "national_id", "label": "National ID", "fieldtype": "Data"},
+    {"fieldname": "economic_code", "label": "Economic Code", "fieldtype": "Data"},
+    {"fieldname": "office_saved", "label": "Office Saved", "fieldtype": "Check", "default": "0", "read_only": 1},
+    {"fieldname": "accounting_basis", "label": "Accounting Basis", "fieldtype": "Data", "default": "Accrual", "read_only": 1},
+    {"fieldname": "display_currency", "label": "Display Currency", "fieldtype": "Select", "options": "Rial\nToman", "default": "Rial"},
+    {"fieldname": "fiscal_year_start_month", "label": "Fiscal Year Start Month", "fieldtype": "Int", "default": "1"},
+    {"fieldname": "chart_template", "label": "Chart Template", "fieldtype": "Select", "options": "Iran Standard\nService\nCommercial\nManufacturing", "default": "Iran Standard"},
+    {"fieldname": "auto_generate_detail_code", "label": "Auto Generate Detail Code", "fieldtype": "Check", "default": "1"},
+    {"fieldname": "accounting_saved", "label": "Accounting Saved", "fieldtype": "Check", "default": "0", "read_only": 1},
+    {"fieldname": "enabled_roles_json", "label": "Enabled Office Roles JSON", "fieldtype": "Long Text", "default": "[\"System Manager\"]", "read_only": 1},
+    {"fieldname": "roles_saved", "label": "Roles Saved", "fieldtype": "Check", "default": "0", "read_only": 1}
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Accounts Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Accounts User", "read": 1}
+  ]
+}
