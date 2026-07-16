@@ -74,4 +74,6 @@ jobs:
 
       - name: Run ASOUD setup integration tests
         working-directory: frappe-bench
-        run: bench --site test.localhost run-tests --app asoud_erp --doctype "ASOUD Company Setup"
+        run: >-
+          bench --site test.localhost run-tests --app asoud_erp
+          --module asoud_erp.asoud_erp.doctype.asoud_company_setup.test_asoud_company_setup

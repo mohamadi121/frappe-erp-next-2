@@ -12,6 +12,10 @@ from asoud_erp.api.v1.setup import (
 class TestASOUDCompanySetup(FrappeTestCase):
     def setUp(self):
         frappe.set_user("Administrator")
+        if not frappe.db.exists("Warehouse Type", "Transit"):
+            frappe.get_doc({"doctype": "Warehouse Type", "name": "Transit"}).insert(
+                ignore_permissions=True
+            )
         self.company_name = f"ASOUD Setup Test {frappe.generate_hash(length=6)}"
 
     def test_complete_personal_office_flow_is_persistent(self):
