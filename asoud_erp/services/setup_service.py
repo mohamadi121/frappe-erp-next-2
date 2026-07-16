@@ -1,6 +1,5 @@
 import re
 
-
 ALLOWED_OFFICE_TYPES = {"Personal", "Legal"}
 ALLOWED_DISPLAY_CURRENCIES = {"Rial", "Toman"}
 ALLOWED_CHART_TEMPLATES = {"Iran Standard", "Service", "Commercial", "Manufacturing"}
