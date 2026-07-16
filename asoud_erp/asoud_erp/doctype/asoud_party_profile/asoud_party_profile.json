@@ -1,0 +1,27 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Party Profile",
+  "module": "ASOUD ERP",
+  "autoname": "format:ASOUD-PARTY-{#####}",
+  "title_field": "display_name",
+  "search_fields": "display_name,national_id,mobile",
+  "track_changes": 1,
+  "field_order": ["party_type", "display_name", "national_id", "mobile", "email", "roles_text", "customer", "supplier", "employee", "disabled"],
+  "fields": [
+    {"fieldname": "party_type", "label": "Party Type", "fieldtype": "Select", "options": "Individual\nOrganization", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "display_name", "label": "Display Name", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "national_id", "label": "National ID", "fieldtype": "Data", "unique": 1, "in_list_view": 1},
+    {"fieldname": "mobile", "label": "Mobile", "fieldtype": "Data", "options": "Phone"},
+    {"fieldname": "email", "label": "Email", "fieldtype": "Data", "options": "Email"},
+    {"fieldname": "roles_text", "label": "Roles JSON", "fieldtype": "Small Text", "reqd": 1},
+    {"fieldname": "customer", "label": "Customer", "fieldtype": "Link", "options": "Customer", "read_only": 1},
+    {"fieldname": "supplier", "label": "Supplier", "fieldtype": "Link", "options": "Supplier", "read_only": 1},
+    {"fieldname": "employee", "label": "Employee", "fieldtype": "Link", "options": "Employee", "read_only": 1},
+    {"fieldname": "disabled", "label": "Disabled", "fieldtype": "Check", "default": "0", "in_list_view": 1}
+  ],
+  "permissions": [
+    {"role": "System Manager", "create": 1, "read": 1, "write": 1, "delete": 1},
+    {"role": "Accounts Manager", "create": 1, "read": 1, "write": 1},
+    {"role": "Accounts User", "create": 1, "read": 1, "write": 1}
+  ]
+}

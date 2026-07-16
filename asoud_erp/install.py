@@ -1,14 +1,6 @@
 import frappe
 
-DEFAULT_DETAIL_GROUPS = (
-    ("10000", "Customers"),
-    ("20000", "Suppliers"),
-    ("30000", "Employees"),
-    ("40000", "Banks"),
-    ("50000", "Cash Accounts"),
-    ("60000", "Cost Centers"),
-    ("70000", "Projects"),
-)
+from asoud_erp.api.v1.detail_group import DEFAULT_GROUPS
 
 
 def after_install():
@@ -23,7 +15,7 @@ def after_install():
     settings.detail_code_digits = 5
     settings.save(ignore_permissions=True)
 
-    for code, title in DEFAULT_DETAIL_GROUPS:
+    for code, title in DEFAULT_GROUPS:
         if not frappe.db.exists("ASOUD Detail Group", code):
             frappe.get_doc(
                 {
