@@ -24,3 +24,12 @@ def after_install():
                     "group_name": title,
                 }
             ).insert(ignore_permissions=True)
+
+
+def after_migrate():
+    """Keep installation and migration hooks explicitly idempotent."""
+    for code, title in DEFAULT_GROUPS:
+        if not frappe.db.exists("ASOUD Detail Group", code):
+            frappe.get_doc(
+                {"doctype": "ASOUD Detail Group", "group_code": code, "group_name": title}
+            ).insert(ignore_permissions=True)

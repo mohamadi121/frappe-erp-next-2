@@ -1,0 +1,79 @@
+name: ERPNext v15 Integration
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  setup-flow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      mariadb:
+        image: mariadb:10.6
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install Bench prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mariadb-client libmariadb-dev gettext
+          python -m pip install --upgrade pip frappe-bench
+          npm install --global yarn
+
+      - name: Initialize Frappe v15 bench
+        run: |
+          bench init --skip-assets --skip-redis-config-generation --python python3 --frappe-branch version-15 frappe-bench
+          cd frappe-bench
+          bench set-config -g db_host 127.0.0.1
+          bench set-config -g redis_cache redis://127.0.0.1:6379
+          bench set-config -g redis_queue redis://127.0.0.1:6379
+          bench set-config -g redis_socketio redis://127.0.0.1:6379
+          bench get-app --branch version-15 erpnext https://github.com/frappe/erpnext
+          bench get-app "$GITHUB_WORKSPACE"
+
+      - name: Create ERPNext v15 test site
+        working-directory: frappe-bench
+        run: |
+          bench new-site test.localhost --db-root-password root --admin-password admin --no-mariadb-socket
+          bench --site test.localhost install-app erpnext
+          bench --site test.localhost install-app asoud_erp
+          bench --site test.localhost migrate
+          bench --site test.localhost set-config allow_tests true
+
+      - name: Run ASOUD setup integration tests
+        working-directory: frappe-bench
+        run: >-
+          bench --site test.localhost run-tests --app asoud_erp
+          --module asoud_erp.asoud_erp.doctype.asoud_company_setup.test_asoud_company_setup

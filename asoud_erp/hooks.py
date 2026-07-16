@@ -8,6 +8,7 @@ app_license = "MIT"
 required_apps = ["erpnext"]
 
 after_install = "asoud_erp.install.after_install"
+after_migrate = "asoud_erp.install.after_migrate"
 
 fixtures = [
     {
