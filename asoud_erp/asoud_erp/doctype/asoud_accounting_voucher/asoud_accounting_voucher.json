@@ -1,0 +1,27 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Accounting Voucher",
+  "module": "ASOUD ERP",
+  "autoname": "format:ASOUD-JV-{YYYY}-{#####}",
+  "title_field": "description",
+  "track_changes": 1,
+  "field_order": ["company", "posting_date", "description", "workflow_status", "lines", "total_debit", "total_credit", "rejection_reason", "journal_entry", "approved_by", "approved_on"],
+  "fields": [
+    {"fieldname": "company", "label": "Company", "fieldtype": "Link", "options": "Company", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "posting_date", "label": "Posting Date", "fieldtype": "Date", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "description", "label": "Description", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "workflow_status", "label": "Status", "fieldtype": "Select", "options": "Draft\nPending Approval\nApproved\nRejected", "default": "Draft", "read_only": 1, "in_list_view": 1},
+    {"fieldname": "lines", "label": "Voucher Lines", "fieldtype": "Table", "options": "ASOUD Voucher Line", "reqd": 1},
+    {"fieldname": "total_debit", "label": "Total Debit", "fieldtype": "Currency", "read_only": 1},
+    {"fieldname": "total_credit", "label": "Total Credit", "fieldtype": "Currency", "read_only": 1},
+    {"fieldname": "rejection_reason", "label": "Rejection Reason", "fieldtype": "Small Text", "read_only": 1},
+    {"fieldname": "journal_entry", "label": "Journal Entry", "fieldtype": "Link", "options": "Journal Entry", "read_only": 1},
+    {"fieldname": "approved_by", "label": "Approved By", "fieldtype": "Link", "options": "User", "read_only": 1},
+    {"fieldname": "approved_on", "label": "Approved On", "fieldtype": "Datetime", "read_only": 1}
+  ],
+  "permissions": [
+    {"role": "System Manager", "create": 1, "read": 1, "write": 1, "delete": 1},
+    {"role": "Accounts Manager", "create": 1, "read": 1, "write": 1, "delete": 1},
+    {"role": "Accounts User", "create": 1, "read": 1, "write": 1}
+  ]
+}
