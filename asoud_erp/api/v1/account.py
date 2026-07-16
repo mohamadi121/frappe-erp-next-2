@@ -6,6 +6,35 @@ from asoud_erp.services.account_code_service import next_account_code
 
 
 @frappe.whitelist()
+def list_accounts(company: str) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    settings = frappe.get_single("ASOUD Settings")
+    group_digits = int(settings.group_code_digits or 1)
+    general_digits = group_digits + int(settings.general_code_digits or 2)
+    rows = frappe.get_all(
+        "Account",
+        filters={"company": company, "account_number": ["is", "set"]},
+        fields=[
+            "name",
+            "account_number",
+            "account_name",
+            "parent_account",
+            "root_type",
+            "is_group",
+            "disabled",
+        ],
+        order_by="account_number asc",
+        limit_page_length=0,
+    )
+    for row in rows:
+        code_length = len(str(row.account_number or ""))
+        row["asoud_level"] = (
+            "Group" if code_length <= group_digits else "General" if code_length <= general_digits else "Ledger"
+        )
+    return success(rows)
+
+
+@frappe.whitelist()
 def preview_next_code(company: str, level: str, parent_account: str | None = None) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
     return success({"account_number": next_account_code(company, level, parent_account)})
@@ -38,5 +67,6 @@ def create_account(
         }
     )
     doc.insert()
-    return success(doc.as_dict())
-
+    result = doc.as_dict()
+    result["asoud_level"] = level
+    return success(result)
