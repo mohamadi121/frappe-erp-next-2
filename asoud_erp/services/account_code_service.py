@@ -3,7 +3,6 @@ import re
 import frappe
 from frappe import _
 
-
 LEVEL_FIELD = {
     "Group": "group_code_digits",
     "General": "general_code_digits",

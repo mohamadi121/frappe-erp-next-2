@@ -1,6 +1,6 @@
 [project]
 name = "asoud_erp"
-version = "0.3.0"
+version = "0.3.1"
 description = "Iranian accounting extensions for ERPNext"
 requires-python = ">=3.10"
 dependencies = []

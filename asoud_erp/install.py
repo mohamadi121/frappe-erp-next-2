@@ -1,6 +1,5 @@
 import frappe
 
-
 DEFAULT_DETAIL_GROUPS = (
     ("10000", "Customers"),
     ("20000", "Suppliers"),
