@@ -201,9 +201,9 @@ def update_company_settings(
     company: str,
     display_currency: str,
     fiscal_year_start_month: int,
+    chart_template: str,
     fiscal_year_start_day: int = 1,
     fiscal_year: int = 1405,
-    chart_template: str,
     auto_generate_detail_code: int | bool = 1,
 ) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
