@@ -45,7 +45,6 @@ def _serialize_setup(doc) -> dict:
         "city": doc.city or "Tehran",
         "address": doc.address or "",
         "postal_code": doc.postal_code or "",
-        "fiscal_year": doc.fiscal_year or "1405",
         "description": doc.description or "",
         "modified": str(doc.modified or ""),
         "accounting_basis": "Accrual",
