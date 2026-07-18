@@ -70,3 +70,34 @@ def create_account(
     result = doc.as_dict()
     result["asoud_level"] = level
     return success(result)
+
+
+@frappe.whitelist(methods=["POST"])
+def update_account(
+    company: str,
+    account: str,
+    account_name: str,
+    parent_account: str | None = None,
+    disabled: int | bool = 0,
+    root_type: str | None = None,
+) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    if not frappe.db.exists("Account", {"name": account, "company": company}):
+        frappe.throw(_("Account does not belong to the selected company"))
+    title = str(account_name or "").strip()
+    if len(title) < 3:
+        frappe.throw(_("Account name must contain at least 3 characters"))
+    if parent_account and not frappe.db.exists(
+        "Account", {"name": parent_account, "company": company, "is_group": 1}
+    ):
+        frappe.throw(_("Parent account is not a group in the selected company"))
+    doc = frappe.get_doc("Account", account)
+    doc.account_name = title
+    doc.parent_account = parent_account
+    doc.disabled = int(bool(disabled))
+    if root_type:
+        doc.root_type = root_type
+    doc.save()
+    result = doc.as_dict()
+    result["asoud_level"] = "Group" if doc.is_group else "Ledger"
+    return success(result)

@@ -49,6 +49,46 @@ def seed_default_detail_groups() -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
+def save_detail_group(
+    group_code: str,
+    group_name: str,
+    name: str | None = None,
+) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    code = str(group_code or "").strip()
+    title = str(group_name or "").strip()
+    if not code.isdigit() or not 3 <= len(code) <= 12:
+        frappe.throw(_("Detail group code must contain 3 to 12 digits"))
+    if len(title) < 2:
+        frappe.throw(_("Detail group name must contain at least 2 characters"))
+    existing = frappe.db.exists("ASOUD Detail Group", name) if name else None
+    duplicate = frappe.db.exists("ASOUD Detail Group", {"group_code": code})
+    if duplicate and duplicate != existing:
+        frappe.throw(_("Detail group code already exists"))
+    doc = (
+        frappe.get_doc("ASOUD Detail Group", existing)
+        if existing
+        else frappe.new_doc("ASOUD Detail Group")
+    )
+    doc.group_code = code
+    doc.group_name = title
+    doc.disabled = 0
+    doc.save() if existing else doc.insert()
+    return success(doc.as_dict())
+
+
+@frappe.whitelist(methods=["POST"])
+def disable_detail_group(name: str) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    if not frappe.db.exists("ASOUD Detail Group", name):
+        frappe.throw(_("Detail group does not exist"))
+    doc = frappe.get_doc("ASOUD Detail Group", name)
+    doc.disabled = 1
+    doc.save()
+    return success(doc.as_dict())
+
+
+@frappe.whitelist(methods=["POST"])
 def save_account_mapping(company: str, account: str, detail_group: str, enabled: int | bool = 1) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
     if not frappe.db.exists("Account", {"name": account, "company": company}):
