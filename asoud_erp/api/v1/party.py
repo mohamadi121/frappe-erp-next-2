@@ -60,12 +60,21 @@ def _ensure_supplier(title: str, party_type: str, national_id: str | None) -> st
     return doc.name
 
 
-def _sync_floating_details(profile_name: str, title: str, roles: list[str]) -> None:
+def _sync_floating_details(
+    profile_name: str,
+    title: str,
+    roles: list[str],
+    primary_role: str | None = None,
+    detail_group: str | None = None,
+) -> None:
     settings = frappe.get_single("ASOUD Settings")
     digits = int(settings.detail_code_digits or 5)
-    for role, group in ROLE_DETAIL_GROUP.items():
-        if role not in roles or not frappe.db.exists("ASOUD Detail Group", group):
+    for role, default_group in ROLE_DETAIL_GROUP.items():
+        if role not in roles:
             continue
+        group = detail_group if role == primary_role and detail_group else default_group
+        if not frappe.db.exists("ASOUD Detail Group", group):
+            frappe.throw(_("Detail group does not exist"))
         exists = frappe.db.exists(
             "ASOUD Floating Detail",
             {"linked_doctype": "ASOUD Party Profile", "linked_document": profile_name, "detail_group": group},
@@ -87,9 +96,11 @@ def _sync_floating_details(profile_name: str, title: str, roles: list[str]) -> N
 
 
 @frappe.whitelist()
-def list_parties(search: str | None = None, role: str | None = None) -> dict:
+def list_parties(search: str | None = None, role: str | None = None, company: str | None = None) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
     filters = {"disabled": 0}
+    if company:
+        filters["company"] = company
     if role:
         filters["roles_text"] = ["like", f'%"{role}"%']
     or_filters = None
@@ -102,11 +113,26 @@ def list_parties(search: str | None = None, role: str | None = None) -> dict:
         or_filters=or_filters,
         fields=[
             "name",
+            "company",
             "party_type",
             "display_name",
             "national_id",
             "mobile",
+            "phone",
             "email",
+            "website",
+            "province",
+            "city",
+            "address_line",
+            "postal_code",
+            "bank_name",
+            "iban",
+            "account_number",
+            "birth_date",
+            "employment_type",
+            "job_title",
+            "department",
+            "description",
             "roles_text",
             "customer",
             "supplier",
@@ -130,6 +156,23 @@ def save_party(
     mobile: str | None = None,
     email: str | None = None,
     name: str | None = None,
+    company: str | None = None,
+    phone: str | None = None,
+    website: str | None = None,
+    province: str | None = None,
+    city: str | None = None,
+    address_line: str | None = None,
+    postal_code: str | None = None,
+    bank_name: str | None = None,
+    iban: str | None = None,
+    account_number: str | None = None,
+    birth_date: str | None = None,
+    employment_type: str | None = None,
+    job_title: str | None = None,
+    department: str | None = None,
+    description: str | None = None,
+    primary_role: str | None = None,
+    detail_group: str | None = None,
 ) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
     if party_type not in {"Individual", "Organization"}:
@@ -137,6 +180,10 @@ def save_party(
     if not display_name or len(display_name.strip()) < 3:
         frappe.throw(_("Display name must contain at least 3 characters"))
     selected_roles = _parse_roles(roles)
+    if primary_role and primary_role not in selected_roles:
+        frappe.throw(_("Primary role must be one of the selected roles"))
+    if detail_group and not primary_role:
+        frappe.throw(_("Primary role is required when selecting a detail group"))
     national_id = normalize_optional(national_id)
     mobile = normalize_optional(mobile)
     email = normalize_optional(email)
@@ -157,17 +204,38 @@ def save_party(
 
     title = display_name.strip()
     doc.party_type = party_type
+    doc.company = normalize_optional(company)
     doc.display_name = title
     doc.national_id = national_id
     doc.mobile = mobile
+    doc.phone = normalize_optional(phone)
     doc.email = email
+    doc.website = normalize_optional(website)
+    doc.province = normalize_optional(province)
+    doc.city = normalize_optional(city)
+    doc.address_line = normalize_optional(address_line)
+    doc.postal_code = normalize_optional(postal_code)
+    doc.bank_name = normalize_optional(bank_name)
+    doc.iban = normalize_optional(iban)
+    doc.account_number = normalize_optional(account_number)
+    doc.birth_date = normalize_optional(birth_date)
+    doc.employment_type = normalize_optional(employment_type)
+    doc.job_title = normalize_optional(job_title)
+    doc.department = normalize_optional(department)
+    doc.description = normalize_optional(description)
     doc.roles_text = json.dumps(selected_roles)
     if "Customer" in selected_roles and not doc.customer:
         doc.customer = _ensure_customer(title, party_type, national_id)
     if "Supplier" in selected_roles and not doc.supplier:
         doc.supplier = _ensure_supplier(title, party_type, national_id)
     doc.save() if name else doc.insert()
-    _sync_floating_details(doc.name, title, selected_roles)
+    _sync_floating_details(
+        doc.name,
+        title,
+        selected_roles,
+        primary_role=primary_role,
+        detail_group=detail_group,
+    )
 
     result = doc.as_dict()
     result["roles"] = selected_roles
