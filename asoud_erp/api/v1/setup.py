@@ -2,9 +2,11 @@ import json
 
 import frappe
 from frappe import _
+from frappe.utils import getdate
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.party_validation import is_valid_iranian_legal_id
+from asoud_erp.services.jalali import jalali_fiscal_period
 from asoud_erp.services.setup_service import (
     ALLOWED_CHART_TEMPLATES,
     ALLOWED_DISPLAY_CURRENCIES,
@@ -233,6 +235,77 @@ def update_company_settings(
 
 
 @frappe.whitelist()
+def list_fiscal_years(company: str) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    _setup(company)
+    fiscal_year_names = frappe.get_all(
+        "Fiscal Year Company",
+        filters={"company": company},
+        pluck="parent",
+        limit_page_length=0,
+    )
+    rows = frappe.get_all(
+        "Fiscal Year",
+        filters={"name": ["in", fiscal_year_names]},
+        fields=["name", "year", "year_start_date", "year_end_date", "disabled"],
+        order_by="year_start_date desc",
+        limit_page_length=0,
+    )
+    return success(rows)
+
+
+@frappe.whitelist(methods=["POST"])
+def create_fiscal_year(
+    company: str,
+    fiscal_year: int,
+    start_month: int,
+    start_day: int,
+) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    _setup(company)
+    year = int(fiscal_year)
+    if not 1300 <= year <= 1600:
+        frappe.throw(_("Fiscal year must be a valid Solar Hijri year"))
+    try:
+        start_date, end_date = jalali_fiscal_period(year, int(start_month), int(start_day))
+    except ValueError as exc:
+        frappe.throw(_(str(exc)))
+    title = str(year)
+    if frappe.db.exists("Fiscal Year", title):
+        doc = frappe.get_doc("Fiscal Year", title)
+        if getdate(doc.year_start_date) != start_date or getdate(doc.year_end_date) != end_date:
+            frappe.throw(_("The existing fiscal year uses a different date range"))
+        if not any(row.company == company for row in doc.companies):
+            doc.append("companies", {"company": company})
+            doc.save()
+    else:
+        doc = frappe.get_doc(
+            {
+                "doctype": "Fiscal Year",
+                "year": title,
+                "year_start_date": start_date,
+                "year_end_date": end_date,
+                "companies": [{"company": company}],
+            }
+        )
+        doc.insert()
+    setup = _setup(company)
+    setup.fiscal_year = title
+    setup.fiscal_year_start_month = int(start_month)
+    setup.fiscal_year_start_day = int(start_day)
+    setup.save()
+    return success(
+        {
+            "name": doc.name,
+            "year": title,
+            "year_start_date": str(start_date),
+            "year_end_date": str(end_date),
+            "disabled": False,
+        }
+    )
+
+
+@frappe.whitelist()
 def get_enabled_roles(company: str) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
     setup = _setup(company)
@@ -303,3 +376,37 @@ def update_settings(
     settings.detail_code_digits = digits
     settings.save()
     return get_settings()
+
+
+@frappe.whitelist()
+def get_account_code_settings(company: str) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    setup = _setup(company)
+    return success(
+        {
+            "company": company,
+            "auto_generate_account_code": bool(setup.auto_generate_account_code),
+            "group_code_digits": int(setup.group_code_digits or 1),
+            "general_code_digits": int(setup.general_code_digits or 2),
+            "ledger_code_digits": int(setup.ledger_code_digits or 2),
+        }
+    )
+
+
+@frappe.whitelist(methods=["POST"])
+def update_account_code_settings(
+    company: str,
+    auto_generate_account_code: int | bool = 1,
+    group_code_digits: int = 1,
+    general_code_digits: int = 2,
+    ledger_code_digits: int = 2,
+) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    setup = _setup(company)
+    values = [int(group_code_digits), int(general_code_digits), int(ledger_code_digits)]
+    if any(value < 1 or value > 4 for value in values):
+        frappe.throw(_("Account level code digits must be between 1 and 4"))
+    setup.auto_generate_account_code = int(bool(auto_generate_account_code))
+    setup.group_code_digits, setup.general_code_digits, setup.ledger_code_digits = values
+    setup.save()
+    return get_account_code_settings(company)

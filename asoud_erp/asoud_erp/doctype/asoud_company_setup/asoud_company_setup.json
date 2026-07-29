@@ -11,6 +11,7 @@
     "parent_office", "phone", "email", "website", "province", "city",
     "address", "postal_code", "description", "office_saved",
     "accounting_basis", "display_currency", "fiscal_year_start_day", "fiscal_year_start_month", "fiscal_year", "chart_template",
+    "auto_generate_account_code", "group_code_digits", "general_code_digits", "ledger_code_digits",
     "auto_generate_detail_code", "accounting_saved", "enabled_roles_json", "roles_saved"
   ],
   "fields": [
@@ -38,6 +39,10 @@
     {"fieldname": "fiscal_year_start_day", "label": "Fiscal Year Start Day", "fieldtype": "Int", "default": "1"},
     {"fieldname": "fiscal_year_start_month", "label": "Fiscal Year Start Month", "fieldtype": "Int", "default": "1"},
     {"fieldname": "chart_template", "label": "Chart Template", "fieldtype": "Select", "options": "Iran Standard\nService\nCommercial\nManufacturing", "default": "Iran Standard"},
+    {"fieldname": "auto_generate_account_code", "label": "Auto Generate Account Code", "fieldtype": "Check", "default": "1"},
+    {"fieldname": "group_code_digits", "label": "Group Code Digits", "fieldtype": "Int", "default": "1"},
+    {"fieldname": "general_code_digits", "label": "General Code Digits", "fieldtype": "Int", "default": "2"},
+    {"fieldname": "ledger_code_digits", "label": "Ledger Code Digits", "fieldtype": "Int", "default": "2"},
     {"fieldname": "auto_generate_detail_code", "label": "Auto Generate Detail Code", "fieldtype": "Check", "default": "1"},
     {"fieldname": "accounting_saved", "label": "Accounting Saved", "fieldtype": "Check", "default": "0", "read_only": 1},
     {"fieldname": "enabled_roles_json", "label": "Enabled Office Roles JSON", "fieldtype": "Long Text", "default": "[\"System Manager\"]", "read_only": 1},

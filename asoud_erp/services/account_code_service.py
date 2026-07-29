@@ -16,8 +16,8 @@ def next_account_code(company: str, level: str, parent_account: str | None = Non
     if level != "Group" and not parent_account:
         frappe.throw(_("Parent account is required"))
 
-    settings = frappe.get_single("ASOUD Settings")
-    digits = int(settings.get(LEVEL_FIELD[level]) or 1)
+    setup = frappe.get_doc("ASOUD Company Setup", company)
+    digits = int(setup.get(LEVEL_FIELD[level]) or 1)
     prefix = ""
     if parent_account:
         prefix = str(frappe.db.get_value("Account", parent_account, "account_number") or "").strip()
