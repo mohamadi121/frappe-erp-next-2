@@ -129,7 +129,27 @@ def workflow_form_options() -> dict:
         pluck="name",
         order_by="name asc",
     )
-    return success({"modules": modules, "companies": companies, "roles": roles})
+    departments = frappe.get_all(
+        "Department",
+        filters={"disabled": 0},
+        fields=["name", "department_name", "company"],
+        order_by="department_name asc",
+        limit_page_length=0,
+    )
+    employees = frappe.get_all(
+        "Employee",
+        filters={"status": "Active"},
+        fields=["name", "employee_name", "department", "company", "user_id"],
+        order_by="employee_name asc",
+        limit_page_length=0,
+    )
+    return success({
+        "modules": modules,
+        "companies": companies,
+        "roles": roles,
+        "departments": departments,
+        "employees": employees,
+    })
 
 
 @frappe.whitelist(methods=["POST"])
@@ -333,6 +353,27 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
     roles = normalized.get(role_field, []) if role_field else normalized.get("target_roles", [])
     if roles and any(not frappe.db.exists("Role", role) for role in roles):
         frappe.throw(_("One or more selected roles do not exist"))
+    if doc.stage_type in ROLE_BASED_TYPES:
+        prefix = "assignee" if doc.stage_type == "User Task" else "approver"
+        departments = normalized.get(f"{prefix}_departments", [])
+        employees = normalized.get(f"{prefix}_employees", [])
+        if departments and any(not frappe.db.exists("Department", value) for value in departments):
+            frappe.throw(_("One or more selected departments do not exist"))
+        if employees:
+            active_employees = frappe.get_all(
+                "Employee",
+                filters={"name": ["in", employees], "status": "Active"},
+                fields=["name", "user_id"],
+            )
+            if {row.name for row in active_employees} != set(employees):
+                frappe.throw(_("One or more selected employees do not exist or are inactive"))
+            if any(not row.user_id for row in active_employees):
+                frappe.throw(_("Selected employees must have an ERPNext user account for inbox assignment"))
+            company = frappe.db.get_value("ASOUD Workflow Definition", definition, "company")
+            if company and frappe.db.count(
+                "Employee", {"name": ["in", employees], "company": ["!=", company]}
+            ):
+                frappe.throw(_("Selected employees must belong to the workflow company"))
     if doc.stage_type == "Condition":
         target_doctype = frappe.db.get_value("ASOUD Workflow Definition", definition, "target_doctype")
         meta = frappe.get_meta(target_doctype)
