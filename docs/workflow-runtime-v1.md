@@ -13,3 +13,8 @@ permission and validation failures remain visible and never become fake success.
 This first runtime supports linear User Task and Approval execution. Condition,
 Wait, and System Action execution remain blocked until their dedicated secure
 executors are implemented.
+
+Task forms support server-side validation, drafts, private attachments up to 10 MB,
+final responses, an immutable activity trail, rejection, and return to the previous
+linear stage. Flutter offline records are explicitly local-only and are not treated
+as ERPNext transactions.

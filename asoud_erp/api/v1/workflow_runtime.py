@@ -1,4 +1,7 @@
+import base64
+import binascii
 import json
+from pathlib import Path
 
 import frappe
 from frappe import _
@@ -6,6 +9,30 @@ from frappe.utils import now_datetime
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.workflow_assignment import assignment_values
+from asoud_erp.services.workflow_response import normalize_form_response
+
+ALLOWED_ATTACHMENT_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".xlsx", ".docx"}
+MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+
+
+def _assert_task_owner(doc) -> None:
+    if doc.assigned_to != frappe.session.user:
+        frappe.throw(_("This task is assigned to another user"), frappe.PermissionError)
+
+
+def _record_activity(doc, action: str, comment: str = "") -> None:
+    frappe.get_doc(
+        {
+            "doctype": "ASOUD Workflow Activity",
+            "workflow_instance": doc.workflow_instance,
+            "workflow_task": doc.name,
+            "workflow_stage": doc.workflow_stage,
+            "actor": frappe.session.user,
+            "action": action,
+            "comment": comment,
+            "created_on": now_datetime(),
+        }
+    ).insert(ignore_permissions=True)
 
 
 def _users_for_stage(stage) -> list[str]:
@@ -139,14 +166,94 @@ def list_my_workflow_tasks(status: str = "Open") -> dict:
     return success(rows, meta={"total": len(rows)})
 
 
+@frappe.whitelist()
+def get_workflow_task(task: str) -> dict:
+    doc = frappe.get_doc("ASOUD Workflow Task", task)
+    _assert_task_owner(doc)
+    stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
+    config = json.loads(stage.config_json or "{}")
+    history = frappe.get_all(
+        "ASOUD Workflow Activity",
+        filters={"workflow_instance": doc.workflow_instance},
+        fields=["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
+        order_by="created_on asc",
+        limit_page_length=0,
+    )
+    return success(
+        {
+            "name": doc.name,
+            "workflow_instance": doc.workflow_instance,
+            "workflow_stage": doc.workflow_stage,
+            "task_title": doc.task_title,
+            "status": doc.status,
+            "stage_type": stage.stage_type,
+            "config": config,
+            "draft": json.loads(doc.draft_json or "{}"),
+            "response": json.loads(doc.response_json or "{}"),
+            "history": history,
+        }
+    )
+
+
 @frappe.whitelist(methods=["POST"])
-def complete_workflow_task(task: str, action: str, comment: str | None = None) -> dict:
+def save_workflow_task_draft(task: str, response: str | dict) -> dict:
+    doc = frappe.get_doc("ASOUD Workflow Task", task)
+    _assert_task_owner(doc)
+    if doc.status != "Open":
+        frappe.throw(_("Only an open workflow task can be edited"))
+    values = json.loads(response) if isinstance(response, str) else response
+    if not isinstance(values, dict):
+        frappe.throw(_("Workflow draft must be an object"))
+    stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
+    fields = json.loads(stage.config_json or "{}").get("form_fields", [])
+    allowed_keys = {field.get("key") for field in fields if isinstance(field, dict)}
+    if set(values) - allowed_keys:
+        frappe.throw(_("Workflow draft contains unknown fields"))
+    doc.draft_json = json.dumps(values, ensure_ascii=False)
+    doc.save(ignore_permissions=True)
+    return success({"task": doc.name, "saved": True})
+
+
+@frappe.whitelist(methods=["POST"])
+def upload_workflow_attachment(task: str, filename: str, content_base64: str) -> dict:
+    doc = frappe.get_doc("ASOUD Workflow Task", task)
+    _assert_task_owner(doc)
+    if doc.status != "Open":
+        frappe.throw(_("Only an open workflow task can receive attachments"))
+    safe_name = Path(filename or "").name
+    if Path(safe_name).suffix.lower() not in ALLOWED_ATTACHMENT_EXTENSIONS:
+        frappe.throw(_("Unsupported workflow attachment type"))
+    try:
+        content = base64.b64decode(content_base64, validate=True)
+    except (ValueError, binascii.Error):
+        frappe.throw(_("Invalid attachment data"))
+    if not content or len(content) > MAX_ATTACHMENT_BYTES:
+        frappe.throw(_("Workflow attachment must be between 1 byte and 10 MB"))
+    file_doc = frappe.get_doc(
+        {
+            "doctype": "File",
+            "file_name": safe_name,
+            "content": content,
+            "attached_to_doctype": "ASOUD Workflow Task",
+            "attached_to_name": doc.name,
+            "is_private": 1,
+        }
+    ).insert(ignore_permissions=True)
+    return success({"file_url": file_doc.file_url, "file_name": file_doc.file_name})
+
+
+@frappe.whitelist(methods=["POST"])
+def complete_workflow_task(
+    task: str,
+    action: str,
+    comment: str | None = None,
+    response: str | dict | None = None,
+) -> dict:
     if action not in {"Complete", "Approve", "Reject", "Return"}:
         frappe.throw(_("Invalid workflow task action"))
     frappe.db.sql("select name from `tabASOUD Workflow Task` where name = %s for update", task)
     doc = frappe.get_doc("ASOUD Workflow Task", task)
-    if doc.assigned_to != frappe.session.user:
-        frappe.throw(_("This task is assigned to another user"), frappe.PermissionError)
+    _assert_task_owner(doc)
     if doc.status != "Open":
         frappe.throw(_("Workflow task has already been completed"))
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
@@ -155,16 +262,39 @@ def complete_workflow_task(task: str, action: str, comment: str | None = None) -
         frappe.throw(_("A decision comment is required"))
     if action == "Reject" and not config.get("allow_reject", False):
         frappe.throw(_("Reject is not allowed for this stage"))
+    if action == "Return" and not config.get("allow_return", False):
+        frappe.throw(_("Return is not allowed for this stage"))
+    normalized_response = {}
+    if action in {"Complete", "Approve"}:
+        raw_response = response if response is not None else json.loads(doc.draft_json or "{}")
+        if isinstance(raw_response, str):
+            raw_response = json.loads(raw_response)
+        try:
+            normalized_response = normalize_form_response(config.get("form_fields", []), raw_response)
+        except ValueError as error:
+            frappe.throw(_(str(error)))
     doc.status = "Rejected" if action == "Reject" else "Completed"
     doc.action = action
     doc.comment = (comment or "").strip()
+    doc.response_json = json.dumps(normalized_response, ensure_ascii=False)
     doc.completed_on = now_datetime()
     doc.save(ignore_permissions=True)
+    _record_activity(doc, action, doc.comment)
     instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
     if action == "Reject":
         instance.status = "Rejected"
         instance.completed_on = now_datetime()
         instance.save(ignore_permissions=True)
+        return success({"task": doc.name, "instance_status": instance.status})
+    if action == "Return":
+        previous_stage = frappe.db.get_value(
+            "ASOUD Workflow Transition",
+            {"workflow_definition": instance.workflow_definition, "to_stage": stage.name},
+            "from_stage",
+        )
+        if not previous_stage:
+            frappe.throw(_("Workflow has no previous stage"))
+        _activate_stage(instance, frappe.get_doc("ASOUD Workflow Stage", previous_stage))
         return success({"task": doc.name, "instance_status": instance.status})
     open_count = frappe.db.count(
         "ASOUD Workflow Task",

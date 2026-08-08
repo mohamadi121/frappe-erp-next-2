@@ -1,0 +1,22 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Workflow Activity",
+  "module": "ASOUD ERP",
+  "autoname": "hash",
+  "track_changes": 0,
+  "field_order": ["workflow_instance", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
+  "fields": [
+    {"fieldname": "workflow_instance", "label": "Workflow Instance", "fieldtype": "Link", "options": "ASOUD Workflow Instance", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "workflow_task", "label": "Workflow Task", "fieldtype": "Link", "options": "ASOUD Workflow Task"},
+    {"fieldname": "workflow_stage", "label": "Workflow Stage", "fieldtype": "Link", "options": "ASOUD Workflow Stage"},
+    {"fieldname": "actor", "label": "Actor", "fieldtype": "Link", "options": "User", "reqd": 1},
+    {"fieldname": "action", "label": "Action", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "comment", "label": "Comment", "fieldtype": "Small Text"},
+    {"fieldname": "created_on", "label": "Created On", "fieldtype": "Datetime", "reqd": 1, "in_list_view": 1}
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "create": 1},
+    {"role": "Accounts Manager", "read": 1, "create": 1},
+    {"role": "Accounts User", "read": 1}
+  ]
+}
