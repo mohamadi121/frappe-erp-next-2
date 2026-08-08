@@ -319,18 +319,98 @@ def add_workflow_stage(definition: str, stage_type: str, after_stage: str) -> di
 
 
 @frappe.whitelist()
-def workflow_condition_fields(definition: str) -> dict:
+def workflow_condition_fields(definition: str, stage: str | None = None) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
     target_doctype = frappe.db.get_value("ASOUD Workflow Definition", definition, "target_doctype")
     if not target_doctype or not frappe.db.exists("DocType", target_doctype):
         frappe.throw(_("Workflow target DocType does not exist"))
     allowed_types = {"Data", "Select", "Link", "Int", "Float", "Currency", "Check", "Date", "Datetime"}
     fields = [
-        {"fieldname": field.fieldname, "label": field.label or field.fieldname, "fieldtype": field.fieldtype}
+        {"fieldname": field.fieldname, "label": field.label or field.fieldname, "fieldtype": field.fieldtype, "source": "Document"}
         for field in frappe.get_meta(target_doctype).fields
         if field.fieldname and field.fieldtype in allowed_types and not field.hidden
     ]
+    stage_filters = {"workflow_definition": definition, "stage_type": "User Task"}
+    if stage:
+        condition = frappe.get_doc("ASOUD Workflow Stage", stage)
+        if condition.workflow_definition != definition or condition.stage_type != "Condition":
+            frappe.throw(_("Selected stage is not a condition in this workflow"))
+        stage_filters["sequence_no"] = ["<", condition.sequence_no]
+    stage_rows = frappe.get_all(
+        "ASOUD Workflow Stage",
+        filters=stage_filters,
+        fields=["config_json"],
+        order_by="sequence_no asc",
+        limit_page_length=0,
+    )
+    for row in stage_rows:
+        for field in json.loads(row.config_json or "{}").get("form_fields", []):
+            if field.get("type") in {"Short Text", "Long Text", "Number", "Currency", "Date", "Choice", "Checkbox"}:
+                fields.append({
+                    "fieldname": field.get("key"),
+                    "label": field.get("label") or field.get("key"),
+                    "fieldtype": field.get("type"),
+                    "source": "Form",
+                })
+    fields = list({(item["source"], item["fieldname"]): item for item in fields}.values())
     return success({"doctype": target_doctype, "fields": fields})
+
+
+@frappe.whitelist(methods=["POST"])
+def add_condition_branch(
+    definition: str,
+    condition_stage: str,
+    stage_type: str,
+    result: int | bool | str,
+) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    if stage_type not in STAGE_TITLES:
+        frappe.throw(_("Invalid workflow stage type"))
+    truthy = result is True or str(result).lower() in {"1", "true"}
+    frappe.db.sql(
+        "select name from `tabASOUD Workflow Definition` where name = %s for update",
+        (definition,),
+    )
+    condition = frappe.get_doc("ASOUD Workflow Stage", condition_stage)
+    if condition.workflow_definition != definition or condition.stage_type != "Condition":
+        frappe.throw(_("Selected stage is not a condition in this workflow"))
+    transitions = frappe.get_all(
+        "ASOUD Workflow Transition",
+        filters={"workflow_definition": definition, "from_stage": condition.name},
+        fields=["condition_json"],
+        limit_page_length=0,
+    )
+    if any(json.loads(row.condition_json or "{}").get("result") is truthy for row in transitions):
+        frappe.throw(_("This condition result already has a branch"))
+    sequence = int(condition.sequence_no or 0) + 1
+    stage = frappe.get_doc({
+        "doctype": "ASOUD Workflow Stage",
+        "workflow_definition": definition,
+        "stage_key": f"stage-{frappe.generate_hash(length=10)}",
+        "stage_type": stage_type,
+        "stage_title": STAGE_TITLES[stage_type],
+        "sequence_no": sequence,
+        "configuration_status": "Pending" if stage_type != "End" else "Complete",
+        "config_json": "{}",
+        "position_x": 180 if truthy else -180,
+        "position_y": sequence * 180,
+    }).insert()
+    frappe.get_doc({
+        "doctype": "ASOUD Workflow Transition",
+        "workflow_definition": definition,
+        "from_stage": condition.name,
+        "to_stage": stage.name,
+        "transition_label": _("Yes") if truthy else _("No"),
+        "condition_json": json.dumps({"result": truthy}),
+        "sequence_no": 1 if truthy else 2,
+    }).insert()
+    workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
+    workflow.steps_count = frappe.db.count(
+        "ASOUD Workflow Stage", {"workflow_definition": definition, "stage_type": ["!=", "Start"]}
+    )
+    workflow.version_no = int(workflow.version_no or 1) + 1
+    workflow.save()
+    return success(_design_payload(definition))
 
 
 @frappe.whitelist(methods=["POST"])
@@ -375,12 +455,31 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
             ):
                 frappe.throw(_("Selected employees must belong to the workflow company"))
     if doc.stage_type == "Condition":
-        target_doctype = frappe.db.get_value("ASOUD Workflow Definition", definition, "target_doctype")
-        meta = frappe.get_meta(target_doctype)
-        field = meta.get_field(normalized["source_field"])
-        allowed_types = {"Data", "Select", "Link", "Int", "Float", "Currency", "Check", "Date", "Datetime"}
-        if not field or field.fieldtype not in allowed_types or field.hidden:
-            frappe.throw(_("The selected condition field is not allowed"))
+        if normalized["source_kind"] == "Document":
+            target_doctype = frappe.db.get_value("ASOUD Workflow Definition", definition, "target_doctype")
+            meta = frappe.get_meta(target_doctype)
+            field = meta.get_field(normalized["source_field"])
+            allowed_types = {"Data", "Select", "Link", "Int", "Float", "Currency", "Check", "Date", "Datetime"}
+            if not field or field.fieldtype not in allowed_types or field.hidden:
+                frappe.throw(_("The selected condition field is not allowed"))
+        else:
+            configs = frappe.get_all(
+                "ASOUD Workflow Stage",
+                filters={
+                    "workflow_definition": definition,
+                    "stage_type": "User Task",
+                    "sequence_no": ["<", doc.sequence_no],
+                },
+                pluck="config_json",
+                limit_page_length=0,
+            )
+            form_keys = {
+                field.get("key")
+                for config in configs
+                for field in json.loads(config or "{}").get("form_fields", [])
+            }
+            if normalized["source_field"] not in form_keys:
+                frappe.throw(_("The selected form field does not exist in this workflow"))
 
     doc.stage_title = normalized.pop("title")
     doc.config_json = json.dumps(normalized, ensure_ascii=False)

@@ -10,9 +10,14 @@ Users can list only their own tasks through the API and cannot complete another
 user's task. Network failures may activate the Flutter in-memory preview, while
 permission and validation failures remain visible and never become fake success.
 
-This first runtime supports linear User Task and Approval execution. Condition,
-Wait, and System Action execution remain blocked until their dedicated secure
-executors are implemented.
+The runtime supports User Task, Approval, End, and safe Condition execution.
+Condition values may come from a whitelisted field on the referenced ERPNext
+document or from the latest completed workflow form. Supported operators are
+`Is Set`, `Equals`, `Not Equals`, `Contains`, `Greater Than`, and `Less Than`.
+Every condition requires exactly one true and one false transition; the selected
+result is written to the immutable activity history before the destination task
+is assigned. Arbitrary expressions are never evaluated. Wait and System Action
+execution remain blocked until their dedicated secure executors are implemented.
 
 Task forms support server-side validation, drafts, private attachments up to 10 MB,
 final responses, an immutable activity trail, rejection, and return to the previous
