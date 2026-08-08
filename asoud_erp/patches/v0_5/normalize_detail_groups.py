@@ -4,7 +4,7 @@ from asoud_erp.api.v1.detail_group import DEFAULT_GROUPS
 
 
 def execute() -> None:
-    for code, title in DEFAULT_GROUPS:
+    for code, title, party_role in DEFAULT_GROUPS:
         if frappe.db.exists("ASOUD Detail Group", code):
             frappe.db.set_value("ASOUD Detail Group", code, "group_name", title, update_modified=False)
             continue
@@ -13,5 +13,6 @@ def execute() -> None:
                 "doctype": "ASOUD Detail Group",
                 "group_code": code,
                 "group_name": title,
+                "party_role": party_role,
             }
         ).insert(ignore_permissions=True)

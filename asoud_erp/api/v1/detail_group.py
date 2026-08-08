@@ -4,14 +4,14 @@ from frappe import _
 from asoud_erp.api.v1.responses import success
 
 DEFAULT_GROUPS = (
-    ("10000", "مشتریان"),
-    ("20000", "تأمین‌کنندگان"),
-    ("30000", "پرسنل"),
-    ("40000", "بانک‌ها"),
-    ("50000", "صندوق‌ها"),
-    ("60000", "مراکز هزینه"),
-    ("70000", "پروژه‌ها"),
-    ("90000", "سایر"),
+    ("10000", "مشتریان", "Customer"),
+    ("20000", "تأمین‌کنندگان", "Supplier"),
+    ("30000", "پرسنل", "Employee"),
+    ("40000", "بانک‌ها", None),
+    ("50000", "صندوق‌ها", None),
+    ("60000", "مراکز هزینه", None),
+    ("70000", "پروژه‌ها", None),
+    ("90000", "سایر", None),
 )
 
 
@@ -22,7 +22,16 @@ def list_detail_groups(include_disabled: int | bool = 0) -> dict:
     rows = frappe.get_all(
         "ASOUD Detail Group",
         filters=filters,
-        fields=["name", "group_code", "group_name", "disabled"],
+        fields=[
+            "name",
+            "group_code",
+            "group_name",
+            "party_role",
+            "parent_group",
+            "icon_key",
+            "color_hex",
+            "disabled",
+        ],
         order_by="group_code asc",
         limit_page_length=0,
     )
@@ -33,14 +42,20 @@ def list_detail_groups(include_disabled: int | bool = 0) -> dict:
 def seed_default_detail_groups() -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
     created = []
-    for code, title in DEFAULT_GROUPS:
-        if frappe.db.exists("ASOUD Detail Group", code):
+    for code, title, party_role in DEFAULT_GROUPS:
+        existing = frappe.db.exists("ASOUD Detail Group", code)
+        if existing:
+            if party_role and not frappe.db.get_value(
+                "ASOUD Detail Group", existing, "party_role"
+            ):
+                frappe.db.set_value("ASOUD Detail Group", existing, "party_role", party_role)
             continue
         doc = frappe.get_doc(
             {
                 "doctype": "ASOUD Detail Group",
                 "group_code": code,
                 "group_name": title,
+                "party_role": party_role,
             }
         )
         doc.insert()

@@ -15,21 +15,37 @@ def after_install():
     settings.detail_code_digits = 5
     settings.save(ignore_permissions=True)
 
-    for code, title in DEFAULT_GROUPS:
-        if not frappe.db.exists("ASOUD Detail Group", code):
+    for code, title, party_role in DEFAULT_GROUPS:
+        existing = frappe.db.exists("ASOUD Detail Group", code)
+        if not existing:
             frappe.get_doc(
                 {
                     "doctype": "ASOUD Detail Group",
                     "group_code": code,
                     "group_name": title,
+                    "party_role": party_role,
                 }
             ).insert(ignore_permissions=True)
+        elif party_role and not frappe.db.get_value(
+            "ASOUD Detail Group", existing, "party_role"
+        ):
+            frappe.db.set_value("ASOUD Detail Group", existing, "party_role", party_role)
 
 
 def after_migrate():
     """Keep installation and migration hooks explicitly idempotent."""
-    for code, title in DEFAULT_GROUPS:
-        if not frappe.db.exists("ASOUD Detail Group", code):
+    for code, title, party_role in DEFAULT_GROUPS:
+        existing = frappe.db.exists("ASOUD Detail Group", code)
+        if not existing:
             frappe.get_doc(
-                {"doctype": "ASOUD Detail Group", "group_code": code, "group_name": title}
+                {
+                    "doctype": "ASOUD Detail Group",
+                    "group_code": code,
+                    "group_name": title,
+                    "party_role": party_role,
+                }
             ).insert(ignore_permissions=True)
+        elif party_role and not frappe.db.get_value(
+            "ASOUD Detail Group", existing, "party_role"
+        ):
+            frappe.db.set_value("ASOUD Detail Group", existing, "party_role", party_role)
