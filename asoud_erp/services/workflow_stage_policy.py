@@ -106,6 +106,9 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
         }
 
     if stage_type == "Condition":
+        source_kind = raw.get("source_kind") or "Document"
+        if source_kind not in {"Document", "Form"}:
+            raise ValueError("Invalid condition source")
         source_field = str(raw.get("source_field") or "").strip()
         if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", source_field):
             raise ValueError("Invalid condition field")
@@ -117,6 +120,7 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
             raise ValueError("Condition comparison value is required")
         return {
             "title": title,
+            "source_kind": source_kind,
             "source_field": source_field,
             "operator": operator,
             "compare_value": compare_value,

@@ -9,6 +9,7 @@ from frappe.utils import now_datetime
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.workflow_assignment import assignment_values
+from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
 from asoud_erp.services.workflow_response import normalize_form_response
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".xlsx", ".docx"}
@@ -78,13 +79,89 @@ def _next_stage(instance, current_stage: str):
     return frappe.get_doc("ASOUD Workflow Stage", transition) if transition else None
 
 
-def _activate_stage(instance, stage) -> None:
+def _latest_form_value(instance, fieldname: str, source_task=None):
+    """Return the newest submitted form value available in this instance."""
+    if source_task:
+        response = json.loads(source_task.response_json or "{}")
+        if fieldname in response:
+            return response[fieldname]
+    rows = frappe.get_all(
+        "ASOUD Workflow Task",
+        filters={"workflow_instance": instance.name, "status": "Completed"},
+        fields=["response_json"],
+        order_by="completed_on desc",
+        limit_page_length=0,
+    )
+    for row in rows:
+        response = json.loads(row.response_json or "{}")
+        if fieldname in response:
+            return response[fieldname]
+    return None
+
+
+def _activate_stage(instance, stage, source_task=None) -> None:
     instance.current_stage = stage.name
     if stage.stage_type == "End":
         config = json.loads(stage.config_json or "{}")
         instance.status = "Rejected" if config.get("outcome") == "Rejected" else "Completed"
         instance.completed_on = now_datetime()
         instance.save()
+        return
+    if stage.stage_type == "Condition":
+        config = json.loads(stage.config_json or "{}")
+        if config.get("source_kind") == "Form":
+            actual = _latest_form_value(
+                instance, config.get("source_field"), source_task=source_task
+            )
+        else:
+            actual = None
+            if instance.reference_doctype and instance.reference_name:
+                actual = frappe.db.get_value(
+                    instance.reference_doctype, instance.reference_name, config.get("source_field")
+                )
+        try:
+            result = evaluate_condition(
+                config.get("operator"), actual, config.get("compare_value")
+            )
+            rows = frappe.get_all(
+                "ASOUD Workflow Transition",
+                filters={
+                    "workflow_definition": instance.workflow_definition,
+                    "from_stage": stage.name,
+                },
+                fields=["to_stage", "condition_json"],
+                limit_page_length=0,
+            )
+            destination = select_boolean_transition(
+                [
+                    {
+                        "to_stage": row.to_stage,
+                        "condition": json.loads(row.condition_json or "{}"),
+                    }
+                    for row in rows
+                ],
+                result,
+            )
+        except ValueError as error:
+            frappe.throw(_(str(error)))
+        instance.save(ignore_permissions=True)
+        frappe.get_doc(
+            {
+                "doctype": "ASOUD Workflow Activity",
+                "workflow_instance": instance.name,
+                "workflow_task": source_task.name if source_task else None,
+                "workflow_stage": stage.name,
+                "actor": frappe.session.user,
+                "action": "Condition True" if result else "Condition False",
+                "comment": f"{config.get('source_field')} = {actual}",
+                "created_on": now_datetime(),
+            }
+        ).insert(ignore_permissions=True)
+        _activate_stage(
+            instance,
+            frappe.get_doc("ASOUD Workflow Stage", destination),
+            source_task=source_task,
+        )
         return
     if stage.stage_type not in {"User Task", "Approval"}:
         frappe.throw(_("Automatic execution of this workflow stage is not available yet"))
@@ -312,5 +389,5 @@ def complete_workflow_task(
         next_stage = _next_stage(instance, stage.name)
         if not next_stage:
             frappe.throw(_("Workflow has no next stage"))
-        _activate_stage(instance, next_stage)
+        _activate_stage(instance, next_stage, source_task=doc)
     return success({"task": doc.name, "instance_status": instance.status})
