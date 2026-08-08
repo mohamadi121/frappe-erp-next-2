@@ -4,6 +4,7 @@ from typing import Any
 STAGE_TYPES = {"User Task", "Approval", "Condition", "System Action", "Wait", "End"}
 ROLE_BASED_TYPES = {"User Task": "assignee_roles", "Approval": "approver_roles"}
 FORM_FIELD_TYPES = {"Short Text", "Long Text", "Number", "Currency", "Date", "Choice", "Attachment", "Checkbox"}
+ASSIGNMENT_TYPES = {"Role", "Department", "Employee"}
 
 
 def _unique_strings(values: Any) -> list[str]:
@@ -48,6 +49,28 @@ def _normalize_form_fields(values: Any) -> list[dict[str, Any]]:
     return result
 
 
+def _normalize_assignment(raw: dict[str, Any], prefix: str) -> dict[str, Any]:
+    assignment_type = str(raw.get("assignment_type") or "Role")
+    if assignment_type not in ASSIGNMENT_TYPES:
+        raise ValueError("Invalid assignment type")
+    roles = _unique_strings(raw.get(f"{prefix}_roles"))
+    departments = _unique_strings(raw.get(f"{prefix}_departments"))
+    employees = _unique_strings(raw.get(f"{prefix}_employees"))
+    selected = {
+        "Role": roles,
+        "Department": departments,
+        "Employee": employees,
+    }[assignment_type]
+    if not selected:
+        raise ValueError("At least one assignment target is required")
+    return {
+        "assignment_type": assignment_type,
+        f"{prefix}_roles": roles if assignment_type == "Role" else [],
+        f"{prefix}_departments": departments if assignment_type == "Department" else [],
+        f"{prefix}_employees": employees if assignment_type == "Employee" else [],
+    }
+
+
 def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, Any]:
     if stage_type not in STAGE_TYPES:
         raise ValueError("Unsupported stage type")
@@ -59,27 +82,23 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
         activity_type = raw.get("activity_type")
         if activity_type not in {"Data Entry", "Review", "Correction", "Task"}:
             raise ValueError("Invalid user task activity")
-        roles = _unique_strings(raw.get("assignee_roles"))
-        if not roles:
-            raise ValueError("At least one assignee role is required")
+        assignment = _normalize_assignment(raw, "assignee")
         return {
             "title": title,
             "activity_type": activity_type,
-            "assignee_roles": roles,
+            **assignment,
             "instructions": str(raw.get("instructions") or "").strip(),
             "form_fields": _normalize_form_fields(raw.get("form_fields")),
         }
 
     if stage_type == "Approval":
-        roles = _unique_strings(raw.get("approver_roles"))
-        if not roles:
-            raise ValueError("At least one approver role is required")
+        assignment = _normalize_assignment(raw, "approver")
         mode = raw.get("approval_mode")
         if mode not in {"Any", "All"}:
             raise ValueError("Invalid approval mode")
         return {
             "title": title,
-            "approver_roles": roles,
+            **assignment,
             "approval_mode": mode,
             "allow_reject": bool(raw.get("allow_reject", True)),
             "allow_return": bool(raw.get("allow_return", True)),

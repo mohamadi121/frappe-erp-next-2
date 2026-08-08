@@ -49,6 +49,47 @@ def test_approval_contract_is_normalized() -> None:
     assert result["approver_roles"] == ["Accounts Manager"]
 
 
+def test_user_task_can_target_a_specific_employee() -> None:
+    result = normalize_stage_config(
+        "User Task",
+        {
+            "title": "بررسی درخواست",
+            "activity_type": "Review",
+            "assignment_type": "Employee",
+            "assignee_employees": ["HR-EMP-0001", "HR-EMP-0001"],
+        },
+    )
+    assert result["assignment_type"] == "Employee"
+    assert result["assignee_employees"] == ["HR-EMP-0001"]
+    assert result["assignee_roles"] == []
+
+
+def test_approval_can_target_a_department() -> None:
+    result = normalize_stage_config(
+        "Approval",
+        {
+            "title": "تأیید واحد مالی",
+            "assignment_type": "Department",
+            "approver_departments": ["Accounts - ASOUD"],
+            "approval_mode": "Any",
+        },
+    )
+    assert result["approver_departments"] == ["Accounts - ASOUD"]
+
+
+def test_assignment_requires_target_for_selected_type() -> None:
+    with pytest.raises(ValueError):
+        normalize_stage_config(
+            "User Task",
+            {
+                "title": "بررسی درخواست",
+                "activity_type": "Review",
+                "assignment_type": "Employee",
+                "assignee_roles": ["Employee"],
+            },
+        )
+
+
 def test_arbitrary_system_action_is_rejected() -> None:
     with pytest.raises(ValueError):
         normalize_stage_config(

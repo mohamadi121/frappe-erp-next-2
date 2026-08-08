@@ -1,0 +1,25 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Workflow Task",
+  "module": "ASOUD ERP",
+  "autoname": "format:WFT-{YYYY}-{#####}",
+  "title_field": "task_title",
+  "track_changes": 1,
+  "field_order": ["workflow_instance", "workflow_stage", "task_title", "assigned_to", "status", "action", "comment", "assigned_on", "completed_on"],
+  "fields": [
+    {"fieldname": "workflow_instance", "label": "Workflow Instance", "fieldtype": "Link", "options": "ASOUD Workflow Instance", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "workflow_stage", "label": "Workflow Stage", "fieldtype": "Link", "options": "ASOUD Workflow Stage", "reqd": 1},
+    {"fieldname": "task_title", "label": "Task Title", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "assigned_to", "label": "Assigned To", "fieldtype": "Link", "options": "User", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "status", "label": "Status", "fieldtype": "Select", "options": "Open\nCompleted\nRejected\nCancelled", "default": "Open", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "action", "label": "Action", "fieldtype": "Data", "read_only": 1},
+    {"fieldname": "comment", "label": "Comment", "fieldtype": "Small Text"},
+    {"fieldname": "assigned_on", "label": "Assigned On", "fieldtype": "Datetime", "read_only": 1},
+    {"fieldname": "completed_on", "label": "Completed On", "fieldtype": "Datetime", "read_only": 1}
+  ],
+  "permissions": [
+    {"role": "System Manager", "create": 1, "read": 1, "write": 1, "delete": 1},
+    {"role": "Accounts Manager", "create": 1, "read": 1, "write": 1},
+    {"role": "Accounts User", "read": 1, "write": 1}
+  ]
+}
