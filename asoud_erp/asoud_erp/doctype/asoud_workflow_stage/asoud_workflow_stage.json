@@ -1,0 +1,26 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Workflow Stage",
+  "module": "ASOUD ERP",
+  "autoname": "hash",
+  "title_field": "stage_title",
+  "track_changes": 1,
+  "field_order": ["workflow_definition", "stage_key", "stage_type", "stage_subtype", "stage_title", "sequence_no", "config_json", "configuration_status", "position_x", "position_y"],
+  "fields": [
+    {"fieldname": "workflow_definition", "label": "Workflow Definition", "fieldtype": "Link", "options": "ASOUD Workflow Definition", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "stage_key", "label": "Stage Key", "fieldtype": "Data", "reqd": 1, "unique": 1},
+    {"fieldname": "stage_type", "label": "Stage Type", "fieldtype": "Select", "options": "Start\nUser Task\nApproval\nCondition\nSystem Action\nWait\nEnd", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "stage_subtype", "label": "Stage Subtype", "fieldtype": "Data"},
+    {"fieldname": "stage_title", "label": "Stage Title", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "sequence_no", "label": "Sequence", "fieldtype": "Int", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "config_json", "label": "Configuration JSON", "fieldtype": "Long Text", "default": "{}"},
+    {"fieldname": "configuration_status", "label": "Configuration Status", "fieldtype": "Select", "options": "Pending\nComplete", "default": "Pending", "reqd": 1},
+    {"fieldname": "position_x", "label": "Position X", "fieldtype": "Float", "default": "0"},
+    {"fieldname": "position_y", "label": "Position Y", "fieldtype": "Float", "default": "0"}
+  ],
+  "permissions": [
+    {"role": "System Manager", "create": 1, "read": 1, "write": 1, "delete": 1},
+    {"role": "Accounts Manager", "create": 1, "read": 1, "write": 1, "delete": 1},
+    {"role": "Accounts User", "read": 1}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Workflow Transition",
+  "module": "ASOUD ERP",
+  "autoname": "hash",
+  "track_changes": 1,
+  "field_order": ["workflow_definition", "from_stage", "to_stage", "transition_label", "condition_json", "sequence_no"],
+  "fields": [
+    {"fieldname": "workflow_definition", "label": "Workflow Definition", "fieldtype": "Link", "options": "ASOUD Workflow Definition", "reqd": 1},
+    {"fieldname": "from_stage", "label": "From Stage", "fieldtype": "Link", "options": "ASOUD Workflow Stage", "reqd": 1},
+    {"fieldname": "to_stage", "label": "To Stage", "fieldtype": "Link", "options": "ASOUD Workflow Stage", "reqd": 1},
+    {"fieldname": "transition_label", "label": "Transition Label", "fieldtype": "Data"},
+    {"fieldname": "condition_json", "label": "Condition JSON", "fieldtype": "Long Text", "default": "{}"},
+    {"fieldname": "sequence_no", "label": "Sequence", "fieldtype": "Int", "default": "0"}
+  ],
+  "permissions": [
+    {"role": "System Manager", "create": 1, "read": 1, "write": 1, "delete": 1},
+    {"role": "Accounts Manager", "create": 1, "read": 1, "write": 1, "delete": 1},
+    {"role": "Accounts User", "read": 1}
+  ]
+}

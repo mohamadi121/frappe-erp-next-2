@@ -42,6 +42,12 @@ def jalali_to_gregorian(year: int, month: int, day: int) -> date:
     return date(gy, gm, gd)
 
 
+def current_jalali_year(today: date | None = None) -> int:
+    value = today or date.today()
+    candidate = value.year - 621
+    return candidate if value >= jalali_to_gregorian(candidate, 1, 1) else candidate - 1
+
+
 def jalali_fiscal_period(year: int, month: int, day: int) -> tuple[date, date]:
     start = jalali_to_gregorian(year, month, day)
     end = jalali_to_gregorian(year + 1, month, day) - timedelta(days=1)
