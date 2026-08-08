@@ -1,0 +1,38 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Workflow Definition",
+  "module": "ASOUD ERP",
+  "autoname": "field:workflow_code",
+  "title_field": "workflow_title",
+  "track_changes": 1,
+  "field_order": [
+    "workflow_code", "workflow_title", "process_description", "company", "module_key", "creation_mode", "target_doctype",
+    "frappe_workflow", "status", "readiness_status", "pending_reason",
+    "missing_requirements_json", "version_no", "steps_count", "icon_key",
+    "color_hex", "archived_on"
+  ],
+  "fields": [
+    {"fieldname": "workflow_code", "label": "Workflow Code", "fieldtype": "Data", "reqd": 1, "unique": 1, "in_list_view": 1},
+    {"fieldname": "workflow_title", "label": "Workflow Title", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "process_description", "label": "Description", "fieldtype": "Small Text"},
+    {"fieldname": "company", "label": "Company", "fieldtype": "Link", "options": "Company", "in_list_view": 1},
+    {"fieldname": "module_key", "label": "Module", "fieldtype": "Select", "options": "Purchase\nAccounting\nSales\nInventory\nSupport\nHR", "reqd": 1},
+    {"fieldname": "creation_mode", "label": "Creation Mode", "fieldtype": "Select", "options": "Custom\nTemplate", "default": "Custom", "reqd": 1},
+    {"fieldname": "target_doctype", "label": "Target DocType", "fieldtype": "Link", "options": "DocType", "reqd": 1},
+    {"fieldname": "frappe_workflow", "label": "Frappe Workflow", "fieldtype": "Link", "options": "Workflow"},
+    {"fieldname": "status", "label": "Status", "fieldtype": "Select", "options": "Active\nInactive\nArchived", "default": "Inactive", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "readiness_status", "label": "Readiness", "fieldtype": "Select", "options": "Ready\nPending", "default": "Pending", "reqd": 1},
+    {"fieldname": "pending_reason", "label": "Pending Reason", "fieldtype": "Small Text"},
+    {"fieldname": "missing_requirements_json", "label": "Missing Requirements JSON", "fieldtype": "Long Text", "default": "[]"},
+    {"fieldname": "version_no", "label": "Version", "fieldtype": "Int", "default": "1", "read_only": 1},
+    {"fieldname": "steps_count", "label": "Steps Count", "fieldtype": "Int", "default": "0", "read_only": 1},
+    {"fieldname": "icon_key", "label": "Icon Key", "fieldtype": "Data"},
+    {"fieldname": "color_hex", "label": "Color Hex", "fieldtype": "Data"},
+    {"fieldname": "archived_on", "label": "Archived On", "fieldtype": "Datetime", "read_only": 1}
+  ],
+  "permissions": [
+    {"role": "System Manager", "create": 1, "read": 1, "write": 1, "delete": 1},
+    {"role": "Accounts Manager", "create": 1, "read": 1, "write": 1},
+    {"role": "Accounts User", "read": 1}
+  ]
+}

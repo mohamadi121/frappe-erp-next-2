@@ -19,3 +19,8 @@ def test_failure_contract():
 def test_success_accepts_empty_payload():
     response = success()
     assert response == {"ok": True, "data": None, "meta": {"api_version": "v1"}}
+
+
+def test_success_merges_metadata():
+    response = success([], meta={"created_count": 2})
+    assert response["meta"] == {"api_version": "v1", "created_count": 2}

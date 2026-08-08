@@ -6,6 +6,23 @@ from asoud_erp.services.detail_code_service import next_detail_code
 
 
 @frappe.whitelist()
+def preview_next_detail_code(detail_group: str) -> dict:
+    """Return the next server-generated detail code without creating a row."""
+    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    if not frappe.db.exists("ASOUD Detail Group", detail_group):
+        frappe.throw(_("Detail group does not exist"))
+    settings = frappe.get_single("ASOUD Settings")
+    return success(
+        {
+            "detail_group": detail_group,
+            "detail_code": next_detail_code(
+                detail_group, int(settings.detail_code_digits or 5)
+            ),
+        }
+    )
+
+
+@frappe.whitelist()
 def list_floating_details(detail_group: str | None = None, search: str | None = None) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
     filters: dict = {"disabled": 0}
@@ -22,6 +39,10 @@ def list_floating_details(detail_group: str | None = None, search: str | None = 
         order_by="detail_code asc",
         limit_page_length=200,
     )
+    for row in rows:
+        row["group_title"] = frappe.db.get_value(
+            "ASOUD Detail Group", row["detail_group"], "group_name"
+        )
     return success(rows)
 
 
@@ -57,7 +78,30 @@ def create_floating_detail(
         }
     )
     doc.insert()
-    return success(doc.as_dict())
+    result = doc.as_dict()
+    result["group_title"] = frappe.db.get_value(
+        "ASOUD Detail Group", doc.detail_group, "group_name"
+    )
+    return success(result)
+
+
+@frappe.whitelist(methods=["POST"])
+def link_floating_detail(name: str, party_profile: str) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    if not frappe.db.exists("ASOUD Party Profile", party_profile):
+        frappe.throw(_("Party profile does not exist"))
+    doc = frappe.get_doc("ASOUD Floating Detail", name)
+    if doc.disabled:
+        frappe.throw(_("Disabled floating detail cannot be linked"))
+    if doc.linked_document and (
+        doc.linked_doctype != "ASOUD Party Profile"
+        or doc.linked_document != party_profile
+    ):
+        frappe.throw(_("Floating detail is already linked to another document"))
+    doc.linked_doctype = "ASOUD Party Profile"
+    doc.linked_document = party_profile
+    doc.save()
+    return success({"name": doc.name, "linked_document": party_profile})
 
 
 @frappe.whitelist(methods=["POST"])

@@ -2,8 +2,10 @@ import json
 
 import frappe
 from frappe import _
+from frappe.utils import getdate
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.jalali import jalali_fiscal_period
 from asoud_erp.services.party_validation import is_valid_iranian_legal_id
 from asoud_erp.services.setup_service import (
     ALLOWED_CHART_TEMPLATES,
@@ -33,9 +35,25 @@ def _serialize_setup(doc) -> dict:
         "office_type": doc.office_type,
         "national_id": doc.national_id or "",
         "economic_code": doc.economic_code or "",
+        "owner_full_name": doc.owner_full_name or "",
+        "registration_number": doc.registration_number or "",
+        "activity_type": doc.activity_type or "Commercial",
+        "company_type": doc.company_type or "",
+        "parent_office": doc.parent_office or "",
+        "phone": doc.phone or "",
+        "email": doc.email or "",
+        "website": doc.website or "",
+        "province": doc.province or "Tehran",
+        "city": doc.city or "Tehran",
+        "address": doc.address or "",
+        "postal_code": doc.postal_code or "",
+        "description": doc.description or "",
+        "modified": str(doc.modified or ""),
         "accounting_basis": "Accrual",
         "display_currency": doc.display_currency or "Rial",
         "fiscal_year_start_month": int(doc.fiscal_year_start_month or 1),
+        "fiscal_year_start_day": int(doc.fiscal_year_start_day or 1),
+        "fiscal_year": int(doc.fiscal_year or 1405),
         "chart_template": doc.chart_template or "Iran Standard",
         "auto_generate_detail_code": bool(doc.auto_generate_detail_code),
         "enabled_roles": roles,
@@ -71,6 +89,21 @@ def save_office(
     economic_code: str | None = None,
     auto_generate_detail_code: int | bool = 1,
     company: str | None = None,
+    owner_full_name: str | None = None,
+    registration_number: str | None = None,
+    activity_type: str | None = None,
+    company_type: str | None = None,
+    parent_office: str | None = None,
+    phone: str | None = None,
+    email: str | None = None,
+    website: str | None = None,
+    province: str | None = None,
+    city: str | None = None,
+    address: str | None = None,
+    postal_code: str | None = None,
+    fiscal_year: str | None = None,
+    chart_template: str | None = None,
+    description: str | None = None,
 ) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
     if company and not frappe.has_permission("Company", ptype="write", doc=company):
@@ -84,7 +117,11 @@ def save_office(
     if len(title) < 3:
         frappe.throw(_("Company name must contain at least 3 characters"))
     normalized_id = normalize_digits(national_id)
-    if office_type == "Legal" and not is_valid_iranian_legal_id(normalized_id):
+    if (
+        office_type == "Legal"
+        and normalized_id
+        and not is_valid_iranian_legal_id(normalized_id)
+    ):
         frappe.throw(_("Iranian legal entity ID is not valid"))
     try:
         normalized_economic_code = validate_economic_code(economic_code)
@@ -132,6 +169,22 @@ def save_office(
     setup.office_type = office_type
     setup.national_id = normalized_id or None
     setup.economic_code = normalized_economic_code
+    setup.owner_full_name = str(owner_full_name or "").strip()
+    setup.registration_number = str(registration_number or "").strip()
+    setup.activity_type = str(activity_type or "Commercial").strip()
+    setup.company_type = str(company_type or "").strip()
+    setup.parent_office = str(parent_office or "").strip()
+    setup.phone = str(phone or "").strip()
+    setup.email = str(email or "").strip()
+    setup.website = str(website or "").strip()
+    setup.province = str(province or "Tehran").strip()
+    setup.city = str(city or "Tehran").strip()
+    setup.address = str(address or "").strip()
+    setup.postal_code = str(postal_code or "").strip()
+    setup.fiscal_year = str(fiscal_year or "1405").strip()
+    if chart_template:
+        setup.chart_template = str(chart_template).strip()
+    setup.description = str(description or "").strip()
     setup.auto_generate_detail_code = int(bool(auto_generate_detail_code))
     setup.office_saved = 1
     setup.save() if setup_exists else setup.insert()
@@ -150,6 +203,8 @@ def update_company_settings(
     display_currency: str,
     fiscal_year_start_month: int,
     chart_template: str,
+    fiscal_year_start_day: int = 1,
+    fiscal_year: int = 1405,
     auto_generate_detail_code: int | bool = 1,
 ) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
@@ -158,17 +213,96 @@ def update_company_settings(
     if chart_template not in ALLOWED_CHART_TEMPLATES:
         frappe.throw(_("Chart template is not valid"))
     month = int(fiscal_year_start_month)
+    day = int(fiscal_year_start_day)
+    year = int(fiscal_year)
     if not 1 <= month <= 12:
         frappe.throw(_("Fiscal year start month must be between 1 and 12"))
+    if not 1 <= day <= 31:
+        frappe.throw(_("Fiscal year start day must be between 1 and 31"))
+    if not 1300 <= year <= 1600:
+        frappe.throw(_("Fiscal year must be a valid Solar Hijri year"))
     setup = _setup(company)
     setup.accounting_basis = "Accrual"
     setup.display_currency = display_currency
     setup.fiscal_year_start_month = month
+    setup.fiscal_year_start_day = day
+    setup.fiscal_year = str(year)
     setup.chart_template = chart_template
     setup.auto_generate_detail_code = int(bool(auto_generate_detail_code))
     setup.accounting_saved = 1
     setup.save()
     return success(_serialize_setup(setup))
+
+
+@frappe.whitelist()
+def list_fiscal_years(company: str) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    _setup(company)
+    fiscal_year_names = frappe.get_all(
+        "Fiscal Year Company",
+        filters={"company": company},
+        pluck="parent",
+        limit_page_length=0,
+    )
+    rows = frappe.get_all(
+        "Fiscal Year",
+        filters={"name": ["in", fiscal_year_names]},
+        fields=["name", "year", "year_start_date", "year_end_date", "disabled"],
+        order_by="year_start_date desc",
+        limit_page_length=0,
+    )
+    return success(rows)
+
+
+@frappe.whitelist(methods=["POST"])
+def create_fiscal_year(
+    company: str,
+    fiscal_year: int,
+    start_month: int,
+    start_day: int,
+) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    _setup(company)
+    year = int(fiscal_year)
+    if not 1300 <= year <= 1600:
+        frappe.throw(_("Fiscal year must be a valid Solar Hijri year"))
+    try:
+        start_date, end_date = jalali_fiscal_period(year, int(start_month), int(start_day))
+    except ValueError as exc:
+        frappe.throw(_(str(exc)))
+    title = str(year)
+    if frappe.db.exists("Fiscal Year", title):
+        doc = frappe.get_doc("Fiscal Year", title)
+        if getdate(doc.year_start_date) != start_date or getdate(doc.year_end_date) != end_date:
+            frappe.throw(_("The existing fiscal year uses a different date range"))
+        if not any(row.company == company for row in doc.companies):
+            doc.append("companies", {"company": company})
+            doc.save()
+    else:
+        doc = frappe.get_doc(
+            {
+                "doctype": "Fiscal Year",
+                "year": title,
+                "year_start_date": start_date,
+                "year_end_date": end_date,
+                "companies": [{"company": company}],
+            }
+        )
+        doc.insert()
+    setup = _setup(company)
+    setup.fiscal_year = title
+    setup.fiscal_year_start_month = int(start_month)
+    setup.fiscal_year_start_day = int(start_day)
+    setup.save()
+    return success(
+        {
+            "name": doc.name,
+            "year": title,
+            "year_start_date": str(start_date),
+            "year_end_date": str(end_date),
+            "disabled": False,
+        }
+    )
 
 
 @frappe.whitelist()
@@ -242,3 +376,37 @@ def update_settings(
     settings.detail_code_digits = digits
     settings.save()
     return get_settings()
+
+
+@frappe.whitelist()
+def get_account_code_settings(company: str) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    setup = _setup(company)
+    return success(
+        {
+            "company": company,
+            "auto_generate_account_code": bool(setup.auto_generate_account_code),
+            "group_code_digits": int(setup.group_code_digits or 1),
+            "general_code_digits": int(setup.general_code_digits or 2),
+            "ledger_code_digits": int(setup.ledger_code_digits or 2),
+        }
+    )
+
+
+@frappe.whitelist(methods=["POST"])
+def update_account_code_settings(
+    company: str,
+    auto_generate_account_code: int | bool = 1,
+    group_code_digits: int = 1,
+    general_code_digits: int = 2,
+    ledger_code_digits: int = 2,
+) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    setup = _setup(company)
+    values = [int(group_code_digits), int(general_code_digits), int(ledger_code_digits)]
+    if any(value < 1 or value > 4 for value in values):
+        frappe.throw(_("Account level code digits must be between 1 and 4"))
+    setup.auto_generate_account_code = int(bool(auto_generate_account_code))
+    setup.group_code_digits, setup.general_code_digits, setup.ledger_code_digits = values
+    setup.save()
+    return get_account_code_settings(company)
