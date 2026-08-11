@@ -89,6 +89,10 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
             **assignment,
             "instructions": str(raw.get("instructions") or "").strip(),
             "form_fields": _normalize_form_fields(raw.get("form_fields")),
+            "document_access": _document_access(raw),
+            "allow_reject": bool(raw.get("allow_reject", False)),
+            "allow_return": bool(raw.get("allow_return", False)),
+            "comment_required": bool(raw.get("comment_required", False)),
         }
 
     if stage_type == "Approval":
@@ -100,6 +104,7 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
             "title": title,
             **assignment,
             "approval_mode": mode,
+            "document_access": _document_access(raw),
             "allow_reject": bool(raw.get("allow_reject", True)),
             "allow_return": bool(raw.get("allow_return", True)),
             "comment_required": bool(raw.get("comment_required", False)),
@@ -158,3 +163,10 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
     if outcome not in {"Completed", "Rejected", "Cancelled", "Stopped"}:
         raise ValueError("Invalid workflow outcome")
     return {"title": title, "outcome": outcome, "result_label": str(raw.get("result_label") or "").strip()}
+
+
+def _document_access(raw: dict[str, Any]) -> str:
+    value = str(raw.get("document_access") or "Read Only")
+    if value not in {"Read Only", "Edit", "Limited Edit"}:
+        raise ValueError("Invalid document access mode")
+    return value

@@ -21,5 +21,20 @@ execution remain blocked until their dedicated secure executors are implemented.
 
 Task forms support server-side validation, drafts, private attachments up to 10 MB,
 final responses, an immutable activity trail, rejection, and return to the previous
-linear stage. Flutter offline records are explicitly local-only and are not treated
-as ERPNext transactions.
+editable user task. Reviewers and approvers receive read-only context from completed
+form stages. A return always requires a reason, preserves the latest submitted data
+as the correction draft, and cancels sibling tasks before reassignment. Reject also
+cancels sibling tasks to prevent a second decision. Flutter offline records are
+explicitly local-only and are not treated as ERPNext transactions.
+# Purchase request integration
+
+`create_purchase_request` creates an ERPNext v15 `Material Request` with
+`material_request_type = Purchase`, resolves the single active and ready ASOUD
+purchase workflow for the company, and starts an ASOUD workflow instance that
+references the created document. The whole request runs in the same Frappe
+transaction, so failure to start the workflow prevents a partial committed
+request.
+
+`purchase_request_options` returns enabled purchase items and non-group
+warehouses. `list_my_purchase_requests` returns only purchase requests owned by
+the current ERPNext user.
