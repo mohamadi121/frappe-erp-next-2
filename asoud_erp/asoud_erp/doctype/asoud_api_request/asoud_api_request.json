@@ -1,0 +1,17 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD API Request",
+  "module": "ASOUD ERP",
+  "autoname": "field:request_key",
+  "engine": "InnoDB",
+  "field_order": ["request_key", "method", "status", "response_json"],
+  "fields": [
+    {"fieldname": "request_key", "label": "Request Key", "fieldtype": "Data", "reqd": 1, "unique": 1, "read_only": 1},
+    {"fieldname": "method", "label": "Method", "fieldtype": "Data", "reqd": 1, "read_only": 1},
+    {"fieldname": "status", "label": "Status", "fieldtype": "Select", "options": "Processing\nCompleted", "reqd": 1, "read_only": 1},
+    {"fieldname": "response_json", "label": "Response JSON", "fieldtype": "Long Text", "read_only": 1}
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1}
+  ]
+}
