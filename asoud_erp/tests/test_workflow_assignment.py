@@ -22,3 +22,9 @@ def test_approval_uses_approver_department() -> None:
 def test_unknown_assignment_type_is_rejected() -> None:
     with pytest.raises(ValueError):
         assignment_values({"assignment_type": "Script"}, "User Task")
+
+
+def test_initiator_assignment_needs_no_static_target() -> None:
+    assert assignment_values(
+        {"assignment_type": "Initiator"}, "User Task"
+    ) == ("Initiator", [])

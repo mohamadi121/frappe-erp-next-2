@@ -22,6 +22,48 @@ def _assert_task_owner(doc) -> None:
         frappe.throw(_("This task is assigned to another user"), frappe.PermissionError)
 
 
+def _assert_instance_access(instance) -> None:
+    if instance.started_by == frappe.session.user:
+        return
+    if frappe.db.exists(
+        "ASOUD Workflow Task",
+        {"workflow_instance": instance.name, "assigned_to": frappe.session.user},
+    ):
+        return
+    if {"System Manager", "Accounts Manager"}.intersection(frappe.get_roles()):
+        return
+    frappe.throw(_("Not permitted to view this workflow instance"), frappe.PermissionError)
+
+
+def _instance_summary(instance) -> dict:
+    stage_title = ""
+    if instance.current_stage:
+        stage_title = frappe.db.get_value(
+            "ASOUD Workflow Stage", instance.current_stage, "stage_title"
+        ) or ""
+    assignees = frappe.get_all(
+        "ASOUD Workflow Task",
+        filters={"workflow_instance": instance.name, "status": "Open"},
+        pluck="assigned_to",
+        order_by="assigned_on asc",
+        limit_page_length=0,
+    )
+    return {
+        "name": instance.name,
+        "subject": instance.subject,
+        "status": instance.status,
+        "workflow_definition": instance.workflow_definition,
+        "current_stage": instance.current_stage or "",
+        "current_stage_title": stage_title,
+        "current_assignees": list(dict.fromkeys(assignees)),
+        "reference_doctype": instance.reference_doctype or "",
+        "reference_name": instance.reference_name or "",
+        "started_by": instance.started_by,
+        "started_on": instance.started_on,
+        "completed_on": instance.completed_on,
+    }
+
+
 def _record_activity(doc, action: str, comment: str = "") -> None:
     frappe.get_doc(
         {
@@ -37,10 +79,12 @@ def _record_activity(doc, action: str, comment: str = "") -> None:
     ).insert(ignore_permissions=True)
 
 
-def _users_for_stage(stage) -> list[str]:
+def _users_for_stage(stage, instance) -> list[str]:
     config = json.loads(stage.config_json or "{}")
     assignment_type, values = assignment_values(config, stage.stage_type)
-    if assignment_type == "Employee":
+    if assignment_type == "Initiator":
+        users = [instance.started_by]
+    elif assignment_type == "Employee":
         users = frappe.get_all(
             "Employee",
             filters={"name": ["in", values], "status": "Active", "user_id": ["is", "set"]},
@@ -240,7 +284,7 @@ def _activate_stage(instance, stage, source_task=None) -> None:
         if isinstance(field, dict)
     }
     draft_values = {key: value for key, value in previous_values.items() if key in form_keys}
-    for user in _users_for_stage(stage):
+    for user in _users_for_stage(stage, instance):
         frappe.get_doc(
             {
                 "doctype": "ASOUD Workflow Task",
@@ -326,6 +370,58 @@ def list_my_workflow_tasks(status: str = "Open") -> dict:
         limit_page_length=200,
     )
     return success(rows, meta={"total": len(rows)})
+
+
+@frappe.whitelist()
+def list_my_workflow_instances(status: str | None = None) -> dict:
+    allowed = {"Running", "Completed", "Rejected", "Cancelled", "Failed"}
+    if status and status not in allowed:
+        frappe.throw(_("Invalid workflow instance status"))
+    filters = {"started_by": frappe.session.user}
+    if status:
+        filters["status"] = status
+    names = frappe.get_all(
+        "ASOUD Workflow Instance",
+        filters=filters,
+        pluck="name",
+        order_by="started_on desc",
+        limit_page_length=200,
+    )
+    rows = [
+        _instance_summary(frappe.get_doc("ASOUD Workflow Instance", name))
+        for name in names
+    ]
+    return success(rows, meta={"total": len(rows)})
+
+
+@frappe.whitelist()
+def get_workflow_instance(instance: str) -> dict:
+    doc = frappe.get_doc("ASOUD Workflow Instance", instance)
+    _assert_instance_access(doc)
+    activities = frappe.get_all(
+        "ASOUD Workflow Activity",
+        filters={"workflow_instance": doc.name},
+        fields=[
+            "name",
+            "workflow_task",
+            "workflow_stage",
+            "actor",
+            "action",
+            "comment",
+            "created_on",
+        ],
+        order_by="created_on asc",
+        limit_page_length=0,
+    )
+    for activity in activities:
+        activity["stage_title"] = (
+            frappe.db.get_value(
+                "ASOUD Workflow Stage", activity.workflow_stage, "stage_title"
+            )
+            if activity.workflow_stage
+            else ""
+        ) or ""
+    return success({**_instance_summary(doc), "activities": activities})
 
 
 @frappe.whitelist()
