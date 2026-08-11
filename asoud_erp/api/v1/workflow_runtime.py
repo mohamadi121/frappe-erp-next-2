@@ -79,6 +79,31 @@ def _record_activity(doc, action: str, comment: str = "") -> None:
     ).insert(ignore_permissions=True)
 
 
+def _notify_user(
+    user: str,
+    subject: str,
+    instance,
+    *,
+    message: str = "",
+) -> None:
+    """Create an in-app Frappe notification without sending external push."""
+    if not user or user in {"Guest", frappe.session.user}:
+        return
+    frappe.get_doc(
+        {
+            "doctype": "Notification Log",
+            "subject": subject,
+            "for_user": user,
+            "from_user": frappe.session.user,
+            "type": "Alert",
+            "document_type": "ASOUD Workflow Instance",
+            "document_name": instance.name,
+            "email_content": message,
+            "read": 0,
+        }
+    ).insert(ignore_permissions=True)
+
+
 def _users_for_stage(stage, instance) -> list[str]:
     config = json.loads(stage.config_json or "{}")
     assignment_type, values = assignment_values(config, stage.stage_type)
@@ -299,6 +324,12 @@ def _activate_stage(instance, stage, source_task=None) -> None:
                 else "{}",
             }
         ).insert(ignore_permissions=True)
+        _notify_user(
+            user,
+            _("New workflow task: {0}").format(stage.stage_title),
+            instance,
+            message=instance.subject,
+        )
 
 
 @frappe.whitelist(methods=["POST"])
@@ -422,6 +453,44 @@ def get_workflow_instance(instance: str) -> dict:
             else ""
         ) or ""
     return success({**_instance_summary(doc), "activities": activities})
+
+
+@frappe.whitelist()
+def list_my_workflow_notifications(unread_only: int | str = 0) -> dict:
+    filters = {
+        "for_user": frappe.session.user,
+        "document_type": "ASOUD Workflow Instance",
+    }
+    if str(unread_only).lower() in {"1", "true"}:
+        filters["read"] = 0
+    rows = frappe.get_all(
+        "Notification Log",
+        filters=filters,
+        fields=[
+            "name",
+            "subject",
+            "email_content",
+            "document_name",
+            "read",
+            "creation",
+        ],
+        order_by="creation desc",
+        limit_page_length=200,
+    )
+    unread = frappe.db.count("Notification Log", {**filters, "read": 0})
+    return success(rows, meta={"total": len(rows), "unread": unread})
+
+
+@frappe.whitelist(methods=["POST"])
+def mark_workflow_notification_read(notification: str) -> dict:
+    doc = frappe.get_doc("Notification Log", notification)
+    if doc.for_user != frappe.session.user:
+        frappe.throw(_("This notification belongs to another user"), frappe.PermissionError)
+    if doc.document_type != "ASOUD Workflow Instance":
+        frappe.throw(_("Invalid workflow notification"))
+    doc.read = 1
+    doc.save(ignore_permissions=True)
+    return success({"name": doc.name, "read": True})
 
 
 @frappe.whitelist()
@@ -587,6 +656,18 @@ def complete_workflow_task(
     doc.save(ignore_permissions=True)
     _record_activity(doc, action, doc.comment)
     instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
+    action_labels = {
+        "Complete": _("Workflow stage completed"),
+        "Approve": _("Workflow request approved"),
+        "Reject": _("Workflow request rejected"),
+        "Return": _("Workflow request returned for correction"),
+    }
+    _notify_user(
+        instance.started_by,
+        action_labels[action],
+        instance,
+        message=doc.comment or stage.stage_title,
+    )
     if action == "Reject":
         frappe.db.set_value(
             "ASOUD Workflow Task",

@@ -16,6 +16,13 @@ Initiators can list their own sent instances and inspect the current stage, open
 assignees, referenced ERPNext document, and ordered activity timeline. Instance
 details are also available to task assignees and system/accounting managers.
 
+Workflow assignments create standard Frappe v15 `Notification Log` records for
+the assignee. Completion, approval, rejection, and return actions notify the
+workflow initiator. The API exposes only the current user's workflow
+notifications and validates ownership before marking one as read. This phase is
+in-app only; external push delivery is intentionally deferred until production
+server credentials and delivery infrastructure are available.
+
 The runtime supports User Task, Approval, End, and safe Condition execution.
 Condition values may come from a whitelisted field on the referenced ERPNext
 document or from the latest completed workflow form. Supported operators are
