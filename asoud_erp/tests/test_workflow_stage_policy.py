@@ -135,3 +135,38 @@ def test_user_task_can_be_assigned_to_workflow_initiator() -> None:
     assert result["assignee_roles"] == []
     assert result["assignee_departments"] == []
     assert result["assignee_employees"] == []
+
+
+def test_user_task_deadline_and_escalation_are_normalized() -> None:
+    result = normalize_stage_config(
+        "User Task",
+        {
+            "title": "Timed review",
+            "activity_type": "Review",
+            "assignee_roles": ["Employee"],
+            "deadline_value": 8,
+            "deadline_unit": "Hour",
+            "reminder_before_minutes": 60,
+            "escalation_roles": ["Workflow Manager"],
+            "reassign_on_overdue": True,
+        },
+    )
+    assert result["deadline_value"] == 8
+    assert result["reminder_before_minutes"] == 60
+    assert result["escalation_roles"] == ["Workflow Manager"]
+    assert result["reassign_on_overdue"] is True
+
+
+def test_automatic_reassignment_requires_an_escalation_role() -> None:
+    with pytest.raises(ValueError):
+        normalize_stage_config(
+            "Approval",
+            {
+                "title": "Timed approval",
+                "approver_roles": ["Accounts Manager"],
+                "approval_mode": "Any",
+                "deadline_value": 1,
+                "deadline_unit": "Day",
+                "reassign_on_overdue": True,
+            },
+        )

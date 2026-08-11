@@ -5,7 +5,7 @@ from pathlib import Path
 
 import frappe
 from frappe import _
-from frappe.utils import now_datetime
+from frappe.utils import add_to_date, now_datetime
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.workflow_assignment import assignment_values
@@ -138,6 +138,43 @@ def _users_for_stage(stage, instance) -> list[str]:
     if not result:
         frappe.throw(_("No active ERPNext user is available for the selected assignment target"))
     return result
+
+
+def _users_for_roles(roles: list[str]) -> list[str]:
+    if not roles:
+        return []
+    users = frappe.get_all(
+        "Has Role",
+        filters={"role": ["in", roles], "parenttype": "User"},
+        pluck="parent",
+        limit_page_length=0,
+    )
+    disabled = set(
+        frappe.get_all("User", filters={"name": ["in", users], "enabled": 0}, pluck="name")
+    )
+    return list(
+        dict.fromkeys(
+            user
+            for user in users
+            if user not in disabled and user not in {"Guest", "Administrator"}
+        )
+    )
+
+
+def _task_deadlines(config: dict) -> tuple[object | None, object | None]:
+    value = int(config.get("deadline_value") or 0)
+    if value <= 0:
+        return None, None
+    unit = config.get("deadline_unit") or "Hour"
+    delta = {
+        "Minute": {"minutes": value},
+        "Hour": {"hours": value},
+        "Day": {"days": value},
+    }[unit]
+    due_on = add_to_date(now_datetime(), **delta)
+    reminder = int(config.get("reminder_before_minutes") or 0)
+    reminder_on = add_to_date(due_on, minutes=-reminder) if reminder else None
+    return due_on, reminder_on
 
 
 def _next_stage(instance, current_stage: str, action: str | None = None):
@@ -309,6 +346,7 @@ def _activate_stage(instance, stage, source_task=None) -> None:
         if isinstance(field, dict)
     }
     draft_values = {key: value for key, value in previous_values.items() if key in form_keys}
+    due_on, reminder_on = _task_deadlines(config)
     for user in _users_for_stage(stage, instance):
         frappe.get_doc(
             {
@@ -319,6 +357,8 @@ def _activate_stage(instance, stage, source_task=None) -> None:
                 "assigned_to": user,
                 "status": "Open",
                 "assigned_on": now_datetime(),
+                "due_on": due_on,
+                "reminder_on": reminder_on,
                 "draft_json": json.dumps(draft_values, ensure_ascii=False)
                 if config.get("form_fields")
                 else "{}",
@@ -396,6 +436,7 @@ def list_my_workflow_tasks(status: str = "Open") -> dict:
         fields=[
             "name", "workflow_instance", "workflow_stage", "task_title", "status",
             "assigned_on", "completed_on",
+            "due_on", "reminder_sent_on", "escalated_on",
         ],
         order_by="assigned_on desc",
         limit_page_length=200,
@@ -550,6 +591,10 @@ def get_workflow_task(task: str) -> dict:
             "workflow_stage": doc.workflow_stage,
             "task_title": doc.task_title,
             "status": doc.status,
+            "assigned_on": doc.assigned_on,
+            "due_on": doc.due_on,
+            "reminder_sent_on": doc.reminder_sent_on,
+            "escalated_on": doc.escalated_on,
             "stage_type": stage.stage_type,
             "config": config,
             "draft": json.loads(doc.draft_json or "{}"),
@@ -730,3 +775,70 @@ def complete_workflow_task(
             frappe.throw(_("Workflow has no next stage"))
         _activate_stage(instance, next_stage, source_task=doc)
     return success({"task": doc.name, "instance_status": instance.status})
+
+
+def process_workflow_deadlines() -> None:
+    """Send one reminder/escalation per open task; invoked by the hourly scheduler."""
+    current = now_datetime()
+    reminders = frappe.get_all(
+        "ASOUD Workflow Task",
+        filters={
+            "status": "Open",
+            "reminder_on": ["<=", current],
+            "due_on": [">", current],
+            "reminder_sent_on": ["is", "not set"],
+        },
+        pluck="name",
+        limit_page_length=0,
+    )
+    for name in reminders:
+        task = frappe.get_doc("ASOUD Workflow Task", name)
+        instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)
+        _notify_user(
+            task.assigned_to,
+            _("Workflow task is nearing its deadline"),
+            instance,
+            message=task.task_title,
+        )
+        task.reminder_sent_on = current
+        task.save(ignore_permissions=True)
+
+    overdue = frappe.get_all(
+        "ASOUD Workflow Task",
+        filters={
+            "status": "Open",
+            "due_on": ["<=", current],
+            "escalated_on": ["is", "not set"],
+        },
+        pluck="name",
+        limit_page_length=0,
+    )
+    for name in overdue:
+        task = frappe.get_doc("ASOUD Workflow Task", name)
+        stage = frappe.get_doc("ASOUD Workflow Stage", task.workflow_stage)
+        config = json.loads(stage.config_json or "{}")
+        instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)
+        _notify_user(
+            task.assigned_to,
+            _("Workflow task is overdue"),
+            instance,
+            message=task.task_title,
+        )
+        escalation_users = _users_for_roles(config.get("escalation_roles") or [])
+        for user in escalation_users:
+            _notify_user(
+                user,
+                _("Workflow task requires escalation"),
+                instance,
+                message=f"{task.task_title}: {task.assigned_to}",
+            )
+        if config.get("reassign_on_overdue") and escalation_users:
+            previous = task.assigned_to
+            task.assigned_to = escalation_users[0]
+            _record_activity(
+                task,
+                "Escalated",
+                _("Reassigned from {0} to {1}").format(previous, task.assigned_to),
+            )
+        task.escalated_on = current
+        task.save(ignore_permissions=True)
