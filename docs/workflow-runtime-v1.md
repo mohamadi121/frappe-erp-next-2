@@ -23,6 +23,14 @@ notifications and validates ownership before marking one as read. This phase is
 in-app only; external push delivery is intentionally deferred until production
 server credentials and delivery infrastructure are available.
 
+User Task and Approval stages may define a deadline in minutes, hours, or days,
+an optional pre-deadline reminder, escalation roles, and explicit automatic
+reassignment. New tasks persist their calculated due/reminder timestamps. An
+hourly scheduler sends each reminder and overdue escalation once. Overdue tasks
+remain with their original owner unless automatic reassignment was explicitly
+enabled and at least one active user resolves from the configured escalation
+roles; every reassignment is written to workflow activity history.
+
 The runtime supports User Task, Approval, End, and safe Condition execution.
 Condition values may come from a whitelisted field on the referenced ERPNext
 document or from the latest completed workflow form. Supported operators are

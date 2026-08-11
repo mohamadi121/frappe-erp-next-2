@@ -5,7 +5,7 @@
   "autoname": "format:WFT-{YYYY}-{#####}",
   "title_field": "task_title",
   "track_changes": 1,
-  "field_order": ["workflow_instance", "workflow_stage", "task_title", "assigned_to", "status", "draft_json", "response_json", "action", "comment", "assigned_on", "completed_on"],
+  "field_order": ["workflow_instance", "workflow_stage", "task_title", "assigned_to", "status", "draft_json", "response_json", "action", "comment", "assigned_on", "due_on", "reminder_on", "reminder_sent_on", "escalated_on", "completed_on"],
   "fields": [
     {"fieldname": "workflow_instance", "label": "Workflow Instance", "fieldtype": "Link", "options": "ASOUD Workflow Instance", "reqd": 1, "in_list_view": 1},
     {"fieldname": "workflow_stage", "label": "Workflow Stage", "fieldtype": "Link", "options": "ASOUD Workflow Stage", "reqd": 1},
@@ -17,6 +17,10 @@
     {"fieldname": "action", "label": "Action", "fieldtype": "Data", "read_only": 1},
     {"fieldname": "comment", "label": "Comment", "fieldtype": "Small Text"},
     {"fieldname": "assigned_on", "label": "Assigned On", "fieldtype": "Datetime", "read_only": 1},
+    {"fieldname": "due_on", "label": "Due On", "fieldtype": "Datetime", "read_only": 1, "in_list_view": 1},
+    {"fieldname": "reminder_on", "label": "Reminder On", "fieldtype": "Datetime", "read_only": 1},
+    {"fieldname": "reminder_sent_on", "label": "Reminder Sent On", "fieldtype": "Datetime", "read_only": 1},
+    {"fieldname": "escalated_on", "label": "Escalated On", "fieldtype": "Datetime", "read_only": 1},
     {"fieldname": "completed_on", "label": "Completed On", "fieldtype": "Datetime", "read_only": 1}
   ],
   "permissions": [

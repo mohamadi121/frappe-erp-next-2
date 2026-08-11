@@ -16,3 +16,7 @@ fixtures = [
         "filters": [["module", "=", "ASOUD ERP"]],
     }
 ]
+
+scheduler_events = {
+    "hourly": ["asoud_erp.api.v1.workflow_runtime.process_workflow_deadlines"]
+}

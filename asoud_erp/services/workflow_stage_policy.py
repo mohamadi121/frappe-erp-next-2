@@ -94,6 +94,7 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
             "allow_reject": bool(raw.get("allow_reject", False)),
             "allow_return": bool(raw.get("allow_return", False)),
             "comment_required": bool(raw.get("comment_required", False)),
+            **_deadline_policy(raw),
         }
 
     if stage_type == "Approval":
@@ -109,6 +110,7 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
             "allow_reject": bool(raw.get("allow_reject", True)),
             "allow_return": bool(raw.get("allow_return", True)),
             "comment_required": bool(raw.get("comment_required", False)),
+            **_deadline_policy(raw),
         }
 
     if stage_type == "Condition":
@@ -171,3 +173,36 @@ def _document_access(raw: dict[str, Any]) -> str:
     if value not in {"Read Only", "Edit", "Limited Edit"}:
         raise ValueError("Invalid document access mode")
     return value
+
+
+def _deadline_policy(raw: dict[str, Any]) -> dict[str, Any]:
+    value = raw.get("deadline_value")
+    if value in (None, "", 0, "0"):
+        return {
+            "deadline_value": 0,
+            "deadline_unit": "Hour",
+            "reminder_before_minutes": 0,
+            "escalation_roles": [],
+            "reassign_on_overdue": False,
+        }
+    try:
+        value = int(value)
+        reminder = int(raw.get("reminder_before_minutes") or 0)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Invalid deadline value") from error
+    if not 1 <= value <= 3650 or not 0 <= reminder <= 525600:
+        raise ValueError("Deadline or reminder is outside the allowed range")
+    unit = raw.get("deadline_unit") or "Hour"
+    if unit not in {"Minute", "Hour", "Day"}:
+        raise ValueError("Invalid deadline unit")
+    roles = _unique_strings(raw.get("escalation_roles"))
+    reassign = bool(raw.get("reassign_on_overdue", False))
+    if reassign and not roles:
+        raise ValueError("Automatic reassignment requires an escalation role")
+    return {
+        "deadline_value": value,
+        "deadline_unit": unit,
+        "reminder_before_minutes": reminder,
+        "escalation_roles": roles,
+        "reassign_on_overdue": reassign,
+    }
