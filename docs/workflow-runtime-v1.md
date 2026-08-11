@@ -1,6 +1,9 @@
 # ASOUD workflow runtime v1
 
-Workflow stages can target an ERPNext role, department, or a specific Employee.
+Workflow stages can target an ERPNext role, department, a specific Employee, or
+the user who initiated the workflow. Initiator assignment is intended for
+correction routes and always resolves from the immutable `started_by` value of
+the workflow instance.
 Specific Employee and department assignments resolve only to active Employees that
 have an active ERPNext User account. The Employee identifier is persisted in the
 workflow definition; display names are never used as relational identifiers.
@@ -9,6 +12,9 @@ Runtime records are stored in `ASOUD Workflow Instance` and `ASOUD Workflow Task
 Users can list only their own tasks through the API and cannot complete another
 user's task. Network failures may activate the Flutter in-memory preview, while
 permission and validation failures remain visible and never become fake success.
+Initiators can list their own sent instances and inspect the current stage, open
+assignees, referenced ERPNext document, and ordered activity timeline. Instance
+details are also available to task assignees and system/accounting managers.
 
 The runtime supports User Task, Approval, End, and safe Condition execution.
 Condition values may come from a whitelisted field on the referenced ERPNext

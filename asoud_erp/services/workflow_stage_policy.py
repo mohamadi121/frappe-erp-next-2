@@ -4,7 +4,7 @@ from typing import Any
 STAGE_TYPES = {"User Task", "Approval", "Condition", "System Action", "Wait", "End"}
 ROLE_BASED_TYPES = {"User Task": "assignee_roles", "Approval": "approver_roles"}
 FORM_FIELD_TYPES = {"Short Text", "Long Text", "Number", "Currency", "Date", "Choice", "Attachment", "Checkbox"}
-ASSIGNMENT_TYPES = {"Role", "Department", "Employee"}
+ASSIGNMENT_TYPES = {"Role", "Department", "Employee", "Initiator"}
 
 
 def _unique_strings(values: Any) -> list[str]:
@@ -60,6 +60,7 @@ def _normalize_assignment(raw: dict[str, Any], prefix: str) -> dict[str, Any]:
         "Role": roles,
         "Department": departments,
         "Employee": employees,
+        "Initiator": ["initiator"],
     }[assignment_type]
     if not selected:
         raise ValueError("At least one assignment target is required")

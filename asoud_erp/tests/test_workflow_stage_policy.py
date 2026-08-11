@@ -122,3 +122,16 @@ def test_review_task_keeps_decision_and_return_rules() -> None:
     assert result["allow_reject"] is True
     assert result["allow_return"] is True
     assert result["comment_required"] is True
+def test_user_task_can_be_assigned_to_workflow_initiator() -> None:
+    result = normalize_stage_config(
+        "User Task",
+        {
+            "title": "Correction",
+            "activity_type": "Correction",
+            "assignment_type": "Initiator",
+        },
+    )
+    assert result["assignment_type"] == "Initiator"
+    assert result["assignee_roles"] == []
+    assert result["assignee_departments"] == []
+    assert result["assignee_employees"] == []
