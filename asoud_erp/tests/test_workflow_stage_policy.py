@@ -104,3 +104,21 @@ def test_condition_field_name_is_safe() -> None:
             "Condition",
             {"title": "شرط", "source_field": "__import__('os')", "operator": "Is Set"},
         )
+
+
+def test_review_task_keeps_decision_and_return_rules() -> None:
+    result = normalize_stage_config(
+        "User Task",
+        {
+            "title": "بررسی درخواست",
+            "activity_type": "Review",
+            "assignee_roles": ["Accounts User"],
+            "form_fields": [],
+            "allow_reject": True,
+            "allow_return": True,
+            "comment_required": True,
+        },
+    )
+    assert result["allow_reject"] is True
+    assert result["allow_return"] is True
+    assert result["comment_required"] is True

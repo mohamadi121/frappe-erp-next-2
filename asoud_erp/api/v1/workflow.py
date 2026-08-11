@@ -318,6 +318,173 @@ def add_workflow_stage(definition: str, stage_type: str, after_stage: str) -> di
     return success(_design_payload(definition))
 
 
+def _assert_stage_in_definition(stage_name: str, definition: str):
+    stage = frappe.get_doc("ASOUD Workflow Stage", stage_name)
+    if stage.workflow_definition != definition:
+        frappe.throw(_("Stage does not belong to the selected workflow"))
+    return stage
+
+
+def _touch_workflow(definition: str) -> None:
+    workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
+    workflow.steps_count = frappe.db.count(
+        "ASOUD Workflow Stage",
+        {"workflow_definition": definition, "stage_type": ["!=", "Start"]},
+    )
+    workflow.version_no = int(workflow.version_no or 1) + 1
+    workflow.save()
+
+
+@frappe.whitelist(methods=["POST"])
+def update_stage_positions(definition: str, positions: str | dict) -> dict:
+    """Persist designer coordinates without changing workflow semantics."""
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    values = json.loads(positions) if isinstance(positions, str) else positions
+    if not isinstance(values, dict) or len(values) > 250:
+        frappe.throw(_("Invalid stage positions"))
+    frappe.db.sql(
+        "select name from `tabASOUD Workflow Definition` where name = %s for update",
+        (definition,),
+    )
+    for stage_name, point in values.items():
+        if not isinstance(point, dict):
+            frappe.throw(_("Invalid stage position"))
+        stage = _assert_stage_in_definition(stage_name, definition)
+        try:
+            x = float(point.get("x", 0))
+            y = float(point.get("y", 0))
+        except (TypeError, ValueError):
+            frappe.throw(_("Invalid stage position"))
+        if not (-10000 <= x <= 10000 and -10000 <= y <= 10000):
+            frappe.throw(_("Stage position is outside the allowed canvas"))
+        stage.db_set({"position_x": x, "position_y": y}, update_modified=False)
+    return success(_design_payload(definition))
+
+
+@frappe.whitelist(methods=["POST"])
+def connect_workflow_stages(
+    definition: str,
+    from_stage: str,
+    to_stage: str,
+    action: str,
+    condition: str | dict | None = None,
+) -> dict:
+    """Create a named route; backward routes are deliberately supported."""
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    action = (action or "").strip()
+    if not action or len(action) > 140 or from_stage == to_stage:
+        frappe.throw(_("Invalid workflow transition"))
+    frappe.db.sql(
+        "select name from `tabASOUD Workflow Definition` where name = %s for update",
+        (definition,),
+    )
+    source = _assert_stage_in_definition(from_stage, definition)
+    _assert_stage_in_definition(to_stage, definition)
+    if source.stage_type == "End":
+        frappe.throw(_("The end stage cannot have an outgoing route"))
+    if frappe.db.exists(
+        "ASOUD Workflow Transition",
+        {
+            "workflow_definition": definition,
+            "from_stage": from_stage,
+            "transition_label": action,
+        },
+    ):
+        frappe.throw(_("This action already has a route from the selected stage"))
+    raw_condition = json.loads(condition) if isinstance(condition, str) else (condition or {})
+    if not isinstance(raw_condition, dict):
+        frappe.throw(_("Transition condition must be an object"))
+    canonical_actions = {
+        "تأیید": "Approve",
+        "رد": "Reject",
+        "بازگشت برای اصلاح": "Return",
+        "ارجاع": "Forward",
+        "ادامه": "Complete",
+    }
+    raw_condition.setdefault("action", canonical_actions.get(action, action))
+    sequence = frappe.db.count(
+        "ASOUD Workflow Transition",
+        {"workflow_definition": definition, "from_stage": from_stage},
+    ) + 1
+    frappe.get_doc(
+        {
+            "doctype": "ASOUD Workflow Transition",
+            "workflow_definition": definition,
+            "from_stage": from_stage,
+            "to_stage": to_stage,
+            "transition_label": action,
+            "condition_json": json.dumps(raw_condition, ensure_ascii=False),
+            "sequence_no": sequence,
+        }
+    ).insert()
+    _touch_workflow(definition)
+    return success(_design_payload(definition))
+
+
+@frappe.whitelist(methods=["POST"])
+def insert_workflow_stage(
+    definition: str, transition: str, stage_type: str
+) -> dict:
+    """Split one existing route into source -> new stage -> old destination."""
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    if stage_type not in STAGE_TITLES:
+        frappe.throw(_("Invalid workflow stage type"))
+    frappe.db.sql(
+        "select name from `tabASOUD Workflow Definition` where name = %s for update",
+        (definition,),
+    )
+    edge = frappe.get_doc("ASOUD Workflow Transition", transition)
+    if edge.workflow_definition != definition:
+        frappe.throw(_("Transition does not belong to the selected workflow"))
+    source = _assert_stage_in_definition(edge.from_stage, definition)
+    destination = _assert_stage_in_definition(edge.to_stage, definition)
+    sequence = max(int(source.sequence_no or 0) + 1, 1)
+    stage = frappe.get_doc(
+        {
+            "doctype": "ASOUD Workflow Stage",
+            "workflow_definition": definition,
+            "stage_key": f"stage-{frappe.generate_hash(length=10)}",
+            "stage_type": stage_type,
+            "stage_title": STAGE_TITLES[stage_type],
+            "sequence_no": sequence,
+            "configuration_status": "Complete" if stage_type == "End" else "Pending",
+            "config_json": "{}",
+            "position_x": (float(source.position_x or 0) + float(destination.position_x or 0)) / 2,
+            "position_y": (float(source.position_y or 0) + float(destination.position_y or 0)) / 2,
+        }
+    ).insert()
+    original = {
+        "label": edge.transition_label,
+        "condition": edge.condition_json or "{}",
+        "sequence": edge.sequence_no,
+    }
+    edge.delete()
+    frappe.get_doc(
+        {
+            "doctype": "ASOUD Workflow Transition",
+            "workflow_definition": definition,
+            "from_stage": source.name,
+            "to_stage": stage.name,
+            "transition_label": original["label"],
+            "condition_json": original["condition"],
+            "sequence_no": original["sequence"],
+        }
+    ).insert()
+    frappe.get_doc(
+        {
+            "doctype": "ASOUD Workflow Transition",
+            "workflow_definition": definition,
+            "from_stage": stage.name,
+            "to_stage": destination.name,
+            "transition_label": _("Continue"),
+            "condition_json": "{}",
+            "sequence_no": 1,
+        }
+    ).insert()
+    _touch_workflow(definition)
+    return success(_design_payload(definition))
+
+
 @frappe.whitelist()
 def workflow_condition_fields(definition: str, stage: str | None = None) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))

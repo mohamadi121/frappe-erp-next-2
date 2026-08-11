@@ -10,6 +10,7 @@ from frappe.utils import now_datetime
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
+from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
 from asoud_erp.services.workflow_response import normalize_form_response
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".xlsx", ".docx"}
@@ -70,13 +71,29 @@ def _users_for_stage(stage) -> list[str]:
     return result
 
 
-def _next_stage(instance, current_stage: str):
-    transition = frappe.db.get_value(
+def _next_stage(instance, current_stage: str, action: str | None = None):
+    transitions = frappe.get_all(
         "ASOUD Workflow Transition",
-        {"workflow_definition": instance.workflow_definition, "from_stage": current_stage},
-        "to_stage",
+        filters={
+            "workflow_definition": instance.workflow_definition,
+            "from_stage": current_stage,
+        },
+        fields=["to_stage", "transition_label", "condition_json", "sequence_no"],
+        order_by="sequence_no asc",
+        limit_page_length=0,
     )
-    return frappe.get_doc("ASOUD Workflow Stage", transition) if transition else None
+    if not transitions:
+        return None
+    selected = None
+    if action:
+        for transition in transitions:
+            condition = json.loads(transition.condition_json or "{}")
+            route_action = str(condition.get("action") or transition.transition_label or "")
+            if route_action.casefold() == action.casefold():
+                selected = transition
+                break
+    selected = selected or (transitions[0] if len(transitions) == 1 else None)
+    return frappe.get_doc("ASOUD Workflow Stage", selected.to_stage) if selected else None
 
 
 def _latest_form_value(instance, fieldname: str, source_task=None):
@@ -99,16 +116,65 @@ def _latest_form_value(instance, fieldname: str, source_task=None):
     return None
 
 
+def _completed_task_rows(instance, exclude_task: str | None = None) -> list[dict]:
+    filters = {"workflow_instance": instance.name, "status": "Completed"}
+    if exclude_task:
+        filters["name"] = ["!=", exclude_task]
+    rows = frappe.get_all(
+        "ASOUD Workflow Task",
+        filters=filters,
+        fields=["name", "workflow_stage", "task_title", "response_json", "completed_on"],
+        order_by="completed_on desc",
+        limit_page_length=0,
+    )
+    result = []
+    for row in rows:
+        stage = frappe.get_doc("ASOUD Workflow Stage", row.workflow_stage)
+        config = json.loads(stage.config_json or "{}")
+        result.append(
+            {
+                **row,
+                "stage_type": stage.stage_type,
+                "has_form_fields": bool(config.get("form_fields")),
+                "form_fields": config.get("form_fields", []),
+            }
+        )
+    return result
+
+
+def _previous_task_data(instance, exclude_task: str | None = None) -> list[dict]:
+    sections = []
+    for row in reversed(_completed_task_rows(instance, exclude_task)):
+        response = json.loads(row.get("response_json") or "{}")
+        if not response:
+            continue
+        labels = {
+            field.get("key"): field.get("label") or field.get("key")
+            for field in row.get("form_fields", [])
+            if isinstance(field, dict)
+        }
+        sections.append(
+            {
+                "task": row.get("name"),
+                "title": row.get("task_title"),
+                "values": [
+                    {"key": key, "label": labels.get(key, key), "value": value}
+                    for key, value in response.items()
+                ],
+            }
+        )
+    return sections
+
+
 def _activate_stage(instance, stage, source_task=None) -> None:
     instance.current_stage = stage.name
+    config = json.loads(stage.config_json or "{}")
     if stage.stage_type == "End":
-        config = json.loads(stage.config_json or "{}")
         instance.status = "Rejected" if config.get("outcome") == "Rejected" else "Completed"
         instance.completed_on = now_datetime()
         instance.save()
         return
     if stage.stage_type == "Condition":
-        config = json.loads(stage.config_json or "{}")
         if config.get("source_kind") == "Form":
             actual = _latest_form_value(
                 instance, config.get("source_field"), source_task=source_task
@@ -166,6 +232,14 @@ def _activate_stage(instance, stage, source_task=None) -> None:
     if stage.stage_type not in {"User Task", "Approval"}:
         frappe.throw(_("Automatic execution of this workflow stage is not available yet"))
     instance.save()
+    previous_rows = list(reversed(_completed_task_rows(instance)))
+    previous_values = merge_completed_responses(previous_rows)
+    form_keys = {
+        field.get("key")
+        for field in config.get("form_fields", [])
+        if isinstance(field, dict)
+    }
+    draft_values = {key: value for key, value in previous_values.items() if key in form_keys}
     for user in _users_for_stage(stage):
         frappe.get_doc(
             {
@@ -176,6 +250,9 @@ def _activate_stage(instance, stage, source_task=None) -> None:
                 "assigned_to": user,
                 "status": "Open",
                 "assigned_on": now_datetime(),
+                "draft_json": json.dumps(draft_values, ensure_ascii=False)
+                if config.get("form_fields")
+                else "{}",
             }
         ).insert(ignore_permissions=True)
 
@@ -187,7 +264,15 @@ def start_workflow_instance(
     reference_doctype: str | None = None,
     reference_name: str | None = None,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    frappe.only_for(
+        (
+            "System Manager",
+            "Accounts Manager",
+            "Accounts User",
+            "Purchase Manager",
+            "Purchase User",
+        )
+    )
     workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
     if workflow.status != "Active":
         frappe.throw(_("Only an active workflow can be started"))
@@ -249,6 +334,7 @@ def get_workflow_task(task: str) -> dict:
     _assert_task_owner(doc)
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
     config = json.loads(stage.config_json or "{}")
+    instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
     history = frappe.get_all(
         "ASOUD Workflow Activity",
         filters={"workflow_instance": doc.workflow_instance},
@@ -256,6 +342,42 @@ def get_workflow_task(task: str) -> dict:
         order_by="created_on asc",
         limit_page_length=0,
     )
+    document_context = {}
+    if instance.reference_doctype and instance.reference_name:
+        if not frappe.has_permission(
+            instance.reference_doctype,
+            "read",
+            doc=instance.reference_name,
+            user=frappe.session.user,
+        ):
+            frappe.throw(
+                _("You are not allowed to read the referenced document"),
+                frappe.PermissionError,
+            )
+        reference = frappe.get_doc(instance.reference_doctype, instance.reference_name)
+        meta = frappe.get_meta(instance.reference_doctype)
+        visible_fields = [
+            field
+            for field in meta.fields
+            if field.fieldname
+            and not field.hidden
+            and field.fieldtype
+            not in {"Section Break", "Column Break", "Tab Break", "HTML", "Button"}
+        ]
+        document_context = {
+            "doctype": instance.reference_doctype,
+            "name": instance.reference_name,
+            "values": [
+                {
+                    "key": field.fieldname,
+                    "label": field.label or field.fieldname,
+                    "value": reference.get(field.fieldname),
+                    "read_only": bool(field.read_only),
+                }
+                for field in visible_fields
+                if reference.get(field.fieldname) not in (None, "", [])
+            ],
+        }
     return success(
         {
             "name": doc.name,
@@ -268,6 +390,8 @@ def get_workflow_task(task: str) -> dict:
             "draft": json.loads(doc.draft_json or "{}"),
             "response": json.loads(doc.response_json or "{}"),
             "history": history,
+            "previous_data": _previous_task_data(instance, exclude_task=doc.name),
+            "document": document_context,
         }
     )
 
@@ -335,12 +459,21 @@ def complete_workflow_task(
         frappe.throw(_("Workflow task has already been completed"))
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
     config = json.loads(stage.config_json or "{}")
+    allowed_actions = (
+        {"Approve", "Reject", "Return"}
+        if stage.stage_type == "Approval"
+        else {"Complete", "Reject", "Return"}
+    )
+    if action not in allowed_actions:
+        frappe.throw(_("Action is not valid for this workflow stage"))
     if config.get("comment_required") and not (comment or "").strip():
         frappe.throw(_("A decision comment is required"))
     if action == "Reject" and not config.get("allow_reject", False):
         frappe.throw(_("Reject is not allowed for this stage"))
     if action == "Return" and not config.get("allow_return", False):
         frappe.throw(_("Return is not allowed for this stage"))
+    if action == "Return" and not (comment or "").strip():
+        frappe.throw(_("A return reason is required"))
     normalized_response = {}
     if action in {"Complete", "Approve"}:
         raw_response = response if response is not None else json.loads(doc.draft_json or "{}")
@@ -359,19 +492,48 @@ def complete_workflow_task(
     _record_activity(doc, action, doc.comment)
     instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
     if action == "Reject":
-        instance.status = "Rejected"
-        instance.completed_on = now_datetime()
-        instance.save(ignore_permissions=True)
+        frappe.db.set_value(
+            "ASOUD Workflow Task",
+            {
+                "workflow_instance": instance.name,
+                "workflow_stage": stage.name,
+                "status": "Open",
+            },
+            "status",
+            "Cancelled",
+            update_modified=False,
+        )
+        reject_target = _next_stage(instance, stage.name, action)
+        if reject_target:
+            _activate_stage(instance, reject_target, source_task=doc)
+        else:
+            instance.status = "Rejected"
+            instance.completed_on = now_datetime()
+            instance.save(ignore_permissions=True)
         return success({"task": doc.name, "instance_status": instance.status})
     if action == "Return":
-        previous_stage = frappe.db.get_value(
-            "ASOUD Workflow Transition",
-            {"workflow_definition": instance.workflow_definition, "to_stage": stage.name},
-            "from_stage",
+        frappe.db.set_value(
+            "ASOUD Workflow Task",
+            {
+                "workflow_instance": instance.name,
+                "workflow_stage": stage.name,
+                "status": "Open",
+            },
+            "status",
+            "Cancelled",
+            update_modified=False,
         )
-        if not previous_stage:
-            frappe.throw(_("Workflow has no previous stage"))
-        _activate_stage(instance, frappe.get_doc("ASOUD Workflow Stage", previous_stage))
+        return_target = _next_stage(instance, stage.name, action)
+        if return_target:
+            _activate_stage(instance, return_target, source_task=doc)
+        else:
+            try:
+                previous_stage = select_return_stage(
+                    _completed_task_rows(instance, exclude_task=doc.name)
+                )
+            except ValueError as error:
+                frappe.throw(_(str(error)))
+            _activate_stage(instance, frappe.get_doc("ASOUD Workflow Stage", previous_stage))
         return success({"task": doc.name, "instance_status": instance.status})
     open_count = frappe.db.count(
         "ASOUD Workflow Task",
@@ -386,7 +548,7 @@ def complete_workflow_task(
                 "Cancelled",
                 update_modified=False,
             )
-        next_stage = _next_stage(instance, stage.name)
+        next_stage = _next_stage(instance, stage.name, action)
         if not next_stage:
             frappe.throw(_("Workflow has no next stage"))
         _activate_stage(instance, next_stage, source_task=doc)
