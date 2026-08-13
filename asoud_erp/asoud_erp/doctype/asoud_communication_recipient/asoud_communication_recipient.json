@@ -1,0 +1,9 @@
+{
+  "doctype":"DocType","name":"ASOUD Communication Recipient","module":"ASOUD ERP","istable":1,
+  "field_order":["user","recipient_type","read_at"],
+  "fields":[
+    {"fieldname":"user","label":"User","fieldtype":"Link","options":"User","reqd":1,"in_list_view":1},
+    {"fieldname":"recipient_type","label":"Recipient Type","fieldtype":"Select","options":"To\nCC","default":"To"},
+    {"fieldname":"read_at","label":"Read At","fieldtype":"Datetime","read_only":1}
+  ],"permissions":[]
+}

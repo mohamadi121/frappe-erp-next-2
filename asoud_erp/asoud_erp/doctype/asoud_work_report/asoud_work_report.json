@@ -1,0 +1,19 @@
+{
+  "doctype": "DocType", "name": "ASOUD Work Report", "module": "ASOUD ERP", "autoname": "format:HR-WR-{YYYY}-{#####}", "track_changes": 1,
+  "field_order": ["company", "employee", "report_date", "status", "total_minutes", "manager_comment", "activities"],
+  "fields": [
+    {"fieldname":"company","label":"Company","fieldtype":"Link","options":"Company","reqd":1,"in_list_view":1},
+    {"fieldname":"employee","label":"Employee","fieldtype":"Link","options":"Employee","reqd":1,"in_list_view":1},
+    {"fieldname":"report_date","label":"Report Date","fieldtype":"Date","reqd":1,"in_list_view":1},
+    {"fieldname":"status","label":"Status","fieldtype":"Select","options":"Draft\nSubmitted\nUnder Review\nApproved\nReturned\nArchived","default":"Draft","in_list_view":1},
+    {"fieldname":"total_minutes","label":"Total Minutes","fieldtype":"Int","read_only":1},
+    {"fieldname":"manager_comment","label":"Manager Comment","fieldtype":"Small Text"},
+    {"fieldname":"activities","label":"Activities","fieldtype":"Table","options":"ASOUD Work Report Activity","reqd":1}
+  ],
+  "permissions": [
+    {"role":"Employee","read":1,"create":1,"write":1},
+    {"role":"HR User","read":1},
+    {"role":"HR Manager","read":1,"write":1,"create":1,"delete":1},
+    {"role":"System Manager","read":1,"write":1,"create":1,"delete":1}
+  ]
+}

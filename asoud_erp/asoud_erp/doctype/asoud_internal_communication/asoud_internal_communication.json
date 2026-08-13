@@ -1,0 +1,21 @@
+{
+  "doctype":"DocType","name":"ASOUD Internal Communication","module":"ASOUD ERP","autoname":"format:HR-COM-{YYYY}-{#####}","track_changes":1,
+  "field_order":["company","sender","communication_type","subject","content","priority","confidential","due_date","status","recipients"],
+  "fields":[
+    {"fieldname":"company","label":"Company","fieldtype":"Link","options":"Company","reqd":1,"in_list_view":1},
+    {"fieldname":"sender","label":"Sender","fieldtype":"Link","options":"User","reqd":1,"in_list_view":1},
+    {"fieldname":"communication_type","label":"Type","fieldtype":"Select","options":"Internal Letter\nRequest\nAnnouncement\nReport\nDirective\nSuggestion","default":"Internal Letter"},
+    {"fieldname":"subject","label":"Subject","fieldtype":"Data","reqd":1,"in_list_view":1},
+    {"fieldname":"content","label":"Content","fieldtype":"Text Editor","reqd":1},
+    {"fieldname":"priority","label":"Priority","fieldtype":"Select","options":"Low\nMedium\nHigh\nUrgent","default":"Medium","in_list_view":1},
+    {"fieldname":"confidential","label":"Confidential","fieldtype":"Check","default":0},
+    {"fieldname":"due_date","label":"Due Date","fieldtype":"Date"},
+    {"fieldname":"status","label":"Status","fieldtype":"Select","options":"Draft\nSent\nClosed\nArchived","default":"Draft","in_list_view":1},
+    {"fieldname":"recipients","label":"Recipients","fieldtype":"Table","options":"ASOUD Communication Recipient","reqd":1}
+  ],
+  "permissions":[
+    {"role":"Employee","read":1,"create":1,"write":1},
+    {"role":"HR Manager","read":1,"write":1,"create":1},
+    {"role":"System Manager","read":1,"write":1,"create":1,"delete":1}
+  ]
+}
