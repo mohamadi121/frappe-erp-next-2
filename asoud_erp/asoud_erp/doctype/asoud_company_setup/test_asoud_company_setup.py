@@ -4,6 +4,7 @@ from frappe.tests.utils import FrappeTestCase
 from asoud_erp.api.v1.setup import (
     get_setup_status,
     save_office,
+    set_default_office,
     update_company_settings,
     update_enabled_roles,
 )
@@ -38,6 +39,15 @@ class TestASOUDCompanySetup(FrappeTestCase):
         first = save_office("Personal", self.company_name)
         second = save_office("Personal", self.company_name)
         self.assertEqual(first["data"]["company"], second["data"]["company"])
+
+    def test_user_can_select_default_office(self):
+        office = save_office("Personal", self.company_name)
+        company = office["data"]["company"]
+
+        selected = set_default_office(company)
+
+        self.assertEqual(selected["data"]["company"], company)
+        self.assertEqual(frappe.defaults.get_user_default("Company"), company)
 
     def test_invalid_legal_id_is_rejected(self):
         with self.assertRaises(frappe.ValidationError):

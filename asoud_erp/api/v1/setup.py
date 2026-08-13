@@ -82,6 +82,15 @@ def get_setup_status(company: str | None = None) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
+def set_default_office(company: str) -> dict:
+    """Select the active company for the current user."""
+    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    doc = _setup(str(company or "").strip())
+    frappe.defaults.set_user_default("company", doc.company)
+    return success(_serialize_setup(doc))
+
+
+@frappe.whitelist(methods=["POST"])
 def save_office(
     office_type: str,
     company_name: str,
