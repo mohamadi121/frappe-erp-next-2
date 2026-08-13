@@ -76,7 +76,8 @@ def organization_tree(company: str):
 def list_reports(status: str | None = None, limit_start: int = 0, limit_page_length: int = 30):
     employee = _employee_for_user()
     filters = {"employee": employee.name}
-    if status: filters["status"] = status
+    if status:
+        filters["status"] = status
     return success(frappe.get_all("ASOUD Work Report", filters=filters, fields=["name", "report_date", "status", "total_minutes", "manager_comment", "modified"], order_by="report_date desc", limit_start=int(limit_start), limit_page_length=min(int(limit_page_length), 100)))
 
 
@@ -86,7 +87,8 @@ def save_report(payload):
     employee = _employee_for_user()
     name = data.get("name")
     doc = frappe.get_doc("ASOUD Work Report", name) if name else frappe.new_doc("ASOUD Work Report")
-    if name and doc.employee != employee.name: frappe.throw(_("Not permitted"), frappe.PermissionError)
+    if name and doc.employee != employee.name:
+        frappe.throw(_("Not permitted"), frappe.PermissionError)
     doc.company, doc.employee = employee.company, employee.name
     doc.report_date = getdate(data.get("report_date") or nowdate())
     doc.status = data.get("status") or "Draft"
@@ -120,7 +122,8 @@ def review_report(report: str, action: str, comment: str | None = None):
 @frappe.whitelist()
 def list_communications(box: str = "inbox", limit_start: int = 0, limit_page_length: int = 30):
     user = frappe.session.user
-    if box == "sent": filters = {"sender": user}
+    if box == "sent":
+        filters = {"sender": user}
     else:
         parents = frappe.get_all("ASOUD Communication Recipient", filters={"user": user}, pluck="parent", limit_page_length=500)
         filters = {"name": ["in", parents or [""]]}
@@ -134,9 +137,14 @@ def create_communication(payload):
     doc = frappe.new_doc("ASOUD Internal Communication")
     doc.company, doc.sender = employee.company, frappe.session.user
     for field in ("communication_type", "subject", "content", "priority", "confidential", "due_date"):
-        if field in data: setattr(doc, field, data[field])
+        if field in data:
+            setattr(doc, field, data[field])
     doc.status = "Sent"
-    for user in data["recipients"]: doc.append("recipients", {"user": user, "recipient_type": "To"})
+    for user in data["recipients"]:
+        doc.append(
+            "recipients",
+            {"user": user, "recipient_type": "To"}
+        )
     doc.insert()
     return success({"name": doc.name, "status": doc.status})
 
