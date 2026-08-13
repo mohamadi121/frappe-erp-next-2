@@ -86,7 +86,7 @@ def set_default_office(company: str) -> dict:
     """Select the active company for the current user."""
     frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
     doc = _setup(str(company or "").strip())
-    frappe.defaults.set_user_default("Company", doc.company)
+    frappe.defaults.set_user_default("company", doc.company)
     return success(_serialize_setup(doc))
 
 
