@@ -51,6 +51,34 @@ def list_accounts(company: str) -> dict:
     )
     for row in rows:
         row["asoud_level"] = _account_level(company, row.account_number, row.is_group)
+    mappings = frappe.get_all(
+        "ASOUD Account Mapping",
+        filters={"company": company, "disabled": 0, "allow_floating_detail": 1},
+        fields=["account", "detail_group"],
+        limit_page_length=0,
+    )
+    for mapping in mappings:
+        details = frappe.get_all(
+            "ASOUD Floating Detail",
+            filters={"detail_group": mapping.detail_group, "disabled": 0},
+            fields=["name", "detail_code", "title"],
+            order_by="detail_code asc",
+            limit_page_length=0,
+        )
+        rows.extend(
+            {
+                "name": f"DETAIL::{detail.name}::{mapping.account}",
+                "account_number": detail.detail_code,
+                "account_name": detail.title,
+                "parent_account": mapping.account,
+                "root_type": None,
+                "is_group": 0,
+                "disabled": 0,
+                "account_type": "ASOUD Floating Detail",
+                "asoud_level": "Detail",
+            }
+            for detail in details
+        )
     return success(rows)
 
 
@@ -74,6 +102,42 @@ def create_account(
     frappe.only_for(("System Manager", "Accounts Manager"))
     if not account_name or len(account_name.strip()) < 3:
         frappe.throw(_("Account name must contain at least 3 characters"))
+    if level == "Detail":
+        mapping = frappe.db.get_value(
+            "ASOUD Account Mapping",
+            {
+                "company": company,
+                "account": parent_account,
+                "disabled": 0,
+                "allow_floating_detail": 1,
+            },
+            ["name", "detail_group"],
+            as_dict=True,
+        )
+        if not mapping:
+            frappe.throw(_("Selected ledger is not mapped to a floating detail group"))
+        from asoud_erp.api.v1.floating_detail import create_floating_detail
+
+        response = create_floating_detail(
+            title=account_name,
+            detail_type="Other",
+            detail_group=mapping.detail_group,
+            detail_code=account_number,
+        )
+        data = response["data"]
+        return success(
+            {
+                "name": f"DETAIL::{data['name']}::{parent_account}",
+                "account_number": data["detail_code"],
+                "account_name": data["title"],
+                "parent_account": parent_account,
+                "root_type": root_type,
+                "is_group": 0,
+                "disabled": 0,
+                "account_type": "ASOUD Floating Detail",
+                "asoud_level": "Detail",
+            }
+        )
     if level == "Group" and not parent_account:
         parent_account = frappe.db.get_value(
             "Account",
@@ -160,6 +224,19 @@ def apply_chart_template(company: str, template: str = "Iran Standard") -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
     if not frappe.db.exists("Company", company):
         frappe.throw(_("Company does not exist"))
+    existing_coded_accounts = frappe.get_all(
+        "Account",
+        filters={"company": company, "account_number": ["is", "set"]},
+        pluck="name",
+        limit_page_length=1,
+    )
+    if existing_coded_accounts:
+        frappe.throw(
+            _(
+                "Chart template cannot be applied over existing coded accounts. "
+                "Remove the current manual chart or continue editing it manually."
+            )
+        )
     rows = template_rows(template)
     created_by_key: dict[str, str] = {}
     created = []
@@ -187,6 +264,26 @@ def apply_chart_template(company: str, template: str = "Iran Standard") -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
+def delete_account(company: str, account: str) -> dict:
+    """Delete an unused leaf account while preserving ERPNext accounting integrity."""
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    if account.startswith("DETAIL::"):
+        detail_name = account.split("::", 2)[1]
+        if not frappe.db.exists("ASOUD Floating Detail", detail_name):
+            frappe.throw(_("Floating detail does not exist"))
+        frappe.delete_doc("ASOUD Floating Detail", detail_name)
+        return success({"name": account, "deleted": True})
+    if not frappe.db.exists("Account", {"name": account, "company": company}):
+        frappe.throw(_("Account does not belong to the selected company"))
+    if frappe.db.exists("Account", {"parent_account": account, "company": company}):
+        frappe.throw(_("Delete child accounts before deleting this account"))
+    doc = frappe.get_doc("Account", account)
+    doc.check_permission("delete")
+    frappe.delete_doc("Account", account)
+    return success({"name": account, "deleted": True})
+
+
+@frappe.whitelist(methods=["POST"])
 def update_account(
     company: str,
     account: str,
@@ -197,6 +294,27 @@ def update_account(
     account_type: str | None = None,
 ) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
+    if account.startswith("DETAIL::"):
+        detail_name = account.split("::", 2)[1]
+        if not frappe.db.exists("ASOUD Floating Detail", detail_name):
+            frappe.throw(_("Floating detail does not exist"))
+        doc = frappe.get_doc("ASOUD Floating Detail", detail_name)
+        doc.title = str(account_name or "").strip()
+        doc.disabled = int(bool(disabled))
+        doc.save()
+        return success(
+            {
+                "name": account,
+                "account_number": doc.detail_code,
+                "account_name": doc.title,
+                "parent_account": parent_account or account.split("::", 2)[2],
+                "root_type": root_type,
+                "is_group": 0,
+                "disabled": doc.disabled,
+                "account_type": "ASOUD Floating Detail",
+                "asoud_level": "Detail",
+            }
+        )
     if not frappe.db.exists("Account", {"name": account, "company": company}):
         frappe.throw(_("Account does not belong to the selected company"))
     title = str(account_name or "").strip()
