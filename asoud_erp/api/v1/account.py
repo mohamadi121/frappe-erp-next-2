@@ -263,11 +263,28 @@ def apply_chart_template(company: str, template: str = "Iran Standard") -> dict:
     return success(created, meta={"template": template, "created_count": len(created)})
 
 
+def _validate_detail_company(company: str, account: str) -> None:
+    parts = account.split("::", 2)
+    if len(parts) != 3:
+        frappe.throw(_("Invalid floating detail reference"))
+    frappe.get_doc("Company", company).check_permission("read")
+    if not frappe.db.exists("Account", {"name": parts[2], "company": company}):
+        frappe.throw(_("Account does not belong to the selected company"))
+    group = frappe.db.get_value("ASOUD Floating Detail", parts[1], "detail_group")
+    if not group or not frappe.db.exists(
+        "ASOUD Account Mapping",
+        {"company": company, "account": parts[2], "detail_group": group,
+         "disabled": 0, "allow_floating_detail": 1},
+    ):
+        frappe.throw(_("Floating detail does not belong to the selected account"))
+
+
 @frappe.whitelist(methods=["POST"])
 def delete_account(company: str, account: str) -> dict:
     """Delete an unused leaf account while preserving ERPNext accounting integrity."""
     frappe.only_for(("System Manager", "Accounts Manager"))
     if account.startswith("DETAIL::"):
+        _validate_detail_company(company, account)
         detail_name = account.split("::", 2)[1]
         if not frappe.db.exists("ASOUD Floating Detail", detail_name):
             frappe.throw(_("Floating detail does not exist"))
@@ -295,6 +312,7 @@ def update_account(
 ) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
     if account.startswith("DETAIL::"):
+        _validate_detail_company(company, account)
         detail_name = account.split("::", 2)[1]
         if not frappe.db.exists("ASOUD Floating Detail", detail_name):
             frappe.throw(_("Floating detail does not exist"))

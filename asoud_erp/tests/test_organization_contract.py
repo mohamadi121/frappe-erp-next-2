@@ -1,5 +1,7 @@
 import pytest
+
 from asoud_erp.services.organization_contract import validate_rows
+
 
 def test_hierarchy():
     assert len(validate_rows([{"code": "CEO", "title": "CEO"}, {"code": "ACC", "title": "Accountant", "parent": "CEO"}])) == 2
