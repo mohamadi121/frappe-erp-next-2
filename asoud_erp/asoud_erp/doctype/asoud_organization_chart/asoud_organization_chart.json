@@ -1,0 +1,53 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Organization Chart",
+  "module": "ASOUD ERP",
+  "autoname": "field:company",
+  "track_changes": 1,
+  "field_order": [
+    "company",
+    "revision",
+    "structure_json"
+  ],
+  "fields": [
+    {
+      "fieldname": "company",
+      "label": "Company",
+      "fieldtype": "Link",
+      "options": "Company",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "revision",
+      "label": "Revision",
+      "fieldtype": "Int",
+      "default": "0",
+      "read_only": 1
+    },
+    {
+      "fieldname": "structure_json",
+      "label": "Structure",
+      "fieldtype": "Long Text",
+      "reqd": 1
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1
+    },
+    {
+      "role": "HR Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1
+    },
+    {
+      "role": "HR User",
+      "read": 1
+    }
+  ]
+}
