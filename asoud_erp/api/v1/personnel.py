@@ -30,7 +30,7 @@ def _person(name, write=False):
 
 
 def _row(doc):
-    return {"id": doc.name, "company": doc.company, "disabled": bool(doc.disabled),
+    return {"id": doc.name, "employee_code": str(doc.get("employee") or doc.name), "company": doc.company, "disabled": bool(doc.disabled),
             "photo_record": frappe.db.get_value("ASOUD Personnel Record", {"party": doc.name, "company": doc.company, "kind": "photo"}, "name", order_by="creation desc"),
             **{field: str(doc.get(field) or "") for field in PERSONAL_FIELDS}}
 
@@ -135,5 +135,44 @@ def get_record(name):
     if person.company != doc.company:
         frappe.throw("Company mismatch", frappe.PermissionError)
     payload = json.loads(doc.payload)
+    editable = _manager() and not (payload.get("_update") or payload.get("_record_update"))
     payload.pop("_update", None)
+    payload.pop("_record_update", None)
+    payload.update({"_id": doc.name, "_revision": str(doc.modified), "_can_edit": editable})
     return success(payload)
+
+
+@frappe.whitelist(methods=["POST"])
+def update_record(name, record_name, payload, revision, request_id):
+    person = _person(name, write=True)
+    # Lock before loading the revision so concurrent edits cannot overwrite it.
+    frappe.db.sql("select name from `tabASOUD Personnel Record` where name=%s for update", (record_name,))
+    doc = frappe.get_doc("ASOUD Personnel Record", record_name)
+    if doc.party != name or doc.company != person.company:
+        frappe.throw("Record does not belong to this person", frappe.PermissionError)
+    previous = json.loads(doc.payload)
+    if previous.get("_update") or previous.get("_record_update"):
+        frappe.throw("Automatic history entries cannot be edited", frappe.PermissionError)
+    data = validate_record(json.loads(payload) if isinstance(payload, str) else payload)
+    if data["kind"] != doc.kind:
+        frappe.throw("Record kind cannot be changed")
+    if not isinstance(request_id, str) or not 8 <= len(request_id) <= 100:
+        frappe.throw("Invalid request ID")
+    fingerprint = json.dumps({"record": record_name, "revision": revision, "payload": data}, sort_keys=True, ensure_ascii=False)
+    receipt = frappe.db.get_value("ASOUD Personnel Record", {"request_id": request_id}, ["party", "payload"], as_dict=True)
+    if receipt:
+        if receipt.party != name or json.loads(receipt.payload).get("_record_update") != fingerprint:
+            frappe.throw("Request ID conflict")
+        return get_record(record_name)
+    if str(doc.modified) != revision:
+        frappe.throw("Record changed; reload before saving", frappe.TimestampMismatchError)
+    doc.title = data["title"]
+    doc.record_date = data["date"]
+    doc.payload = json.dumps(data, ensure_ascii=False, sort_keys=True)
+    doc.save(ignore_permissions=True)
+    audit = {"kind": "history", "title": "ویرایش سابقه پرسنلی", "date": date.today().isoformat(),
+             "notes": data["title"], "_record_update": fingerprint}
+    frappe.get_doc({"doctype": "ASOUD Personnel Record", "company": person.company, "party": name,
+                    "kind": "history", "title": audit["title"], "record_date": audit["date"],
+                    "payload": json.dumps(audit, ensure_ascii=False), "request_id": request_id}).insert(ignore_permissions=True)
+    return get_record(record_name)

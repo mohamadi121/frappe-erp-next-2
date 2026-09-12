@@ -95,3 +95,68 @@ def test_update_retry_rejects_different_payload(api):
     api.frappe.db.get_value.return_value = SimpleNamespace(party="allowed", payload='{}')
     with pytest.raises(PermissionError, match="Request ID conflict"):
         api.update_personnel("allowed", {"display_name": "Changed"}, "old", "request-123")
+
+
+@pytest.fixture
+def record_api(api):
+    api.frappe.get_roles = lambda: ["HR Manager"]
+    api._person = Mock(return_value=SimpleNamespace(company="office"))
+    api.frappe.TimestampMismatchError = RuntimeError
+    api.frappe.db.sql = Mock()
+    api.frappe.db.get_value = Mock(return_value=None)
+    doc = SimpleNamespace(name="record-1", party="allowed", company="office", kind="evaluation",
+                          modified="1", payload=json.dumps({"kind": "evaluation", "title": "Review", "date": "2026-09-12", "score": 70}))
+    doc.save = Mock(side_effect=lambda **kw: setattr(doc, "modified", "2"))
+    audits = []
+
+    def get_doc(*args):
+        if isinstance(args[0], dict):
+            audits.append(args[0])
+            return SimpleNamespace(insert=Mock())
+        return doc
+
+    api.frappe.get_doc = get_doc
+    return api, doc, audits
+
+
+def test_record_edit_updates_original_and_retry_does_not_duplicate_audit(record_api):
+    api, doc, audits = record_api
+    payload = {"kind": "evaluation", "title": "Updated review", "date": "2026-09-12", "score": 90}
+    response = api.update_record("allowed", "record-1", payload, "1", "edit-request-1")
+    assert response["data"]["score"] == 90
+    assert response["data"]["_revision"] == "2"
+    assert response["data"]["_can_edit"] is True
+    assert len(audits) == 1
+    assert doc.title == "Updated review"
+    api.frappe.db.get_value.return_value = SimpleNamespace(party="allowed", payload=audits[0]["payload"])
+    api.update_record("allowed", "record-1", payload, "1", "edit-request-1")
+    assert len(audits) == 1
+    assert doc.save.call_count == 1
+    with pytest.raises(PermissionError, match="Request ID conflict"):
+        api.update_record("allowed", "record-1", {**payload, "score": 80}, "1", "edit-request-1")
+
+
+def test_record_edit_rejects_stale_revision_wrong_person_and_kind(record_api):
+    api, doc, _ = record_api
+    payload = {"kind": "evaluation", "title": "Review", "date": "2026-09-12", "score": 90}
+    with pytest.raises(PermissionError, match="Record changed"):
+        api.update_record("allowed", "record-1", payload, "stale", "edit-request-1")
+    doc.party = "another"
+    with pytest.raises(PermissionError, match="does not belong"):
+        api.update_record("allowed", "record-1", payload, "1", "edit-request-1")
+    doc.party = "allowed"
+    with pytest.raises(PermissionError, match="kind cannot"):
+        api.update_record("allowed", "record-1", {**payload, "kind": "history"}, "1", "edit-request-1")
+    doc.save.assert_not_called()
+
+
+def test_system_history_cannot_be_edited_or_expose_private_receipt(record_api):
+    api, doc, _ = record_api
+    doc.kind = "history"
+    doc.payload = json.dumps({"kind": "history", "title": "Audit", "date": "2026-09-12", "_record_update": "private-receipt"})
+    value = api.get_record(doc.name)["data"]
+    assert value["_can_edit"] is False
+    assert "_record_update" not in value
+    with pytest.raises(PermissionError, match="Automatic history"):
+        api.update_record("allowed", doc.name, {"kind": "history", "title": "Changed", "date": "2026-09-12"}, "1", "edit-request-1")
+    doc.save.assert_not_called()

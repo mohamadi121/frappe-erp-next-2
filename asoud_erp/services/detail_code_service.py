@@ -46,5 +46,5 @@ def next_detail_code(detail_group: str, digits: int) -> str:
         if row and str(row[0]).strip().isdigit()
     ]
     start = int(start_code)
-    return str(max([start - 1, *numeric_codes]) + 1)
+    return str(max([start - 1, *numeric_codes]) + 1).zfill(len(start_code))
 

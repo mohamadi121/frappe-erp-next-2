@@ -27,3 +27,9 @@ def test_next_detail_code_increments_the_highest_group_code(monkeypatch) -> None
     )
 
     assert detail_code_service.next_detail_code("customers", 5) == "1003"
+
+
+def test_group_code_preserves_leading_zeroes():
+    responses = iter([[{"group_code": "00100"}], [["00100"], ["00102"]]])
+    detail_code_service.frappe.db = SimpleNamespace(sql=lambda *args, **kwargs: next(responses))
+    assert detail_code_service.next_detail_code("people", 5) == "00103"

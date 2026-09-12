@@ -129,16 +129,19 @@ def _sync_floating_details(
     digits = int(settings.detail_code_digits or 5)
     requested_groups = list(detail_groups or [])
     group_roles: dict[str, str] = {}
-    for role in PARTY_ROLES_WITH_DEFAULT_GROUP:
-        if role not in roles:
-            continue
-        default_group = _default_group_for_role(role)
-        if not default_group:
-            continue
-        group = detail_group if role == primary_role and detail_group else default_group
-        group_roles[group] = role
-        if group not in requested_groups:
-            requested_groups.append(group)
+    # An explicit accounting group is authoritative. Role changes must not
+    # allocate extra codes in unrelated default groups.
+    if not requested_groups:
+        for role in PARTY_ROLES_WITH_DEFAULT_GROUP:
+            if role not in roles:
+                continue
+            default_group = _default_group_for_role(role)
+            if not default_group:
+                continue
+            group = detail_group if role == primary_role and detail_group else default_group
+            group_roles[group] = role
+            if group not in requested_groups:
+                requested_groups.append(group)
     for group in requested_groups:
         if not frappe.db.exists("ASOUD Detail Group", group):
             frappe.throw(_("Detail group does not exist"))
