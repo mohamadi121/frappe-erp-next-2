@@ -8,6 +8,32 @@ from asoud_erp.services.account_code_service import next_account_code
 from asoud_erp.services.chart_template_service import template_rows
 
 
+def _detail_groups(value):
+    groups = json.loads(value) if isinstance(value, str) else value
+    if not isinstance(groups, list) or any(not isinstance(g, str) or not g for g in groups):
+        frappe.throw(_("Invalid detail group selection"))
+    groups = list(dict.fromkeys(groups))
+    for group in groups:
+        if not frappe.db.exists("ASOUD Detail Group", {"name": group, "disabled": 0}):
+            frappe.throw(_("Detail group is missing or disabled"))
+    return groups
+
+
+def _selected_groups(company, account):
+    return frappe.get_all("ASOUD Account Mapping",
+        filters={"company": company, "account": account, "disabled": 0, "allow_floating_detail": 1},
+        pluck="detail_group")
+
+
+def _save_groups(company, account, groups):
+    from asoud_erp.api.v1.detail_group import save_account_mapping
+    for group in _selected_groups(company, account):
+        if group not in groups:
+            save_account_mapping(company, account, group, enabled=0)
+    for group in groups:
+        save_account_mapping(company, account, group)
+
+
 def _account_level(company: str, account_number: str | None, is_group: int | bool) -> str:
     if not int(is_group):
         return "Ledger"
@@ -50,7 +76,8 @@ def list_accounts(company: str) -> dict:
         limit_page_length=0,
     )
     for row in rows:
-        row["asoud_level"] = _account_level(company, row.account_number, row.is_group)
+        row["asoud_level"] = frappe.db.get_value("Account", row.name, "asoud_account_level") or _account_level(company, row.account_number, row.is_group)
+        row["detail_groups"] = _selected_groups(company, row.name)
     mappings = frappe.get_all(
         "ASOUD Account Mapping",
         filters={"company": company, "disabled": 0, "allow_floating_detail": 1},
@@ -98,10 +125,16 @@ def create_account(
     auto_code: int | bool = 1,
     root_type: str | None = None,
     account_type: str | None = None,
+    detail_groups: str | list[str] | None = None,
 ) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
     if not account_name or len(account_name.strip()) < 3:
         frappe.throw(_("Account name must contain at least 3 characters"))
+    groups = _detail_groups(detail_groups) if detail_groups is not None else []
+    if level not in {"Group", "General", "Ledger", "Detail"}:
+        frappe.throw(_("Invalid account level"))
+    if level == "Detail" and groups:
+        frappe.throw(_("A floating detail cannot own detail groups"))
     if level == "Detail":
         mapping = frappe.db.get_value(
             "ASOUD Account Mapping",
@@ -156,7 +189,7 @@ def create_account(
     ):
         frappe.throw(_("Parent account is not a group in the selected company"))
     code = next_account_code(company, level, parent_account) if auto_code or not account_number else account_number
-    is_group = 1 if level in {"Group", "General"} else 0
+    is_group = 1 if level in {"Group", "General"} and not groups else 0
     doc = frappe.get_doc(
         {
             "doctype": "Account",
@@ -165,13 +198,16 @@ def create_account(
             "account_number": code,
             "parent_account": parent_account,
             "is_group": is_group,
+            "asoud_account_level": level,
             "root_type": root_type,
             "account_type": account_type,
         }
     )
     doc.insert()
+    _save_groups(company, doc.name, groups)
     result = doc.as_dict()
     result["asoud_level"] = level
+    result["detail_groups"] = groups
     return success(result)
 
 
@@ -309,6 +345,7 @@ def update_account(
     disabled: int | bool = 0,
     root_type: str | None = None,
     account_type: str | None = None,
+    detail_groups: str | list[str] | None = None,
 ) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
     if account.startswith("DETAIL::"):
@@ -343,6 +380,18 @@ def update_account(
     ):
         frappe.throw(_("Parent account is not a group in the selected company"))
     doc = frappe.get_doc("Account", account)
+    level = doc.get("asoud_account_level") or _account_level(company, doc.account_number, doc.is_group)
+    groups = _selected_groups(company, account) if detail_groups is None else _detail_groups(detail_groups)
+    target_group = int(level in {"Group", "General"} and not groups)
+    if groups and frappe.db.exists("Account", {"parent_account": account}):
+        frappe.throw(_("An account with children cannot become terminal"))
+    if target_group != int(doc.is_group) and frappe.db.exists("GL Entry", {"account": account}):
+        frappe.throw(_("An account with posted entries cannot change group status"))
+    # Remove mappings while the account is still a leaf, before converting back.
+    if not groups:
+        _save_groups(company, account, [])
+    doc.is_group = target_group
+    doc.asoud_account_level = level
     doc.account_name = title
     doc.parent_account = parent_account
     doc.disabled = int(bool(disabled))
@@ -351,6 +400,9 @@ def update_account(
     if account_type is not None:
         doc.account_type = account_type
     doc.save()
+    if groups:
+        _save_groups(company, account, groups)
     result = doc.as_dict()
-    result["asoud_level"] = _account_level(company, doc.account_number, doc.is_group)
+    result["asoud_level"] = level
+    result["detail_groups"] = groups
     return success(result)

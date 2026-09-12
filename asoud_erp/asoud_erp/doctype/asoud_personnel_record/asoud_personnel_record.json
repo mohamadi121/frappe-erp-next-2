@@ -1,0 +1,15 @@
+{
+  "doctype": "DocType", "name": "ASOUD Personnel Record", "module": "ASOUD ERP",
+  "autoname": "hash", "track_changes": 1,
+  "field_order": ["company", "party", "kind", "title", "record_date", "payload", "request_id"],
+  "fields": [
+    {"fieldname":"company","label":"Company","fieldtype":"Link","options":"Company","reqd":1},
+    {"fieldname":"party","label":"Person","fieldtype":"Link","options":"ASOUD Party Profile","reqd":1},
+    {"fieldname":"kind","label":"Kind","fieldtype":"Select","options":"attendance\nevaluation\ndocument\nphoto\nhistory","reqd":1},
+    {"fieldname":"title","label":"Title","fieldtype":"Data","reqd":1},
+    {"fieldname":"record_date","label":"Date","fieldtype":"Date","reqd":1},
+    {"fieldname":"payload","label":"Private payload","fieldtype":"Long Text","reqd":1},
+    {"fieldname":"request_id","label":"Request ID","fieldtype":"Data","unique":1,"reqd":1}
+  ],
+  "permissions":[{"role":"System Manager","read":1,"write":1,"create":1}]
+}
