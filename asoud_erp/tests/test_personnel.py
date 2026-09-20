@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock
@@ -39,6 +40,10 @@ def api(monkeypatch):
     fake.throw = lambda msg, *args: (_ for _ in ()).throw(PermissionError(msg))
     fake.get_roles = lambda: ["Employee"]
     fake.get_list = lambda *args, **kwargs: ["office"]
+    utils = ModuleType("frappe.utils")
+    utils.get_datetime = lambda value: datetime.fromisoformat(str(value))
+    utils.strip_html = lambda value: value
+    monkeypatch.setitem(sys.modules, "frappe.utils", utils)
     fake.db = SimpleNamespace(get_value=Mock(return_value="another@example.com"))
     fake.get_doc = Mock(return_value=SimpleNamespace(company="office", employee="EMP1", roles_text='["Employee"]'))
     monkeypatch.setitem(sys.modules, "frappe", fake)
@@ -46,6 +51,12 @@ def api(monkeypatch):
     spec = importlib.util.spec_from_file_location("personnel_test_api", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    for service in ("personnel_employee", "personnel_native"):
+        key = "asoud_erp.services." + service
+        service_spec = importlib.util.spec_from_file_location(key, Path(__file__).parents[1] / "services" / (service + ".py"))
+        loaded = importlib.util.module_from_spec(service_spec)
+        monkeypatch.setitem(sys.modules, key, loaded)
+        service_spec.loader.exec_module(loaded)
     return module
 
 
@@ -100,16 +111,17 @@ def test_update_retry_rejects_different_payload(api):
 @pytest.fixture
 def record_api(api):
     api.frappe.get_roles = lambda: ["HR Manager"]
-    api._person = Mock(return_value=SimpleNamespace(company="office"))
+    api._person = Mock(return_value=SimpleNamespace(name="allowed", company="office"))
     api.frappe.TimestampMismatchError = RuntimeError
     api.frappe.db.sql = Mock()
     api.frappe.db.get_value = Mock(return_value=None)
     doc = SimpleNamespace(name="record-1", party="allowed", company="office", kind="evaluation",
                           modified="1", payload=json.dumps({"kind": "evaluation", "title": "Review", "date": "2026-09-12", "score": 70}))
+    doc.get = lambda key: getattr(doc, key, None)
     doc.save = Mock(side_effect=lambda **kw: setattr(doc, "modified", "2"))
     audits = []
 
-    def get_doc(*args):
+    def get_doc(*args, **kwargs):
         if isinstance(args[0], dict):
             audits.append(args[0])
             return SimpleNamespace(insert=Mock())
@@ -119,28 +131,23 @@ def record_api(api):
     return api, doc, audits
 
 
-def test_record_edit_updates_original_and_retry_does_not_duplicate_audit(record_api):
+def test_legacy_record_is_read_only_and_preserved(record_api):
     api, doc, audits = record_api
-    payload = {"kind": "evaluation", "title": "Updated review", "date": "2026-09-12", "score": 90}
-    response = api.update_record("allowed", "record-1", payload, "1", "edit-request-1")
-    assert response["data"]["score"] == 90
-    assert response["data"]["_revision"] == "2"
-    assert response["data"]["_can_edit"] is True
-    assert len(audits) == 1
-    assert doc.title == "Updated review"
-    api.frappe.db.get_value.return_value = SimpleNamespace(party="allowed", payload=audits[0]["payload"])
-    api.update_record("allowed", "record-1", payload, "1", "edit-request-1")
-    assert len(audits) == 1
-    assert doc.save.call_count == 1
-    with pytest.raises(PermissionError, match="Request ID conflict"):
-        api.update_record("allowed", "record-1", {**payload, "score": 80}, "1", "edit-request-1")
+    original = doc.payload
+    result = api.get_record(doc.name)["data"]
+    assert result["score"] == 70
+    assert result["_legacy"] is True
+    assert result["_can_edit"] is False
+    with pytest.raises(PermissionError, match="Legacy records"):
+        api.update_record("allowed", doc.name, json.loads(original), "1", "edit-request-1")
+    assert doc.payload == original
+    assert audits == []
+    doc.save.assert_not_called()
 
 
-def test_record_edit_rejects_stale_revision_wrong_person_and_kind(record_api):
+def test_record_edit_rejects_wrong_person_and_kind(record_api):
     api, doc, _ = record_api
     payload = {"kind": "evaluation", "title": "Review", "date": "2026-09-12", "score": 90}
-    with pytest.raises(PermissionError, match="Record changed"):
-        api.update_record("allowed", "record-1", payload, "stale", "edit-request-1")
     doc.party = "another"
     with pytest.raises(PermissionError, match="does not belong"):
         api.update_record("allowed", "record-1", payload, "1", "edit-request-1")
@@ -150,13 +157,44 @@ def test_record_edit_rejects_stale_revision_wrong_person_and_kind(record_api):
     doc.save.assert_not_called()
 
 
-def test_system_history_cannot_be_edited_or_expose_private_receipt(record_api):
+def test_system_history_does_not_expose_private_receipt(record_api):
     api, doc, _ = record_api
     doc.kind = "history"
     doc.payload = json.dumps({"kind": "history", "title": "Audit", "date": "2026-09-12", "_record_update": "private-receipt"})
     value = api.get_record(doc.name)["data"]
     assert value["_can_edit"] is False
     assert "_record_update" not in value
-    with pytest.raises(PermissionError, match="Automatic history"):
-        api.update_record("allowed", doc.name, {"kind": "history", "title": "Changed", "date": "2026-09-12"}, "1", "edit-request-1")
-    doc.save.assert_not_called()
+
+
+def test_evaluation_context_is_kept_by_contract():
+    data = {"kind": "evaluation", "title": "Review", "date": "2026-09-12", "score": 80,
+            "appraisal_cycle": "Annual"}
+    assert validate_record(data)["appraisal_cycle"] == "Annual"
+
+
+def test_native_revision_detects_external_changes(api):
+    native = sys.modules["asoud_erp.services.personnel_native"]
+    link = SimpleNamespace(modified="1")
+    checkin = SimpleNamespace(doctype="Employee Checkin", name="IN-1", modified="1")
+    before = native.revision(link, [checkin])
+    checkin.modified = "2"
+    assert native.revision(link, [checkin]) != before
+
+
+def test_native_record_cannot_point_to_another_employee(api):
+    native = sys.modules["asoud_erp.services.personnel_native"]
+    native.employee_for = Mock(return_value=SimpleNamespace(name="EMP1", company="office"))
+    api.frappe.get_doc = Mock(return_value=SimpleNamespace(doctype="Appraisal", employee="EMP2", company="office"))
+    with pytest.raises(PermissionError, match="does not belong"):
+        native.native_documents(SimpleNamespace(kind="evaluation", native_doctype="Appraisal", native_name="A1"), object())
+
+
+def test_shared_fields_prefer_employee_even_when_empty(api):
+    service = sys.modules["asoud_erp.services.personnel_employee"]
+    employee = SimpleNamespace(status="Active", meta=SimpleNamespace(has_field=lambda key: True))
+    employee.get = lambda key: {"employee_name": "ERP name", "cell_number": ""}.get(key)
+    service.employee_for = Mock(return_value=employee)
+    person = {"employee": "EMP1", "display_name": "old", "mobile": "old number"}
+    assert service.shared_values(person)["disabled"] is False
+    assert service.shared_values(person)["display_name"] == "ERP name"
+    assert service.shared_values(person)["mobile"] == ""

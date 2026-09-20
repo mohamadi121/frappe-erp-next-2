@@ -105,9 +105,15 @@ def _ensure_employee(
             (value for value in (naming_series.options or "").splitlines() if value),
             "HR-EMP-",
         )
-    doc.first_name = title
+    if employee and doc.company != company:
+        frappe.throw(_("Employee company mismatch"))
+    if not employee or doc.employee_name != title:
+        doc.first_name = title
+        doc.middle_name = None
+        doc.last_name = None
     doc.company = company
-    doc.status = "Active"
+    if not employee:
+        doc.status = "Active"
     doc.gender = gender
     doc.date_of_birth = birth_date
     doc.date_of_joining = date_of_joining
@@ -235,7 +241,10 @@ def list_parties(search: str | None = None, role: str | None = None, company: st
         order_by="modified desc",
         limit_page_length=200,
     )
+    from asoud_erp.services.personnel_employee import shared_values
+
     for row in rows:
+        row.update(shared_values(row))
         row["roles"] = json.loads(row.pop("roles_text") or "[]")
         details = frappe.get_all(
             "ASOUD Floating Detail",
@@ -401,6 +410,12 @@ def save_party(
             mobile,
             email,
         )
+        from asoud_erp.services.personnel_employee import shared_values, write_shared
+
+        write_shared(doc, {"job_title": doc.job_title, "department": doc.department,
+                           "employment_type": doc.employment_type, "address_line": doc.address_line})
+        for key, value in shared_values(doc).items():
+            doc.set(key, value or None)
     doc.save() if name else doc.insert()
     _sync_floating_details(
         doc.name,
@@ -412,6 +427,11 @@ def save_party(
     )
 
     result = doc.as_dict()
+    if not {"System Manager", "HR Manager"}.intersection(frappe.get_roles()):
+        from asoud_erp.services.personnel_contract import FINANCIAL_FIELDS
+
+        for field in FINANCIAL_FIELDS:
+            result.pop(field, None)
     result["roles"] = selected_roles
     result["detail_groups"] = selected_groups
     result.pop("roles_text", None)

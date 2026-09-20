@@ -1,0 +1,132 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Workflow Request",
+  "module": "ASOUD ERP",
+  "autoname": "format:REQ-{#####}",
+  "track_changes": 1,
+  "field_order": [
+    "company",
+    "workflow_definition",
+    "request_type",
+    "subject",
+    "priority",
+    "required_by",
+    "project",
+    "department",
+    "values_json",
+    "attachments_json",
+    "workflow_instance",
+    "status",
+    "request_id",
+    "request_fingerprint"
+  ],
+  "fields": [
+    {
+      "fieldname": "company",
+      "label": "Company",
+      "fieldtype": "Link",
+      "options": "Company",
+      "reqd": 1
+    },
+    {
+      "fieldname": "workflow_definition",
+      "label": "Workflow",
+      "fieldtype": "Link",
+      "options": "ASOUD Workflow Definition",
+      "reqd": 1
+    },
+    {
+      "fieldname": "request_type",
+      "label": "Request Type",
+      "fieldtype": "Data",
+      "reqd": 1
+    },
+    {
+      "fieldname": "subject",
+      "label": "Subject",
+      "fieldtype": "Data",
+      "reqd": 1
+    },
+    {
+      "fieldname": "priority",
+      "label": "Priority",
+      "fieldtype": "Select",
+      "options": "Low\nNormal\nHigh\nUrgent",
+      "default": "Normal"
+    },
+    {
+      "fieldname": "required_by",
+      "label": "Required By",
+      "fieldtype": "Date"
+    },
+    {
+      "fieldname": "project",
+      "label": "Project",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "department",
+      "label": "Department",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "values_json",
+      "label": "Dynamic Values",
+      "fieldtype": "Long Text"
+    },
+    {
+      "fieldname": "attachments_json",
+      "label": "Attachments",
+      "fieldtype": "Long Text"
+    },
+    {
+      "fieldname": "workflow_instance",
+      "label": "Workflow Instance",
+      "fieldtype": "Link",
+      "options": "ASOUD Workflow Instance"
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Draft\nSubmitted\nCompleted\nRejected",
+      "default": "Draft",
+      "reqd": 1
+    },
+    {
+      "fieldname": "request_id",
+      "label": "request_id",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "request_fingerprint",
+      "label": "request_fingerprint",
+      "fieldtype": "Data",
+      "read_only": 1
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1
+    },
+    {
+      "role": "HR Manager",
+      "read": 1
+    },
+    {
+      "role": "Employee",
+      "read": 1
+    },
+    {
+      "role": "Accounts User",
+      "read": 1
+    },
+    {
+      "role": "Accounts Manager",
+      "read": 1
+    }
+  ]
+}

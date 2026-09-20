@@ -1,0 +1,46 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Personnel Operation",
+  "module": "ASOUD ERP",
+  "autoname": "hash",
+  "field_order": [
+    "request_id",
+    "party",
+    "action",
+    "fingerprint"
+  ],
+  "fields": [
+    {
+      "fieldname": "request_id",
+      "label": "Request Id",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "party",
+      "label": "Party",
+      "fieldtype": "Link",
+      "reqd": 1,
+      "options": "ASOUD Party Profile"
+    },
+    {
+      "fieldname": "action",
+      "label": "Action",
+      "fieldtype": "Data",
+      "reqd": 1
+    },
+    {
+      "fieldname": "fingerprint",
+      "label": "Fingerprint",
+      "fieldtype": "Data",
+      "reqd": 1
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1
+    }
+  ]
+}

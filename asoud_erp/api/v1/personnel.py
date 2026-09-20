@@ -1,10 +1,13 @@
 import json
-from datetime import date
 
 import frappe
 
 from asoud_erp.api.v1.responses import success
-from asoud_erp.services.personnel_contract import PERSONAL_FIELDS, validate_record
+from asoud_erp.services.personnel_contract import (
+    FINANCIAL_FIELDS,
+    PERSONAL_FIELDS,
+    validate_record,
+)
 
 
 def _manager():
@@ -19,7 +22,7 @@ def _company(company):
 
 
 def _person(name, write=False):
-    doc = frappe.get_doc("ASOUD Party Profile", name)
+    doc = frappe.get_doc("ASOUD Party Profile", name, for_update=write)
     _company(doc.company)
     if "Employee" not in json.loads(doc.roles_text or "[]"):
         frappe.throw("Not a personnel profile")
@@ -29,10 +32,30 @@ def _person(name, write=False):
     return doc
 
 
-def _row(doc):
-    return {"id": doc.name, "employee_code": str(doc.get("employee") or doc.name), "company": doc.company, "disabled": bool(doc.disabled),
+def _row(doc, include_financial=False):
+    row = {"id": doc.name, "employee_code": str(doc.get("employee") or doc.name), "company": doc.company, "disabled": bool(doc.disabled),
             "photo_record": frappe.db.get_value("ASOUD Personnel Record", {"party": doc.name, "company": doc.company, "kind": "photo"}, "name", order_by="creation desc"),
             **{field: str(doc.get(field) or "") for field in PERSONAL_FIELDS}}
+    if include_financial:
+        row.update({field: str(doc.get(field) or "") for field in FINANCIAL_FIELDS})
+        try:
+            row["employee_roles"] = json.loads(doc.get("employee_roles") or "[]")
+        except (TypeError, ValueError):
+            row["employee_roles"] = []
+        try:
+            row["access_permissions"] = json.loads(doc.get("access_permissions") or "{}")
+        except (TypeError, ValueError):
+            row["access_permissions"] = {}
+    from asoud_erp.services.personnel_employee import shared_values
+
+    row.update(shared_values(doc))
+    if doc.get("employee"):
+        image = frappe.db.get_value("Employee", doc.employee, "image")
+        photo = frappe.db.get_value("File", {"attached_to_doctype": "Employee",
+            "attached_to_name": doc.employee, "file_url": image, "is_private": 1}, "name") if image else None
+        if photo:
+            row["photo_record"] = f"native:File:{photo}"
+    return row
 
 
 @frappe.whitelist()
@@ -50,129 +73,192 @@ def list_personnel(company):
 
 @frappe.whitelist()
 def get_personnel(name):
+    from asoud_erp.services.personnel_employee import profile_revision
+    from asoud_erp.services.personnel_native import external_records, read_record
+
     doc = _person(name)
-    records = frappe.get_all("ASOUD Personnel Record", filters={"party": name, "company": doc.company},
-                             fields=["name", "kind", "title", "record_date"], order_by="record_date desc, creation desc")
-    return success({"profile": _row(doc), "records": records, "can_edit": _manager(), "revision": str(doc.modified)})
+    records = []
+    linked = set()
+    for record_name in frappe.get_all("ASOUD Personnel Record", filters={"party": name, "company": doc.company},
+                                      pluck="name", order_by="record_date desc, creation desc"):
+        record = frappe.get_doc("ASOUD Personnel Record", record_name)
+        if record.native_name:
+            linked.add((record.native_doctype, record.native_name))
+            if record.native_secondary:
+                linked.add(("Employee Checkin", record.native_secondary))
+        data = read_record(record, doc, include_file=False)
+        records.append({"name": record.name, "kind": record.kind, "title": data["title"],
+                        "record_date": data["date"], "legacy": data.get("_legacy", False)})
+    records.extend(external_records(doc, linked))
+    records.sort(key=lambda row: str(row["record_date"]), reverse=True)
+    return success({"profile": _row(doc, include_financial=_manager()), "records": records,
+                    "can_edit": _manager(), "revision": profile_revision(doc)})
+
+
+@frappe.whitelist()
+def get_profile_options(name):
+    from asoud_erp.services.personnel_employee import profile_options
+
+    return success(profile_options(_person(name, write=True).company))
+
+
+@frappe.whitelist()
+def get_record_options(name):
+    from asoud_erp.services.personnel_native import options
+
+    return success(options(_person(name, write=True)))
+
+
+def _lock_person(name):
+    frappe.db.sql("select name from `tabASOUD Party Profile` where name=%s for update", (name,))
+    return _person(name, write=True)
+
+
+def _request(request_id):
+    if not isinstance(request_id, str) or not 8 <= len(request_id) <= 100:
+        frappe.throw("Invalid request ID")
+
+
+def _receipt(person, request_id, action, digest):
+    existing = frappe.db.get_value("ASOUD Personnel Operation", {"request_id": request_id},
+                                   ["party", "action", "fingerprint"], as_dict=True, for_update=True)
+    if existing:
+        if existing.party != person.name or existing.action != action or existing.fingerprint != digest:
+            frappe.throw("Request ID conflict")
+        return True
+    return False
+
+
+def _save_receipt(person, request_id, action, digest):
+    frappe.get_doc({"doctype": "ASOUD Personnel Operation", "party": person.name,
+                    "request_id": request_id, "action": action, "fingerprint": digest}).insert(ignore_permissions=True)
 
 
 @frappe.whitelist(methods=["POST"])
 def update_personnel(name, values, revision, request_id=None):
-    doc = _person(name, write=True)
+    # Reject unauthorized fields before acquiring locks or consulting receipts.
+    person = _person(name, write=True)
     data = json.loads(values) if isinstance(values, str) else values
-    if not isinstance(data, dict) or set(data) - PERSONAL_FIELDS:
-        frappe.throw("Only HR profile fields can be edited")
-    fingerprint = json.dumps({"values": data, "revision": revision}, sort_keys=True, ensure_ascii=False)
-    if request_id is not None:
-        if not isinstance(request_id, str) or not 8 <= len(request_id) <= 100:
-            frappe.throw("Invalid request ID")
-        existing = frappe.db.get_value("ASOUD Personnel Record", {"request_id": request_id},
-                                       ["party", "payload"], as_dict=True)
-        if existing:
-            if existing.party != name or json.loads(existing.payload).get("_update") != fingerprint:
-                frappe.throw("Request ID conflict")
-            return get_personnel(name)
-    if str(doc.modified) != revision:
+    allowed = PERSONAL_FIELDS | (FINANCIAL_FIELDS if _manager() else set())
+    if not isinstance(data, dict) or set(data) - allowed:
+        frappe.throw("Only authorized HR profile fields can be edited")
+    from asoud_erp.services.personnel_contract import validate_financial
+
+    validate_financial(data)
+    _request(request_id)
+    # Existing queued requests may have a receipt from the old implementation.
+    legacy = frappe.db.get_value("ASOUD Personnel Record", {"request_id": request_id},
+                                 ["party", "payload"], as_dict=True)
+    old_fingerprint = json.dumps({"values": data, "revision": revision}, sort_keys=True, ensure_ascii=False)
+    if legacy:
+        if legacy.party != name or json.loads(legacy.payload).get("_update") != old_fingerprint:
+            frappe.throw("Request ID conflict")
+        return get_personnel(name)
+    from asoud_erp.services.personnel_employee import (
+        employee_for,
+        profile_revision,
+        shared_values,
+        write_shared,
+    )
+    from asoud_erp.services.personnel_native import fingerprint
+
+    person = _lock_person(name)
+    digest = fingerprint({"values": data, "revision": revision})
+    if _receipt(person, request_id, "profile", digest):
+        return get_personnel(name)
+    if person.employee:
+        employee_for(person, lock=True)
+    if profile_revision(person, lock=True) != revision:
         frappe.throw("Profile changed; reload before saving", frappe.TimestampMismatchError)
-    for key, value in data.items():
-        doc.set(key, value or None)
-    if not str(doc.display_name or "").strip():
+    if "display_name" in data and not str(data["display_name"] or "").strip():
         frappe.throw("Name is required")
-    if doc.employee:
-        employee = frappe.get_doc("Employee", doc.employee)
-        if employee.company != doc.company:
-            frappe.throw("Employee company mismatch")
-        mapping = {"display_name": "first_name", "mobile": "cell_number", "email": "personal_email",
-                   "birth_date": "date_of_birth", "date_of_joining": "date_of_joining", "employee_gender": "gender"}
-        for key, target in mapping.items():
-            if key in data:
-                employee.set(target, data[key])
-        employee.save(ignore_permissions=True)
-    # Authorization is explicitly enforced above; no financial fields are accepted.
-    doc.save(ignore_permissions=True)
-    audit = {"kind": "history", "title": "ویرایش اطلاعات پرسنلی", "date": date.today().isoformat(),
-             "notes": "Updated fields: " + ", ".join(sorted(data)), "_update": fingerprint}
-    frappe.get_doc({"doctype": "ASOUD Personnel Record", "company": doc.company, "party": name,
-                    "kind": "history", "title": audit["title"], "record_date": audit["date"],
-                    "payload": json.dumps(audit, ensure_ascii=False),
-                    "request_id": request_id or frappe.generate_hash(length=24)}).insert(ignore_permissions=True)
+    if person.employee:
+        write_shared(person, data)
+    for key, value in data.items():
+        person.set(key, value if value not in (None, "") else None)
+    for key, value in shared_values(person).items():
+        person.set(key, value or None)
+    person.save(ignore_permissions=True)
+    # Native Version handles document changes; the receipt contains no HR data.
+    _save_receipt(person, request_id, "profile", digest)
     return get_personnel(name)
 
 
 @frappe.whitelist(methods=["POST"])
 def add_record(name, payload, request_id):
-    person = _person(name, write=True)
+    from asoud_erp.services.personnel_native import create_native, fingerprint, link_record
+
+    _person(name, write=True)
     data = validate_record(json.loads(payload) if isinstance(payload, str) else payload)
-    if not isinstance(request_id, str) or not 8 <= len(request_id) <= 100:
-        frappe.throw("Invalid request ID")
-    existing = frappe.db.get_value("ASOUD Personnel Record", {"request_id": request_id}, ["name", "party", "payload"], as_dict=True)
-    encoded = json.dumps(data, ensure_ascii=False, sort_keys=True)
+    _request(request_id)
+    person = _lock_person(name)
+    digest = fingerprint(data)
+    existing = frappe.db.get_value("ASOUD Personnel Record", {"request_id": request_id},
+                                   ["name", "party", "payload", "request_fingerprint"], as_dict=True, for_update=True)
     if existing:
-        if existing.party != name or existing.payload != encoded:
+        previous = existing.request_fingerprint or fingerprint(json.loads(existing.payload))
+        if existing.party != name or previous != digest:
             frappe.throw("Request ID conflict")
         return success({"id": existing.name})
+    if frappe.db.exists("ASOUD Personnel Operation", {"request_id": request_id}):
+        frappe.throw("Request ID conflict")
+    native, secondary = create_native(person, data)
     doc = frappe.get_doc({"doctype": "ASOUD Personnel Record", "company": person.company, "party": name,
-                          "kind": data["kind"], "title": data["title"], "record_date": data["date"],
-                          "payload": encoded, "request_id": request_id})
-    frappe.db.savepoint("personnel_record_insert")
-    try:
-        doc.insert(ignore_permissions=True)
-    except frappe.DuplicateEntryError:
-        # Another request may have committed the same idempotency key after our read.
-        frappe.db.rollback(save_point="personnel_record_insert")
-        existing = frappe.db.get_value("ASOUD Personnel Record", {"request_id": request_id},
-                                       ["name", "party", "payload"], as_dict=True)
-        if not existing or existing.party != name or existing.payload != encoded:
-            raise
-        return success({"id": existing.name})
+                          "kind": data["kind"], "payload": "{}", "request_id": request_id,
+                          "request_fingerprint": digest})
+    link_record(doc, native, secondary, data)
+    doc.insert(ignore_permissions=True)
     return success({"id": doc.name})
 
 
 @frappe.whitelist()
 def get_record(name):
+    from asoud_erp.services.personnel_native import external_owner, read_external, read_record
+
+    if name.startswith("native:"):
+        native, employee = external_owner(name)
+        company = frappe.db.get_value("Employee", employee, "company")
+        profile = frappe.db.get_value("ASOUD Party Profile", {"employee": employee, "company": company}, "name")
+        if not profile:
+            frappe.throw("Employee has no linked personnel profile", frappe.PermissionError)
+        person = _person(profile)
+        if native.doctype in {"Appraisal", "Attendance"} and native.company != person.company:
+            frappe.throw("Company mismatch", frappe.PermissionError)
+        return success(read_external(native))
     doc = frappe.get_doc("ASOUD Personnel Record", name)
     person = _person(doc.party)
     if person.company != doc.company:
         frappe.throw("Company mismatch", frappe.PermissionError)
-    payload = json.loads(doc.payload)
-    editable = _manager() and not (payload.get("_update") or payload.get("_record_update"))
-    payload.pop("_update", None)
-    payload.pop("_record_update", None)
-    payload.update({"_id": doc.name, "_revision": str(doc.modified), "_can_edit": editable})
-    return success(payload)
+    return success(read_record(doc, person, manager=_manager()))
 
 
 @frappe.whitelist(methods=["POST"])
 def update_record(name, record_name, payload, revision, request_id):
-    person = _person(name, write=True)
-    # Lock before loading the revision so concurrent edits cannot overwrite it.
+    from asoud_erp.services.personnel_native import fingerprint, update_native
+
+    _person(name, write=True)
+    person = _lock_person(name)
     frappe.db.sql("select name from `tabASOUD Personnel Record` where name=%s for update", (record_name,))
-    doc = frappe.get_doc("ASOUD Personnel Record", record_name)
+    doc = frappe.get_doc("ASOUD Personnel Record", record_name, for_update=True)
     if doc.party != name or doc.company != person.company:
         frappe.throw("Record does not belong to this person", frappe.PermissionError)
-    previous = json.loads(doc.payload)
-    if previous.get("_update") or previous.get("_record_update"):
-        frappe.throw("Automatic history entries cannot be edited", frappe.PermissionError)
     data = validate_record(json.loads(payload) if isinstance(payload, str) else payload)
     if data["kind"] != doc.kind:
         frappe.throw("Record kind cannot be changed")
-    if not isinstance(request_id, str) or not 8 <= len(request_id) <= 100:
-        frappe.throw("Invalid request ID")
-    fingerprint = json.dumps({"record": record_name, "revision": revision, "payload": data}, sort_keys=True, ensure_ascii=False)
-    receipt = frappe.db.get_value("ASOUD Personnel Record", {"request_id": request_id}, ["party", "payload"], as_dict=True)
-    if receipt:
-        if receipt.party != name or json.loads(receipt.payload).get("_record_update") != fingerprint:
+    _request(request_id)
+    digest = fingerprint({"record": record_name, "revision": revision, "payload": data})
+    legacy = frappe.db.get_value("ASOUD Personnel Record", {"request_id": request_id},
+                                 ["party", "payload"], as_dict=True, for_update=True)
+    if legacy:
+        old_fingerprint = json.dumps({"record": record_name, "revision": revision, "payload": data},
+                                     sort_keys=True, ensure_ascii=False)
+        if legacy.party != name or json.loads(legacy.payload).get("_record_update") != old_fingerprint:
             frappe.throw("Request ID conflict")
         return get_record(record_name)
-    if str(doc.modified) != revision:
-        frappe.throw("Record changed; reload before saving", frappe.TimestampMismatchError)
-    doc.title = data["title"]
-    doc.record_date = data["date"]
-    doc.payload = json.dumps(data, ensure_ascii=False, sort_keys=True)
-    doc.save(ignore_permissions=True)
-    audit = {"kind": "history", "title": "ویرایش سابقه پرسنلی", "date": date.today().isoformat(),
-             "notes": data["title"], "_record_update": fingerprint}
-    frappe.get_doc({"doctype": "ASOUD Personnel Record", "company": person.company, "party": name,
-                    "kind": "history", "title": audit["title"], "record_date": audit["date"],
-                    "payload": json.dumps(audit, ensure_ascii=False), "request_id": request_id}).insert(ignore_permissions=True)
+    if _receipt(person, request_id, "record", digest):
+        return get_record(record_name)
+    if not doc.get("native_name"):
+        frappe.throw("Legacy records are read-only until migration to HRMS is complete")
+    update_native(doc, person, data, revision)
+    _save_receipt(person, request_id, "record", digest)
     return get_record(record_name)

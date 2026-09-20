@@ -7,8 +7,15 @@ PERSONAL_FIELDS = {
     "date_of_joining", "job_title", "department", "employment_type",
 }
 
+FINANCIAL_FIELDS = {
+    "base_salary", "housing_allowance", "transport_allowance", "other_allowances",
+    "deductions", "net_salary",
+}
+
 
 def validate_record(data):
+    if not isinstance(data, dict):
+        raise ValueError("Record must be an object")
     if data.get("kind") not in {"attendance", "evaluation", "document", "photo", "history"}:
         raise ValueError("Invalid record kind")
     if not 1 <= len(str(data.get("title", "")).strip()) <= 140:
@@ -33,4 +40,18 @@ def validate_record(data):
         if not image and not (data["kind"] == "document" and raw.startswith(b"%PDF-")):
             raise ValueError("Only JPEG, PNG and PDF documents are accepted")
     return {key: data[key] for key in
-            ("kind", "title", "date", "notes", "start", "end", "score", "file", "filename") if key in data}
+            ("kind", "title", "date", "notes", "start", "end", "score", "file", "filename", "appraisal_cycle") if key in data}
+
+
+def validate_financial(data):
+    import math
+
+    for key in FINANCIAL_FIELDS.intersection(data):
+        value = data[key]
+        if value in (None, ""):
+            continue
+        try:
+            if isinstance(value, bool) or not math.isfinite(float(value)) or not 0 <= float(value) <= 10**15:
+                raise ValueError("Invalid financial amount")
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid financial amount: {key}") from exc

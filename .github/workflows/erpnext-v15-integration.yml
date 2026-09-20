@@ -61,6 +61,7 @@ jobs:
           bench set-config -g redis_queue redis://127.0.0.1:6379
           bench set-config -g redis_socketio redis://127.0.0.1:6379
           bench get-app --branch version-15 erpnext https://github.com/frappe/erpnext
+          bench get-app --branch version-15 hrms https://github.com/frappe/hrms
           bench get-app "$GITHUB_WORKSPACE"
 
       - name: Create ERPNext v15 test site
@@ -68,6 +69,7 @@ jobs:
         run: |
           bench new-site test.localhost --db-root-password root --admin-password admin --no-mariadb-socket
           bench --site test.localhost install-app erpnext
+          bench --site test.localhost install-app hrms
           bench --site test.localhost install-app asoud_erp
           bench --site test.localhost migrate
           bench --site test.localhost set-config allow_tests true
@@ -77,3 +79,15 @@ jobs:
         run: >-
           bench --site test.localhost run-tests --app asoud_erp
           --module asoud_erp.asoud_erp.doctype.asoud_company_setup.test_asoud_company_setup
+
+      - name: Run native HR integration tests
+        working-directory: frappe-bench
+        run: >-
+          bench --site test.localhost run-tests --app asoud_erp --skip-test-records
+          --module asoud_erp.asoud_erp.doctype.asoud_personnel_record.test_asoud_personnel_record
+
+      - name: Run workflow request and access integration tests
+        working-directory: frappe-bench
+        run: >-
+          bench --site test.localhost run-tests --app asoud_erp --skip-test-records
+          --module asoud_erp.asoud_erp.doctype.asoud_workflow_request.test_asoud_workflow_request

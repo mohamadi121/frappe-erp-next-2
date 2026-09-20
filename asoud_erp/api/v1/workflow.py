@@ -19,7 +19,7 @@ MODULE_DOCTYPES = {
     "Accounting": ("Payment Request", "Expense Claim", "Journal Entry"),
     "Sales": ("Quotation", "Sales Order"),
     "Inventory": ("Stock Entry",),
-    "Support": ("Issue",),
+    "Support": ("Issue", "ASOUD Workflow Request"),
     "HR": ("Leave Application", "Job Applicant"),
 }
 STAGE_TITLES = {

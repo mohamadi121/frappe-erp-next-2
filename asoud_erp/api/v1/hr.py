@@ -23,8 +23,11 @@ def _employee_for_user(user: str | None = None):
 
 
 def _employee_row(doc) -> dict:
+    party_profile = frappe.db.get_value(
+        "ASOUD Party Profile", {"employee": doc.name}, "name"
+    )
     return {
-        "id": doc.name, "name": doc.employee_name, "company": doc.company,
+        "id": doc.name, "party_profile": party_profile or "", "name": doc.employee_name, "company": doc.company,
         "department": doc.department or "", "designation": doc.designation or "",
         "reports_to": doc.reports_to or "", "user_id": doc.user_id or "",
         "status": doc.status, "date_of_joining": str(doc.date_of_joining or ""),

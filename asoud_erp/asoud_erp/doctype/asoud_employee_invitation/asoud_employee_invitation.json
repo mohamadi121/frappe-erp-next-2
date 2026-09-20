@@ -1,0 +1,98 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Employee Invitation",
+  "module": "ASOUD ERP",
+  "autoname": "hash",
+  "track_changes": 1,
+  "field_order": [
+    "company",
+    "party_profile",
+    "email",
+    "status",
+    "method",
+    "roles",
+    "access_matrix",
+    "sent_at",
+    "request_id",
+    "request_fingerprint"
+  ],
+  "fields": [
+    {
+      "fieldname": "company",
+      "label": "Company",
+      "fieldtype": "Link",
+      "options": "Company",
+      "reqd": 1
+    },
+    {
+      "fieldname": "party_profile",
+      "label": "Personnel Profile",
+      "fieldtype": "Link",
+      "options": "ASOUD Party Profile",
+      "reqd": 1
+    },
+    {
+      "fieldname": "email",
+      "label": "Email",
+      "fieldtype": "Data",
+      "reqd": 1
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Pending\nQueued\nSent\nError\nAccepted\nExpired",
+      "default": "Pending",
+      "reqd": 1
+    },
+    {
+      "fieldname": "method",
+      "label": "Invitation Method",
+      "fieldtype": "Select",
+      "options": "پیامک\nواتساپ\nایمیل",
+      "default": "ایمیل"
+    },
+    {
+      "fieldname": "roles",
+      "label": "Roles JSON",
+      "fieldtype": "Long Text"
+    },
+    {
+      "fieldname": "access_matrix",
+      "label": "Access Matrix JSON",
+      "fieldtype": "Long Text"
+    },
+    {
+      "fieldname": "sent_at",
+      "label": "Sent At",
+      "fieldtype": "Datetime"
+    },
+    {
+      "fieldname": "request_id",
+      "label": "request_id",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "request_fingerprint",
+      "label": "request_fingerprint",
+      "fieldtype": "Data",
+      "read_only": 1
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1
+    },
+    {
+      "role": "HR Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1
+    }
+  ]
+}

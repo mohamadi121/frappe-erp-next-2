@@ -3,6 +3,7 @@
 from collections.abc import Iterable
 
 ASOUD_ROLE_TO_FRAPPE_ROLES: dict[str, tuple[str, ...]] = {
+    "employee": ("Employee",),
     "office_manager": ("Accounts Manager",),
     "accountant": ("Accounts User",),
     "salesperson": ("Sales User",),
@@ -15,6 +16,7 @@ ASOUD_ROLE_TO_FRAPPE_ROLES: dict[str, tuple[str, ...]] = {
 # here makes the transition deterministic without treating arbitrary UI text as
 # a security role.
 LEGACY_PERSONNEL_ROLE_KEYS: dict[str, str] = {
+    "کارمند": "employee",
     "مدیر": "office_manager",
     "حسابدار": "accountant",
     "فروشنده": "salesperson",

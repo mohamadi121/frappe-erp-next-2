@@ -57,3 +57,8 @@ CI سبک مخزن، ساختار مستقل افزونه را بررسی می�
 
 Workflow `ERPNext v15 Integration` نیز روی Pull Request، یک سایت موقت ERPNext شاخه
 `version-15` می‌سازد، افزونه را نصب و migrate می‌کند و تست راه‌اندازی شرکت را اجرا می‌کند.
+
+
+## Native HR integration
+
+ERPNext v15 installations also require HRMS version-15. Install HRMS before upgrading ASOUD. Shared HR data and transactions use the native Employee, Employee Checkin, Appraisal, private File and Comment models. See [the architecture and migration guide](docs/personnel-native-architecture.md) before migrating legacy personnel records.

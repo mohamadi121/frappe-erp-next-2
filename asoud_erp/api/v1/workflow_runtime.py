@@ -17,12 +17,21 @@ ALLOWED_ATTACHMENT_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".xlsx", ".doc
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 
 
+def _assert_generic_access(doc):
+    from asoud_erp.services.request_access import workflow_record_permission
+
+    if workflow_record_permission(doc) is False:
+        frappe.throw("Not permitted to access this request workflow", frappe.PermissionError)
+
+
 def _assert_task_owner(doc) -> None:
+    _assert_generic_access(doc)
     if doc.assigned_to != frappe.session.user:
         frappe.throw(_("This task is assigned to another user"), frappe.PermissionError)
 
 
 def _assert_instance_access(instance) -> None:
+    _assert_generic_access(instance)
     if instance.started_by == frappe.session.user:
         return
     if frappe.db.exists(
@@ -219,6 +228,9 @@ def _latest_form_value(instance, fieldname: str, source_task=None):
         response = json.loads(row.response_json or "{}")
         if fieldname in response:
             return response[fieldname]
+    if instance.reference_doctype == "ASOUD Workflow Request" and instance.reference_name:
+        data = frappe.db.get_value("ASOUD Workflow Request", instance.reference_name, "values_json")
+        return json.loads(data or "{}").get(fieldname)
     return None
 
 
@@ -278,7 +290,7 @@ def _activate_stage(instance, stage, source_task=None) -> None:
     if stage.stage_type == "End":
         instance.status = "Rejected" if config.get("outcome") == "Rejected" else "Completed"
         instance.completed_on = now_datetime()
-        instance.save()
+        instance.save(ignore_permissions=True)
         return
     if stage.stage_type == "Condition":
         if config.get("source_kind") == "Form":
@@ -337,9 +349,12 @@ def _activate_stage(instance, stage, source_task=None) -> None:
         return
     if stage.stage_type not in {"User Task", "Approval"}:
         frappe.throw(_("Automatic execution of this workflow stage is not available yet"))
-    instance.save()
+    instance.save(ignore_permissions=True)
     previous_rows = list(reversed(_completed_task_rows(instance)))
-    previous_values = merge_completed_responses(previous_rows)
+    initial_values = {}
+    if instance.reference_doctype == "ASOUD Workflow Request" and instance.reference_name:
+        initial_values = json.loads(frappe.db.get_value("ASOUD Workflow Request", instance.reference_name, "values_json") or "{}")
+    previous_values = {**initial_values, **merge_completed_responses(previous_rows)}
     form_keys = {
         field.get("key")
         for field in config.get("form_fields", [])
@@ -382,14 +397,23 @@ def start_workflow_instance(
     frappe.only_for(
         (
             "System Manager",
+            "HR Manager",
             "Accounts Manager",
             "Accounts User",
             "Purchase Manager",
             "Purchase User",
+            "Employee",
         )
     )
     workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
-    if workflow.status != "Active":
+    from asoud_erp.services.request_access import require_company
+
+    if workflow.company:
+        require_company(workflow.company)
+    if "Employee" in frappe.get_roles() and not {"System Manager", "HR Manager", "Accounts Manager", "Accounts User", "Purchase Manager", "Purchase User"}.intersection(frappe.get_roles()):
+        if reference_doctype != "ASOUD Workflow Request" or not reference_name:
+            frappe.throw("Employees must start workflows through their own request", frappe.PermissionError)
+    if workflow.status != "Active" or workflow.readiness_status != "Ready":
         frappe.throw(_("Only an active workflow can be started"))
     if len((subject or "").strip()) < 3:
         frappe.throw(_("Workflow subject must contain at least 3 characters"))
@@ -400,6 +424,15 @@ def start_workflow_instance(
             frappe.throw(_("Referenced document does not exist"))
         if not frappe.has_permission(reference_doctype, "read", reference_name):
             frappe.throw(_("Not permitted to use the referenced document"), frappe.PermissionError)
+    if reference_doctype == "ASOUD Workflow Request" and reference_name:
+        request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
+        if request.workflow_definition != definition:
+            frappe.throw("Request workflow does not match")
+        existing = frappe.db.get_value("ASOUD Workflow Instance", {
+            "reference_doctype": reference_doctype, "reference_name": reference_name},
+            ["name", "status"], as_dict=True)
+        if existing:
+            return success(dict(existing))
     start = frappe.db.get_value(
         "ASOUD Workflow Stage",
         {"workflow_definition": definition, "stage_type": "Start"},
@@ -418,7 +451,7 @@ def start_workflow_instance(
             "started_by": frappe.session.user,
             "started_on": now_datetime(),
         }
-    ).insert()
+    ).insert(ignore_permissions=True)
     stage = _next_stage(instance, start)
     if not stage:
         frappe.throw(_("Workflow has no executable stage"))
@@ -620,6 +653,7 @@ def save_workflow_task_draft(task: str, response: str | dict) -> dict:
     allowed_keys = {field.get("key") for field in fields if isinstance(field, dict)}
     if set(values) - allowed_keys:
         frappe.throw(_("Workflow draft contains unknown fields"))
+    _validate_response_attachments(fields, values)
     doc.draft_json = json.dumps(values, ensure_ascii=False)
     doc.save(ignore_permissions=True)
     return success({"task": doc.name, "saved": True})
@@ -651,6 +685,16 @@ def upload_workflow_attachment(task: str, filename: str, content_base64: str) ->
         }
     ).insert(ignore_permissions=True)
     return success({"file_url": file_doc.file_url, "file_name": file_doc.file_name})
+
+
+def _validate_response_attachments(fields, values):
+    for field in fields:
+        value = values.get(field.get("key"))
+        if field.get("type") != "Attachment" or not value:
+            continue
+        files = frappe.get_all("File", filters={"file_url": value}, pluck="name")
+        if not any(frappe.has_permission("File", "read", name) for name in files):
+            frappe.throw("Not permitted to use this attachment", frappe.PermissionError)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -693,6 +737,7 @@ def complete_workflow_task(
             normalized_response = normalize_form_response(config.get("form_fields", []), raw_response)
         except ValueError as error:
             frappe.throw(_(str(error)))
+    _validate_response_attachments(config.get("form_fields", []), normalized_response)
     doc.status = "Rejected" if action == "Reject" else "Completed"
     doc.action = action
     doc.comment = (comment or "").strip()
