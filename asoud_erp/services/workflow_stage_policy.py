@@ -3,7 +3,15 @@ from typing import Any
 
 STAGE_TYPES = {"User Task", "Approval", "Condition", "System Action", "Wait", "End"}
 ROLE_BASED_TYPES = {"User Task": "assignee_roles", "Approval": "approver_roles"}
-FORM_FIELD_TYPES = {"Short Text", "Long Text", "Number", "Currency", "Date", "Choice", "Attachment", "Checkbox"}
+FORM_FIELD_TYPES = {
+    "Short Text", "Long Text", "Number", "Currency", "Date", "Choice", "Attachment", "Checkbox",
+    "Multi Choice", "User", "Department", "Item Table",
+}
+# Values of these types are ERPNext record names, validated against User, Department and Item.
+LINK_FIELD_TYPES = {"User", "Department", "Item Table"}
+CHOICE_FIELD_TYPES = {"Choice", "Multi Choice"}
+NO_DEFAULT_FIELD_TYPES = {"Attachment", "Item Table", "User", "Department"}
+REQUEST_CATEGORIES = {"Finance", "HR", "Purchase", "IT", "General", "Other"}
 ASSIGNMENT_TYPES = {"Role", "Department", "Employee", "Initiator"}
 
 
@@ -33,10 +41,17 @@ def _normalize_form_fields(values: Any) -> list[dict[str, Any]]:
         if field_type not in FORM_FIELD_TYPES:
             raise ValueError("Unsupported form field type")
         options = _unique_strings(item.get("options"))
-        if field_type == "Choice" and len(options) < 2:
+        if field_type in CHOICE_FIELD_TYPES and len(options) < 2:
             raise ValueError("Choice fields require at least two options")
-        if field_type != "Choice":
+        if field_type not in CHOICE_FIELD_TYPES:
             options = []
+        default_value = str(item.get("default_value") or "").strip()
+        if len(default_value) > 140:
+            raise ValueError("Form field default value is too long")
+        if field_type in NO_DEFAULT_FIELD_TYPES and default_value:
+            raise ValueError("This form field type has no default value")
+        if field_type in CHOICE_FIELD_TYPES and default_value and default_value not in options:
+            raise ValueError("Choice default value must be one of the options")
         keys.add(key)
         result.append({
             "key": key,
@@ -44,6 +59,9 @@ def _normalize_form_fields(values: Any) -> list[dict[str, Any]]:
             "type": field_type,
             "required": bool(item.get("required", False)),
             "options": options,
+            "default_value": default_value,
+            "help_text": str(item.get("help_text") or "").strip()[:200],
+            "show_in_list": bool(item.get("show_in_list", False)),
             "position": position,
         })
     return result

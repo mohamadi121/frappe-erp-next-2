@@ -8,6 +8,7 @@ from frappe import _
 from frappe.utils import add_to_date, now_datetime
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.request_link_values import validate_link_values, workflow_company
 from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
 from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
@@ -737,6 +738,9 @@ def complete_workflow_task(
             normalized_response = normalize_form_response(config.get("form_fields", []), raw_response)
         except ValueError as error:
             frappe.throw(_(str(error)))
+        validate_link_values(
+            config.get("form_fields", []), normalized_response, workflow_company(doc.workflow_instance)
+        )
     _validate_response_attachments(config.get("form_fields", []), normalized_response)
     doc.status = "Rejected" if action == "Reject" else "Completed"
     doc.action = action

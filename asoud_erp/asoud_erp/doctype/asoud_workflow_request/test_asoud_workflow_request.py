@@ -203,3 +203,38 @@ class TestASOUDWorkflowRequest(FrappeTestCase):
         frappe.set_user("Administrator")
         frappe.db.set_value("Employee", self.employee.name, "status", "Left")
         self.assertTrue(personnel.get_personnel(self.person.name)["data"]["profile"]["disabled"])
+
+    def test_request_type_settings_limit_who_can_submit(self):
+        frappe.set_user("Administrator")
+        self.definition.db_set("allow_user_submission", 0)
+        frappe.set_user(self.user)
+        options = workflow_request.request_options(self.company)["data"]
+        self.assertNotIn(self.definition.name, [row["name"] for row in options])
+        with self.assertRaises(frappe.PermissionError):
+            self.create()
+        frappe.set_user("Administrator")
+        self.definition.db_set("allow_user_submission", 1)
+        self.stages[0].db_set("config_json", json.dumps(
+            {"trigger_type": "Manual", "initiator_roles": ["Accounts Manager"]}))
+        frappe.set_user(self.user)
+        with self.assertRaises(frappe.PermissionError):
+            self.create()
+
+    def test_item_table_rows_use_erpnext_item_and_uom(self):
+        frappe.set_user("Administrator")
+        if not frappe.db.exists("UOM", "Box"):
+            frappe.get_doc({"doctype": "UOM", "uom_name": "Box"}).insert()
+        item = frappe.get_doc({"doctype": "Item", "item_code": "AUDIT-" + self.token,
+            "item_group": "All Item Groups", "stock_uom": "Nos", "is_stock_item": 0,
+            "uoms": [{"uom": "Box", "conversion_factor": 10}]}).insert()
+        fields = [{"key": "items", "label": "Items", "type": "Item Table", "required": True}]
+        self.stages[1].db_set("config_json", json.dumps({"title": "Audit stage",
+            "activity_type": "Data Entry", "assignment_type": "Initiator", "form_fields": fields}))
+        frappe.set_user(self.user)
+        with patch.object(workflow_runtime, "_notify_user"):
+            with self.assertRaises(frappe.ValidationError):
+                self.create(values={"items": [{"item_code": item.name, "qty": 2, "uom": "Kg"}]},
+                            request_id="audit-bad-uom-" + self.token)
+            created = self.create(values={"items": [{"item_code": item.name, "qty": 2, "uom": "Box"}]})
+        row = created["values"]["items"][0]
+        self.assertEqual((row["stock_uom"], row["conversion_factor"], row["stock_qty"]), ("Nos", 10, 20))

@@ -3,7 +3,7 @@ import json
 import frappe
 from frappe import _
 from frappe.model.naming import make_autoname
-from frappe.utils import now_datetime
+from frappe.utils import cint, now_datetime
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.jalali import current_jalali_year
@@ -11,7 +11,11 @@ from asoud_erp.services.workflow_contract import (
     ALLOWED_WORKFLOW_STATUSES,
     serialize_workflow,
 )
-from asoud_erp.services.workflow_stage_policy import ROLE_BASED_TYPES, normalize_stage_config
+from asoud_erp.services.workflow_stage_policy import (
+    REQUEST_CATEGORIES,
+    ROLE_BASED_TYPES,
+    normalize_stage_config,
+)
 
 ALLOWED_STATUSES = ALLOWED_WORKFLOW_STATUSES
 MODULE_DOCTYPES = {
@@ -104,7 +108,8 @@ def list_workflows(
             "process_description", "module_key", "creation_mode",
             "frappe_workflow", "status", "readiness_status", "pending_reason",
             "missing_requirements_json", "version_no", "steps_count", "icon_key",
-            "color_hex", "modified", "modified_by",
+            "color_hex", "short_title", "request_category", "show_in_request_list",
+            "allow_user_submission", "modified", "modified_by",
         ],
         order_by=allowed_order.get(order_by, "modified desc"),
         limit_page_length=200,
@@ -512,7 +517,10 @@ def workflow_condition_fields(definition: str, stage: str | None = None) -> dict
     )
     for row in stage_rows:
         for field in json.loads(row.config_json or "{}").get("form_fields", []):
-            if field.get("type") in {"Short Text", "Long Text", "Number", "Currency", "Date", "Choice", "Checkbox"}:
+            if field.get("type") in {
+                "Short Text", "Long Text", "Number", "Currency", "Date", "Choice", "Checkbox",
+                "User", "Department",
+            }:
                 fields.append({
                     "fieldname": field.get("key"),
                     "label": field.get("label") or field.get("key"),
@@ -656,6 +664,39 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
     workflow.version_no = int(workflow.version_no or 1) + 1
     workflow.save()
     return success(_design_payload(definition))
+
+
+@frappe.whitelist(methods=["POST"])
+def update_request_type_info(
+    name: str,
+    workflow_title: str,
+    short_title: str | None = None,
+    process_description: str | None = None,
+    request_category: str | None = None,
+    icon_key: str | None = None,
+    color_hex: str | None = None,
+    show_in_request_list: int | str = 1,
+    allow_user_submission: int | str = 1,
+) -> dict:
+    frappe.only_for(("System Manager", "Accounts Manager"))
+    doc = frappe.get_doc("ASOUD Workflow Definition", name)
+    if doc.target_doctype != "ASOUD Workflow Request":
+        frappe.throw(_("Only request workflows have request type settings"))
+    title = (workflow_title or "").strip()
+    if len(title) < 3:
+        frappe.throw(_("Workflow title must contain at least 3 characters"))
+    if request_category and request_category not in REQUEST_CATEGORIES:
+        frappe.throw(_("Invalid request category"))
+    doc.workflow_title = title
+    doc.short_title = (short_title or "").strip()[:140]
+    doc.process_description = (process_description or "").strip()
+    doc.request_category = request_category or ""
+    doc.icon_key = icon_key
+    doc.color_hex = color_hex
+    doc.show_in_request_list = cint(show_in_request_list)
+    doc.allow_user_submission = cint(allow_user_submission)
+    doc.save()
+    return success(serialize_workflow(doc.as_dict()))
 
 
 @frappe.whitelist(methods=["POST"])

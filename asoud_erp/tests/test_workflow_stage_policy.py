@@ -170,3 +170,56 @@ def test_automatic_reassignment_requires_an_escalation_role() -> None:
                 "reassign_on_overdue": True,
             },
         )
+
+
+def test_form_field_keeps_default_help_and_list_flag() -> None:
+    raw = {
+        "title": "تکمیل فرم درخواست",
+        "activity_type": "Data Entry",
+        "assignment_type": "Initiator",
+        "form_fields": [
+            {
+                "key": "purchase_type",
+                "label": "نوع خرید",
+                "type": "Choice",
+                "options": ["کالا", "خدمت"],
+                "default_value": "کالا",
+                "help_text": "نوع خرید را انتخاب کنید",
+                "show_in_list": True,
+            },
+        ],
+    }
+    field = normalize_stage_config("User Task", raw)["form_fields"][0]
+    assert field["default_value"] == "کالا"
+    assert field["help_text"] == "نوع خرید را انتخاب کنید"
+    assert field["show_in_list"] is True
+    raw["form_fields"][0]["default_value"] = "تجهیزات"
+    with pytest.raises(ValueError):
+        normalize_stage_config("User Task", raw)
+
+
+def _task_with(field: dict) -> dict:
+    return {
+        "title": "تکمیل فرم درخواست",
+        "activity_type": "Data Entry",
+        "assignment_type": "Initiator",
+        "form_fields": [{"key": "field_1", "label": "فیلد", **field}],
+    }
+
+
+def test_erpnext_link_field_types_are_accepted() -> None:
+    for field_type in ("User", "Department", "Item Table"):
+        field = normalize_stage_config("User Task", _task_with({"type": field_type}))["form_fields"][0]
+        assert field["type"] == field_type
+        assert field["options"] == []
+    multi = normalize_stage_config(
+        "User Task", _task_with({"type": "Multi Choice", "options": ["الف", "ب"], "default_value": "ب"})
+    )["form_fields"][0]
+    assert multi["options"] == ["الف", "ب"]
+
+
+def test_link_field_rules() -> None:
+    with pytest.raises(ValueError):
+        normalize_stage_config("User Task", _task_with({"type": "Multi Choice", "options": ["الف"]}))
+    with pytest.raises(ValueError):
+        normalize_stage_config("User Task", _task_with({"type": "Item Table", "default_value": "ITM-1"}))

@@ -47,6 +47,24 @@ form stages. A return always requires a reason, preserves the latest submitted d
 as the correction draft, and cancels sibling tasks before reassignment. Reject also
 cancels sibling tasks to prevent a second decision. Flutter offline records are
 explicitly local-only and are not treated as ERPNext transactions.
+# Request types
+
+A request type is an `ASOUD Workflow Definition` on `ASOUD Workflow Request`. Its
+presentation metadata (short title, category, icon, list visibility) lives on the
+definition and is edited through `update_request_type_info`. `allow_user_submission`
+and the Start stage's `initiator_roles` are enforced by `create_request`, and
+`request_options` lists only the types the current user may submit.
+
+The form is the User Task directly after Start. Besides the scalar types, fields may
+be `Multi Choice`, `User`, `Department` or `Item Table`. These never introduce new
+masters: a User value must be the ERPNext user of an active Employee of the request
+company, a Department must belong to that company, and item rows reference ERPNext
+`Item` records. Item rows reuse ERPNext's end-of-life check and
+`get_conversion_factor`; the stored row carries `item_name`, `stock_uom`,
+`conversion_factor` and `stock_qty`. `request_field_options` returns the choices
+for these fields from the same masters. Fields also keep an optional
+`default_value`, `help_text` and `show_in_list` flag.
+
 # Purchase request integration
 
 `create_purchase_request` creates an ERPNext v15 `Material Request` with
