@@ -8,7 +8,7 @@ contract, never a parallel ledger or master (see `AGENTS.md`).
 Module references: [module map](../backend-roadmap.md) ·
 [dashboard](dashboard.md) · [selling](selling.md) · [sales pipeline](sales_orders.md) · [payments](payments.md) ·
 [stock](stock.md) · [buying](buying.md) · [HR self-service](hr_self_service.md) ·
-[projects](projects.md) · [financial reports](financial_reports.md) ·
+[projects](projects.md) · [financial reports](financial_reports.md) · [payroll](payroll.md) ·
 [support](support.md) · [request types](../workflow-runtime-v1.md#request-types)
 
 ## Calling a method

@@ -32,7 +32,7 @@ the backend, the app does not call it yet · **Planned** — not implemented.
 | **Support & assets** | requests: IT service, equipment | [`support`](api/support.md) | Issue, Asset | Ready |
 | Correspondence (مکاتبات) | bottom navigation tab | `hr` communications | ASOUD Internal Communication | Live, UI pending |
 | **Sales pipeline** | quotations, sales orders, deliveries | [`sales_orders`](api/sales_orders.md) | Quotation, Sales Order, Delivery Note | Ready |
-| Payroll processing | — | — | Salary Structure, Payroll Entry (employees already see their slips) | Planned |
+| **Payroll** | structure assignment, payroll runs | [`payroll`](api/payroll.md) | Salary Structure Assignment, Payroll Entry, Salary Slip | Ready |
 | **Projects & timesheets** | my tasks, time logging; project management | [`projects`](api/projects.md) | Project, Task, Timesheet, ToDo | Ready |
 | POS | — | — | POS Profile, POS Invoice | Planned |
 
@@ -95,6 +95,7 @@ pytest and runs without a site.
 | `asoud_erp.integration_tests.test_sales_orders` | 3 |
 | `asoud_erp.integration_tests.test_projects` | 3 |
 | `asoud_erp.integration_tests.test_financial_reports` | 3 |
+| `asoud_erp.integration_tests.test_payroll` | 2 |
 | `asoud_erp.integration_tests.test_hr_self_service` | 6 |
 | `asoud_erp.integration_tests.test_dashboard_support_sync` | 6 |
 | `asoud_erp.asoud_erp.doctype.asoud_workflow_request.test_asoud_workflow_request` | 12 |
