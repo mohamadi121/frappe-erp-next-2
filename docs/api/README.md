@@ -6,7 +6,7 @@ controller functions; it adds Iranian localization, company scoping, and a stabl
 contract, never a parallel ledger or master (see `AGENTS.md`).
 
 Module references: [module map](../backend-roadmap.md) ·
-[dashboard](dashboard.md) · [selling](selling.md) · [payments](payments.md) ·
+[dashboard](dashboard.md) · [selling](selling.md) · [sales pipeline](sales_orders.md) · [payments](payments.md) ·
 [stock](stock.md) · [buying](buying.md) · [HR self-service](hr_self_service.md) ·
 [support](support.md) · [request types](../workflow-runtime-v1.md#request-types)
 

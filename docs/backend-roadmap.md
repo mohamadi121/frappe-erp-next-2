@@ -30,7 +30,7 @@ the backend, the app does not call it yet · **Planned** — not implemented.
 | **HR self-service** | requests: leave, mission, advance, expense; check-in | [`hr_self_service`](api/hr_self_service.md) | Leave Application, Employee Checkin, Travel Request, Employee Advance, Expense Claim | Ready |
 | **Support & assets** | requests: IT service, equipment | [`support`](api/support.md) | Issue, Asset | Ready |
 | Correspondence (مکاتبات) | bottom navigation tab | `hr` communications | ASOUD Internal Communication | Live, UI pending |
-| Sales orders & quotations | — | — | Quotation, Sales Order, Delivery Note | Planned |
+| **Sales pipeline** | quotations, sales orders, deliveries | [`sales_orders`](api/sales_orders.md) | Quotation, Sales Order, Delivery Note | Ready |
 | Payroll | — | — | Salary Structure, Salary Slip, Payroll Entry | Planned |
 | Projects & timesheets | — | — | Project, Task, Timesheet | Planned |
 | POS | — | — | POS Profile, POS Invoice | Planned |
@@ -91,6 +91,7 @@ pytest and runs without a site.
 | --- | --- |
 | `asoud_erp.integration_tests.test_selling_payments` | 8 |
 | `asoud_erp.integration_tests.test_stock_buying` | 7 |
+| `asoud_erp.integration_tests.test_sales_orders` | 3 |
 | `asoud_erp.integration_tests.test_hr_self_service` | 5 |
 | `asoud_erp.integration_tests.test_dashboard_support_sync` | 6 |
 | `asoud_erp.asoud_erp.doctype.asoud_workflow_request.test_asoud_workflow_request` | 12 |
