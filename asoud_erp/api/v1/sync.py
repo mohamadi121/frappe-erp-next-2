@@ -11,6 +11,7 @@ _MUTATION_PREFIXES = (
     "apply_",
     "approve_",
     "archive_",
+    "cancel_",
     "complete_",
     "connect_",
     "create_",
@@ -52,9 +53,12 @@ def execute_mutation(
     existing = frappe.db.get_value(
         "ASOUD API Request",
         key,
-        ["status", "response_json"],
+        ["status", "response_json", "owner"],
         as_dict=True,
     )
+    if existing and existing.owner != frappe.session.user:
+        # Keys are client UUIDs; a key owned by someone else must never replay their response.
+        return failure("INVALID_REQUEST_KEY", "شناسه یکتای درخواست معتبر نیست.")
     if existing and existing.status == "Completed":
         return json.loads(existing.response_json)
     if existing:

@@ -51,14 +51,17 @@ def test_execute_mutation_returns_saved_response_without_second_execution(monkey
             records[self.request_key] = {
                 "status": self.status,
                 "response_json": self.response_json,
+                "owner": sync.frappe.session.user,
             }
 
         def save(self, ignore_permissions=False):
             records[self.request_key] = {
                 "status": self.status,
                 "response_json": self.response_json,
+                "owner": sync.frappe.session.user,
             }
 
+    sync.frappe.session = types.SimpleNamespace(user="a@example.com")
     sync.frappe.db = DB()
     sync.frappe.get_doc = RequestDocument
     sync.frappe.get_attr = lambda _method: lambda **values: (
@@ -70,3 +73,14 @@ def test_execute_mutation_returns_saved_response_without_second_execution(monkey
 
     assert first == second
     assert calls == [{"name": "A"}]
+
+    sync.frappe.session = types.SimpleNamespace(user="b@example.com")
+    other = sync.execute_mutation("request-1", "asoud_erp.api.v1.party.save_party", {"name": "A"})
+    assert other["ok"] is False
+    assert other["error"]["code"] == "INVALID_REQUEST_KEY"
+    assert calls == [{"name": "A"}]
+
+
+def test_cancel_methods_are_replayable(monkeypatch):
+    sync = _load_module(monkeypatch)
+    assert "cancel_" in sync._MUTATION_PREFIXES
