@@ -18,6 +18,7 @@ the backend, the app does not call it yet · **Planned** — not implemented.
 | Parties | people and companies, party links | `party` | Customer, Supplier, Employee, ASOUD Party Profile | Live |
 | Vouchers | accounting vouchers and approval | `voucher` | Journal Entry | Live |
 | Reports | trial balance, general ledger | `report` | GL Entry | Live |
+| **Financial reports** | receivable/payable ageing, P&L, balance sheet, stock balance | [`financial_reports`](api/financial_reports.md) | ERPNext query reports | Ready |
 | Personnel & HR | personnel records, work reports, communications | `personnel`, `hr` | Employee, ASOUD Personnel Record, ASOUD Internal Communication | Live |
 | Workflows | designer, runtime, tasks, notifications | `workflow`, `workflow_runtime` | ASOUD Workflow *, Notification Log | Live |
 | Requests | request types, generic requests | `workflow_request`, `workflow` | ASOUD Workflow Request, User, Department, Item, UOM | Live (new field types Ready) |
@@ -93,6 +94,7 @@ pytest and runs without a site.
 | `asoud_erp.integration_tests.test_stock_buying` | 7 |
 | `asoud_erp.integration_tests.test_sales_orders` | 3 |
 | `asoud_erp.integration_tests.test_projects` | 3 |
+| `asoud_erp.integration_tests.test_financial_reports` | 3 |
 | `asoud_erp.integration_tests.test_hr_self_service` | 6 |
 | `asoud_erp.integration_tests.test_dashboard_support_sync` | 6 |
 | `asoud_erp.asoud_erp.doctype.asoud_workflow_request.test_asoud_workflow_request` | 12 |
