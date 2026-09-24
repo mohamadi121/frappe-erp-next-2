@@ -294,3 +294,64 @@ def create_expense_claim(expenses, remark: str | None = None) -> dict:
 def list_my_expense_claims(limit_start: int = 0, limit_page_length: int = 20) -> dict:
     return _mine("Expense Claim", ["name", "posting_date", "total_claimed_amount", "approval_status",
                                    "status", "docstatus"], limit_start, limit_page_length)
+
+
+# ---------------------------------------------------------------- payroll and attendance (read-only)
+
+@frappe.whitelist()
+def list_my_salary_slips(limit_start: int = 0, limit_page_length: int = 12) -> dict:
+    """Submitted salary slips of the session user, newest period first."""
+    start, length = paging(limit_start, limit_page_length, maximum=MY_LIST_LIMIT)
+    rows = frappe.get_all("Salary Slip", filters={"employee": _me().name, "docstatus": 1},
+                          fields=["name", "start_date", "end_date", "posting_date", "currency", "gross_pay",
+                                  "total_deduction", "net_pay", "rounded_total", "status"],
+                          order_by="start_date desc", limit_start=start, limit_page_length=length)
+    return success(rows, meta=erp_documents.list_meta(start, length, rows))
+
+
+@frappe.whitelist()
+def get_my_salary_slip(name: str) -> dict:
+    doc = _own("Salary Slip", name)
+    if doc.docstatus != 1:
+        frappe.throw(_("Salary slip {0} is not issued yet").format(name), frappe.PermissionError)
+
+    def components(rows):
+        return [{"component": row.salary_component, "abbr": row.abbr, "amount": flt(row.amount)} for row in rows]
+
+    return success({
+        "name": doc.name, "start_date": str(doc.start_date), "end_date": str(doc.end_date),
+        "posting_date": str(doc.posting_date), "currency": doc.currency,
+        "payment_days": flt(doc.payment_days), "total_working_days": flt(doc.total_working_days),
+        "gross_pay": flt(doc.gross_pay), "total_deduction": flt(doc.total_deduction),
+        "net_pay": flt(doc.net_pay), "rounded_total": flt(doc.rounded_total),
+        "earnings": components(doc.earnings), "deductions": components(doc.deductions),
+    })
+
+
+@frappe.whitelist()
+def list_my_attendance(from_date: str, to_date: str) -> dict:
+    """Submitted attendance records of the session user in a date range (at most 100 days)."""
+    start, end = _validated(lambda: date_span(from_date, to_date))
+    if (getdate(end) - getdate(start)).days > 100:
+        frappe.throw(_("The range may cover at most 100 days"))
+    rows = frappe.get_all("Attendance", filters={"employee": _me().name, "docstatus": 1,
+                                                 "attendance_date": ["between", [start, end]]},
+                          fields=["name", "attendance_date", "status", "leave_type", "shift", "working_hours",
+                                  "in_time", "out_time", "late_entry", "early_exit"],
+                          order_by="attendance_date asc")
+    return success(rows)
+
+
+@frappe.whitelist()
+def get_my_holidays(from_date: str, to_date: str) -> dict:
+    """Holidays and weekly offs from the Holiday List that applies to the session user."""
+    from erpnext.setup.doctype.employee.employee import get_holiday_list_for_employee
+
+    start, end = _validated(lambda: date_span(from_date, to_date))
+    holiday_list = get_holiday_list_for_employee(_me().name, raise_exception=False)
+    if not holiday_list:
+        return success({"holiday_list": None, "holidays": []})
+    rows = frappe.get_all("Holiday", filters={"parent": holiday_list, "parenttype": "Holiday List",
+                                              "holiday_date": ["between", [start, end]]},
+                          fields=["holiday_date", "description", "weekly_off"], order_by="holiday_date asc")
+    return success({"holiday_list": holiday_list, "holidays": rows})

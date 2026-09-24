@@ -27,11 +27,11 @@ the backend, the app does not call it yet · **Planned** — not implemented.
 | **Payments** | home "دریافت و پرداخت" | [`payments`](api/payments.md) | Payment Entry, Mode of Payment, Bank Account | Ready |
 | **Stock** | items, stock balance, receipts, issues, transfers | [`stock`](api/stock.md) | Item, Bin, Stock Entry, Warehouse | Ready |
 | **Buying** | purchase orders, receipts, supplier invoices | [`buying`](api/buying.md) | Purchase Order, Purchase Receipt, Purchase Invoice, Supplier | Ready |
-| **HR self-service** | requests: leave, mission, advance, expense; check-in | [`hr_self_service`](api/hr_self_service.md) | Leave Application, Employee Checkin, Travel Request, Employee Advance, Expense Claim | Ready |
+| **HR self-service** | requests: leave, mission, advance, expense; check-in; payslips, attendance, holidays | [`hr_self_service`](api/hr_self_service.md) | Leave Application, Employee Checkin, Travel Request, Employee Advance, Expense Claim, Salary Slip, Attendance, Holiday List | Ready |
 | **Support & assets** | requests: IT service, equipment | [`support`](api/support.md) | Issue, Asset | Ready |
 | Correspondence (مکاتبات) | bottom navigation tab | `hr` communications | ASOUD Internal Communication | Live, UI pending |
 | **Sales pipeline** | quotations, sales orders, deliveries | [`sales_orders`](api/sales_orders.md) | Quotation, Sales Order, Delivery Note | Ready |
-| Payroll | — | — | Salary Structure, Salary Slip, Payroll Entry | Planned |
+| Payroll processing | — | — | Salary Structure, Payroll Entry (employees already see their slips) | Planned |
 | Projects & timesheets | — | — | Project, Task, Timesheet | Planned |
 | POS | — | — | POS Profile, POS Invoice | Planned |
 
@@ -92,7 +92,7 @@ pytest and runs without a site.
 | `asoud_erp.integration_tests.test_selling_payments` | 8 |
 | `asoud_erp.integration_tests.test_stock_buying` | 7 |
 | `asoud_erp.integration_tests.test_sales_orders` | 3 |
-| `asoud_erp.integration_tests.test_hr_self_service` | 5 |
+| `asoud_erp.integration_tests.test_hr_self_service` | 6 |
 | `asoud_erp.integration_tests.test_dashboard_support_sync` | 6 |
 | `asoud_erp.asoud_erp.doctype.asoud_workflow_request.test_asoud_workflow_request` | 12 |
 | `asoud_erp.asoud_erp.doctype.asoud_personnel_record.test_asoud_personnel_record` | 9 |

@@ -73,3 +73,21 @@ class TestHRSelfService(APITestCase):
         frappe.set_user(ACCOUNTANT_USER)
         with self.assertRaises(frappe.PermissionError):
             hr.get_my_leave_summary()
+
+    def test_attendance_holidays_and_salary_slips(self):
+        me = self.records["employee"]
+        day = next_weekday(-30)
+        frappe.set_user("Administrator")
+        frappe.get_doc({"doctype": "Attendance", "employee": me, "attendance_date": day, "status": "Present",
+                        "company": self.company}).submit()
+        holidays = frappe.get_doc("Holiday List", frappe.db.get_value("Employee", me, "holiday_list"))
+        holidays.append("holidays", {"holiday_date": next_weekday(20), "description": "تعطیل آزمایشی"})
+        holidays.save()
+        frappe.set_user(EMPLOYEE_USER)
+        rows = hr.list_my_attendance(add_days(day, -1), add_days(day, 1))["data"]
+        self.assertEqual([(str(row.attendance_date), row.status) for row in rows], [(day, "Present")])
+        found = hr.get_my_holidays(nowdate(), add_days(nowdate(), 40))["data"]
+        self.assertIn("تعطیل آزمایشی", [row.description for row in found["holidays"]])
+        self.assertEqual(hr.list_my_salary_slips()["data"], [])
+        with self.assertRaises(frappe.ValidationError):
+            hr.list_my_attendance(nowdate(), add_days(nowdate(), 200))

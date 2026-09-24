@@ -60,6 +60,18 @@ reference to the Employee Advance.
 
 The expense approver approves the claim in HRMS.
 
+## Payslips, attendance and holidays (read-only)
+
+| Method | HTTP | Purpose |
+| --- | --- | --- |
+| `list_my_salary_slips(limit_start, limit_page_length≤50)` | GET | issued (submitted) salary slips, newest period first |
+| `get_my_salary_slip(name)` | GET | one issued slip with `earnings` and `deductions` (`component`, `abbr`, `amount`), payment days and totals |
+| `list_my_attendance(from_date, to_date)` | GET | submitted Attendance in a range of at most 100 days: status, leave type, shift, working hours, in/out, late/early flags |
+| `get_my_holidays(from_date, to_date)` | GET | holidays and weekly offs of the Holiday List that applies to the employee |
+
+Payroll itself (Salary Structure, Payroll Entry) stays in HRMS; these methods only
+show employees their own results.
+
 ## Where this module steps outside standard HRMS permissions
 
 Both exceptions fix the employee to the session user before writing:
