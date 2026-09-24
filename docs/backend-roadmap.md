@@ -34,7 +34,7 @@ the backend, the app does not call it yet · **Planned** — not implemented.
 | **Sales pipeline** | quotations, sales orders, deliveries | [`sales_orders`](api/sales_orders.md) | Quotation, Sales Order, Delivery Note | Ready |
 | **Payroll** | structure assignment, payroll runs | [`payroll`](api/payroll.md) | Salary Structure Assignment, Payroll Entry, Salary Slip | Ready |
 | **Projects & timesheets** | my tasks, time logging; project management | [`projects`](api/projects.md) | Project, Task, Timesheet, ToDo | Ready |
-| POS | — | — | POS Profile, POS Invoice | Planned |
+| **POS** | till: sessions, quick sale, closing | [`pos`](api/pos.md) | POS Profile, POS Opening/Closing Entry, POS Invoice | Ready |
 
 ## Request cards → native documents
 
@@ -96,6 +96,7 @@ pytest and runs without a site.
 | `asoud_erp.integration_tests.test_projects` | 3 |
 | `asoud_erp.integration_tests.test_financial_reports` | 3 |
 | `asoud_erp.integration_tests.test_payroll` | 2 |
+| `asoud_erp.integration_tests.test_pos` | 2 |
 | `asoud_erp.integration_tests.test_hr_self_service` | 6 |
 | `asoud_erp.integration_tests.test_dashboard_support_sync` | 6 |
 | `asoud_erp.asoud_erp.doctype.asoud_workflow_request.test_asoud_workflow_request` | 12 |
