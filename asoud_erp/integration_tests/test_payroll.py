@@ -40,26 +40,48 @@ def setup_payroll(company: str) -> None:
         structure.submit()
 
 
+def payroll_employee(company: str) -> tuple[str, str, str]:
+    """A fresh user, employee and department per run.
+
+    HRMS commits salary slips while it creates and submits them, so they survive the
+    test rollback; a new employee in its own department keeps every run independent.
+    """
+    token = frappe.generate_hash(length=8)
+    department = frappe.get_doc({"doctype": "Department", "department_name": f"ASOUD Payroll {token}",
+                                 "company": company}).insert().name
+    user = frappe.get_doc({"doctype": "User", "email": f"payroll-{token}@example.com", "first_name": "Payroll",
+                           "send_welcome_email": 0, "roles": [{"role": "Employee"}]}).insert().name
+    employee = frappe.get_doc({
+        "doctype": "Employee", "first_name": "Payroll", "last_name": token, "gender": "Male",
+        "date_of_birth": "1990-01-01", "date_of_joining": "2020-01-01", "company": company, "status": "Active",
+        "user_id": user, "department": department, "create_user_permission": 0,
+        "holiday_list": frappe.get_cached_value("Company", company, "default_holiday_list"),
+    }).insert().name
+    return user, employee, department
+
+
 class TestPayroll(APITestCase):
     def setUp(self):
         super().setUp()
         setup_payroll(self.company)
+        self.user, self.employee, self.department = payroll_employee(self.company)
 
     def test_assign_run_and_submit_payroll(self):
         options = payroll.payroll_options(self.company)["data"]
         self.assertIn(STRUCTURE, [row.name for row in options["salary_structures"]])
-        assignment = payroll.create_salary_structure_assignment(self.records["employee"], STRUCTURE,
+        assignment = payroll.create_salary_structure_assignment(self.employee, STRUCTURE,
                                                                 str(get_year_start(nowdate())), 30_000_000)["data"]
         self.assertEqual((assignment["docstatus"], assignment["base"]), (1, 30_000_000))
         entry = payroll.create_payroll_entry(self.company, str(get_first_day(nowdate())),
-                                             str(get_last_day(nowdate())))["data"]
-        slip = next(row for row in entry["salary_slips"] if row.employee == self.records["employee"])
+                                             str(get_last_day(nowdate())), department=self.department)["data"]
+        self.assertEqual(entry["number_of_employees"], 1)
+        slip = entry["salary_slips"][0]
         self.assertEqual((slip.gross_pay, slip.total_deduction, slip.net_pay),
                          (30_000_000, 2_100_000, 27_900_000))
         self.assertEqual(slip.docstatus, 0)
         submitted = payroll.submit_payroll_salary_slips(entry["name"])["data"]
         self.assertTrue(all(row.docstatus == 1 for row in submitted["salary_slips"]))
-        frappe.set_user(EMPLOYEE_USER)
+        frappe.set_user(self.user)
         mine = hr_self_service.list_my_salary_slips()["data"]
         self.assertEqual(mine[0].net_pay, 27_900_000)
         detail = hr_self_service.get_my_salary_slip(mine[0].name)["data"]

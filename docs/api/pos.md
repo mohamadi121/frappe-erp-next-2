@@ -20,7 +20,7 @@ create_pos_session ─▶ create_pos_invoice … ─▶ close_pos_session ─▶
 | `get_open_pos_session(pos_profile?)` | GET | the user's open POS Opening Entry, or `null` |
 | `create_pos_session(pos_profile, opening_balances?)` | POST | `opening_balances`: `[{"mode_of_payment", "amount"}]`; one open session per profile |
 | `create_pos_invoice(pos_profile, items, payments, customer?)` | POST | submitted, paid invoice in the open session; stock leaves the profile warehouse; `payments`: `[{"mode_of_payment", "amount"}]`; overpaid cash comes back as `change_amount` |
-| `list_pos_invoices(pos_session)` | GET | submitted invoices of a session |
+| `list_pos_invoices(pos_session)` | GET | invoices of that session only, oldest first (open: ERPNext's session query; closed: the closing entry's invoices) — `name`, `customer`, `grand_total`, `posting_date`, `is_return` |
 | `close_pos_session(pos_session, closing_balances?)` | POST | counted amount per mode (default: expected); returns the reconciliation (`opening_amount`, `expected_amount`, `closing_amount`, `difference`) |
 
 ## Site configuration

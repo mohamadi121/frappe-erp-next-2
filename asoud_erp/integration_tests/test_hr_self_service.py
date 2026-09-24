@@ -88,6 +88,8 @@ class TestHRSelfService(APITestCase):
         self.assertEqual([(str(row.attendance_date), row.status) for row in rows], [(day, "Present")])
         found = hr.get_my_holidays(nowdate(), add_days(nowdate(), 40))["data"]
         self.assertIn("تعطیل آزمایشی", [row.description for row in found["holidays"]])
-        self.assertEqual(hr.list_my_salary_slips()["data"], [])
+        # Payslips come from test_payroll (HRMS commits them); only the caller's own are listed.
+        for slip in hr.list_my_salary_slips()["data"]:
+            self.assertEqual(frappe.db.get_value("Salary Slip", slip.name, "employee"), me)
         with self.assertRaises(frappe.ValidationError):
             hr.list_my_attendance(nowdate(), add_days(nowdate(), 200))

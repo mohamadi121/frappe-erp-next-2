@@ -148,14 +148,23 @@ def create_pos_invoice(pos_profile: str, items, payments, customer: str | None =
 
 @frappe.whitelist()
 def list_pos_invoices(pos_session: str) -> dict:
-    """POS invoices of one session (POS Opening Entry)."""
+    """POS invoices of one session (POS Opening Entry), oldest first.
+
+    An open session uses ERPNext's own session query; a closed one lists the
+    invoices its closing entry took in.
+    """
+    from erpnext.accounts.doctype.pos_closing_entry.pos_closing_entry import get_pos_invoices
+
     opening = erp_documents.load("POS Opening Entry", pos_session)
-    rows = frappe.get_list("POS Invoice", filters={"pos_profile": opening.pos_profile, "owner": opening.user,
-                                                   "posting_date": [">=", opening.posting_date],
-                                                   "docstatus": 1},
-                           fields=["name", "customer", "grand_total", "paid_amount", "status", "posting_time"],
-                           order_by="creation desc", limit_page_length=500)
-    return success(rows)
+    if opening.pos_closing_entry:
+        closing = frappe.get_doc("POS Closing Entry", opening.pos_closing_entry)
+        return success([{"name": row.pos_invoice, "customer": row.customer, "grand_total": flt(row.grand_total),
+                         "posting_date": str(row.posting_date), "is_return": row.is_return}
+                        for row in closing.pos_transactions])
+    rows = get_pos_invoices(opening.period_start_date, frappe.utils.now_datetime(), opening.pos_profile,
+                            opening.user)
+    return success([{"name": row.name, "customer": row.customer, "grand_total": flt(row.grand_total),
+                     "posting_date": str(row.posting_date), "is_return": row.is_return} for row in rows])
 
 
 @frappe.whitelist(methods=["POST"])

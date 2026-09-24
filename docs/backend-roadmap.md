@@ -88,6 +88,10 @@ in Frappe's test-record generator (it follows links to `Payment Gateway`, which
 belongs to the separate `payments` app). The pure `asoud_erp/tests` suite uses
 pytest and runs without a site.
 
+HRMS payroll and ERPNext POS consolidation commit inside their own code, so
+their records outlive a test's rollback. The payroll test therefore creates its
+own employee and department on each run. Every module passes when run repeatedly.
+
 | Module | Tests |
 | --- | --- |
 | `asoud_erp.integration_tests.test_selling_payments` | 8 |

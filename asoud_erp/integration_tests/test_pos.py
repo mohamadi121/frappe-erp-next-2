@@ -39,7 +39,7 @@ class TestPointOfSale(APITestCase):
                                       [{"mode_of_payment": "Cash", "amount": 1000}])["data"]
         self.assertEqual((sale["docstatus"], sale["net_total"]), (1, 500))
         self.assertAlmostEqual(sale["change_amount"], 1000 - (sale["rounded_total"] or sale["grand_total"]))
-        self.assertEqual([row.name for row in pos.list_pos_invoices(session["name"])["data"]], [sale["name"]])
+        self.assertEqual([row["name"] for row in pos.list_pos_invoices(session["name"])["data"]], [sale["name"]])
         closed = pos.close_pos_session(session["name"])["data"]
         self.assertEqual(closed["invoices"], 1)
         cash = closed["payment_reconciliation"][0]
