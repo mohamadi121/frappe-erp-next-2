@@ -21,7 +21,7 @@ the backend, the app does not call it yet · **Planned** — not implemented.
 | **Financial reports** | receivable/payable ageing, P&L, balance sheet, stock balance | [`financial_reports`](api/financial_reports.md) | ERPNext query reports | Ready |
 | Personnel & HR | personnel records, work reports, communications | `personnel`, `hr` | Employee, ASOUD Personnel Record, ASOUD Internal Communication | Live |
 | Workflows | designer, runtime, tasks, notifications | `workflow`, `workflow_runtime` | ASOUD Workflow *, Notification Log | Live |
-| Requests | request types, generic requests | `workflow_request`, `workflow` | ASOUD Workflow Request, User, Department, Item, UOM | Live (new field types Ready) |
+| Requests | request types, generic requests, request type builder | `workflow_request`, `workflow` | ASOUD Workflow Request, User, Department, Item, UOM | Live |
 | Purchase requests | purchase request | `purchase_request` | Material Request | Live |
 | **Dashboard** | home figures (today's receipts and sales, bank balance, open documents), settings status cards | [`dashboard`](api/dashboard.md) | Payment Entry, Sales Invoice, Account/GL Entry, User, File, Error Log | Ready |
 | **Selling** | home "فاکتور فروش" | [`selling`](api/selling.md) | Sales Invoice, Customer, Item Price, Sales Taxes and Charges Template | Ready |
@@ -64,9 +64,9 @@ approver, Support team). Builder request types use the ASOUD workflow runtime.
 3. Home quick actions "فاکتور فروش" and "دریافت و پرداخت": build on `selling`
    and `payments`; send writes through `sync.execute_mutation`.
 4. Request list: route the six fixed cards to the native endpoints above.
-5. Request type builder: enable the `Multi Choice`, `User`, `Department` and
-   `Item Table` field types, and render them in the request form with
-   `workflow_request.request_field_options`.
+5. ~~Request type builder: enable the `Multi Choice`, `User`, `Department` and
+   `Item Table` field types, and render them in the request form.~~ Done in app
+   0.20.0 (`workflow_request.request_field_options` backs the pickers).
 
 ## Development bench
 
