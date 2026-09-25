@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.0
+
+- Personnel file API (`personnel_file`): one aggregated file per employee from Employee, ERPNext
+  Contract, HRMS promotions, transfers, salary assignments and slips, attendance, leave, private
+  files and change history; the employee's own file and home screen; public announcements.
+- HR writes: contracts with signed copies, promotions applied by HRMS, announcements.
+- Personnel documents keep category, number and expiry; Employee fields for marital status, blood
+  group, emergency contact, company email, branch, direct manager, probation and contract dates are
+  editable through `personnel.update_personnel`. Bank details stay out of this API.
+
 ## 0.10.0
 
 API modules on ERPNext/HRMS, each documented in `docs/api/` and covered by
