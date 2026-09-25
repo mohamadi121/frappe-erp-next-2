@@ -16,7 +16,10 @@
     "native_name",
     "native_secondary",
     "notes",
-    "request_fingerprint"
+    "request_fingerprint",
+    "document_category",
+    "document_number",
+    "expiry_date"
   ],
   "fields": [
     {
@@ -97,6 +100,22 @@
       "label": "Request Fingerprint",
       "fieldtype": "Data",
       "read_only": 1
+    },
+    {
+      "fieldname": "document_category",
+      "label": "Document Category",
+      "fieldtype": "Select",
+      "options": "\nIdentity\nEducation\nEmployment\nMedical\nFinancial\nOther"
+    },
+    {
+      "fieldname": "document_number",
+      "label": "Document Number",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "expiry_date",
+      "label": "Expiry Date",
+      "fieldtype": "Date"
     }
   ],
   "permissions": [

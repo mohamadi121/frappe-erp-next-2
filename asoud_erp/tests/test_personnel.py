@@ -198,3 +198,14 @@ def test_shared_fields_prefer_employee_even_when_empty(api):
     assert service.shared_values(person)["disabled"] is False
     assert service.shared_values(person)["display_name"] == "ERP name"
     assert service.shared_values(person)["mobile"] == ""
+
+
+def test_document_metadata_is_validated_and_kept():
+    pdf = __import__("base64").b64encode(b"%PDF-1.4 test").decode()
+    record = {"kind": "document", "title": "کارت ملی", "date": "2020-01-01", "file": pdf,
+              "document_category": "Identity", "document_number": "0012345678", "expiry_date": "2030-01-01"}
+    assert validate_record(record)["document_category"] == "Identity"
+    for change in ({"document_category": "Secret"}, {"expiry_date": "2019-12-31"},
+                   {"document_number": "x" * 141}):
+        with pytest.raises(ValueError):
+            validate_record({**record, **change})

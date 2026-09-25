@@ -20,6 +20,7 @@ the backend, the app does not call it yet · **Planned** — not implemented.
 | Reports | trial balance, general ledger | `report` | GL Entry | Live |
 | **Financial reports** | receivable/payable ageing, P&L, balance sheet, stock balance | [`financial_reports`](api/financial_reports.md) | ERPNext query reports | Ready |
 | Personnel & HR | personnel records, work reports, communications | `personnel`, `hr` | Employee, ASOUD Personnel Record, ASOUD Internal Communication | Live |
+| **Personnel file & employee panel** | پرونده پرسنلی (HR), خانه and اطلاعات من (employee) | [`personnel_file`](api/personnel_file.md) | Employee, Contract, Employee Promotion/Transfer, Salary Structure Assignment, Salary Slip, Attendance, File, Version, Note | Ready |
 | Workflows | designer, runtime, tasks, notifications | `workflow`, `workflow_runtime` | ASOUD Workflow *, Notification Log | Live |
 | Requests | request types, generic requests, request type builder | `workflow_request`, `workflow` | ASOUD Workflow Request, User, Department, Item, UOM | Live |
 | Purchase requests | purchase request | `purchase_request` | Material Request | Live |
@@ -101,6 +102,7 @@ own employee and department on each run. Every module passes when run repeatedly
 | `asoud_erp.integration_tests.test_financial_reports` | 3 |
 | `asoud_erp.integration_tests.test_payroll` | 2 |
 | `asoud_erp.integration_tests.test_pos` | 2 |
+| `asoud_erp.integration_tests.test_personnel_file` | 5 |
 | `asoud_erp.integration_tests.test_hr_self_service` | 6 |
 | `asoud_erp.integration_tests.test_dashboard_support_sync` | 6 |
 | `asoud_erp.asoud_erp.doctype.asoud_workflow_request.test_asoud_workflow_request` | 12 |
