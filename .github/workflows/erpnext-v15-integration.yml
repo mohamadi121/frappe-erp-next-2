@@ -91,3 +91,12 @@ jobs:
         run: >-
           bench --site test.localhost run-tests --app asoud_erp --skip-test-records
           --module asoud_erp.asoud_erp.doctype.asoud_workflow_request.test_asoud_workflow_request
+
+      - name: Run API module integration tests
+        working-directory: frappe-bench
+        run: |
+          for module in test_selling_payments test_sales_orders test_stock_buying test_hr_self_service \
+                        test_payroll test_projects test_financial_reports test_pos test_dashboard_support_sync; do
+            bench --site test.localhost run-tests --app asoud_erp --skip-test-records \
+              --module asoud_erp.integration_tests.$module
+          done
