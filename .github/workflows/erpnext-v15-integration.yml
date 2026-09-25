@@ -74,6 +74,13 @@ jobs:
           bench --site test.localhost migrate
           bench --site test.localhost set-config allow_tests true
 
+      - name: Complete the ERPNext setup wizard for tests
+        # ERPNext's before_tests runs the setup wizard only while no Company exists; the
+        # company setup tests create one, so run it first to get item groups, UOMs and
+        # the test company that the API integration tests use.
+        working-directory: frappe-bench
+        run: bench --site test.localhost execute erpnext.setup.utils.before_tests
+
       - name: Run ASOUD setup integration tests
         working-directory: frappe-bench
         run: >-
