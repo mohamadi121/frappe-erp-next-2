@@ -5,7 +5,15 @@ PERSONAL_FIELDS = {
     "display_name", "national_id", "birth_date", "employee_gender", "father_name",
     "mobile", "phone", "email", "province", "city", "address_line", "postal_code",
     "date_of_joining", "job_title", "department", "employment_type",
+    # Stored on Employee (see personnel_employee.EMPLOYEE_FIELDS).
+    "marital_status", "blood_group", "emergency_contact_name", "emergency_phone",
+    "emergency_relation", "company_email", "branch", "reports_to",
+    "final_confirmation_date", "contract_end_date", "notice_number_of_days",
 }
+
+# Bank details stay on the ERPNext Employee form; this API neither edits nor returns them.
+
+DOCUMENT_CATEGORIES = {"Identity", "Education", "Employment", "Medical", "Financial", "Other"}
 
 FINANCIAL_FIELDS = {
     "base_salary", "housing_allowance", "transport_allowance", "other_allowances",
@@ -30,6 +38,14 @@ def validate_record(data):
         score = data.get("score")
         if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0 <= score <= 100:
             raise ValueError("Score must be between 0 and 100")
+    if data["kind"] == "document":
+        if data.get("document_category") not in (None, "", *DOCUMENT_CATEGORIES):
+            raise ValueError("Invalid document category")
+        if len(str(data.get("document_number") or "")) > 140:
+            raise ValueError("Document number is too long")
+        if data.get("expiry_date"):
+            if date.fromisoformat(data["expiry_date"]) < date.fromisoformat(data["date"]):
+                raise ValueError("Expiry date must not be before the issue date")
     if data["kind"] in {"photo", "document"}:
         if len(data.get("file", "")) > 7 * 1024 * 1024:
             raise ValueError("File exceeds size limit")
@@ -40,7 +56,8 @@ def validate_record(data):
         if not image and not (data["kind"] == "document" and raw.startswith(b"%PDF-")):
             raise ValueError("Only JPEG, PNG and PDF documents are accepted")
     return {key: data[key] for key in
-            ("kind", "title", "date", "notes", "start", "end", "score", "file", "filename", "appraisal_cycle") if key in data}
+            ("kind", "title", "date", "notes", "start", "end", "score", "file", "filename", "appraisal_cycle",
+             "document_category", "document_number", "expiry_date") if key in data}
 
 
 def validate_financial(data):
