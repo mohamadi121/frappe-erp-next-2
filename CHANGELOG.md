@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.0
 
 - Document templates (`document_templates`): map request, user, company and system values onto an
   ERPNext Journal Entry or Material Request; ready-made presets; account and warehouse checks.
