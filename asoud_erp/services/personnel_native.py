@@ -14,7 +14,7 @@ from pathlib import PurePosixPath
 import frappe
 from frappe.utils import get_datetime, strip_html
 
-from asoud_erp.services.personnel_employee import EMPLOYEE_FIELDS, employee_for
+from asoud_erp.services.personnel_employee import EMPLOYEE_FIELD_LABELS, EMPLOYEE_FIELDS, employee_for
 
 NATIVE_TYPES = {"attendance": "Employee Checkin", "evaluation": "Appraisal",
                 "photo": "File", "document": "File", "history": "Comment"}
@@ -63,13 +63,9 @@ def read_external(native, include_file=True):
     elif native.doctype == "Version":
         changes = json.loads(native.data or "{}").get("changed", [])
         fields = {field for field, *_ in changes if field in EMPLOYEE_FIELDS.values()}
-        # Never expose unrelated payroll/bank fields from the raw Version JSON.
-        labels = {"employee_name": "نام", "cell_number": "موبایل", "personal_email": "ایمیل",
-                  "date_of_birth": "تولد", "date_of_joining": "شروع کار", "gender": "جنسیت",
-                  "designation": "سمت", "department": "واحد سازمانی", "employment_type": "نوع استخدام",
-                  "current_address": "آدرس"}
-        data.update(title="تغییر اطلاعات پرسنلی",
-                    notes="، ".join(labels[field] for field in sorted(fields)))
+        # Only field labels are shown; values (bank, payroll) never leave the Version JSON.
+        labels = sorted({EMPLOYEE_FIELD_LABELS.get(field, field) for field in fields})
+        data.update(title="تغییر اطلاعات پرسنلی", notes="، ".join(labels))
     else:
         data.update(title=native.file_name, filename=native.file_name,
                     kind="photo" if native.attached_to_field == "image" else "document")
@@ -206,6 +202,10 @@ def link_record(doc, native, secondary, data):
     doc.record_date = data["date"]
     # Display-only annotations have no equivalent on a Checkin or File.
     doc.notes = data.get("notes", "") if data["kind"] != "history" else ""
+    if data["kind"] == "document":
+        doc.document_category = data.get("document_category") or None
+        doc.document_number = str(data.get("document_number") or "").strip() or None
+        doc.expiry_date = data.get("expiry_date") or None
 
 
 def native_documents(doc, person, lock=False):
@@ -272,6 +272,10 @@ def read_record(doc, person, manager=False, include_file=True):
                     appraisal_template=native.appraisal_template)
     elif doc.kind in {"photo", "document"}:
         data["filename"] = native.file_name
+        if doc.kind == "document":
+            data.update(document_category=doc.get("document_category") or "",
+                        document_number=doc.get("document_number") or "",
+                        expiry_date=str(doc.get("expiry_date") or ""))
         if include_file:
             if not native.is_private or not str(native.file_url).startswith("/private/files/"):
                 frappe.throw("Personnel attachments must be stored as private local files")

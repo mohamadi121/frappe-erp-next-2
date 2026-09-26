@@ -74,6 +74,13 @@ jobs:
           bench --site test.localhost migrate
           bench --site test.localhost set-config allow_tests true
 
+      - name: Complete the ERPNext setup wizard for tests
+        # ERPNext's before_tests runs the setup wizard only while no Company exists; the
+        # company setup tests create one, so run it first to get item groups, UOMs and
+        # the test company that the API integration tests use.
+        working-directory: frappe-bench
+        run: bench --site test.localhost execute erpnext.setup.utils.before_tests
+
       - name: Run ASOUD setup integration tests
         working-directory: frappe-bench
         run: >-
@@ -91,3 +98,13 @@ jobs:
         run: >-
           bench --site test.localhost run-tests --app asoud_erp --skip-test-records
           --module asoud_erp.asoud_erp.doctype.asoud_workflow_request.test_asoud_workflow_request
+
+      - name: Run API module integration tests
+        working-directory: frappe-bench
+        run: |
+          for module in test_selling_payments test_sales_orders test_stock_buying test_hr_self_service \
+                        test_payroll test_projects test_financial_reports test_pos test_dashboard_support_sync \
+                        test_personnel_file test_document_templates; do
+            bench --site test.localhost run-tests --app asoud_erp --skip-test-records \
+              --module asoud_erp.integration_tests.$module
+          done

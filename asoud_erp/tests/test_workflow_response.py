@@ -55,3 +55,48 @@ def test_invalid_checkbox(value):
 def test_required_whitespace_is_not_a_value():
     with pytest.raises(ValueError):
         normalize_form_response(FIELDS, {"title": "   "})
+
+
+LINK_FIELDS = [
+    {"key": "needs", "type": "Multi Choice", "options": ["Laptop", "Monitor", "Mouse"]},
+    {"key": "owner_user", "type": "User"},
+    {"key": "unit", "type": "Department"},
+    {"key": "items", "type": "Item Table", "required": True},
+]
+
+
+def test_multi_choice_user_department_and_item_rows_are_normalized():
+    result = normalize_form_response(LINK_FIELDS, {
+        "needs": ["Monitor", "Laptop", "Monitor"],
+        "owner_user": " ali@example.com ",
+        "unit": "IT - T",
+        "items": [{"item_code": "ITM-1", "qty": "2", "uom": "Nos"}, {"item_code": "ITM-2", "qty": 1.5}],
+    })
+    assert result["needs"] == ["Monitor", "Laptop"]
+    assert result["owner_user"] == "ali@example.com"
+    assert result["items"] == [
+        {"item_code": "ITM-1", "qty": 2.0, "uom": "Nos", "description": ""},
+        {"item_code": "ITM-2", "qty": 1.5, "uom": None, "description": ""},
+    ]
+
+
+def test_resubmitted_item_rows_may_carry_erpnext_values():
+    row = {"item_code": "ITM-1", "qty": 2, "uom": "Box", "item_name": "Paper",
+           "stock_uom": "Nos", "conversion_factor": 10, "stock_qty": 20}
+    result = normalize_form_response(LINK_FIELDS, {"items": [row]})
+    assert result["items"][0] == {"item_code": "ITM-1", "qty": 2.0, "uom": "Box", "description": ""}
+
+
+@pytest.mark.parametrize("value", [
+    {"items": []},
+    {"items": [{"item_code": "ITM-1", "qty": 0}]},
+    {"items": [{"item_code": "", "qty": 1}]},
+    {"items": [{"item_code": "ITM-1", "qty": 1, "rate": 5}]},
+    {"items": [{"item_code": "ITM-1", "qty": 1}] * 101},
+    {"items": [{"item_code": "ITM-1", "qty": 1}], "needs": ["Keyboard"]},
+    {"items": [{"item_code": "ITM-1", "qty": 1}], "needs": "Laptop"},
+    {"items": [{"item_code": "ITM-1", "qty": 1}], "owner_user": ["a"]},
+])
+def test_invalid_link_field_values(value):
+    with pytest.raises(ValueError):
+        normalize_form_response(LINK_FIELDS, value)

@@ -4,7 +4,7 @@
   "module": "ASOUD ERP",
   "autoname": "hash",
   "track_changes": 0,
-  "field_order": ["workflow_instance", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
+  "field_order": ["workflow_instance", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on", "reference_doctype", "reference_name"],
   "fields": [
     {"fieldname": "workflow_instance", "label": "Workflow Instance", "fieldtype": "Link", "options": "ASOUD Workflow Instance", "reqd": 1, "in_list_view": 1},
     {"fieldname": "workflow_task", "label": "Workflow Task", "fieldtype": "Link", "options": "ASOUD Workflow Task"},
@@ -12,7 +12,9 @@
     {"fieldname": "actor", "label": "Actor", "fieldtype": "Link", "options": "User", "reqd": 1},
     {"fieldname": "action", "label": "Action", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
     {"fieldname": "comment", "label": "Comment", "fieldtype": "Small Text"},
-    {"fieldname": "created_on", "label": "Created On", "fieldtype": "Datetime", "reqd": 1, "in_list_view": 1}
+    {"fieldname": "created_on", "label": "Created On", "fieldtype": "Datetime", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "reference_doctype", "label": "Created Document Type", "fieldtype": "Link", "options": "DocType"},
+    {"fieldname": "reference_name", "label": "Created Document", "fieldtype": "Dynamic Link", "options": "reference_doctype"}
   ],
   "permissions": [
     {"role": "System Manager", "read": 1, "create": 1},

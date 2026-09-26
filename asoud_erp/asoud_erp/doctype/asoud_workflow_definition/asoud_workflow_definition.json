@@ -9,7 +9,8 @@
     "workflow_code", "workflow_title", "process_description", "company", "module_key", "creation_mode", "target_doctype",
     "frappe_workflow", "status", "readiness_status", "pending_reason",
     "missing_requirements_json", "version_no", "steps_count", "icon_key",
-    "color_hex", "archived_on"
+    "color_hex", "short_title", "request_category", "show_in_request_list",
+    "allow_user_submission", "archived_on"
   ],
   "fields": [
     {"fieldname": "workflow_code", "label": "Workflow Code", "fieldtype": "Data", "reqd": 1, "unique": 1, "in_list_view": 1},
@@ -28,6 +29,10 @@
     {"fieldname": "steps_count", "label": "Steps Count", "fieldtype": "Int", "default": "0", "read_only": 1},
     {"fieldname": "icon_key", "label": "Icon Key", "fieldtype": "Data"},
     {"fieldname": "color_hex", "label": "Color Hex", "fieldtype": "Data"},
+    {"fieldname": "short_title", "label": "Short Title", "fieldtype": "Data"},
+    {"fieldname": "request_category", "label": "Request Category", "fieldtype": "Select", "options": "\nFinance\nHR\nPurchase\nIT\nGeneral\nOther"},
+    {"fieldname": "show_in_request_list", "label": "Show In Request List", "fieldtype": "Check", "default": "1"},
+    {"fieldname": "allow_user_submission", "label": "Allow User Submission", "fieldtype": "Check", "default": "1"},
     {"fieldname": "archived_on", "label": "Archived On", "fieldtype": "Datetime", "read_only": 1}
   ],
   "permissions": [

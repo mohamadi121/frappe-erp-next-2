@@ -7,16 +7,42 @@ import hashlib
 
 import frappe
 
-EMPLOYEE_FIELDS = {
+# Keys also kept as columns on ASOUD Party Profile (legacy search cache).
+PROFILE_CACHE_FIELDS = {
     "display_name": "employee_name", "mobile": "cell_number", "email": "personal_email",
     "birth_date": "date_of_birth", "date_of_joining": "date_of_joining",
     "employee_gender": "gender", "job_title": "designation", "department": "department",
     "employment_type": "employment_type", "address_line": "current_address",
 }
 
+EMPLOYEE_FIELDS = {
+    **PROFILE_CACHE_FIELDS,
+    "marital_status": "marital_status", "blood_group": "blood_group",
+    "emergency_contact_name": "person_to_be_contacted", "emergency_phone": "emergency_phone_number",
+    "emergency_relation": "relation", "company_email": "company_email", "branch": "branch",
+    "reports_to": "reports_to", "final_confirmation_date": "final_confirmation_date",
+    "contract_end_date": "contract_end_date", "notice_number_of_days": "notice_number_of_days",
+}
+
+# Persian labels of Employee fields, for change history. Values are never exposed.
+EMPLOYEE_FIELD_LABELS = {
+    "employee_name": "نام", "cell_number": "موبایل", "personal_email": "ایمیل",
+    "date_of_birth": "تولد", "date_of_joining": "شروع کار", "gender": "جنسیت",
+    "designation": "سمت", "department": "واحد سازمانی", "employment_type": "نوع استخدام",
+    "current_address": "آدرس", "marital_status": "وضعیت تأهل", "blood_group": "گروه خونی",
+    "person_to_be_contacted": "تماس اضطراری", "emergency_phone_number": "تلفن اضطراری",
+    "relation": "نسبت تماس اضطراری", "company_email": "ایمیل سازمانی", "branch": "شعبه",
+    "reports_to": "مدیر مستقیم", "final_confirmation_date": "پایان دوره آزمایشی",
+    "contract_end_date": "پایان قرارداد", "notice_number_of_days": "مهلت اعلام",
+    "bank_name": "اطلاعات بانکی", "bank_ac_no": "اطلاعات بانکی", "iban": "اطلاعات بانکی",
+    "status": "وضعیت همکاری", "relieving_date": "تاریخ پایان همکاری", "image": "تصویر",
+}
+
 LINK_FIELDS = {"job_title": ("Designation", "designation_name"),
                "department": ("Department", "department_name"),
-               "employment_type": ("Employment Type", "employee_type_name")}
+               "employment_type": ("Employment Type", "employee_type_name"),
+               "branch": ("Branch", "branch"),
+               "reports_to": ("Employee", "employee_name")}
 
 
 def resolve_link(key, value, company):
@@ -26,7 +52,7 @@ def resolve_link(key, value, company):
     if frappe.db.exists(doctype, value):
         return value
     filters = {title_field: value}
-    if key == "department":
+    if key in {"department", "reports_to"}:
         filters["company"] = company
     matches = frappe.get_all(doctype, filters=filters, pluck="name", limit_page_length=2)
     if len(matches) != 1:
@@ -37,8 +63,13 @@ def resolve_link(key, value, company):
 def profile_options(company):
     result = {}
     for key, (doctype, _) in LINK_FIELDS.items():
+        if key == "reports_to":
+            continue
         filters = {"company": company, "is_group": 0} if key == "department" else {}
         result[key] = frappe.get_all(doctype, filters=filters, pluck="name", order_by="name", limit_page_length=0)
+    result["reports_to"] = frappe.get_all("Employee", filters={"company": company, "status": "Active"},
+                                          fields=["name", "employee_name", "designation"],
+                                          order_by="employee_name", limit_page_length=0)
     return result
 
 
@@ -94,13 +125,18 @@ def write_shared(person, values):
         company = frappe.db.get_value("Department", employee.department, "company")
         if company and company != employee.company:
             frappe.throw("Department company mismatch")
+    if "reports_to" in values and employee.reports_to:
+        if employee.reports_to == employee.name:
+            frappe.throw("An employee cannot report to themselves")
+        if frappe.db.get_value("Employee", employee.reports_to, "company") != employee.company:
+            frappe.throw("The manager must belong to the same company")
     employee.save(ignore_permissions=True)
     return employee
 
 
 def refresh_profile_cache(employee, method=None):
     """Keep legacy search columns usable after a change made in ERPNext itself."""
-    values = {key: employee.get(field) for key, field in EMPLOYEE_FIELDS.items()
+    values = {key: employee.get(field) for key, field in PROFILE_CACHE_FIELDS.items()
               if employee.meta.has_field(field)}
     for name in frappe.get_all("ASOUD Party Profile", filters={"employee": employee.name,
                               "company": employee.company}, pluck="name"):
