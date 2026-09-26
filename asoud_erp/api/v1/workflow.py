@@ -6,6 +6,7 @@ from frappe.model.naming import make_autoname
 from frappe.utils import cint, now_datetime
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.jalali import current_jalali_year
 from asoud_erp.services.workflow_contract import (
     ALLOWED_WORKFLOW_STATUSES,
@@ -137,14 +138,14 @@ def workflow_form_options() -> dict:
     departments = frappe.get_all(
         "Department",
         filters={"disabled": 0},
-        fields=["name", "department_name", "company"],
-        order_by="department_name asc",
+        fields=["name", "department_name", "company", "parent_department", "is_group"],
+        order_by="lft asc",
         limit_page_length=0,
     )
     employees = frappe.get_all(
         "Employee",
         filters={"status": "Active"},
-        fields=["name", "employee_name", "department", "company", "user_id"],
+        fields=["name", "employee_name", "department", "company", "user_id", "designation"],
         order_by="employee_name asc",
         limit_page_length=0,
     )
@@ -656,6 +657,14 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
             if normalized["source_field"] not in form_keys:
                 frappe.throw(_("The selected form field does not exist in this workflow"))
 
+    if doc.stage_type == "System Action" and normalized["action_type"] == "Create Document":
+        company = frappe.db.get_value("ASOUD Workflow Definition", definition, "company")
+        template = frappe.db.get_value(
+            "ASOUD Document Template", normalized["document_template"], ["company", "status"], as_dict=True
+        )
+        if not template or template.status != "Active" or (company and template.company != company):
+            frappe.throw(_("The selected document template is not active for this company"))
+
     doc.stage_title = normalized.pop("title")
     doc.config_json = json.dumps(normalized, ensure_ascii=False)
     doc.configuration_status = "Complete"
@@ -663,6 +672,82 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
     workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
     workflow.version_no = int(workflow.version_no or 1) + 1
     workflow.save()
+    return success(_design_payload(definition))
+
+
+ROUTE_ACTIONS = {
+    "Approval": ("Approve", "Reject", "Return"),
+    "User Task": ("Complete", "Reject", "Return"),
+    "System Action": ("Success", "Error"),
+}
+ROUTE_LABELS = {
+    "Approve": "تأیید",
+    "Reject": "رد",
+    "Return": "بازگشت برای اصلاح",
+    "Complete": "ادامه",
+    "Success": "موفقیت",
+    "Error": "خطا",
+}
+
+
+@frappe.whitelist(methods=["POST"])
+def save_stage_routes(definition: str, stage: str, routes: str | dict) -> dict:
+    """Set a stage's exit routes by decision, e.g. {"Approve": stage, "Reject": ""}.
+
+    An empty target removes the route: Reject then ends the request as rejected,
+    Return goes back to the latest editable task and Error stops the instance.
+    Setting the main route (Approve/Complete/Success) replaces the unlabeled
+    default route the designer created.
+    """
+    require_roles(("System Manager", "Accounts Manager"))
+    frappe.db.sql(
+        "select name from `tabASOUD Workflow Definition` where name = %s for update",
+        (definition,),
+    )
+    source = _assert_stage_in_definition(stage, definition)
+    allowed = ROUTE_ACTIONS.get(source.stage_type)
+    if not allowed:
+        frappe.throw(_("This stage has no decision routes"))
+    raw = json.loads(routes) if isinstance(routes, str) else routes
+    if not isinstance(raw, dict) or set(raw) - set(allowed):
+        frappe.throw(_("Invalid workflow routes"))
+    existing = frappe.get_all(
+        "ASOUD Workflow Transition",
+        filters={"workflow_definition": definition, "from_stage": stage},
+        fields=["name", "transition_label", "condition_json"],
+        limit_page_length=0,
+    )
+    removed = set()
+    for action, target in raw.items():
+        target = str(target or "").strip()
+        if target:
+            destination = _assert_stage_in_definition(target, definition)
+            if target == stage or destination.stage_type == "Start":
+                frappe.throw(_("Invalid workflow transition"))
+        for row in existing:
+            if row.name in removed:
+                continue
+            row_action = str(json.loads(row.condition_json or "{}").get("action") or "")
+            if not row_action:
+                row_action = {label: key for key, label in ROUTE_LABELS.items()}.get(
+                    row.transition_label or "", row.transition_label or ""
+                )
+            if row_action.casefold() == action.casefold() or (action == allowed[0] and not row_action):
+                frappe.delete_doc("ASOUD Workflow Transition", row.name, ignore_permissions=True)
+                removed.add(row.name)
+        if target:
+            frappe.get_doc(
+                {
+                    "doctype": "ASOUD Workflow Transition",
+                    "workflow_definition": definition,
+                    "from_stage": stage,
+                    "to_stage": target,
+                    "transition_label": ROUTE_LABELS[action],
+                    "condition_json": json.dumps({"action": action}),
+                    "sequence_no": allowed.index(action) + 1,
+                }
+            ).insert()
+    _touch_workflow(definition)
     return success(_design_payload(definition))
 
 

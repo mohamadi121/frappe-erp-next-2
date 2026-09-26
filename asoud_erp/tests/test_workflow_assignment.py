@@ -28,3 +28,8 @@ def test_initiator_assignment_needs_no_static_target() -> None:
     assert assignment_values(
         {"assignment_type": "Initiator"}, "User Task"
     ) == ("Initiator", [])
+
+
+@pytest.mark.parametrize("kind", ["Initiator Department", "Direct Manager"])
+def test_initiator_relative_assignments_need_no_static_target(kind) -> None:
+    assert assignment_values({"assignment_type": kind}, "Approval") == (kind, [])

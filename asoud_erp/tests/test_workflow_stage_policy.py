@@ -223,3 +223,53 @@ def test_link_field_rules() -> None:
         normalize_stage_config("User Task", _task_with({"type": "Multi Choice", "options": ["الف"]}))
     with pytest.raises(ValueError):
         normalize_stage_config("User Task", _task_with({"type": "Item Table", "default_value": "ITM-1"}))
+
+
+def test_approval_accepts_direct_manager_and_reject_comment() -> None:
+    result = normalize_stage_config(
+        "Approval",
+        {"title": "تأیید مدیر", "assignment_type": "Direct Manager", "approval_mode": "Any",
+         "reject_comment_required": True, "description": "بررسی درخواست"},
+    )
+    assert result["assignment_type"] == "Direct Manager"
+    assert result["approver_roles"] == [] and result["reject_comment_required"] is True
+    assert result["description"] == "بررسی درخواست"
+
+
+def test_user_task_settings_default_to_drafts_allowed() -> None:
+    result = normalize_stage_config(
+        "User Task",
+        {"title": "تکمیل فرم", "activity_type": "Data Entry", "assignment_type": "Initiator Department"},
+    )
+    assert result["allow_draft"] is True
+    assert result["require_all_fields"] is False and result["allow_edit_after_submit"] is False
+
+
+def test_create_document_action_needs_a_template() -> None:
+    with pytest.raises(ValueError, match="template"):
+        normalize_stage_config("System Action", {"title": "ثبت سند", "action_type": "Create Document"})
+    result = normalize_stage_config(
+        "System Action",
+        {"title": "ثبت سند", "action_type": "Create Document", "document_template": "TPL-1",
+         "transfer_values": False, "document_remark": "بر اساس {{RequestNo}}"},
+    )
+    assert result == {"title": "ثبت سند", "description": "", "action_type": "Create Document",
+                      "document_template": "TPL-1", "transfer_values": False,
+                      "document_remark": "بر اساس {{RequestNo}}"}
+
+
+def test_change_status_and_notification_actions() -> None:
+    assert normalize_stage_config(
+        "System Action", {"title": "تغییر وضعیت", "action_type": "Change Status", "request_status": "تأیید شده"}
+    )["request_status"] == "تأیید شده"
+    with pytest.raises(ValueError, match="message"):
+        normalize_stage_config("System Action", {"title": "اعلان", "action_type": "Send Notification",
+                                                 "notify_initiator": True})
+    result = normalize_stage_config("System Action", {"title": "اعلان", "action_type": "Send Notification",
+                                                      "notify_initiator": True, "message": "ثبت شد"})
+    assert result["target_roles"] == [] and result["notify_initiator"] is True
+
+
+def test_external_api_calls_are_not_system_actions() -> None:
+    with pytest.raises(ValueError, match="unsupported"):
+        normalize_stage_config("System Action", {"title": "API", "action_type": "Call API", "url": "http://x"})

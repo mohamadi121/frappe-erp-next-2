@@ -1,9 +1,12 @@
 # ASOUD workflow runtime v1
 
-Workflow stages can target an ERPNext role, department, a specific Employee, or
-the user who initiated the workflow. Initiator assignment is intended for
-correction routes and always resolves from the immutable `started_by` value of
-the workflow instance.
+Workflow stages can target an ERPNext role, department, a specific Employee, the
+user who initiated the workflow, every active Employee of the initiator's
+department (`Initiator Department`), or the initiator's direct manager
+(`Direct Manager`, the Employee `reports_to`). Initiator-relative assignments
+always resolve from the immutable `started_by` value of the workflow instance
+and the initiator's active Employee record in the workflow company; a missing
+manager or an empty department stops the step with a validation error.
 Specific Employee and department assignments resolve only to active Employees that
 have an active ERPNext User account. The Employee identifier is persisted in the
 workflow definition; display names are never used as relational identifiers.
@@ -31,14 +34,55 @@ remain with their original owner unless automatic reassignment was explicitly
 enabled and at least one active user resolves from the configured escalation
 roles; every reassignment is written to workflow activity history.
 
-The runtime supports User Task, Approval, End, and safe Condition execution.
+The runtime supports User Task, Approval, System Action, End, and safe Condition execution.
 Condition values may come from a whitelisted field on the referenced ERPNext
 document or from the latest completed workflow form. Supported operators are
 `Is Set`, `Equals`, `Not Equals`, `Contains`, `Greater Than`, and `Less Than`.
 Every condition requires exactly one true and one false transition; the selected
 result is written to the immutable activity history before the destination task
-is assigned. Arbitrary expressions are never evaluated. Wait and System Action
-execution remain blocked until their dedicated secure executors are implemented.
+is assigned. Arbitrary expressions are never evaluated. Wait execution remains
+blocked until its scheduler-based executor is implemented.
+
+## Decision routes
+
+`workflow.save_stage_routes(definition, stage, routes)` sets a stage's exits by
+decision: `Approve`/`Reject`/`Return` for Approval, `Complete`/`Reject`/`Return`
+for User Task and `Success`/`Error` for System Action. Each route is a standard
+`ASOUD Workflow Transition` with `condition_json = {"action": ...}`; an empty
+target removes it. Saving the main route (Approve, Complete, Success) replaces
+the unlabeled default route the designer creates. Without its own route a
+rejection ends the instance as Rejected and a return goes back to the latest
+editable user task; only forward decisions fall back to a single default route.
+
+Stage settings stored with the configuration: `description`,
+`reject_comment_required` (User Task and Approval), and for User Task
+`allow_draft` (drafts rejected when off), `require_all_fields` (every form field
+becomes required on completion) and `allow_edit_after_submit` (stored for the
+client; not enforced yet).
+
+## System actions
+
+A System Action stage runs as soon as it is reached, in the transaction of the
+decision that reached it, inside a savepoint:
+
+| `action_type` | Configuration | Effect |
+| --- | --- | --- |
+| `Create Document` | `document_template`, `transfer_values`, `document_remark` | Inserts the ERPNext document of an [`ASOUD Document Template`](api/document_templates.md) (draft, or submitted when the template says so). |
+| `Change Status` | `request_status` (label) | Sets `display_status` on the `ASOUD Workflow Request`; the request's own `status` is unchanged. |
+| `Send Notification` | `target_roles`, `notify_initiator`, `message` (`{{RequestNo}}`-style placeholders) | In-app `Notification Log` to the role users and/or the initiator. |
+
+Calling external APIs is not a system action. On failure the savepoint is rolled
+back, a `System Action Failed` activity records the error, and the `Error` route
+is followed; without one the instance becomes `Failed` and System Managers are
+notified. A success writes `System Action Succeeded` with the created document in
+`reference_doctype`/`reference_name`, then follows the `Success` route (or the
+single unlabeled route).
+
+## Request access
+
+A generic request (`ASOUD Workflow Request`) is readable by its owner, System and
+HR Managers, and any user holding a task on its workflow instance, so a
+department colleague or direct manager can open the request they act on.
 
 Task forms support server-side validation, drafts, private attachments up to 10 MB,
 final responses, an immutable activity trail, rejection, and return to the previous

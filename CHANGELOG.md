@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- Document templates (`document_templates`): map request, user, company and system values onto an
+  ERPNext Journal Entry or Material Request; ready-made presets; account and warehouse checks.
+- Workflow System Action stages now run: create a document from a template, change the request's
+  display status, or send an in-app notification. Failures roll back and follow the Error route
+  (or stop the instance as Failed and notify System Managers).
+- `workflow.save_stage_routes` sets a stage's exits per decision (approve, reject, return,
+  success, error).
+- New assignees: the initiator's department and direct manager. Stage settings: description,
+  rejection reason required, and for user tasks drafts on/off and all fields required.
+
+Fixes:
+
+- A rejection without its own route no longer continues along the stage's default route.
+- A stage assignee who is not the requester (for example the direct manager) can open the generic
+  request they act on; before, completing such a task failed with a permission error.
+
 ## 0.11.0
 
 - Personnel file API (`personnel_file`): one aggregated file per employee from Employee, ERPNext

@@ -17,6 +17,7 @@
     "attachments_json",
     "workflow_instance",
     "status",
+    "display_status",
     "request_id",
     "request_fingerprint"
   ],
@@ -92,6 +93,13 @@
       "options": "Draft\nSubmitted\nCompleted\nRejected",
       "default": "Draft",
       "reqd": 1
+    },
+    {
+      "fieldname": "display_status",
+      "label": "Display Status",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "description": "Label set by a workflow Change Status action; presentation only."
     },
     {
       "fieldname": "request_id",

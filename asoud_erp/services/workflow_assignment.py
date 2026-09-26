@@ -4,7 +4,7 @@ from typing import Any
 def assignment_values(config: dict[str, Any], stage_type: str) -> tuple[str, list[str]]:
     prefix = "approver" if stage_type == "Approval" else "assignee"
     assignment_type = str(config.get("assignment_type") or "Role")
-    if assignment_type == "Initiator":
+    if assignment_type in {"Initiator", "Initiator Department", "Direct Manager"}:
         return assignment_type, []
     suffix = {"Role": "roles", "Department": "departments", "Employee": "employees"}.get(
         assignment_type

@@ -104,7 +104,7 @@ jobs:
         run: |
           for module in test_selling_payments test_sales_orders test_stock_buying test_hr_self_service \
                         test_payroll test_projects test_financial_reports test_pos test_dashboard_support_sync \
-                        test_personnel_file; do
+                        test_personnel_file test_document_templates; do
             bench --site test.localhost run-tests --app asoud_erp --skip-test-records \
               --module asoud_erp.integration_tests.$module
           done

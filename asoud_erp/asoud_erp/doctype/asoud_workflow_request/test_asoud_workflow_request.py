@@ -72,6 +72,9 @@ class TestASOUDWorkflowRequest(FrappeTestCase):
         self.assertFalse(frappe.has_permission(doc.doctype, "write", doc))
         self.assertEqual(get(doc.doctype, doc.name)["subject"], "Audit request")
         frappe.db.set_value(doc.doctype, doc.name, "owner", "Administrator")
+        # Stage assignees may read the request they act on; hand the task over too.
+        frappe.db.set_value("ASOUD Workflow Task", {"workflow_instance": doc.workflow_instance},
+            "assigned_to", "Administrator")
         with self.assertRaises(frappe.PermissionError):
             get(doc.doctype, doc.name)
         self.assertEqual(get_list(doc.doctype, fields=["name"]), [])
@@ -131,6 +134,8 @@ class TestASOUDWorkflowRequest(FrappeTestCase):
         self.assertTrue(attachment["file_url"].startswith("/private/files/"))
         self.assertEqual(workflow_request.get_attachment(attachment["name"])["data"]["content_base64"], encoded)
         frappe.db.set_value("ASOUD Workflow Request", request["name"], "owner", "Administrator")
+        frappe.db.set_value("ASOUD Workflow Task", {"workflow_instance": request["workflow_instance"]},
+            "assigned_to", "Administrator")
         with self.assertRaises(frappe.PermissionError):
             workflow_request.get_attachment(attachment["name"])
         file = frappe.get_doc("File", attachment["name"])

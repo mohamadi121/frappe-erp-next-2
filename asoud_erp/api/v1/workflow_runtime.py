@@ -5,9 +5,11 @@ from pathlib import Path
 
 import frappe
 from frappe import _
-from frappe.utils import add_to_date, now_datetime
+from frappe.utils import add_to_date, get_fullname, getdate, now_datetime, nowdate
 
+from asoud_erp.api.v1 import document_templates
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.document_templates import render_placeholders
 from asoud_erp.services.request_link_values import validate_link_values, workflow_company
 from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
@@ -119,6 +121,22 @@ def _users_for_stage(stage, instance) -> list[str]:
     assignment_type, values = assignment_values(config, stage.stage_type)
     if assignment_type == "Initiator":
         users = [instance.started_by]
+    elif assignment_type == "Initiator Department":
+        department = _initiator_employee(instance, "department")
+        users = (
+            frappe.get_all(
+                "Employee",
+                filters={"department": department, "status": "Active", "user_id": ["is", "set"]},
+                pluck="user_id",
+                limit_page_length=0,
+            )
+            if department
+            else []
+        )
+    elif assignment_type == "Direct Manager":
+        manager = _initiator_employee(instance, "reports_to")
+        user = manager and frappe.db.get_value("Employee", {"name": manager, "status": "Active"}, "user_id")
+        users = [user] if user else []
     elif assignment_type == "Employee":
         users = frappe.get_all(
             "Employee",
@@ -148,6 +166,15 @@ def _users_for_stage(stage, instance) -> list[str]:
     if not result:
         frappe.throw(_("No active ERPNext user is available for the selected assignment target"))
     return result
+
+
+def _initiator_employee(instance, fieldname: str):
+    """A field of the initiator's active Employee record in the workflow company."""
+    filters = {"user_id": instance.started_by, "status": "Active"}
+    company = workflow_company(instance.name)
+    if company:
+        filters["company"] = company
+    return frappe.db.get_value("Employee", filters, fieldname)
 
 
 def _users_for_roles(roles: list[str]) -> list[str]:
@@ -208,7 +235,10 @@ def _next_stage(instance, current_stage: str, action: str | None = None):
             if route_action.casefold() == action.casefold():
                 selected = transition
                 break
-    selected = selected or (transitions[0] if len(transitions) == 1 else None)
+    # Only forward decisions fall back to the single default route; a rejection
+    # or return without its own route must not continue the process.
+    if not selected and len(transitions) == 1 and (action or "Complete") in {"Complete", "Approve"}:
+        selected = transitions[0]
     return frappe.get_doc("ASOUD Workflow Stage", selected.to_stage) if selected else None
 
 
@@ -348,6 +378,9 @@ def _activate_stage(instance, stage, source_task=None) -> None:
             source_task=source_task,
         )
         return
+    if stage.stage_type == "System Action":
+        _run_system_action(instance, stage, config, source_task=source_task)
+        return
     if stage.stage_type not in {"User Task", "Approval"}:
         frappe.throw(_("Automatic execution of this workflow stage is not available yet"))
     instance.save(ignore_permissions=True)
@@ -385,6 +418,150 @@ def _activate_stage(instance, stage, source_task=None) -> None:
             _("New workflow task: {0}").format(stage.stage_title),
             instance,
             message=instance.subject,
+        )
+
+
+def _action_context(instance) -> dict:
+    """Values a system action can read: request, people, company and system."""
+    request = None
+    values = {}
+    if instance.reference_doctype == "ASOUD Workflow Request" and instance.reference_name:
+        request = frappe.db.get_value(
+            "ASOUD Workflow Request",
+            instance.reference_name,
+            ["name", "department", "values_json", "creation"],
+            as_dict=True,
+        )
+        values = json.loads(request.values_json or "{}") if request else {}
+    values.update(merge_completed_responses(list(reversed(_completed_task_rows(instance)))))
+    employee = frappe.db.get_value(
+        "Employee", {"user_id": instance.started_by}, ["employee_name", "department"], as_dict=True
+    ) or {}
+    company = workflow_company(instance.name) or ""
+    number = request.name if request else instance.name
+    initiator_name = employee.get("employee_name") or get_fullname(instance.started_by)
+    return {
+        "request": {
+            **values,
+            "request_number": number,
+            "subject": instance.subject,
+            "requested_on": str(getdate(request.creation if request else instance.started_on)),
+            "requester": initiator_name,
+            "requester_department": (request and request.department) or employee.get("department") or "",
+            "description": values.get("description") or "",
+        },
+        "user": {
+            "initiator": instance.started_by,
+            "initiator_name": initiator_name,
+            "initiator_department": employee.get("department") or "",
+            "actor": frappe.session.user,
+        },
+        "organization": {
+            "company": company,
+            "default_currency": frappe.get_cached_value("Company", company, "default_currency") if company else "",
+            "cost_center": frappe.get_cached_value("Company", company, "cost_center") if company else "",
+        },
+        "system": {
+            "today": nowdate(),
+            "now": str(now_datetime()),
+            "request_number": number,
+            "instance": instance.name,
+        },
+    }
+
+
+def _execute_system_action(instance, stage, config: dict) -> tuple[str, str | None, str | None]:
+    """Runs the configured action; returns (comment, created doctype, created name)."""
+    action = config.get("action_type")
+    context = _action_context(instance)
+    if action == "Send Notification":
+        users = _users_for_roles(config.get("target_roles") or [])
+        if config.get("notify_initiator"):
+            users.append(instance.started_by)
+        message = render_placeholders(config.get("message") or "", context)
+        for user in dict.fromkeys(users):
+            _notify_user(user, stage.stage_title, instance, message=message)
+        return message, None, None
+    if action == "Change Status":
+        if instance.reference_doctype != "ASOUD Workflow Request" or not instance.reference_name:
+            raise ValueError("Only workflow requests have a display status")
+        frappe.db.set_value(
+            "ASOUD Workflow Request", instance.reference_name, "display_status", config["request_status"]
+        )
+        return config["request_status"], None, None
+    if action == "Create Document":
+        doc = document_templates.create_document(
+            config["document_template"],
+            context,
+            context["organization"]["company"],
+            transfer_values=config.get("transfer_values", True),
+            remark=config.get("document_remark") or "",
+        )
+        return f"{doc.doctype} {doc.name}", doc.doctype, doc.name
+    raise ValueError("This automatic action is not supported")
+
+
+def _system_route(instance, stage_name: str, outcome: str):
+    """The route for Success/Error; an unlabeled route counts as Success."""
+    rows = frappe.get_all(
+        "ASOUD Workflow Transition",
+        filters={"workflow_definition": instance.workflow_definition, "from_stage": stage_name},
+        fields=["to_stage", "transition_label", "condition_json"],
+        order_by="sequence_no asc",
+        limit_page_length=0,
+    )
+    for row in rows:
+        action = str(json.loads(row.condition_json or "{}").get("action") or "")
+        if action.casefold() == outcome.casefold() or (outcome == "Success" and not action):
+            return frappe.get_doc("ASOUD Workflow Stage", row.to_stage)
+    return None
+
+
+def _run_system_action(instance, stage, config: dict, source_task=None) -> None:
+    """Runs a System Action stage and follows its Success or Error route.
+
+    A failed action is rolled back to a savepoint; without an Error route the
+    instance stops as Failed and System Managers are notified.
+    """
+    instance.save(ignore_permissions=True)
+    frappe.db.savepoint("asoud_system_action")
+    try:
+        comment, doctype, name = _execute_system_action(instance, stage, config)
+        outcome = "Success"
+    except (frappe.ValidationError, frappe.PermissionError, frappe.DoesNotExistError, ValueError) as error:
+        frappe.db.rollback(save_point="asoud_system_action")
+        frappe.clear_messages()
+        comment, doctype, name = str(error) or error.__class__.__name__, None, None
+        outcome = "Error"
+    frappe.get_doc(
+        {
+            "doctype": "ASOUD Workflow Activity",
+            "workflow_instance": instance.name,
+            "workflow_task": source_task.name if source_task else None,
+            "workflow_stage": stage.name,
+            "actor": frappe.session.user,
+            "action": "System Action Succeeded" if outcome == "Success" else "System Action Failed",
+            "comment": comment[:1000],
+            "created_on": now_datetime(),
+            "reference_doctype": doctype,
+            "reference_name": name,
+        }
+    ).insert(ignore_permissions=True)
+    target = _system_route(instance, stage.name, outcome)
+    if target:
+        _activate_stage(instance, target, source_task=source_task)
+        return
+    if outcome == "Success":
+        frappe.throw(_("Workflow has no next stage"))
+    instance.status = "Failed"
+    instance.completed_on = now_datetime()
+    instance.save(ignore_permissions=True)
+    for user in _users_for_roles(["System Manager"]):
+        _notify_user(
+            user,
+            _("Workflow automatic action failed: {0}").format(stage.stage_title),
+            instance,
+            message=comment,
         )
 
 
@@ -515,6 +692,8 @@ def get_workflow_instance(instance: str) -> dict:
             "action",
             "comment",
             "created_on",
+            "reference_doctype",
+            "reference_name",
         ],
         order_by="created_on asc",
         limit_page_length=0,
@@ -650,7 +829,10 @@ def save_workflow_task_draft(task: str, response: str | dict) -> dict:
     if not isinstance(values, dict):
         frappe.throw(_("Workflow draft must be an object"))
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
-    fields = json.loads(stage.config_json or "{}").get("form_fields", [])
+    stage_config = json.loads(stage.config_json or "{}")
+    if not stage_config.get("allow_draft", True):
+        frappe.throw(_("Drafts are disabled for this workflow stage"))
+    fields = stage_config.get("form_fields", [])
     allowed_keys = {field.get("key") for field in fields if isinstance(field, dict)}
     if set(values) - allowed_keys:
         frappe.throw(_("Workflow draft contains unknown fields"))
@@ -723,6 +905,8 @@ def complete_workflow_task(
         frappe.throw(_("Action is not valid for this workflow stage"))
     if config.get("comment_required") and not (comment or "").strip():
         frappe.throw(_("A decision comment is required"))
+    if action == "Reject" and config.get("reject_comment_required") and not (comment or "").strip():
+        frappe.throw(_("A rejection reason is required"))
     if action == "Reject" and not config.get("allow_reject", False):
         frappe.throw(_("Reject is not allowed for this stage"))
     if action == "Return" and not config.get("allow_return", False):
@@ -735,7 +919,10 @@ def complete_workflow_task(
         if isinstance(raw_response, str):
             raw_response = json.loads(raw_response)
         try:
-            normalized_response = normalize_form_response(config.get("form_fields", []), raw_response)
+            fields = config.get("form_fields", [])
+            if config.get("require_all_fields"):
+                fields = [{**field, "required": True} for field in fields if isinstance(field, dict)]
+            normalized_response = normalize_form_response(fields, raw_response)
         except ValueError as error:
             frappe.throw(_(str(error)))
         validate_link_values(

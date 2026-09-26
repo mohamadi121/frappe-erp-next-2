@@ -22,7 +22,11 @@ def request_permission(doc, user=None, permission_type=None):
         return False
     if not company_access(doc.company, user):
         return False
-    return doc.owner == user or bool({"System Manager", "HR Manager"}.intersection(frappe.get_roles(user)))
+    if doc.owner == user or {"System Manager", "HR Manager"}.intersection(frappe.get_roles(user)):
+        return True
+    # Stage assignees (e.g. the requester's direct manager) read the request they act on.
+    return bool(doc.get("workflow_instance") and frappe.db.exists(
+        "ASOUD Workflow Task", {"workflow_instance": doc.workflow_instance, "assigned_to": user}))
 
 
 def request_query(user=None):
@@ -33,7 +37,9 @@ def request_query(user=None):
     allowed = [company for company in companies if company_access(company, user)]
     if not allowed:
         return "1=0"
-    return ("`tabASOUD Workflow Request`.`owner` = " + frappe.db.escape(user)
+    return ("(`tabASOUD Workflow Request`.`owner` = " + frappe.db.escape(user)
+        + " OR `tabASOUD Workflow Request`.`workflow_instance` IN (SELECT `workflow_instance`"
+        " FROM `tabASOUD Workflow Task` WHERE `assigned_to` = " + frappe.db.escape(user) + "))"
         + " AND `tabASOUD Workflow Request`.`company` IN ("
         + ",".join(frappe.db.escape(company) for company in allowed) + ")")
 

@@ -58,6 +58,7 @@ def _serialize(doc):
         "attachments": json.loads(doc.attachments_json or "[]"),
         "workflow_instance": doc.workflow_instance or "", "status": (frappe.db.get_value("ASOUD Workflow Instance", doc.workflow_instance, "status") if doc.workflow_instance else doc.status),
         "request_id": doc.request_id,
+        "display_status": doc.display_status or "",
         "owner": doc.owner,
     }
 

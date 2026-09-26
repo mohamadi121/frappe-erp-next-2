@@ -12,7 +12,10 @@ LINK_FIELD_TYPES = {"User", "Department", "Item Table"}
 CHOICE_FIELD_TYPES = {"Choice", "Multi Choice"}
 NO_DEFAULT_FIELD_TYPES = {"Attachment", "Item Table", "User", "Department"}
 REQUEST_CATEGORIES = {"Finance", "HR", "Purchase", "IT", "General", "Other"}
-ASSIGNMENT_TYPES = {"Role", "Department", "Employee", "Initiator"}
+ASSIGNMENT_TYPES = {"Role", "Department", "Employee", "Initiator", "Initiator Department", "Direct Manager"}
+# Assignment types resolved from the request initiator; they need no target list.
+INITIATOR_ASSIGNMENTS = {"Initiator", "Initiator Department", "Direct Manager"}
+SYSTEM_ACTION_TYPES = {"Send Notification", "Assign Role", "Change Status", "Create Document"}
 
 
 def _unique_strings(values: Any) -> list[str]:
@@ -78,8 +81,7 @@ def _normalize_assignment(raw: dict[str, Any], prefix: str) -> dict[str, Any]:
         "Role": roles,
         "Department": departments,
         "Employee": employees,
-        "Initiator": ["initiator"],
-    }[assignment_type]
+    }.get(assignment_type, ["initiator"])
     if not selected:
         raise ValueError("At least one assignment target is required")
     return {
@@ -112,6 +114,11 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
             "allow_reject": bool(raw.get("allow_reject", False)),
             "allow_return": bool(raw.get("allow_return", False)),
             "comment_required": bool(raw.get("comment_required", False)),
+            "reject_comment_required": bool(raw.get("reject_comment_required", False)),
+            "allow_draft": bool(raw.get("allow_draft", True)),
+            "require_all_fields": bool(raw.get("require_all_fields", False)),
+            "allow_edit_after_submit": bool(raw.get("allow_edit_after_submit", False)),
+            "description": _description(raw),
             **_deadline_policy(raw),
         }
 
@@ -128,6 +135,8 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
             "allow_reject": bool(raw.get("allow_reject", True)),
             "allow_return": bool(raw.get("allow_return", True)),
             "comment_required": bool(raw.get("comment_required", False)),
+            "reject_comment_required": bool(raw.get("reject_comment_required", False)),
+            "description": _description(raw),
             **_deadline_policy(raw),
         }
 
@@ -153,18 +162,7 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
         }
 
     if stage_type == "System Action":
-        action_type = raw.get("action_type")
-        if action_type not in {"Send Notification", "Assign Role"}:
-            raise ValueError("Unsafe or unsupported system action")
-        target_roles = _unique_strings(raw.get("target_roles"))
-        if not target_roles:
-            raise ValueError("At least one target role is required")
-        return {
-            "title": title,
-            "action_type": action_type,
-            "target_roles": target_roles,
-            "message": str(raw.get("message") or "").strip(),
-        }
+        return {"title": title, "description": _description(raw), **_system_action(raw)}
 
     if stage_type == "Wait":
         wait_type = raw.get("wait_type")
@@ -184,6 +182,45 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
     if outcome not in {"Completed", "Rejected", "Cancelled", "Stopped"}:
         raise ValueError("Invalid workflow outcome")
     return {"title": title, "outcome": outcome, "result_label": str(raw.get("result_label") or "").strip()}
+
+
+def _description(raw: dict[str, Any]) -> str:
+    return str(raw.get("description") or "").strip()[:500]
+
+
+def _system_action(raw: dict[str, Any]) -> dict[str, Any]:
+    """Automatic actions run by the workflow engine; calling external APIs is not offered."""
+    action_type = raw.get("action_type")
+    if action_type not in SYSTEM_ACTION_TYPES:
+        raise ValueError("Unsafe or unsupported system action")
+    if action_type == "Create Document":
+        template = str(raw.get("document_template") or "").strip()
+        if not template or len(template) > 140:
+            raise ValueError("A document template is required")
+        return {
+            "action_type": action_type,
+            "document_template": template,
+            "transfer_values": bool(raw.get("transfer_values", True)),
+            "document_remark": str(raw.get("document_remark") or "").strip()[:500],
+        }
+    if action_type == "Change Status":
+        status = str(raw.get("request_status") or "").strip()
+        if not 2 <= len(status) <= 60:
+            raise ValueError("A request status label is required")
+        return {"action_type": action_type, "request_status": status}
+    target_roles = _unique_strings(raw.get("target_roles"))
+    notify_initiator = action_type == "Send Notification" and bool(raw.get("notify_initiator", False))
+    if not target_roles and not notify_initiator:
+        raise ValueError("At least one target role is required")
+    message = str(raw.get("message") or "").strip()
+    if action_type == "Send Notification" and not message:
+        raise ValueError("A notification message is required")
+    return {
+        "action_type": action_type,
+        "target_roles": target_roles,
+        "notify_initiator": notify_initiator,
+        "message": message[:1000],
+    }
 
 
 def _document_access(raw: dict[str, Any]) -> str:
