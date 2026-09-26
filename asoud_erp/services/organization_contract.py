@@ -4,6 +4,8 @@ def validate_rows(rows):
     positions, employees = {}, set()
     normalized = []
     for source in rows:
+        if not isinstance(source, dict):
+            raise ValueError("Each organization row must be an object")
         row = {key: str(source.get(key) or "").strip()
                for key in ("code", "title", "parent", "department", "employee")}
         if not row["code"] or not row["title"] or row["code"] in positions:

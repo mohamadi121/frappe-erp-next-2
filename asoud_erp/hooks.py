@@ -8,7 +8,8 @@ app_license = "MIT"
 required_apps = ["erpnext", "hrms"]
 
 doc_events = {
-    "Employee": {"on_update": "asoud_erp.services.personnel_employee.refresh_profile_cache"}
+    "Employee": {"on_update": "asoud_erp.services.personnel_employee.refresh_profile_cache"},
+    "User": {"validate": "asoud_erp.services.role_assignment.validate_role_profile_assignment"},
 }
 
 after_install = "asoud_erp.install.after_install"

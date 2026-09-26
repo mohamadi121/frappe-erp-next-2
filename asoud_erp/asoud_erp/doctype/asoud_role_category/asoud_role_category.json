@@ -1,0 +1,48 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Role Category",
+  "module": "ASOUD ERP",
+  "autoname": "field:category_code",
+  "track_changes": 1,
+  "title_field": "title",
+  "field_order": [
+    "category_code",
+    "title",
+    "style"
+  ],
+  "fields": [
+    {
+      "fieldname": "category_code",
+      "label": "Category Code",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "unique": 1,
+      "set_only_once": 1
+    },
+    {
+      "fieldname": "title",
+      "label": "Title",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "style",
+      "label": "Style",
+      "fieldtype": "Select",
+      "options": "managers\nsystem\nfinance\nsales\nstock\nhr\npurchase\nemployee",
+      "default": "system",
+      "reqd": 1
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1
+    }
+  ],
+  "sort_field": "title",
+  "sort_order": "ASC"
+}
