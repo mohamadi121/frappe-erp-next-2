@@ -9,6 +9,9 @@
   (or stop the instance as Failed and notify System Managers).
 - `workflow.save_stage_routes` sets a stage's exits per decision (approve, reject, return,
   success, error).
+- Submitting a generic request completes the requester's own form stage, so it reaches the next
+  stage at once; the requester can edit it until it is reviewed (`update_request`) or cancel it
+  (`cancel_request`).
 - New assignees: the initiator's department and direct manager. Stage settings: description,
   rejection reason required, and for user tasks drafts on/off and all fields required.
 

@@ -90,7 +90,7 @@
       "fieldname": "status",
       "label": "Status",
       "fieldtype": "Select",
-      "options": "Draft\nSubmitted\nCompleted\nRejected",
+      "options": "Draft\nSubmitted\nCompleted\nRejected\nCancelled",
       "default": "Draft",
       "reqd": 1
     },

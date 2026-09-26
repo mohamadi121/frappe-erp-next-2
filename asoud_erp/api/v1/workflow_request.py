@@ -6,7 +6,7 @@ from pathlib import PurePosixPath as Path
 
 import frappe
 from frappe import _
-from frappe.utils import getdate, nowdate
+from frappe.utils import get_fullname, getdate, now_datetime, nowdate
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.workflow_runtime import start_workflow_instance
@@ -36,7 +36,8 @@ def _may_submit(definition_name, user_roles):
     return not roles or "System Manager" in user_roles or bool(set(roles) & set(user_roles))
 
 
-def _fields(definition):
+def _form_stage(definition):
+    """The request form: the user task right after Start."""
     from asoud_erp.api.v1.workflow_runtime import _next_stage
 
     start = frappe.db.get_value("ASOUD Workflow Stage",
@@ -44,7 +45,22 @@ def _fields(definition):
     stage = _next_stage(frappe._dict(workflow_definition=definition.name), start) if start else None
     if not stage or stage.stage_type != "User Task":
         frappe.throw("Generic requests require a user-task form immediately after Start")
-    return json.loads(stage.config_json or "{}").get("form_fields", [])
+    return stage
+
+
+def _fields(definition):
+    return json.loads(_form_stage(definition).config_json or "{}").get("form_fields", [])
+
+
+def _submit_form_task(definition, instance: str, values: dict) -> None:
+    """Submitting the request fills the form stage when that task is the requester's own."""
+    from asoud_erp.api.v1.workflow_runtime import complete_workflow_task
+
+    task = frappe.db.get_value("ASOUD Workflow Task", {
+        "workflow_instance": instance, "status": "Open", "assigned_to": frappe.session.user,
+        "workflow_stage": _form_stage(definition).name}, "name")
+    if task:
+        complete_workflow_task(task, "Complete", response=values)
 
 
 def _serialize(doc):
@@ -60,6 +76,9 @@ def _serialize(doc):
         "request_id": doc.request_id,
         "display_status": doc.display_status or "",
         "owner": doc.owner,
+        "requester_name": frappe.db.get_value("Employee", {"user_id": doc.owner}, "employee_name")
+        or get_fullname(doc.owner),
+        "creation": str(doc.creation or ""),
     }
 
 
@@ -186,6 +205,92 @@ def create_request(company: str, workflow_definition: str, subject: str, request
     instance = result.get("data", {}).get("name", "")
     doc.workflow_instance = instance
     doc.save(ignore_permissions=True)
+    if instance:
+        _submit_form_task(definition, instance, normalized)
+    return success(_serialize(doc))
+
+
+def _own_running_request(name):
+    doc = frappe.get_doc("ASOUD Workflow Request", name, for_update=True)
+    if doc.owner != frappe.session.user:
+        frappe.throw(_("Only the requester can change this request"), frappe.PermissionError)
+    require_company(doc.company)
+    instance = (frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
+                if doc.workflow_instance else None)
+    if not instance or instance.status != "Running":
+        frappe.throw(_("Only a request in progress can be changed"))
+    return doc, instance
+
+
+def _activity(instance, action: str, comment: str = "") -> None:
+    frappe.get_doc({
+        "doctype": "ASOUD Workflow Activity", "workflow_instance": instance.name,
+        "workflow_stage": instance.current_stage, "actor": frappe.session.user,
+        "action": action, "comment": comment[:1000], "created_on": now_datetime(),
+    }).insert(ignore_permissions=True)
+
+
+@frappe.whitelist(methods=["POST"])
+def cancel_request(name: str, reason: str = ""):
+    """The requester withdraws a request that is still in progress."""
+    doc, instance = _own_running_request(name)
+    frappe.db.set_value("ASOUD Workflow Task", {"workflow_instance": instance.name, "status": "Open"},
+                        "status", "Cancelled", update_modified=False)
+    instance.status = "Cancelled"
+    instance.completed_on = now_datetime()
+    instance.save(ignore_permissions=True)
+    _activity(instance, "Cancelled", (reason or "").strip())
+    doc.db_set("status", "Cancelled")
+    return success(_serialize(doc))
+
+
+@frappe.whitelist(methods=["POST"])
+def update_request(name: str, subject: str, values: str | dict = "{}"):
+    """The requester edits a request until someone else has acted on it.
+
+    Attachment fields keep their uploaded files; the form stage's response is
+    updated too, so later stages see the corrected values.
+    """
+    doc, instance = _own_running_request(name)
+    definition = frappe.get_doc("ASOUD Workflow Definition", doc.workflow_definition)
+    form_stage = _form_stage(definition)
+    acted = frappe.get_all("ASOUD Workflow Task", filters={
+        "workflow_instance": instance.name, "status": ["in", ["Completed", "Rejected"]],
+        "workflow_stage": ["!=", form_stage.name]}, pluck="name", limit=1)
+    if acted:
+        frappe.throw(_("The request has already been reviewed and can no longer be edited"))
+    subject = (subject or "").strip()
+    if not 3 <= len(subject) <= 140:
+        frappe.throw(_("Request subject must contain at least 3 characters"))
+    raw = json.loads(values) if isinstance(values, str) else values
+    if not isinstance(raw, dict):
+        frappe.throw("Invalid request values")
+    fields = _fields(definition)
+    stored = json.loads(doc.values_json or "{}")
+    attachment_keys = {f["key"] for f in fields if f.get("type") == "Attachment"}
+    merged = {**{k: v for k, v in raw.items() if k not in attachment_keys},
+              **{k: stored.get(k) for k in attachment_keys}}
+    try:
+        normalized = normalize_form_response(fields, {
+            key: "/private/files/pending" if key in attachment_keys and value else value
+            for key, value in merged.items()})
+    except ValueError as error:
+        frappe.throw(_(str(error)))
+    validate_link_values(fields, normalized, doc.company)
+    for key in attachment_keys:
+        normalized[key] = stored.get(key)
+    doc.subject = subject
+    doc.values_json = json.dumps(normalized, ensure_ascii=False)
+    doc.save(ignore_permissions=True)
+    instance.subject = subject
+    instance.save(ignore_permissions=True)
+    task = frappe.db.get_value("ASOUD Workflow Task", {
+        "workflow_instance": instance.name, "workflow_stage": form_stage.name,
+        "status": "Completed"}, "name")
+    if task:
+        frappe.db.set_value("ASOUD Workflow Task", task, "response_json",
+                            json.dumps(normalized, ensure_ascii=False))
+    _activity(instance, "Edited")
     return success(_serialize(doc))
 
 

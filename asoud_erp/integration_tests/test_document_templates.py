@@ -58,7 +58,8 @@ class TestDocumentTemplates(APITestCase):
             "User Task": {"title": "ثبت درخواست", "activity_type": "Data Entry",
                           "assignment_type": "Initiator", "form_fields": fields},
             "Approval": {"title": "تأیید مدیر", "assignment_type": "Direct Manager",
-                         "approval_mode": "Any", "allow_reject": True, "reject_comment_required": True},
+                         "approval_mode": "Any", "allow_reject": True, "allow_return": True,
+                         "reject_comment_required": True},
             "System Action": {"title": "ثبت سند", "action_type": "Change Status",
                               "request_status": "در حال ثبت"},
             "End": {"title": "پایان", "outcome": "Completed"},
@@ -103,9 +104,6 @@ class TestDocumentTemplates(APITestCase):
             request = workflow_request.create_request(
                 self.company, self.definition.name, "خرید تجهیزات", "doc-req-" + self.token,
                 values={"amount": amount, "items": [{"item_code": ITEM, "qty": 2}]})["data"]
-            task = frappe.db.get_value("ASOUD Workflow Task", {
-                "workflow_instance": request["workflow_instance"], "status": "Open"}, "name")
-            workflow_runtime.complete_workflow_task(task, "Complete")
             frappe.set_user(APPROVER_USER)
             approval = frappe.db.get_value("ASOUD Workflow Task", {
                 "workflow_instance": request["workflow_instance"], "status": "Open"},
@@ -230,9 +228,6 @@ class TestDocumentTemplates(APITestCase):
             request = workflow_request.create_request(
                 self.company, self.definition.name, "خرید تجهیزات", "doc-rej-" + self.token,
                 values={"amount": 10})["data"]
-            task = frappe.db.get_value("ASOUD Workflow Task", {
-                "workflow_instance": request["workflow_instance"], "status": "Open"}, "name")
-            workflow_runtime.complete_workflow_task(task, "Complete")
             frappe.set_user(APPROVER_USER)
             approval = frappe.db.get_value("ASOUD Workflow Task", {
                 "workflow_instance": request["workflow_instance"], "status": "Open"}, "name")
@@ -267,9 +262,6 @@ class TestDocumentTemplates(APITestCase):
             request = workflow_request.create_request(
                 self.company, self.definition.name, "خرید تجهیزات", "doc-read-" + self.token,
                 values={"amount": 10})["data"]
-            task = frappe.db.get_value("ASOUD Workflow Task", {
-                "workflow_instance": request["workflow_instance"], "status": "Open"}, "name")
-            workflow_runtime.complete_workflow_task(task, "Complete")
         frappe.set_user(APPROVER_USER)
         self.assertEqual(workflow_request.get_request(request["name"])["data"]["subject"], "خرید تجهیزات")
         frappe.set_user(ACCOUNTANT_USER)
@@ -305,3 +297,53 @@ class TestDocumentTemplates(APITestCase):
         created = [row for row in instance["activities"] if row["action"] == "System Action Succeeded"]
         self.assertEqual(created[0]["reference_doctype"], "Journal Entry")
         self.assertEqual(workflow_request.get_request(request["name"])["data"]["display_status"], "")
+
+    # --- requester actions -------------------------------------------------------------------
+
+    def _submit(self, suffix: str, amount=10):
+        frappe.set_user(EMPLOYEE_USER)
+        with patch.object(workflow_runtime, "_notify_user"):
+            return workflow_request.create_request(
+                self.company, self.definition.name, "خرید تجهیزات", "doc-" + suffix + "-" + self.token,
+                values={"amount": amount})["data"]
+
+    def test_submitting_fills_the_form_stage_and_reaches_the_manager(self):
+        request = self._submit("auto")
+        tasks = frappe.get_all("ASOUD Workflow Task", filters={"workflow_instance": request["workflow_instance"]},
+                               fields=["assigned_to", "status"], order_by="creation asc")
+        self.assertEqual([(t.assigned_to, t.status) for t in tasks],
+                         [(EMPLOYEE_USER, "Completed"), (APPROVER_USER, "Open")])
+        self.assertEqual(request["requester_name"], frappe.db.get_value(
+            "Employee", {"user_id": EMPLOYEE_USER}, "employee_name"))
+        self.assertTrue(request["creation"])
+
+    def test_requester_edits_until_reviewed_then_cancels(self):
+        request = self._submit("edit")
+        updated = workflow_request.update_request(request["name"], "خرید لپ‌تاپ", {"amount": 55})["data"]
+        self.assertEqual((updated["subject"], updated["values"]["amount"]), ("خرید لپ‌تاپ", 55))
+        response = frappe.db.get_value("ASOUD Workflow Task", {
+            "workflow_instance": request["workflow_instance"], "status": "Completed"}, "response_json")
+        self.assertEqual(json.loads(response)["amount"], 55)
+        with self.assertRaises(frappe.ValidationError):
+            workflow_request.update_request(request["name"], "خرید لپ‌تاپ", {"amount": "زیاد"})
+        frappe.set_user(APPROVER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            workflow_request.cancel_request(request["name"])
+        frappe.set_user(EMPLOYEE_USER)
+        cancelled = workflow_request.cancel_request(request["name"], "دیگر لازم نیست")["data"]
+        self.assertEqual(cancelled["status"], "Cancelled")
+        self.assertFalse(frappe.db.exists("ASOUD Workflow Task", {
+            "workflow_instance": request["workflow_instance"], "status": "Open"}))
+        with self.assertRaises(frappe.ValidationError):
+            workflow_request.cancel_request(request["name"])
+
+    def test_edit_is_refused_after_the_manager_acted(self):
+        request = self._submit("late")
+        frappe.set_user(APPROVER_USER)
+        approval = frappe.db.get_value("ASOUD Workflow Task", {
+            "workflow_instance": request["workflow_instance"], "status": "Open"}, "name")
+        with patch.object(workflow_runtime, "_notify_user"):
+            workflow_runtime.complete_workflow_task(approval, "Return", comment="مبلغ را اصلاح کنید")
+        frappe.set_user(EMPLOYEE_USER)
+        with self.assertRaises(frappe.ValidationError):
+            workflow_request.update_request(request["name"], "خرید تجهیزات", {"amount": 20})

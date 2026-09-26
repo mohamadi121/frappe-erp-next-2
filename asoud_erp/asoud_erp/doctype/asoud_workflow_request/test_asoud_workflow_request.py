@@ -165,9 +165,8 @@ class TestASOUDWorkflowRequest(FrappeTestCase):
     def test_request_status_tracks_completed_workflow_and_company_revocation(self):
         from frappe.client import get_list
         with patch.object(workflow_runtime, "_notify_user"):
+            # Submitting fills the requester's own form stage, so the workflow reaches End.
             request = self.create()
-            task = frappe.db.get_value("ASOUD Workflow Task", {"workflow_instance": request["workflow_instance"]}, "name")
-            workflow_runtime.complete_workflow_task(task, "Complete", response={"amount": 321})
         self.assertEqual(workflow_request.get_request(request["name"])["data"]["status"], "Completed")
         frappe.db.set_value("Employee", self.employee.name, "status", "Left")
         with self.assertRaises(frappe.PermissionError):

@@ -109,6 +109,18 @@ company, a Department must belong to that company, and item rows reference ERPNe
 for these fields from the same masters. Fields also keep an optional
 `default_value`, `help_text` and `show_in_list` flag.
 
+When the form stage's task goes to the requester (assignment `Initiator`),
+`create_request` completes it with the submitted values, so the request moves on
+to its next stage (for example the direct manager's approval) at once.
+`get_request` also returns `requester_name`, `creation` and `display_status`.
+
+The requester can still act on a request in progress:
+
+| Method | Rule |
+| --- | --- |
+| `update_request(name, subject, values)` | Allowed until a stage other than the form has been completed; attachment fields keep their files. The form stage's response is updated, so later stages see the corrected values. Writes an `Edited` activity. |
+| `cancel_request(name, reason?)` | Cancels open tasks, sets the instance and request to `Cancelled` and writes a `Cancelled` activity. |
+
 # Purchase request integration
 
 `create_purchase_request` creates an ERPNext v15 `Material Request` with
