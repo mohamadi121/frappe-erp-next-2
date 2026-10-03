@@ -81,6 +81,30 @@ def _normalize_form_fields(values: Any) -> list[dict[str, Any]]:
     return result
 
 
+def _normalize_form_layout(values: Any, fields: list[dict]) -> list[dict]:
+    """Presentation metadata only; never replaces native request fields."""
+    if values is None:
+        return []
+    if not isinstance(values, list) or len(values) > 37:
+        raise ValueError("Invalid form layout")
+    allowed = {"base:number", "base:author", "base:department", "base:date",
+               "base:status", "base:description", "base:attachments"}
+    allowed.update(field["key"] for field in fields)
+    seen = set()
+    result = []
+    for item in values:
+        if not isinstance(item, dict):
+            raise ValueError("Invalid form placement")
+        key = item.get("key")
+        if not isinstance(key, str) or key not in allowed or key in seen:
+            raise ValueError("Unknown or duplicate form placement")
+        if type(item.get("span")) is not int or item["span"] not in (1, 2):
+            raise ValueError("Invalid form width")
+        seen.add(key)
+        result.append({"key": key, "span": item["span"]})
+    return result
+
+
 def _normalize_assignment(raw: dict[str, Any], prefix: str) -> dict[str, Any]:
     assignment_type = str(raw.get("assignment_type") or "Role")
     if assignment_type not in ASSIGNMENT_TYPES:
@@ -115,12 +139,15 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
         if activity_type not in {"Data Entry", "Review", "Correction", "Task"}:
             raise ValueError("Invalid user task activity")
         assignment = _normalize_assignment(raw, "assignee")
+        fields = _normalize_form_fields(raw.get("form_fields"))
         return {
             "title": title,
             "activity_type": activity_type,
             **assignment,
             "instructions": str(raw.get("instructions") or "").strip(),
-            "form_fields": _normalize_form_fields(raw.get("form_fields")),
+            "form_fields": fields,
+            **({"form_layout": _normalize_form_layout(raw["form_layout"], fields)}
+               if "form_layout" in raw else {}),
             "document_access": _document_access(raw),
             "allow_reject": bool(raw.get("allow_reject", False)),
             "allow_return": bool(raw.get("allow_return", False)),
