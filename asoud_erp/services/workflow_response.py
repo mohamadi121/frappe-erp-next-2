@@ -75,6 +75,13 @@ def normalize_form_response(fields: Any, response: Any) -> dict[str, Any]:
             result[key] = value.strip()
         elif field_type == "Item Table":
             result[key] = _item_rows(value, key)
+        elif field_type == "Table":
+            if not isinstance(value, list) or len(value) > MAX_ITEM_ROWS:
+                raise ValueError(f"Invalid table: {key}")
+            columns = field.get("columns")
+            if not isinstance(columns, list) or not columns:
+                raise ValueError(f"Table columns are missing: {key}")
+            result[key] = [normalize_form_response(columns, row) for row in value]
         elif field_type == "Attachment":
             if not isinstance(value, str) or not value.startswith(("/private/files/", "/files/")):
                 raise ValueError(f"Invalid workflow attachment: {key}")
@@ -87,4 +94,25 @@ def normalize_form_response(fields: Any, response: Any) -> dict[str, Any]:
             result[key] = value.strip()
             if field.get("required") and not result[key]:
                 raise ValueError(f"Required workflow field is empty: {key}")
+    return result
+
+
+def map_attachment_values(fields: list, response: dict, mapper) -> dict:
+    """Transform attachment references without dropping unknown keys.
+
+    Shape validation remains the responsibility of normalize_form_response.
+    Used before upload validation and after private File records are created.
+    """
+    result = dict(response)
+    for field in fields:
+        key = field.get("key")
+        value = result.get(key)
+        if field.get("type") == "Attachment" and value:
+            result[key] = mapper(value)
+        elif field.get("type") == "Table" and isinstance(value, list):
+            result[key] = [
+                map_attachment_values(field.get("columns") or [], row, mapper)
+                if isinstance(row, dict) else row
+                for row in value
+            ]
     return result

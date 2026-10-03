@@ -873,6 +873,9 @@ def upload_workflow_attachment(task: str, filename: str, content_base64: str) ->
 def _validate_response_attachments(fields, values):
     for field in fields:
         value = values.get(field.get("key"))
+        if field.get("type") == "Table" and isinstance(value, list):
+            for row in value:
+                _validate_response_attachments(field.get("columns") or [], row)
         if field.get("type") != "Attachment" or not value:
             continue
         files = frappe.get_all("File", filters={"file_url": value}, pluck="name")

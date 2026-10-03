@@ -12,7 +12,7 @@ from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.workflow_runtime import start_workflow_instance
 from asoud_erp.services.request_access import request_permission, require_company
 from asoud_erp.services.request_link_values import item_uoms, validate_link_values
-from asoud_erp.services.workflow_response import normalize_form_response
+from asoud_erp.services.workflow_response import map_attachment_values, normalize_form_response
 
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".xlsx", ".docx"}
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
@@ -140,10 +140,8 @@ def create_request(company: str, workflow_definition: str, subject: str, request
     if not isinstance(raw_values, dict):
         frappe.throw("Invalid request values")
     fields = _fields(definition)
-    attachment_keys = {f["key"] for f in fields if f.get("type") == "Attachment"}
-    normalized = normalize_form_response(fields, {
-        key: "/private/files/pending" if key in attachment_keys and value else value
-        for key, value in raw_values.items()})
+    normalized = normalize_form_response(fields, map_attachment_values(
+        fields, raw_values, lambda value: "/private/files/pending"))
     validate_link_values(fields, normalized, company)
     for doctype, value in (("Project", project), ("Department", department)):
         if value and (not frappe.has_permission(doctype, "read", value)
@@ -192,11 +190,14 @@ def create_request(company: str, workflow_definition: str, subject: str, request
         }).insert(ignore_permissions=True)
         urls["attachment:" + filename] = file_doc.file_url
         stored_attachments.append({"name": file_doc.name, "filename": filename, "file_url": file_doc.file_url})
-    for key in attachment_keys:
-        value = raw_values.get(key)
-        if value and value not in urls:
+    def uploaded_reference(value):
+        if not isinstance(value, str) or value not in urls:
             frappe.throw("Attachment field must reference an uploaded file")
-        normalized[key] = urls.get(value) if value else None
+        return urls[value]
+
+    normalized = normalize_form_response(
+        fields, map_attachment_values(fields, raw_values, uploaded_reference))
+    validate_link_values(fields, normalized, company)
     doc.values_json = json.dumps(normalized, ensure_ascii=False)
     doc.attachments_json = json.dumps(stored_attachments, ensure_ascii=False)
     doc.save(ignore_permissions=True)
@@ -270,10 +271,17 @@ def update_request(name: str, subject: str, values: str | dict = "{}"):
     attachment_keys = {f["key"] for f in fields if f.get("type") == "Attachment"}
     merged = {**{k: v for k, v in raw.items() if k not in attachment_keys},
               **{k: stored.get(k) for k in attachment_keys}}
+    allowed_files = {item.get("file_url") for item in json.loads(doc.attachments_json or "[]")}
+    allowed_files.update(stored.get(key) for key in attachment_keys)
+
+    def existing_reference(value):
+        if not isinstance(value, str) or value not in allowed_files:
+            frappe.throw("Attachment field must reference a file of this request")
+        return value
+
     try:
-        normalized = normalize_form_response(fields, {
-            key: "/private/files/pending" if key in attachment_keys and value else value
-            for key, value in merged.items()})
+        normalized = normalize_form_response(
+            fields, map_attachment_values(fields, merged, existing_reference))
     except ValueError as error:
         frappe.throw(_(str(error)))
     validate_link_values(fields, normalized, doc.company)

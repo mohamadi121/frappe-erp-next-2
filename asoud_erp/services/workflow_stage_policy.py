@@ -5,12 +5,13 @@ STAGE_TYPES = {"User Task", "Approval", "Condition", "System Action", "Wait", "E
 ROLE_BASED_TYPES = {"User Task": "assignee_roles", "Approval": "approver_roles"}
 FORM_FIELD_TYPES = {
     "Short Text", "Long Text", "Number", "Currency", "Date", "Choice", "Attachment", "Checkbox",
-    "Multi Choice", "User", "Department", "Item Table",
+    "Multi Choice", "User", "Department", "Item Table", "Table",
 }
 # Values of these types are ERPNext record names, validated against User, Department and Item.
 LINK_FIELD_TYPES = {"User", "Department", "Item Table"}
 CHOICE_FIELD_TYPES = {"Choice", "Multi Choice"}
-NO_DEFAULT_FIELD_TYPES = {"Attachment", "Item Table", "User", "Department"}
+NO_DEFAULT_FIELD_TYPES = {"Attachment", "Item Table", "User", "Department", "Table"}
+TABLE_COLUMN_TYPES = {"Short Text", "Number", "Currency", "Date", "Choice", "Attachment"}
 REQUEST_CATEGORIES = {"Finance", "HR", "Purchase", "IT", "General", "Other"}
 ASSIGNMENT_TYPES = {"Role", "Department", "Employee", "Initiator", "Initiator Department", "Direct Manager"}
 # Assignment types resolved from the request initiator; they need no target list.
@@ -43,6 +44,15 @@ def _normalize_form_fields(values: Any) -> list[dict[str, Any]]:
             raise ValueError("Form field label is required")
         if field_type not in FORM_FIELD_TYPES:
             raise ValueError("Unsupported form field type")
+        columns = []
+        if field_type == "Table":
+            raw_columns = item.get("columns")
+            if not isinstance(raw_columns, list) or not 1 <= len(raw_columns) <= 12:
+                raise ValueError("Tables require between 1 and 12 columns")
+            if any(not isinstance(column, dict) or column.get("type") not in TABLE_COLUMN_TYPES
+                   for column in raw_columns):
+                raise ValueError("Unsupported table column type")
+            columns = _normalize_form_fields(raw_columns)
         options = _unique_strings(item.get("options"))
         if field_type in CHOICE_FIELD_TYPES and len(options) < 2:
             raise ValueError("Choice fields require at least two options")
@@ -66,6 +76,7 @@ def _normalize_form_fields(values: Any) -> list[dict[str, Any]]:
             "help_text": str(item.get("help_text") or "").strip()[:200],
             "show_in_list": bool(item.get("show_in_list", False)),
             "position": position,
+            **({"columns": columns} if field_type == "Table" else {}),
         })
     return result
 
