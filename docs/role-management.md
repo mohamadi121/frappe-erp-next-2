@@ -31,8 +31,14 @@ All endpoints under `asoud_erp.api.v1.role_management` require System Manager.
   custom overrides, field permission levels and owner-only restrictions. This is
   not a claim about any specific user's effective access.
 
-Creation and editing are server-only. No local draft is treated as an active
-security grant. Editing a profile used by existing users invokes Frappe's native
+The mobile client can persist category/role drafts on the device when offline.
+Storage is scoped by server and authenticated user; unsigned preview data has a
+separate namespace and is never automatically adopted by another account.
+Drafts are sent only through an explicit sync action, categories and parent
+roles first, using the original modification timestamps. Authorization,
+validation and conflict errors retain the unsent draft; they are not reported
+as remote success. Applied entries are removed individually to allow retry.
+No local draft is treated as an active security grant. Editing a profile used by existing users invokes Frappe's native
 propagation when its base roles change. The mobile single-page form edits basic
 metadata only, preserving existing base roles without re-saving the native
 profile. New manual profiles may have no base roles and grant no access;
