@@ -83,4 +83,42 @@ def test_execute_mutation_returns_saved_response_without_second_execution(monkey
 
 def test_cancel_methods_are_replayable(monkeypatch):
     sync = _load_module(monkeypatch)
-    assert "cancel_" in sync._MUTATION_PREFIXES
+    records = {}
+    document = types.SimpleNamespace(name="INV-1", docstatus=1)
+    calls = []
+    targets = []
+
+    class Receipt:
+        def __init__(self, values):
+            self.__dict__.update(values)
+            self.owner = sync.frappe.session.user
+            self.response_json = None
+
+        def insert(self, **kwargs):
+            records[self.request_key] = self
+
+        save = insert
+
+    def cancel_sales_invoice(**values):
+        calls.append(values)
+        assert document.docstatus == 1
+        document.docstatus = 2
+        return {"ok": True, "data": {"name": document.name, "docstatus": document.docstatus}}
+
+    def resolve(method):
+        targets.append(method)
+        return cancel_sales_invoice
+
+    sync.frappe.session = types.SimpleNamespace(user="a@example.com")
+    sync.frappe.db = types.SimpleNamespace(get_value=lambda doctype, key, fields, **kw: records.get(key))
+    sync.frappe.get_doc = Receipt
+    sync.frappe.get_attr = resolve
+    method = "asoud_erp.api.v1.selling.cancel_sales_invoice"
+    first = sync.execute_mutation("cancel-1", method, {"name": "INV-1"})
+    second = sync.execute_mutation("cancel-1", method, {"name": "INV-1"})
+    assert first["ok"] is True
+    assert first["data"] == {"name": "INV-1", "docstatus": 2}
+    assert document.docstatus == 2
+    assert second == first
+    assert targets == [method]
+    assert calls == [{"name": "INV-1"}]

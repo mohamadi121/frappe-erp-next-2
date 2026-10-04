@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import frappe
 
 from asoud_erp.api.v1 import dashboard, selling, support, sync
@@ -68,3 +70,18 @@ class TestSyncReplay(APITestCase):
         frappe.set_user(APPROVER_USER)
         other = sync.execute_mutation("asoud-test-key-1", "asoud_erp.api.v1.support.create_issue", payload)
         self.assertEqual(other["error"]["code"], "INVALID_REQUEST_KEY")
+
+    def test_cancel_replays_the_real_target_once(self):
+        invoice = selling.create_sales_invoice(
+            self.company, CUSTOMER, [{"item_code": SERVICE, "qty": 1}], submit=1)["data"]
+        method = "asoud_erp.api.v1.selling.cancel_sales_invoice"
+        key = "cancel-" + frappe.generate_hash(length=20)
+        with patch.object(selling, "cancel_sales_invoice", wraps=selling.cancel_sales_invoice) as target:
+            first = sync.execute_mutation(key, method, {"name": invoice["name"]})
+            second = sync.execute_mutation(key, method, {"name": invoice["name"]})
+        self.assertTrue(first["ok"])
+        self.assertEqual(first["data"]["docstatus"], 2)
+        self.assertEqual(first["data"]["name"], invoice["name"])
+        self.assertEqual(first, second)
+        self.assertEqual(frappe.db.get_value("Sales Invoice", invoice["name"], "docstatus"), 2)
+        target.assert_called_once_with(name=invoice["name"])
