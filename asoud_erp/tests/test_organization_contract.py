@@ -6,6 +6,15 @@ from asoud_erp.services.organization_contract import validate_rows
 def test_hierarchy():
     assert len(validate_rows([{"code": "CEO", "title": "CEO"}, {"code": "ACC", "title": "Accountant", "parent": "CEO"}])) == 2
 
+    assert validate_rows([
+        {"code": " CEO ", "title": " CEO "},
+        {"code": " ACC ", "title": " Accountant ", "parent": " CEO ",
+         "employee": " EMP-1 ", "department": " Finance "},
+    ]) == [
+        {"code": "CEO", "title": "CEO", "parent": "", "department": "", "employee": ""},
+        {"code": "ACC", "title": "Accountant", "parent": "CEO", "department": "Finance", "employee": "EMP-1"},
+    ]
+
 @pytest.mark.parametrize("rows", [
     [{"code": "A", "title": "A", "parent": "A"}],
     [{"code": "A", "title": "A", "parent": "B"}, {"code": "B", "title": "B", "parent": "A"}],
