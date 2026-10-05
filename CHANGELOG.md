@@ -4,6 +4,11 @@
 
 Security:
 
+- `detail_group.list_account_mappings` and `detail_group.save_account_mapping` now
+  check `company` with `request_access.require_company`. `ASOUD Account Mapping`
+  carries a company, and the read was built with `frappe.get_all`, so it returned
+  another company's account-to-detail-group mapping. The detail group catalogue
+  itself (`ASOUD Detail Group`) has no company and stays site-wide.
 - `floating_detail.create_floating_detail` and `floating_detail.link_floating_detail`
   now check the company of the record a detail is attached to. `ASOUD Floating
   Detail` has no company column, so a Company User Permission never applied to it:

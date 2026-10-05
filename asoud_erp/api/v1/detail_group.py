@@ -2,6 +2,7 @@ import frappe
 from frappe import _
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.request_access import require_company
 
 DEFAULT_GROUPS = (
     ("10000", "مشتریان", "Customer"),
@@ -106,6 +107,7 @@ def disable_detail_group(name: str) -> dict:
 @frappe.whitelist(methods=["POST"])
 def save_account_mapping(company: str, account: str, detail_group: str, enabled: int | bool = 1) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
+    require_company(company)
     if not frappe.db.exists("Account", {"name": account, "company": company}):
         frappe.throw(_("Account does not belong to the selected company"))
     if int(frappe.db.get_value("Account", account, "is_group") or 0):
@@ -130,6 +132,7 @@ def save_account_mapping(company: str, account: str, detail_group: str, enabled:
 @frappe.whitelist()
 def list_account_mappings(company: str, account: str | None = None) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_company(company)
     filters = {"company": company, "disabled": 0}
     if account:
         filters["account"] = account

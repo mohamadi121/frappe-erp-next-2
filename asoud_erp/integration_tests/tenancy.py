@@ -199,6 +199,21 @@ def coded_accounts(target: str, count: int = 3) -> list[str]:
     return names
 
 
+def _account_mapping(company: str, account: str, detail_group: str = "10000") -> str:
+    existing = frappe.db.get_value("ASOUD Account Mapping", {"company": company, "account": account}, "name")
+    if existing:
+        return existing
+    return frappe.get_doc(
+        {
+            "doctype": "ASOUD Account Mapping",
+            "company": company,
+            "account": account,
+            "detail_group": detail_group,
+            "allow_floating_detail": 1,
+        }
+    ).insert(ignore_permissions=True).name
+
+
 def _floating_detail(title: str, detail_group: str = "10000") -> str:
     from asoud_erp.services.detail_code_service import next_detail_code
 
@@ -261,6 +276,7 @@ def setup_tenancy() -> dict:
     _post_gl(first)
     _post_gl(second)
     coded = coded_accounts(second)
+    mapping_b = _account_mapping(second, coded[0])
 
     party_a = _party("ASOUD Scope Party A", first, ["Customer"], iban=IBAN_A, bank_name="Bank A",
                      account_number="1000000001", card_number="6100000000000001")
@@ -287,5 +303,6 @@ def setup_tenancy() -> dict:
         "employee_a": employee_a,
         "employee_b": employee_b,
         "coded_accounts_b": coded,
+        "mapping_b": mapping_b,
         "floating_detail": floating_detail,
     }

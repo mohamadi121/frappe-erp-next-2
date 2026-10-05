@@ -8,7 +8,7 @@ with an empty list and the leak is invisible.
 
 import frappe
 
-from asoud_erp.api.v1 import account, floating_detail
+from asoud_erp.api.v1 import account, detail_group, floating_detail
 from asoud_erp.integration_tests.fixtures import APITestCase
 from asoud_erp.integration_tests.tenancy import ACCOUNTS_A_USER, MANAGER_USER, setup_tenancy
 
@@ -78,3 +78,33 @@ class TestFloatingDetailCompanyScope(APITestCase):
         frappe.set_user(ACCOUNTS_A_USER)
         data = floating_detail.link_floating_detail(name=self.detail, party_profile=self.scope["party_a"])["data"]
         self.assertEqual(data["linked_document"], self.scope["party_a"])
+
+
+class TestDetailGroupCompanyScope(APITestCase):
+    """``ASOUD Detail Group`` is a site-wide catalogue, but ``ASOUD Account
+    Mapping`` carries a company and must be tenant scoped."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.scope = setup_tenancy()
+        cls.second = cls.scope["second"]
+        cls.mapping_b = cls.scope["mapping_b"]
+
+    def test_listing_a_foreign_company_mapping_is_refused(self):
+        frappe.set_user(ACCOUNTS_A_USER)
+        with self.assertRaises(frappe.PermissionError):
+            detail_group.list_account_mappings(company=self.second)
+        self.assertEqual(frappe.db.get_value("ASOUD Account Mapping", self.mapping_b, "company"), self.second)
+
+    def test_saving_a_foreign_company_mapping_is_refused(self):
+        frappe.set_user(MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            detail_group.save_account_mapping(company=self.second, account=self.scope["coded_accounts_b"][1],
+                                              detail_group="20000")
+
+    def test_detail_group_catalogue_stays_site_wide(self):
+        """The catalogue has no company column, so it is read as a whole."""
+        frappe.set_user(ACCOUNTS_A_USER)
+        codes = {row["group_code"] for row in detail_group.list_detail_groups()["data"]}
+        self.assertIn("10000", codes)
