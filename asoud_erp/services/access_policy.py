@@ -49,3 +49,19 @@ def frappe_roles_for(values: Iterable[str] | None) -> list[str]:
         for frappe_role in ASOUD_ROLE_TO_FRAPPE_ROLES[key]
     }
     return sorted(roles)
+
+
+# The native roles that make an account a supervisor of a company; «سطح دسترسی»
+# in the personnel file is derived from the roles the user actually holds.
+MANAGER_ROLES = frozenset({
+    "System Manager", "HR Manager", "Accounts Manager",
+    "Sales Manager", "Purchase Manager", "Stock Manager",
+})
+
+
+def access_level_for(frappe_roles: Iterable[str] | None) -> str:
+    """``manager`` for a supervisory role, ``user`` for any role, else ``none``."""
+    roles = {str(role) for role in frappe_roles or ()}
+    if roles & MANAGER_ROLES:
+        return "manager"
+    return "user" if roles else "none"
