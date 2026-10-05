@@ -4,6 +4,13 @@
 
 Security:
 
+- `party.save_party` now refuses a profile with the `Employee` role unless the
+  caller is `System Manager` or `HR Manager`. An accountant could otherwise
+  rewrite Employee master data (gender, birth date, date of joining, designation)
+  with permission checks disabled, and set the employee's bank details, bypassing
+  the `PERSONAL_FIELDS` allow-list of `personnel.update_personnel`. The Employee
+  write now goes through Frappe's own permission check, and only allow-listed
+  fields are mirrored onto it.
 - `party.list_parties` requires `company` and checks it with
   `request_access.require_company`. Without it the endpoint answered for every
   company and returned the bank name, IBAN and account numbers of parties the

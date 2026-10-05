@@ -23,12 +23,15 @@ SECOND_ABBR = "ASEC"
 ACCOUNTS_A_USER = "asoud.scope-accounts-a@example.com"
 ACCOUNTS_B_USER = "asoud.scope-accounts-b@example.com"
 HR_MANAGER_USER = "asoud.scope-hr@example.com"
+#: HR and accounting in one person: the legitimate way to keep a personnel party.
+PERSONNEL_USER = "asoud.scope-personnel@example.com"
 MANAGER_USER = "asoud.scope-manager@example.com"
 EMPLOYEE_A_USER = "asoud.scope-employee-a@example.com"
 EMPLOYEE_B_USER = "asoud.scope-employee-b@example.com"
 
 DESIGNATION_A = "ASOUD Scope A"
 DESIGNATION_B = "ASOUD Scope B"
+DESIGNATION_OTHER = "ASOUD Scope Other"
 DEPARTMENT_A = "ASOUD Scope Department A"
 DEPARTMENT_B = "ASOUD Scope Department B"
 
@@ -187,21 +190,24 @@ def setup_tenancy() -> dict:
         ).insert(ignore_permissions=True)
     _designation(DESIGNATION_A)
     _designation(DESIGNATION_B)
+    _designation(DESIGNATION_OTHER)
     _department(DEPARTMENT_A, first)
     _department(DEPARTMENT_B, second)
 
     _user(ACCOUNTS_A_USER, ["Accounts User"])
     _user(ACCOUNTS_B_USER, ["Accounts Manager"])
     _user(HR_MANAGER_USER, ["HR Manager", "HR User"])
+    _user(PERSONNEL_USER, ["HR Manager", "Accounts Manager"])
     _user(MANAGER_USER, ["Accounts Manager"])
     _user(EMPLOYEE_A_USER, ["Employee"])
     _user(EMPLOYEE_B_USER, ["Employee"])
-    for user in (ACCOUNTS_A_USER, HR_MANAGER_USER, MANAGER_USER):
+    for user in (ACCOUNTS_A_USER, HR_MANAGER_USER, MANAGER_USER, PERSONNEL_USER):
         if not frappe.db.exists("User Permission", {"user": user, "allow": "Company", "for_value": first}):
             frappe.permissions.add_user_permission("Company", first, user, ignore_permissions=True)
     _employee(ACCOUNTS_A_USER, "Scope Accounts A", first)
     _employee(ACCOUNTS_B_USER, "Scope Manager A", first)
     _employee(HR_MANAGER_USER, "Scope HR", first)
+    _employee(PERSONNEL_USER, "Scope Personnel", first)
     _employee(MANAGER_USER, "Scope Manager", first)
 
     employee_a = _employee(EMPLOYEE_A_USER, "Scope Employee A", first)
@@ -220,6 +226,9 @@ def setup_tenancy() -> dict:
     personnel_b = _party("ASOUD Scope Personnel B", second, ["Employee"], employee=employee_b,
                          job_title=DESIGNATION_B, department=DEPARTMENT_B, iban=IBAN_B,
                          employee_gender="Male", birth_date="1990-01-01", date_of_joining="2020-01-01")
+    # The party view and the Employee master stay in sync, as save_party leaves them.
+    frappe.db.set_value("Employee", employee_a, "designation", DESIGNATION_A)
+    frappe.db.set_value("Employee", employee_b, "designation", DESIGNATION_B)
     frappe.db.commit()
     return {
         "first": first,

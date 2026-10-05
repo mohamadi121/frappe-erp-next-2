@@ -71,3 +71,19 @@ Bank details (`bank_name`, `iban`, `account_number`, `card_number`,
 `account_holder`) live on the ERPNext Employee form. No ASOUD API returns them to
 a role that is not a personnel manager, and `personnel.update_personnel` refuses
 them outright.
+
+## Employee is HR-only master data
+
+`ASOUD Party Profile` with the `Employee` role is the party view of an ERPNext
+`Employee`. Two rules follow:
+
+- Only `System Manager` and `HR Manager` may save such a profile through
+  `party.save_party`, which writes the Employee and mirrors the `PERSONAL_FIELDS`
+  subset onto it. Everyone else keeps `PermissionError`, even for a party in their
+  own company.
+- `party.list_parties` returns `bank_name`, `iban`, `account_number`,
+  `card_number` and `account_holder` only to `System Manager` and
+  `Accounts Manager`; other roles get the profile without those keys.
+
+The sanctioned personnel path stays `personnel.update_personnel`: an allow-list,
+a revision check, an idempotency receipt and an audit record.

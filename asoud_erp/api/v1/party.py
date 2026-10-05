@@ -120,7 +120,9 @@ def _ensure_employee(
     doc.date_of_joining = date_of_joining
     doc.cell_number = mobile
     doc.personal_email = email
-    doc.save(ignore_permissions=True) if employee else doc.insert(ignore_permissions=True)
+    # HR master data is written through Frappe's own permission check; the caller
+    # must hold the personnel role (see save_party) and the Employee write right.
+    doc.save() if employee else doc.insert()
     return doc.name
 
 
@@ -182,6 +184,22 @@ BANK_ROLES = ("System Manager", "Accounts Manager")
 
 def _may_read_bank_details() -> bool:
     return bool(set(BANK_ROLES) & set(frappe.get_roles()))
+
+
+#: The personnel master: the roles `personnel.update_personnel` accepts.
+PERSONNEL_ROLES = ("System Manager", "HR Manager")
+
+#: Party fields `write_shared` mirrors onto the linked Employee. Exactly the
+#: `personnel_contract.PERSONAL_FIELDS` allow-list, so no other party argument can
+#: reach Employee master data.
+EMPLOYEE_SHARED_FIELDS = ("display_name", "mobile", "email", "province", "city", "address_line",
+                          "postal_code", "birth_date", "employee_gender", "date_of_joining",
+                          "job_title", "department", "employment_type")
+
+
+def _require_personnel_master() -> None:
+    if not set(PERSONNEL_ROLES).intersection(frappe.get_roles()):
+        frappe.throw(_("Personnel records can only be edited by an HR manager"), frappe.PermissionError)
 
 
 @frappe.whitelist()
@@ -334,6 +352,12 @@ def save_party(
     if not display_name or len(display_name.strip()) < 3:
         frappe.throw(_("Display name must contain at least 3 characters"))
     selected_roles = _parse_roles(roles)
+    if "Employee" in selected_roles:
+        # The Employee branch writes ERPNext HR master data (gender, birth date,
+        # date of joining) and mirrors `job_title` onto the designation, so it is
+        # the HR path of personnel.update_personnel and not a party field. Refuse
+        # before any payload is applied, exactly like update_personnel does.
+        _require_personnel_master()
     selected_groups = _parse_detail_groups(detail_groups)
     if primary_role and primary_role not in selected_roles:
         frappe.throw(_("Primary role must be one of the selected roles"))
@@ -423,8 +447,7 @@ def save_party(
         )
         from asoud_erp.services.personnel_employee import shared_values, write_shared
 
-        write_shared(doc, {"job_title": doc.job_title, "department": doc.department,
-                           "employment_type": doc.employment_type, "address_line": doc.address_line})
+        write_shared(doc, {key: doc.get(key) for key in EMPLOYEE_SHARED_FIELDS})
         for key, value in shared_values(doc).items():
             doc.set(key, value or None)
     doc.save() if name else doc.insert()

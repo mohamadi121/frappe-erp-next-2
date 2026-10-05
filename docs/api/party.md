@@ -13,6 +13,24 @@ address, bank details).
 
 Roles: `System Manager`, `Accounts Manager`, `Accounts User`.
 
+### Personnel parties
+
+A profile whose `roles` contain `Employee` is a personnel record: it owns the
+linked ERPNext `Employee`. `save_party` therefore refuses it unless the caller
+holds `System Manager` or `HR Manager` — the same roles
+[`personnel.update_personnel`](personnel_file.md) accepts — and it raises
+`PermissionError` before applying anything. This is the separation-of-duties
+rule: an accountant maintains customers and suppliers, an HR manager maintains
+people. An accounting role keeps editing non-personnel parties; to change an
+employee's designation, department, birth date, date of joining or contact data,
+use `update_personnel`, whose `PERSONAL_FIELDS` allow-list is the only sanctioned
+path onto `Employee`.
+
+Only `PERSONAL_FIELDS` are mirrored from the profile onto the Employee; every
+other party argument stays on the profile. The Employee write itself goes
+through Frappe's own permission check, so the caller's Employee write right and
+Company User Permission apply as well.
+
 ## Listing
 
 `company` is **required** on `list_parties` and is checked with
