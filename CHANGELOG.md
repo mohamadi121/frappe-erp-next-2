@@ -1,17 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- Demo seed command for real test sites: `bench --site <site> execute
-  asoud_erp.demo.seed.run` (and `reset=True` to remove exactly the marked
-  records). Creates «شرکت نمونه آسود» (IRR, Iran) with fiscal year,
-  departments, designations, 12 employees with a reporting chain, 4 users,
-  leave/payroll/attendance, customers/suppliers/items with stock,
-  submitted sales/purchase invoices, and workflow request types with
-  requests in several statuses — all through standard ERPNext/HRMS
-  documents and the asoud APIs. Refuses without developer_mode (or off
-  test/demo sites) unless forced. See `docs/demo-seed.md`.
-
 ## 0.12.0
 
 - Document templates (`document_templates`): map request, user, company and system values onto an
