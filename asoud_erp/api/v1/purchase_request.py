@@ -7,6 +7,7 @@ from frappe.utils import getdate, nowdate
 from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.workflow_runtime import start_workflow_instance
 from asoud_erp.services.purchase_request import normalize_purchase_items
+from asoud_erp.services.request_access import require_company
 
 
 def _workflow_for_company(company: str) -> str:
@@ -63,6 +64,7 @@ def create_purchase_request(
     )
     if not frappe.db.exists("Company", company):
         frappe.throw(_("Company does not exist"))
+    require_company(company)
     requested_date = getdate(schedule_date)
     if requested_date < getdate(nowdate()):
         frappe.throw(_("Required-by date cannot be in the past"))
@@ -99,6 +101,7 @@ def purchase_request_options(company: str) -> dict:
     frappe.only_for(
         ("System Manager", "Purchase Manager", "Purchase User", "Accounts Manager")
     )
+    require_company(company)
     items = frappe.get_all(
         "Item",
         filters={"disabled": 0, "is_purchase_item": 1},
@@ -121,6 +124,7 @@ def list_my_purchase_requests(company: str) -> dict:
     frappe.only_for(
         ("System Manager", "Purchase Manager", "Purchase User", "Accounts Manager")
     )
+    require_company(company)
     rows = frappe.get_all(
         "Material Request",
         filters={

@@ -4,6 +4,11 @@
 
 Security:
 
+- `purchase_request.purchase_request_options`, `create_purchase_request` and
+  `list_my_purchase_requests` now check `company` with
+  `request_access.require_company`. The option lists are built with
+  `frappe.get_all`, which skips User Permissions, so an Accounts Manager restricted
+  to one company received another company's warehouse list.
 - `party.save_party` now refuses a profile with the `Employee` role unless the
   caller is `System Manager` or `HR Manager`. An accountant could otherwise
   rewrite Employee master data (gender, birth date, date of joining, designation)
