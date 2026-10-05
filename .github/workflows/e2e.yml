@@ -50,7 +50,7 @@ jobs:
 
       - name: Run the suite
         working-directory: e2e
-        run: npx playwright test --project=api
+        run: npm test
 
       - name: Upload the report
         if: always()

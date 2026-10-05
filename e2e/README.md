@@ -83,11 +83,11 @@ git-ignored.
 
 | Suite | Focus |
 | --- | --- |
-| `auth.spec.ts` | login, `sid`, `current_user` identity and roles, wrong password, logout, CSRF refusal, anonymous writes, unknown methods, envelope shape |
-| `requests.spec.ts` | create with an idempotency key, replay, update, cancel, task list, complete task, instance timeline |
-| `documents.spec.ts` | document template save, permission-filtered options, `frappe.client.get` on a created document |
-| `permissions.spec.ts` | a second company, non-participants, role and company isolation on requests and instances |
-| `desk.spec.ts` | the Desk in a real browser: login page, workspace, list view |
+| `auth.spec.ts` | login, `sid`, `current_user` identity and roles, wrong password (401), logout, CSRF refusal, anonymous writes, unknown methods, envelope shape |
+| `requests.spec.ts` | create with an idempotency key, replay, invalid submission refusal, requester edit before review, direct manager approval, automatic system action, rejection with required comment, cancellation, non-requester access refusal |
+| `documents.spec.ts` | employee permission refusal (403), accounts manager creates Journal Entry template with link options accounts, automatic stage configuration, employee submits request, manager approves, system action creates draft Journal Entry in ERPNext, accountant verifies Journal Entry with `frappe.client.get` (title, amounts, accounts) |
+| `permissions.spec.ts` | cross-user isolation (unauthorized employee in same company cannot read request, attachments, or instance), direct manager access (can read request, instance, and download private attachment), cross-company isolation (`require_company` refuses foreign companies for requests, document templates and options) |
+| `desk.spec.ts` | the Desk in Chromium: login at `/login` as the accountant, open the Journal Entry created in suite 3 at `/app/journal-entry/<name>`, assert visible title, posting date, user remark, and accounts debit/credit table rows; save full screenshot to `e2e/test-results/` |
 
 ## CI
 
