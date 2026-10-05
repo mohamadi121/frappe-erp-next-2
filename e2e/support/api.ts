@@ -35,16 +35,35 @@ export async function parse<T>(response: APIResponse): Promise<FrappeResponse<T>
 export function errorText(result: FrappeResponse): string {
   const messages = result.body._server_messages;
   if (typeof messages === 'string') {
-    try {
-      const parsed = JSON.parse(messages) as { message?: string }[];
-      if (parsed[0]?.message) return parsed[0].message as string;
-    } catch {
-      return messages;
+    // Frappe double-encodes this: a JSON array of JSON-encoded message objects.
+    let parsed: unknown = messages;
+    for (let round = 0; round < 2 && typeof parsed === 'string'; round += 1) {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        return messages;
+      }
     }
+    if (Array.isArray(parsed) && typeof parsed[0] === 'string') {
+      try {
+        parsed = JSON.parse(parsed[0]);
+      } catch {
+        /* keep the array form */
+      }
+    }
+    if (Array.isArray(parsed) && typeof (parsed[0] as { message?: string })?.message === 'string') {
+      return (parsed[0] as { message: string }).message;
+    }
+    if (typeof parsed === 'string') return parsed;
   }
   if (typeof result.body.message === 'string') return result.body.message;
   if (typeof result.body.exception === 'string') return result.body.exception;
   return JSON.stringify(result.body);
+}
+
+/** A deadlock is MariaDB's "try again", not an application failure. */
+export function isDeadlock(result: FrappeResponse): boolean {
+  return result.status === 500 && /QueryDeadlockError|Deadlock found/.test(errorText(result));
 }
 
 export class ApiSession {
@@ -110,13 +129,27 @@ export class ApiSession {
   ): Promise<FrappeResponse<T>> {
     const headers: Record<string, string> = {};
     if (options.csrf !== false) headers['X-Frappe-CSRF-Token'] = await this.csrf();
-    return parse<T>(
-      await this.context.post(`/api/method/${method}`, {
-        form,
-        headers,
-        failOnStatusCode: false,
-      }),
-    );
+    const send = async () =>
+      parse<T>(
+        await this.context.post(`/api/method/${method}`, {
+          form,
+          headers,
+          failOnStatusCode: false,
+        }),
+      );
+    let result = await send();
+    // Other workers run bench tests against this same site, so retrying
+    // MariaDB's own "try again" keeps the suite deterministic without hiding
+    // real failures: anything else, and a third deadlock, still fails the test.
+    for (let attempt = 0; attempt < 3 && isDeadlock(result); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2_000 * (attempt + 1)));
+      result = await send();
+    }
+    expect(
+      isDeadlock(result),
+      `${method} kept deadlocking, which is real contention: ${errorText(result)}`,
+    ).toBe(false);
+    return result;
   }
 
   /** GET + envelope unwrap; fails the test when the envelope is not `ok`. */

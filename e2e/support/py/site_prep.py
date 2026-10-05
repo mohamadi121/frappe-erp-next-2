@@ -161,6 +161,21 @@ def drop_definition(definition: str) -> dict:
     return {"dropped": definition}
 
 
+def ensure_company_permission(user: str, company_name: str) -> None:
+    """Restrict a user to one company, the way a real multi-company site does."""
+    if frappe.db.exists("User Permission", {"user": user, "allow": "Company", "for_value": company_name}):
+        return
+    frappe.get_doc(
+        {
+            "doctype": "User Permission",
+            "user": user,
+            "allow": "Company",
+            "for_value": company_name,
+            "apply_to_all_doctypes": 1,
+        }
+    ).insert(ignore_permissions=True)
+
+
 def state() -> dict:
     employees = frappe.get_all(
         "Employee",
@@ -213,6 +228,7 @@ def ensure() -> dict:
     ensure_employee("e2e.accounts@example.com", "E2E Accounts")
     ensure_employee("e2e.outsider@example.com", "E2E Outsider")
     ensure_second_company()
+    ensure_company_permission("e2e.accounts@example.com", SECOND_COMPANY)
     frappe.db.commit()
     result = state()
     result["fixture_approver"] = approver
