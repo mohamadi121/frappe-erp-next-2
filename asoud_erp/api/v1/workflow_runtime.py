@@ -10,6 +10,7 @@ from frappe.utils import add_to_date, get_fullname, getdate, now_datetime, nowda
 from asoud_erp.api.v1 import document_templates
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.document_templates import render_placeholders
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_link_values import validate_link_values, workflow_company
 from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
@@ -572,7 +573,7 @@ def start_workflow_instance(
     reference_doctype: str | None = None,
     reference_name: str | None = None,
 ) -> dict:
-    frappe.only_for(
+    require_roles(
         (
             "System Manager",
             "HR Manager",

@@ -16,6 +16,12 @@ def test_explicit_group_does_not_allocate_role_default_codes(monkeypatch):
         set_value=Mock(),
     )
     fake.get_doc = Mock(return_value=SimpleNamespace(insert=Mock()))
+    fake.session = SimpleNamespace(user="Administrator")
+    fake.get_roles = lambda *args, **kwargs: ["System Manager"]
+    fake.has_permission = lambda *args, **kwargs: True
+    utils = ModuleType("frappe.utils")
+    utils.getdate = lambda value=None: value
+    monkeypatch.setitem(sys.modules, "frappe.utils", utils)
     monkeypatch.setitem(sys.modules, "frappe", fake)
     path = Path(__file__).parents[1] / "api" / "v1" / "party.py"
     spec = importlib.util.spec_from_file_location("party_assignment_test_api", path)

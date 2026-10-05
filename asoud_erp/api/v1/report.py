@@ -1,9 +1,14 @@
 import frappe
 from frappe import _
 from frappe.utils import getdate
+from frappe.utils.nestedset import get_descendants_of
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.reporting_service import running_balance
+from asoud_erp.services.request_access import require_company
+
+REPORT_ROLES = ("System Manager", "Accounts Manager", "Accounts User")
 
 
 def _validate_period(from_date: str, to_date: str):
@@ -20,7 +25,7 @@ def _account_scope(company: str, account: str | None) -> list[str] | None:
     account_company = frappe.db.get_value("Account", account, "company")
     if account_company != company:
         frappe.throw(_("Account does not belong to the selected company"))
-    return [account, *frappe.get_descendants_of("Account", account)]
+    return [account, *get_descendants_of("Account", account, ignore_permissions=True)]
 
 
 def _base_filters(company: str, accounts: list[str] | None = None) -> dict:
@@ -32,7 +37,8 @@ def _base_filters(company: str, accounts: list[str] | None = None) -> dict:
 
 @frappe.whitelist()
 def trial_balance(company: str, from_date: str, to_date: str, account: str | None = None) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(REPORT_ROLES)
+    require_company(company)
     start, end = _validate_period(from_date, to_date)
     accounts = _account_scope(company, account)
     account_condition = " and account in %(accounts)s" if accounts else ""
@@ -102,7 +108,8 @@ def general_ledger(
     party_type: str | None = None,
     party: str | None = None,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(REPORT_ROLES)
+    require_company(company)
     start, end = _validate_period(from_date, to_date)
     accounts = _account_scope(company, account) or [account]
     filters = _base_filters(company, accounts)

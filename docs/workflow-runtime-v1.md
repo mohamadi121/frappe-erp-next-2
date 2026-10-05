@@ -131,5 +131,11 @@ transaction, so failure to start the workflow prevents a partial committed
 request.
 
 `purchase_request_options` returns enabled purchase items and non-group
-warehouses. `list_my_purchase_requests` returns only purchase requests owned by
-the current ERPNext user.
+warehouses of the requested company. `list_my_purchase_requests` returns only
+purchase requests owned by the current ERPNext user.
+
+All three endpoints require `company` to be one the caller may read
+(`request_access.require_company`), so a Company User Permission limits both the
+option lists and the request list to that company; a foreign `company` raises
+`PermissionError`. The item master is instance-wide (ERPNext keeps `Item`
+without a company), so it is not filtered by company.

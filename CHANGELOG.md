@@ -2,6 +2,63 @@
 
 ## Unreleased
 
+Security:
+
+- Replaced `frappe.only_for` with `erp_documents.require_roles` across all `api/v1`
+  modules (`account`, `detail_group`, `floating_detail`, `party`, `purchase_request`,
+  `role_management`, `setup`, `voucher`, `workflow`, `workflow_runtime`).
+  `frappe.only_for` was bypassed in test mode (`in_test=True`), leaving role gates
+  unprotected against regressions; `require_roles` enforces role requirements under tests.
+- `projects.create_timesheet` now validates foreign and unknown projects on time
+  logs without a task. Such logs now require a project belonging to the caller's
+  company and read permission, preventing employees from logging time to projects
+  of other companies.
+- Every `voucher.*` endpoint (`list_vouchers`, `save_voucher`, `submit_for_approval`,
+  `approve_voucher`, `reject_voucher`) now checks company access with
+  `request_access.require_company`. `list_vouchers` and `save_voucher` require
+  access to the specified company, and voucher state transitions verify access to
+  the company owning the voucher.
+- `party.save_party` and `party.disable_party` now check the company of the profile
+  they act on. `save_party` also keeps the profile's company when the argument is
+  omitted instead of clearing it, which could move a party out of its tenant.
+- `detail_group.list_account_mappings` and `detail_group.save_account_mapping` now
+  check `company` with `request_access.require_company`. `ASOUD Account Mapping`
+  carries a company, and the read was built with `frappe.get_all`, so it returned
+  another company's account-to-detail-group mapping. The detail group catalogue
+  itself (`ASOUD Detail Group`) has no company and stays site-wide.
+- `floating_detail.create_floating_detail` and `floating_detail.link_floating_detail`
+  now check the company of the record a detail is attached to. `ASOUD Floating
+  Detail` has no company column, so a Company User Permission never applied to it:
+  an Accounts User of Company A could attach a detail to a Company B party, and
+  that write altered the other company's party.
+- Every `account.*` endpoint now checks `company` with
+  `request_access.require_company`. The module gated on roles only and read with
+  `frappe.get_all`, so a Company User Permission did not limit the chart of
+  accounts at all.
+- `purchase_request.purchase_request_options`, `create_purchase_request` and
+  `list_my_purchase_requests` now check `company` with
+  `request_access.require_company`. The option lists are built with
+  `frappe.get_all`, which skips User Permissions, so an Accounts Manager restricted
+  to one company received another company's warehouse list.
+- `party.save_party` now refuses a profile with the `Employee` role unless the
+  caller is `System Manager` or `HR Manager`. An accountant could otherwise
+  rewrite Employee master data (gender, birth date, date of joining, designation)
+  with permission checks disabled, and set the employee's bank details, bypassing
+  the `PERSONAL_FIELDS` allow-list of `personnel.update_personnel`. The Employee
+  write now goes through Frappe's own permission check, and only allow-listed
+  fields are mirrored onto it.
+- `party.list_parties` requires `company` and checks it with
+  `request_access.require_company`. Without it the endpoint answered for every
+  company and returned the bank name, IBAN and account numbers of parties the
+  caller could not see. Bank fields are now returned only to `System Manager` and
+  `Accounts Manager`, the roles that own the party master; an `Accounts User` gets
+  the profile without them. See `docs/api/party.md`.
+- `report.trial_balance` and `report.general_ledger` are now company scoped
+  (`request_access.require_company`) instead of only role scoped, so a User
+  Permission on `Company` really limits the ledger. `report.general_ledger` also
+  works again on ERPNext v15 (it called `frappe.get_descendants_of`, removed in
+  v15, and raised `AttributeError` for every request). See `docs/api/report.md`.
+
 - Demo seed command for real test sites: `bench --site <site> execute
   asoud_erp.demo.seed.run` (and `reset=True` to remove exactly the marked
   records). Creates «شرکت نمونه آسود» (IRR, Iran) with fiscal year,

@@ -8,6 +8,7 @@ from frappe.utils import cint, now_datetime
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.jalali import current_jalali_year
+from asoud_erp.services.request_access import require_company
 from asoud_erp.services.workflow_contract import (
     ALLOWED_WORKFLOW_STATUSES,
     serialize_workflow,
@@ -82,7 +83,7 @@ def list_workflows(
     company: str | None = None,
     order_by: str = "modified desc",
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     if status and status not in ALLOWED_STATUSES:
         frappe.throw(_("Invalid workflow status"))
     allowed_order = {
@@ -95,6 +96,7 @@ def list_workflows(
     if status:
         filters["status"] = status
     if company:
+        require_company(company)
         filters["company"] = company
     or_filters = None
     if search:
@@ -120,7 +122,7 @@ def list_workflows(
 
 @frappe.whitelist()
 def workflow_form_options() -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     modules = []
     for key, doctypes in MODULE_DOCTYPES.items():
         options = [
@@ -169,7 +171,7 @@ def create_workflow_draft(
     icon_key: str | None = None,
     color_hex: str | None = None,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     title = (workflow_title or "").strip()
     if len(title) < 3:
         frappe.throw(_("Workflow title must contain at least 3 characters"))
@@ -179,8 +181,10 @@ def create_workflow_draft(
         frappe.throw(_("The selected DocType does not belong to this module"))
     if not frappe.db.exists("DocType", target_doctype):
         frappe.throw(_("The selected DocType is not installed"))
-    if company and not frappe.db.exists("Company", company):
-        frappe.throw(_("The selected company does not exist"))
+    if company:
+        if not frappe.db.exists("Company", company):
+            frappe.throw(_("The selected company does not exist"))
+        require_company(company)
     if creation_mode not in {"Custom", "Template"}:
         frappe.throw(_("Invalid workflow creation mode"))
 
@@ -228,7 +232,7 @@ def create_workflow_draft(
 
 @frappe.whitelist()
 def get_workflow_design(definition: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     return success(_design_payload(definition))
 
 
@@ -240,7 +244,7 @@ def save_start_settings(
     subject_source: str,
     pass_mode: str = "Direct",
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     if trigger_type not in {"Manual", "Document Event", "System", "API"}:
         frappe.throw(_("Invalid start trigger"))
     if subject_source not in {"Referenced Document", "ASOUD Record", "General Subject"}:
@@ -274,7 +278,7 @@ def save_start_settings(
 
 @frappe.whitelist(methods=["POST"])
 def add_workflow_stage(definition: str, stage_type: str, after_stage: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     if stage_type not in STAGE_TITLES:
         frappe.throw(_("Invalid workflow stage type"))
     frappe.db.sql(
@@ -344,7 +348,7 @@ def _touch_workflow(definition: str) -> None:
 @frappe.whitelist(methods=["POST"])
 def update_stage_positions(definition: str, positions: str | dict) -> dict:
     """Persist designer coordinates without changing workflow semantics."""
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     values = json.loads(positions) if isinstance(positions, str) else positions
     if not isinstance(values, dict) or len(values) > 250:
         frappe.throw(_("Invalid stage positions"))
@@ -376,7 +380,7 @@ def connect_workflow_stages(
     condition: str | dict | None = None,
 ) -> dict:
     """Create a named route; backward routes are deliberately supported."""
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     action = (action or "").strip()
     if not action or len(action) > 140 or from_stage == to_stage:
         frappe.throw(_("Invalid workflow transition"))
@@ -432,7 +436,7 @@ def insert_workflow_stage(
     definition: str, transition: str, stage_type: str
 ) -> dict:
     """Split one existing route into source -> new stage -> old destination."""
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     if stage_type not in STAGE_TITLES:
         frappe.throw(_("Invalid workflow stage type"))
     frappe.db.sql(
@@ -493,7 +497,7 @@ def insert_workflow_stage(
 
 @frappe.whitelist()
 def workflow_condition_fields(definition: str, stage: str | None = None) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     target_doctype = frappe.db.get_value("ASOUD Workflow Definition", definition, "target_doctype")
     if not target_doctype or not frappe.db.exists("DocType", target_doctype):
         frappe.throw(_("Workflow target DocType does not exist"))
@@ -539,7 +543,7 @@ def add_condition_branch(
     stage_type: str,
     result: int | bool | str,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     if stage_type not in STAGE_TITLES:
         frappe.throw(_("Invalid workflow stage type"))
     truthy = result is True or str(result).lower() in {"1", "true"}
@@ -591,7 +595,7 @@ def add_condition_branch(
 
 @frappe.whitelist(methods=["POST"])
 def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     doc = frappe.get_doc("ASOUD Workflow Stage", stage)
     if doc.workflow_definition != definition:
         frappe.throw(_("Stage does not belong to the selected workflow"))
@@ -763,7 +767,7 @@ def update_request_type_info(
     show_in_request_list: int | str = 1,
     allow_user_submission: int | str = 1,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     doc = frappe.get_doc("ASOUD Workflow Definition", name)
     if doc.target_doctype != "ASOUD Workflow Request":
         frappe.throw(_("Only request workflows have request type settings"))
@@ -786,7 +790,7 @@ def update_request_type_info(
 
 @frappe.whitelist(methods=["POST"])
 def set_workflow_status(name: str, status: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     if status not in ALLOWED_STATUSES:
         frappe.throw(_("Invalid workflow status"))
     doc = frappe.get_doc("ASOUD Workflow Definition", name)
