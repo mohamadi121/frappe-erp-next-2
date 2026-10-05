@@ -18,6 +18,9 @@ def api(monkeypatch):
     frappe.session = SimpleNamespace(user="Administrator")
     frappe.get_roles = lambda *args, **kwargs: ["System Manager"]
     frappe.has_permission = lambda *args, **kwargs: True
+    utils = ModuleType("frappe.utils")
+    utils.getdate = lambda value=None: value
+    monkeypatch.setitem(__import__("sys").modules, "frappe.utils", utils)
     monkeypatch.setitem(__import__("sys").modules, "frappe", frappe)
     path = Path(__file__).parents[1] / "api" / "v1" / "account.py"
     spec = importlib.util.spec_from_file_location("account_selection_test_api", path)
