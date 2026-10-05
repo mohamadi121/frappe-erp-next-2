@@ -105,6 +105,22 @@ def _personal(employee, row):
     return data
 
 
+def _manager_photo(employee: str, company: str):
+    """The direct manager's photo: their private Employee file, else their personnel record.
+
+    A manager does not need a personnel file of their own for the photo to show.
+    """
+    native = personnel_api.native_photo(employee)
+    if native:
+        return native
+    manager_profile = frappe.db.get_value(
+        "ASOUD Party Profile", {"employee": employee, "company": company}, "name"
+    )
+    if not manager_profile:
+        return None
+    return personnel_api.photo_record(manager_profile, employee)
+
+
 def _organization(employee, row):
     if not employee:
         return {"department": row.get("department") or "", "designation": row.get("job_title") or ""}
@@ -124,7 +140,8 @@ def _organization(employee, row):
         if values:
             manager = {"employee": values.name, "name": values.employee_name,
                        "designation": values.designation or "",
-                       "department_name": _label("Department", values.department, "department_name")}
+                       "department_name": _label("Department", values.department, "department_name"),
+                       "photo_record": _manager_photo(values.name, employee.company)}
     return {
         "company": employee.company,
         "department": employee.department or "",

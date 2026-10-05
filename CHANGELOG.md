@@ -20,6 +20,18 @@
 
 ## 0.12.0
 
+- Account operations of the personnel file (`auth`): enable/disable a login with
+  `set_account_enabled` (idempotent per request id, and it clears the open
+  sessions of a disabled account), `get_account_status` with roles, allowed
+  modules and data scope, and `get_login_history` from the native Activity Log
+  and sessions without exposing session ids.
+- «ارسال مجدد دعوت» is refused once the account has a recorded login, with a
+  Persian message pointing at the password reset instead.
+- `get_employee_access` also returns `access_level`, `modules` and `data_scope`,
+  and `sync_employee_access` keeps the Company and Department User Permissions of
+  the login in step with the Employee.
+- The direct manager's photo is part of the organization section of the personnel
+  file (the private Employee file first, the personnel photo record as fallback).
 - Document templates (`document_templates`): map request, user, company and system values onto an
   ERPNext Journal Entry or Material Request; ready-made presets; account and warehouse checks.
 - Workflow System Action stages now run: create a document from a template, change the request's
