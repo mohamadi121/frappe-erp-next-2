@@ -1,0 +1,19 @@
+{
+  "name": "asoud-erp-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Playwright end-to-end tests for the ASOUD ERP API and Desk on a local bench site",
+  "scripts": {
+    "test": "playwright test",
+    "test:api": "playwright test tests/auth.spec.ts tests/requests.spec.ts tests/documents.spec.ts tests/permissions.spec.ts",
+    "test:ui": "playwright test tests/desk.spec.ts",
+    "report": "playwright show-report",
+    "serve": "python3 support/py/serve.py"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "22.10.2",
+    "typescript": "5.7.2",
+    "playwright": "1.56.1"
+  }
+}

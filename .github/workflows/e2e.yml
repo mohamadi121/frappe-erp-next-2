@@ -1,0 +1,63 @@
+# PROPOSAL — not verified on a runner.
+#
+# The Playwright suite needs a full Frappe bench (site + MariaDB + Redis + the
+# asoud_erp app), which is more than a GitHub runner has out of the box. Keep
+# this manual until someone runs it against a real bench image and reports the
+# result; do not add it to branch protection before then.
+name: e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: Bench site to test
+        required: true
+        default: asoud.test
+        type: string
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      E2E_SITE: ${{ inputs.site }}
+      E2E_BENCH_PATH: /home/runner/frappe-bench
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the bench
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/frappe/bench/develop/install.sh | bash
+          bench init --skip-redis-config-generation "$E2E_BENCH_PATH"
+          bench --site "$E2E_SITE" new-site --admin-password "${{ secrets.SITE_ADMIN_PASSWORD }}" \
+            --mariadb-root-password "${{ secrets.MARIADB_ROOT_PASSWORD }}"
+          bench get-app erpnext https://github.com/frappe/erpnext --branch version-15
+          bench get-app hrms https://github.com/frappe/hrms --branch version-15
+          bench get-app asoud_erp "$GITHUB_WORKSPACE"
+          bench --site "$E2E_SITE" install-app asoud_erp erpnext hrms
+
+      - name: Install the Playwright suite
+        working-directory: e2e
+        run: |
+          set -euo pipefail
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run the suite
+        working-directory: e2e
+        run: npx playwright test --project=api
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
