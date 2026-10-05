@@ -4,6 +4,12 @@
 
 Security:
 
+- `party.list_parties` requires `company` and checks it with
+  `request_access.require_company`. Without it the endpoint answered for every
+  company and returned the bank name, IBAN and account numbers of parties the
+  caller could not see. Bank fields are now returned only to `System Manager` and
+  `Accounts Manager`, the roles that own the party master; an `Accounts User` gets
+  the profile without them. See `docs/api/party.md`.
 - `report.trial_balance` and `report.general_ledger` are now company scoped
   (`request_access.require_company`) instead of only role scoped, so a User
   Permission on `Company` really limits the ledger. `report.general_ledger` also

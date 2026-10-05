@@ -5,6 +5,7 @@ from frappe import _
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.detail_code_service import next_detail_code
+from asoud_erp.services.request_access import require_company
 from asoud_erp.services.party_validation import (
     is_valid_iranian_legal_id,
     is_valid_iranian_mobile,
@@ -171,18 +172,29 @@ def _sync_floating_details(
         ).insert()
 
 
+#: A party's bank details pay suppliers and settle receivables, so they stay with
+#: the roles that own the party master. An ``Accounts User`` (cashier) and every
+#: personnel role get the profile without them, and the personnel bank data on
+#: ``Employee`` is never returned here at all.
+BANK_FIELDS = ("bank_name", "iban", "account_number", "card_number", "account_holder")
+BANK_ROLES = ("System Manager", "Accounts Manager")
+
+
+def _may_read_bank_details() -> bool:
+    return bool(set(BANK_ROLES) & set(frappe.get_roles()))
+
+
 @frappe.whitelist()
-def list_parties(search: str | None = None, role: str | None = None, company: str | None = None) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
-    filters = {"disabled": 0}
-    if company:
-        filters["company"] = company
+def list_parties(company: str, search: str | None = None, role: str | None = None) -> dict:
+    require_company(company)
+    filters = {"disabled": 0, "company": company}
     if role:
         filters["roles_text"] = ["like", f'%"{role}"%']
     or_filters = None
     if search:
         term = f"%{search}%"
         or_filters = {"display_name": ["like", term], "national_id": ["like", term], "mobile": ["like", term]}
+    may_read_bank = _may_read_bank_details()
     rows = frappe.get_all(
         "ASOUD Party Profile",
         filters=filters,
@@ -201,9 +213,6 @@ def list_parties(search: str | None = None, role: str | None = None, company: st
             "city",
             "address_line",
             "postal_code",
-            "bank_name",
-            "iban",
-            "account_number",
             "birth_date",
             "employee_gender",
             "date_of_joining",
@@ -223,8 +232,6 @@ def list_parties(search: str | None = None, role: str | None = None, company: st
             "credit_limit",
             "opening_balance",
             "balance_type",
-            "card_number",
-            "account_holder",
             "region",
             "neighborhood",
             "plaque",
@@ -237,6 +244,7 @@ def list_parties(search: str | None = None, role: str | None = None, company: st
             "supplier",
             "employee",
             "disabled",
+            *(BANK_FIELDS if may_read_bank else ()),
         ],
         order_by="modified desc",
         limit_page_length=200,
@@ -246,6 +254,9 @@ def list_parties(search: str | None = None, role: str | None = None, company: st
     for row in rows:
         row.update(shared_values(row))
         row["roles"] = json.loads(row.pop("roles_text") or "[]")
+        if not may_read_bank:
+            for field in BANK_FIELDS:
+                row.pop(field, None)
         details = frappe.get_all(
             "ASOUD Floating Detail",
             filters={

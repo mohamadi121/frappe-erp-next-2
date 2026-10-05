@@ -56,6 +56,11 @@ def journal(company: str) -> str:
     return frappe.db.get_value("Journal Entry", {"company": company, "user_remark": GL_REMARK}, "name")
 
 
+def party_name(display_name: str) -> str:
+    """The name of a party profile created by :func:`setup_tenancy`."""
+    return frappe.db.get_value("ASOUD Party Profile", {"display_name": display_name}, "name")
+
+
 def _fiscal_year(target: str) -> str:
     """An active fiscal year covering today for ``target``.
 
