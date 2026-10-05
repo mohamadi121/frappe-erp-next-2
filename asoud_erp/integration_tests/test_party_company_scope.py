@@ -58,3 +58,33 @@ class TestPartyCompanyScope(APITestCase):
         own = next(row for row in _rows(company=self.company) if row["name"] == self.party_a)
         for field in ("iban", "bank_name", "account_number", "card_number", "account_holder"):
             self.assertNotIn(field, own)
+
+
+class TestPartyWriteCompanyScope(APITestCase):
+    """SEC-BP-04: a party write must stay inside the caller's company."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.scope = setup_tenancy()
+        cls.second = cls.scope["second"]
+        cls.party_a = cls.scope["party_a"]
+        cls.party_b = cls.scope["party_b"]
+
+    def _payload(self, name: str, **extra) -> dict:
+        return {"name": name, "party_type": "Individual", "roles": json.dumps(["Other"]), **extra}
+
+    def test_writing_a_foreign_party_is_refused(self):
+        frappe.set_user(ACCOUNTS_A_USER)
+        with self.assertRaises(frappe.PermissionError):
+            party.save_party(**self._payload(self.party_b, display_name="ASOUD Scope Party B",
+                                            company=self.second))
+        with self.assertRaises(frappe.PermissionError):
+            party.disable_party(name=self.party_b)
+        self.assertEqual(frappe.db.get_value("ASOUD Party Profile", self.party_b, "disabled"), 0)
+
+    def test_update_keeps_the_company_when_the_argument_is_omitted(self):
+        """Omitting `company` must not move a profile out of its tenant."""
+        frappe.set_user(ACCOUNTS_A_USER)
+        party.save_party(**self._payload(self.party_a, display_name="ASOUD Scope Party A"))
+        self.assertEqual(frappe.db.get_value("ASOUD Party Profile", self.party_a, "company"), self.company)

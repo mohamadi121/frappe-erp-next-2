@@ -13,6 +13,16 @@ address, bank details).
 
 Roles: `System Manager`, `Accounts Manager`, `Accounts User`.
 
+### Company scope on writes
+
+`save_party` and `disable_party` check the company of the profile they act on
+with `request_access.require_company`, so a foreign profile is refused with
+`PermissionError` before the document is touched. `company` is optional on
+`save_party`, and omitting it keeps the profile in the company it already belongs
+to — it never moves a profile to another company or to none. A profile may be
+created without a company; such a profile is not listed by `list_parties`, which
+is always company filtered.
+
 ### Personnel parties
 
 A profile whose `roles` contain `Employee` is a personnel record: it owns the

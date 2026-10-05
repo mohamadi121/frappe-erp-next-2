@@ -381,9 +381,15 @@ def save_party(
             frappe.throw(_("A party with this national ID already exists"))
         doc = frappe.new_doc("ASOUD Party Profile")
 
+    # The company the profile belongs to: the argument, or the one it already has.
+    # An omitted argument never moves a profile out of its company.
+    target_company = normalize_optional(company) or doc.company
+    if target_company:
+        require_company(target_company)
+
     title = display_name.strip()
     doc.party_type = party_type
-    doc.company = normalize_optional(company)
+    doc.company = target_company
     doc.display_name = title
     doc.national_id = national_id
     doc.mobile = mobile
@@ -478,6 +484,9 @@ def disable_party(name: str) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
     if not frappe.db.exists("ASOUD Party Profile", name):
         frappe.throw(_("Party profile does not exist"))
+    target = frappe.db.get_value("ASOUD Party Profile", name, "company")
+    if target:
+        require_company(target)
     doc = frappe.get_doc("ASOUD Party Profile", name)
     doc.disabled = 1
     doc.save()

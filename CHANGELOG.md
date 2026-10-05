@@ -4,6 +4,9 @@
 
 Security:
 
+- `party.save_party` and `party.disable_party` now check the company of the profile
+  they act on. `save_party` also keeps the profile's company when the argument is
+  omitted instead of clearing it, which could move a party out of its tenant.
 - `detail_group.list_account_mappings` and `detail_group.save_account_mapping` now
   check `company` with `request_access.require_company`. `ASOUD Account Mapping`
   carries a company, and the read was built with `frappe.get_all`, so it returned
