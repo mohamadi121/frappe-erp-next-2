@@ -12,7 +12,7 @@ chosen tax template (`set_taxes`), totals, GL postings on submit.
 | --- | --- | --- |
 | `selling_options(company)` | GET | customers, tax templates, selling price list, warehouses, currency |
 | `get_item_price(company, item_code, customer?, qty=1, uom?, posting_date?)` | GET | ERPNext line pricing for one item |
-| `create_sales_invoice(company, customer, items, posting_date?, due_date?, taxes_and_charges?, remarks?, update_stock=0, submit=0)` | POST | draft or submitted invoice |
+| `create_sales_invoice(company, customer, items, posting_date?, due_date?, taxes_and_charges?, remarks?, update_stock=0, submit=0, currency?, selling_price_list?)` | POST | draft or submitted invoice |
 | `list_sales_invoices(company, status?, customer?, search?, from_date?, to_date?, limit_start=0, limit_page_length=20)` | GET | newest first; max 100 per page |
 | `get_sales_invoice(name)` | GET | full invoice |
 | `submit_sales_invoice(name)` / `cancel_sales_invoice(name)` | POST | docstatus 0→1 / 1→2 |
@@ -33,6 +33,10 @@ chosen tax template (`set_taxes`), totals, GL postings on submit.
   Taxes and Charges Template, so `grand_total` can exceed the sum of the lines.
   Show `net_total`, `total_taxes_and_charges` and `grand_total` separately.
   Buying documents behave the same with Purchase Taxes and Charges Templates.
+- Without `currency` / `selling_price_list`, a new invoice inherits both from
+  the default selling price list — even when the party has another default
+  currency. Pass both explicitly to invoice in the company currency without
+  any exchange-rate conversion (unknown values are rejected).
 
 ## Invoice object
 

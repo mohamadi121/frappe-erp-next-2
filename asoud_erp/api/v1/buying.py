@@ -80,7 +80,14 @@ def buying_options(company: str) -> dict:
 @frappe.whitelist(methods=["POST"])
 def create_purchase_order(company: str, supplier: str, items, schedule_date: str,
                           transaction_date: str | None = None, taxes_and_charges: str | None = None,
-                          submit: int = 0) -> dict:
+                          submit: int = 0, currency: str | None = None,
+                          buying_price_list: str | None = None) -> dict:
+    """Creates a draft (or, with ``submit=1``, a submitted) purchase order.
+
+    ``currency`` and ``buying_price_list`` are optional overrides, set before
+    ERPNext fills the missing values (see ``selling.create_sales_invoice``).
+    The order currency flows into the receipt and invoice mapped from it.
+    """
     erp_documents.require_roles(ROLES)
     require_company(company)
     lines = _lines(items)
@@ -88,6 +95,16 @@ def create_purchase_order(company: str, supplier: str, items, schedule_date: str
     doc = frappe.new_doc("Purchase Order")
     doc.update({"company": company, "supplier": supplier, "schedule_date": required_by,
                 "transaction_date": getdate(transaction_date or nowdate())})
+    if currency:
+        if not frappe.db.exists("Currency", currency):
+            frappe.throw(_("Invalid currency"))
+        doc.currency = currency
+    if buying_price_list:
+        price_list = frappe.db.get_value("Price List", buying_price_list,
+                                          ["enabled", "buying"], as_dict=True)
+        if not price_list or not price_list.enabled or not price_list.buying:
+            frappe.throw(_("Invalid buying price list"))
+        doc.buying_price_list = buying_price_list
     if taxes_and_charges:
         doc.taxes_and_charges = taxes_and_charges
     for line in lines:

@@ -10,7 +10,13 @@
   submitted sales/purchase invoices, and workflow request types with
   requests in several statuses — all through standard ERPNext/HRMS
   documents and the asoud APIs. Refuses without developer_mode (or off
-  test/demo sites) unless forced. See `docs/demo-seed.md`.
+  test/demo sites) unless forced.   Demo parties carry the company currency
+  and IRR price lists so every invoice is created without conversion;
+  `asoud_erp.demo.seed.check` reports remaining demo-marked records.
+  `selling.create_sales_invoice` and `buying.create_purchase_order` accept
+  optional `currency` and price-list overrides (a new document otherwise
+  inherits both from the default price list).
+  See `docs/demo-seed.md`.
 
 ## 0.12.0
 

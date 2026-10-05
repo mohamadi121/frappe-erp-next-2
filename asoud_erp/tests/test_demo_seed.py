@@ -76,6 +76,11 @@ class TestDemoNaming(unittest.TestCase):
         self.assertEqual(len(set(ids)), 4)
         self.assertTrue(all(len(request_id) >= 8 for request_id in ids))
 
+    def test_demo_price_lists_are_prefixed_and_distinct(self):
+        self.assertNotEqual(m.PRICE_LIST_SELLING, m.PRICE_LIST_BUYING)
+        self.assertTrue(m.PRICE_LIST_SELLING.startswith(m.PREFIX))
+        self.assertTrue(m.PRICE_LIST_BUYING.startswith(m.PREFIX))
+
 
 if __name__ == "__main__":
     unittest.main()
