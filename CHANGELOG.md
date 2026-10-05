@@ -4,6 +4,10 @@
 
 Security:
 
+- `projects.create_timesheet` now validates foreign and unknown projects on time
+  logs without a task. Such logs now require a project belonging to the caller's
+  company and read permission, preventing employees from logging time to projects
+  of other companies.
 - Every `voucher.*` endpoint (`list_vouchers`, `save_voucher`, `submit_for_approval`,
   `approve_voucher`, `reject_voucher`) now checks company access with
   `request_access.require_company`. `list_vouchers` and `save_voucher` require

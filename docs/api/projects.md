@@ -26,7 +26,10 @@ log time.
 
 `time_logs`: `[{"activity_type", "from_time": "2026-09-24 09:00:00", "hours": 2, "task"?, "project"?, "description"?}]`
 (1–50 rows, at most 24 hours each). A log on a task needs the caller to be assigned
-to it; the project is taken from the task. ERPNext computes `to_time` and totals.
+to it; the project is taken from the task. When no task is specified, a `project` is
+required, must exist, must belong to the caller's company, and requires read access.
+Logs on foreign or unknown projects are rejected with `PermissionError`. ERPNext
+computes `to_time` and totals.
 
 Task object: `name`, `subject`, `project`, `status`, `priority`, `progress`,
 `exp_start_date`, `exp_end_date`, `description`, `assigned_to`.

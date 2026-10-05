@@ -167,7 +167,7 @@ def update_task_status(name: str, status: str, progress=None) -> dict:
     return success(serialize_task(doc))
 
 
-def _time_logs(value) -> list[dict]:
+def _time_logs(value, company: str) -> list[dict]:
     rows = parse_json(value, "time_logs")
     if not isinstance(rows, list) or not rows or len(rows) > MAX_LOGS:
         frappe.throw(_("time_logs must be a list of 1 to {0} rows").format(MAX_LOGS))
@@ -182,12 +182,25 @@ def _time_logs(value) -> list[dict]:
         if hours > 24:
             frappe.throw(_("A time log may not exceed 24 hours"))
         task = row.get("task") or None
-        if task and frappe.session.user not in _assignees(frappe.get_doc("Task", task)) \
-                and not set(MANAGER_ROLES) & set(frappe.get_roles()):
-            frappe.throw(_("You can log time only on tasks assigned to you"), frappe.PermissionError)
+        project = row.get("project") or None
+        if task:
+            task_doc = frappe.get_doc("Task", task)
+            if frappe.session.user not in _assignees(task_doc) and not set(MANAGER_ROLES) & set(frappe.get_roles()):
+                frappe.throw(_("You can log time only on tasks assigned to you"), frappe.PermissionError)
+            project = project or task_doc.project
+            if project and frappe.db.get_value("Project", project, "company") != company:
+                frappe.throw(_("Project does not belong to your company"), frappe.PermissionError)
+        else:
+            if not project:
+                frappe.throw(_("Each time log needs a project or task"))
+            if not frappe.db.exists("Project", project):
+                frappe.throw(_("Project does not exist"))
+            if frappe.db.get_value("Project", project, "company") != company:
+                frappe.throw(_("Project does not belong to your company"), frappe.PermissionError)
+            if not frappe.has_permission("Project", ptype="read", doc=project):
+                frappe.throw(_("You do not have access to this project"), frappe.PermissionError)
         logs.append({"activity_type": row["activity_type"], "from_time": get_datetime(row["from_time"]),
-                     "hours": hours, "project": row.get("project") or (
-                         frappe.db.get_value("Task", task, "project") if task else None),
+                     "hours": hours, "project": project,
                      "task": task, "description": str(row.get("description") or "").strip()[:1000]})
     return logs
 
@@ -203,7 +216,7 @@ def create_timesheet(time_logs, note: str | None = None) -> dict:
     """A draft Timesheet for the session user's Employee; a Projects User submits it."""
     me = _me()
     doc = frappe.get_doc({"doctype": "Timesheet", "employee": me.name, "company": me.company,
-                          "note": (note or "").strip() or None, "time_logs": _time_logs(time_logs)})
+                          "note": (note or "").strip() or None, "time_logs": _time_logs(time_logs, me.company)})
     doc.insert()
     return success(_serialize_timesheet(doc))
 

@@ -10,6 +10,9 @@ class TestProjects(APITestCase):
         super().setUp()
         if not frappe.db.exists("Activity Type", "ASOUD Work"):
             frappe.get_doc({"doctype": "Activity Type", "activity_type": "ASOUD Work"}).insert()
+        frappe.db.delete("Task")
+        frappe.db.delete("ToDo", {"allocated_to": EMPLOYEE_USER})
+        frappe.db.delete("Project", {"project_name": "پروژه آزمایشی"})
         self.project = projects.create_project(self.company, "پروژه آزمایشی", notes="یادداشت")["data"]
         self.task = projects.create_task(self.project["name"], "طراحی فرم", priority="High",
                                          assign_to=[EMPLOYEE_USER])["data"]
