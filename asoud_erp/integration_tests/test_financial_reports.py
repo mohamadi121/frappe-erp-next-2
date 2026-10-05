@@ -1,8 +1,31 @@
 import frappe
-from frappe.utils import add_days, get_year_ending, get_year_start, nowdate
+from frappe.utils import add_days, get_year_ending, get_year_start, getdate, nowdate
 
 from asoud_erp.api.v1 import financial_reports, selling, stock
 from asoud_erp.integration_tests.fixtures import CUSTOMER, EMPLOYEE_USER, ITEM, SERVICE, APITestCase
+
+
+def allow_fiscal_year(company: str) -> None:
+    """Let `company` post inside the fiscal year covering today.
+
+    ERPNext rejects a submission whose date is outside a fiscal year that lists
+    the company, and a fiscal year with an empty company list applies to every
+    company. So a company created by a test only posts when the shared fiscal
+    year is either empty or already lists it.
+    """
+    today = getdate(nowdate())
+    names = frappe.get_all("Fiscal Year", filters={"disabled": 0, "year_start_date": ["<=", today],
+        "year_end_date": [">=", today]}, pluck="name", order_by="name desc")
+    for name in names:
+        fiscal_year = frappe.get_doc("Fiscal Year", name)
+        if any(row.company == company for row in fiscal_year.companies):
+            return
+        if not fiscal_year.companies:
+            return
+        fiscal_year.append("companies", {"company": company})
+        fiscal_year.save(ignore_permissions=True)
+        return
+    raise AssertionError("no active fiscal year covers today, so no transaction can be submitted")
 
 
 class TestFinancialReports(APITestCase):
@@ -28,6 +51,7 @@ class TestFinancialReports(APITestCase):
         company = frappe.get_doc({"doctype": "Company", "company_name": "Report " + token,
             "abbr": token, "default_currency": "USD", "country": "United States",
             "chart_of_accounts": "Standard"}).insert()
+        allow_fiscal_year(company.name)
         expense = f"Office Rent - {token}"
         liability = f"Asset Received But Not Billed - {token}"
         entry = frappe.get_doc({"doctype": "Journal Entry", "company": company.name,
