@@ -4,6 +4,11 @@
 
 Security:
 
+- `floating_detail.create_floating_detail` and `floating_detail.link_floating_detail`
+  now check the company of the record a detail is attached to. `ASOUD Floating
+  Detail` has no company column, so a Company User Permission never applied to it:
+  an Accounts User of Company A could attach a detail to a Company B party, and
+  that write altered the other company's party.
 - Every `account.*` endpoint now checks `company` with
   `request_access.require_company`. The module gated on roles only and read with
   `frappe.get_all`, so a Company User Permission did not limit the chart of

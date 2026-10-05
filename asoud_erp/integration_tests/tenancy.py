@@ -199,6 +199,24 @@ def coded_accounts(target: str, count: int = 3) -> list[str]:
     return names
 
 
+def _floating_detail(title: str, detail_group: str = "10000") -> str:
+    from asoud_erp.services.detail_code_service import next_detail_code
+
+    existing = frappe.db.get_value("ASOUD Floating Detail", {"title": title}, "name")
+    if existing:
+        return existing
+    settings = frappe.get_single("ASOUD Settings")
+    return frappe.get_doc(
+        {
+            "doctype": "ASOUD Floating Detail",
+            "title": title,
+            "detail_type": "Customer",
+            "detail_group": detail_group,
+            "detail_code": next_detail_code(detail_group, int(settings.detail_code_digits or 5)),
+        }
+    ).insert(ignore_permissions=True).name
+
+
 def setup_tenancy() -> dict:
     """Idempotently creates the second company, its postings and the test users."""
     frappe.set_user("Administrator")
@@ -257,6 +275,7 @@ def setup_tenancy() -> dict:
     # The party view and the Employee master stay in sync, as save_party leaves them.
     frappe.db.set_value("Employee", employee_a, "designation", DESIGNATION_A)
     frappe.db.set_value("Employee", employee_b, "designation", DESIGNATION_B)
+    floating_detail = _floating_detail("ASOUD Scope Detail")
     frappe.db.commit()
     return {
         "first": first,
@@ -268,4 +287,5 @@ def setup_tenancy() -> dict:
         "employee_a": employee_a,
         "employee_b": employee_b,
         "coded_accounts_b": coded,
+        "floating_detail": floating_detail,
     }

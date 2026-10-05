@@ -3,6 +3,26 @@ from frappe import _
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.detail_code_service import next_detail_code
+from asoud_erp.services.request_access import require_company
+
+
+def _require_linked_company(linked_doctype: str | None, linked_document: str | None) -> None:
+    """A floating detail is a site-wide catalogue row, but what it is linked to is not.
+
+    ``ASOUD Floating Detail`` has no company column, so a Company User Permission
+    never applies to it; the linked record is the tenant boundary.
+    """
+    if not linked_doctype or not linked_document:
+        return
+    if not frappe.db.exists("DocType", linked_doctype):
+        frappe.throw(_("Linked DocType does not exist"))
+    if not frappe.db.exists(linked_doctype, linked_document):
+        frappe.throw(_("Linked document does not exist"))
+    if not frappe.get_meta(linked_doctype).has_field("company"):
+        return
+    company = frappe.db.get_value(linked_doctype, linked_document, "company")
+    if company:
+        require_company(company)
 
 
 @frappe.whitelist()
@@ -60,6 +80,7 @@ def create_floating_detail(
         frappe.throw(_("Title must contain at least 3 characters"))
     if not frappe.db.exists("ASOUD Detail Group", detail_group):
         frappe.throw(_("Detail group does not exist"))
+    _require_linked_company(linked_doctype, linked_document)
 
     settings = frappe.get_single("ASOUD Settings")
     code = detail_code
@@ -90,6 +111,7 @@ def link_floating_detail(name: str, party_profile: str) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
     if not frappe.db.exists("ASOUD Party Profile", party_profile):
         frappe.throw(_("Party profile does not exist"))
+    _require_linked_company("ASOUD Party Profile", party_profile)
     doc = frappe.get_doc("ASOUD Floating Detail", name)
     if doc.disabled:
         frappe.throw(_("Disabled floating detail cannot be linked"))

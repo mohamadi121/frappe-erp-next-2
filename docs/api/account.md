@@ -31,3 +31,26 @@ become terminal.
 
 Account numbers are unique per company; ERPNext's own Account validation still
 applies to every create and update.
+
+## Detail groups and floating details
+
+`asoud_erp.api.v1.detail_group` manages the `ASOUD Detail Group` catalogue and the
+per-company `ASOUD Account Mapping` rows
+(`list_detail_groups`, `save_detail_group`, `disable_detail_group`,
+`seed_default_detail_groups`, `list_account_mappings`, `save_account_mapping`).
+`asoud_erp.api.v1.floating_detail` manages `ASOUD Floating Detail`
+(`preview_next_detail_code`, `list_floating_details`, `create_floating_detail`,
+`link_floating_detail`, `disable_floating_detail`).
+
+Neither DocType has a `company` column: a detail group is a site-wide catalogue of
+*kinds* of detail, and a floating detail is a reusable value. The tenant boundary is
+therefore the company of the record a detail is attached to:
+
+- `list_account_mappings` and `save_account_mapping` take `company` and check it
+  with `require_company`, because `ASOUD Account Mapping` does carry a company.
+- `create_floating_detail(linked_doctype, linked_document)` and
+  `link_floating_detail(name, party_profile)` check the **linked** record's company
+  when that DocType has one, and refuse a foreign company with `PermissionError`.
+  A floating detail may therefore not be attached to another company's party.
+- `preview_next_detail_code`, `list_floating_details` and `disable_floating_detail`
+  take no company and are site-wide by construction.
