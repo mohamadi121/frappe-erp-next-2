@@ -4,6 +4,11 @@
 
 Security:
 
+- Every `voucher.*` endpoint (`list_vouchers`, `save_voucher`, `submit_for_approval`,
+  `approve_voucher`, `reject_voucher`) now checks company access with
+  `request_access.require_company`. `list_vouchers` and `save_voucher` require
+  access to the specified company, and voucher state transitions verify access to
+  the company owning the voucher.
 - `party.save_party` and `party.disable_party` now check the company of the profile
   they act on. `save_party` also keeps the profile's company when the argument is
   omitted instead of clearing it, which could move a party out of its tenant.

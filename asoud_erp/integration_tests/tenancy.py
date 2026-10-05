@@ -232,6 +232,25 @@ def _floating_detail(title: str, detail_group: str = "10000") -> str:
     ).insert(ignore_permissions=True).name
 
 
+def _voucher(company: str, account_debit: str, account_credit: str, remark: str) -> str:
+    existing = frappe.db.get_value("ASOUD Accounting Voucher", {"company": company, "description": remark}, "name")
+    if existing:
+        return existing
+    return frappe.get_doc(
+        {
+            "doctype": "ASOUD Accounting Voucher",
+            "company": company,
+            "posting_date": nowdate(),
+            "description": remark,
+            "workflow_status": "Draft",
+            "lines": [
+                {"account": account_debit, "description": remark, "debit": GL_AMOUNT, "credit": 0},
+                {"account": account_credit, "description": remark, "debit": 0, "credit": GL_AMOUNT},
+            ],
+        }
+    ).insert(ignore_permissions=True).name
+
+
 def setup_tenancy() -> dict:
     """Idempotently creates the second company, its postings and the test users."""
     frappe.set_user("Administrator")
@@ -277,6 +296,7 @@ def setup_tenancy() -> dict:
     _post_gl(second)
     coded = coded_accounts(second)
     mapping_b = _account_mapping(second, coded[0])
+    voucher_b = _voucher(second, coded[0], coded[1], "ASOUD scope voucher")
 
     party_a = _party("ASOUD Scope Party A", first, ["Customer"], iban=IBAN_A, bank_name="Bank A",
                      account_number="1000000001", card_number="6100000000000001")
@@ -304,5 +324,6 @@ def setup_tenancy() -> dict:
         "employee_b": employee_b,
         "coded_accounts_b": coded,
         "mapping_b": mapping_b,
+        "voucher_b": voucher_b,
         "floating_detail": floating_detail,
     }

@@ -8,7 +8,7 @@ with an empty list and the leak is invisible.
 
 import frappe
 
-from asoud_erp.api.v1 import account, detail_group, floating_detail
+from asoud_erp.api.v1 import account, detail_group, floating_detail, voucher
 from asoud_erp.integration_tests.fixtures import APITestCase
 from asoud_erp.integration_tests.tenancy import ACCOUNTS_A_USER, MANAGER_USER, setup_tenancy
 
@@ -108,3 +108,46 @@ class TestDetailGroupCompanyScope(APITestCase):
         frappe.set_user(ACCOUNTS_A_USER)
         codes = {row["group_code"] for row in detail_group.list_detail_groups()["data"]}
         self.assertIn("10000", codes)
+
+
+class TestVoucherCompanyScope(APITestCase):
+    """``list_vouchers`` reads with ``frappe.get_all`` and the state changes act on
+    a voucher by name, so neither was tenant scoped."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.scope = setup_tenancy()
+        cls.second = cls.scope["second"]
+        cls.voucher_b = cls.scope["voucher_b"]
+
+    def test_listing_a_foreign_company_vouchers_is_refused(self):
+        self.assertEqual(frappe.db.get_value("ASOUD Accounting Voucher", self.voucher_b, "company"), self.second)
+        frappe.set_user(ACCOUNTS_A_USER)
+        with self.assertRaises(frappe.PermissionError):
+            voucher.list_vouchers(company=self.second)
+
+    def test_listing_own_company_vouchers_succeeds(self):
+        frappe.set_user(ACCOUNTS_A_USER)
+        res = voucher.list_vouchers(company=self.company)
+        self.assertIsInstance(res.get("data"), list)
+
+    def test_acting_on_a_foreign_voucher_is_refused(self):
+        frappe.set_user(MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            voucher.submit_for_approval(name=self.voucher_b)
+        self.assertEqual(
+            frappe.db.get_value("ASOUD Accounting Voucher", self.voucher_b, "workflow_status"), "Draft"
+        )
+
+    def test_saving_into_a_foreign_company_is_refused(self):
+        frappe.set_user(ACCOUNTS_A_USER)
+        with self.assertRaises(frappe.PermissionError):
+            voucher.save_voucher(
+                company=self.second,
+                posting_date="2026-01-02",
+                lines=[
+                    {"account": self.scope["coded_accounts_b"][0], "debit": 10, "credit": 0},
+                    {"account": self.scope["coded_accounts_b"][1], "debit": 0, "credit": 10},
+                ],
+            )
