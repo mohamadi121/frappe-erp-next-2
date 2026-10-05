@@ -76,6 +76,16 @@ class TestSellingAndPayments(APITestCase):
                 references=[{"reference_doctype": "Sales Invoice", "reference_name": invoice["name"],
                              "allocated_amount": 200}])
 
+    def test_currency_and_price_list_overrides(self):
+        with self.assertRaisesRegex(frappe.ValidationError, "Invalid currency"):
+            self.invoice(currency="XXX")
+        with self.assertRaisesRegex(frappe.ValidationError, "Invalid selling price list"):
+            self.invoice(selling_price_list="No Such List")
+        explicit = self.invoice(currency="USD", selling_price_list="Standard Selling")
+        self.assertEqual(frappe.db.get_value("Sales Invoice", explicit["name"], "currency"), "USD")
+        self.assertEqual(frappe.db.get_value("Sales Invoice", explicit["name"], "selling_price_list"),
+                         "Standard Selling")
+
     def test_roles_are_enforced(self):
         frappe.set_user(EMPLOYEE_USER)
         with self.assertRaises(frappe.PermissionError):

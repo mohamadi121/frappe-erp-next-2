@@ -28,6 +28,7 @@ site whose name contains neither "test" nor "demo", unless ``force=True``.
 import base64
 import json
 import secrets
+import time
 from datetime import date
 
 import frappe
@@ -54,6 +55,19 @@ def _count(section: str, created: int = 0, skipped: int = 0) -> None:
 
 def _today() -> date:
     return getdate(nowdate())
+
+
+def _set_values(doctype: str, name: str, values: dict) -> None:
+    """db.set_value, but only for fields that actually change.
+
+    Unconditional writes take row locks (a deadlock hazard on this shared
+    box) and bump `modified`, which makes a same-run reset look like a
+    concurrent edit. Demo state is already idempotent; keep the writes so.
+    """
+    current = frappe.db.get_value(doctype, name, list(values), as_dict=True) or {}
+    diff = {key: value for key, value in values.items() if current.get(key) != value}
+    if diff:
+        frappe.db.set_value(doctype, name, diff)
 
 
 # ------------------------------------------------------------------ entrypoint
@@ -299,9 +313,9 @@ def _ensure_holiday_list() -> str:
             ],
         }).insert(ignore_permissions=True)
         _count("holiday_list", created=1)
-    frappe.db.set_value("Company", m.COMPANY, "default_holiday_list", name)
+    _set_values("Company", m.COMPANY, {"default_holiday_list": name})
     for employee in _demo_employees():
-        frappe.db.set_value("Employee", employee, "holiday_list", name, update_modified=False)
+        _set_values("Employee", employee, {"holiday_list": name})
     return name
 
 
@@ -391,8 +405,8 @@ def _liability_account() -> str:
 def _ensure_salary() -> None:
     payable = f"Payroll Payable - {m.ABBR}"
     if frappe.db.exists("Account", payable):
-        frappe.db.set_value("Account", payable, "account_type", "Receivable")
-        frappe.db.set_value("Company", m.COMPANY, "default_payroll_payable_account", payable)
+        _set_values("Account", payable, {"account_type": "Receivable"})
+        _set_values("Company", m.COMPANY, {"default_payroll_payable_account": payable})
     for title, abbr, kind, account in (
             (m.SALARY_EARNING, m.SALARY_EARNING_ABBR, "Earning", _expense_account()),
             (m.SALARY_DEDUCTION, m.SALARY_DEDUCTION_ABBR, "Deduction", _liability_account())):
@@ -458,7 +472,27 @@ def _ensure_attendance(holiday_list: str, leave_days: dict) -> None:
 
 # ------------------------------------------------------------------ stock & trade
 
+def _ensure_price_lists() -> None:
+    """Demo price lists in the company currency (IRR).
+
+    The site defaults ("Standard Selling"/"Standard Buying") are usually in
+    the site currency, which would force a currency conversion on every demo
+    invoice — failing without an exchange rate. Demo parties point at these
+    lists instead, so no conversion ever happens.
+    """
+    for name, selling, buying in ((m.PRICE_LIST_SELLING, 1, 0),
+                                  (m.PRICE_LIST_BUYING, 0, 1)):
+        if frappe.db.exists("Price List", name):
+            _count("price_lists", skipped=1)
+            continue
+        frappe.get_doc({"doctype": "Price List", "price_list_name": name,
+                        "currency": m.CURRENCY, "selling": selling,
+                        "buying": buying, "enabled": 1}).insert(ignore_permissions=True)
+        _count("price_lists", created=1)
+
+
 def _ensure_trade_masters() -> tuple[str, list, list]:
+    _ensure_price_lists()
     for code, title, is_stock, rate in m.ITEMS:
         if frappe.db.exists("Item", code):
             _count("items", skipped=1)
@@ -470,10 +504,18 @@ def _ensure_trade_masters() -> tuple[str, list, list]:
                 "standard_rate": rate,
             }).insert(ignore_permissions=True)
             _count("items", created=1)
-        if not frappe.db.exists("Item Price", {"item_code": code, "price_list": "Standard Selling"}):
-            frappe.get_doc({"doctype": "Item Price", "item_code": code,
-                            "price_list": "Standard Selling",
-                            "price_list_rate": rate}).insert(ignore_permissions=True)
+        # Prices live in the demo IRR lists; drop stale rows in other lists
+        # (e.g. left by an older seed run) so nothing prices in USD.
+        for price in frappe.get_all("Item Price", filters={"item_code": code},
+                                     fields=["name", "price_list"]):
+            if price.price_list not in (m.PRICE_LIST_SELLING, m.PRICE_LIST_BUYING):
+                frappe.delete_doc("Item Price", price.name, ignore_permissions=True)
+        for price_list, flag in ((m.PRICE_LIST_SELLING, "selling"),
+                                 (m.PRICE_LIST_BUYING, "buying")):
+            if not frappe.db.exists("Item Price", {"item_code": code, "price_list": price_list}):
+                frappe.get_doc({"doctype": "Item Price", "item_code": code,
+                                "price_list": price_list, "price_list_rate": rate,
+                                flag: 1}).insert(ignore_permissions=True)
     for title in m.CUSTOMERS:
         if frappe.db.exists("Customer", title):
             _count("customers", skipped=1)
@@ -482,6 +524,10 @@ def _ensure_trade_masters() -> tuple[str, list, list]:
                             "customer_group": _leaf("Customer Group"),
                             "territory": _leaf("Territory")}).insert(ignore_permissions=True)
             _count("customers", created=1)
+        # The document currency follows the party default; repair rows from
+        # older runs so every invoice is created in the company currency.
+        _set_values("Customer", title, {
+            "default_currency": m.CURRENCY, "default_price_list": m.PRICE_LIST_SELLING})
     for title in m.SUPPLIERS:
         if frappe.db.exists("Supplier", title):
             _count("suppliers", skipped=1)
@@ -489,6 +535,8 @@ def _ensure_trade_masters() -> tuple[str, list, list]:
             frappe.get_doc({"doctype": "Supplier", "supplier_name": title,
                             "supplier_group": _leaf("Supplier Group")}).insert(ignore_permissions=True)
             _count("suppliers", created=1)
+        _set_values("Supplier", title, {
+            "default_currency": m.CURRENCY, "default_price_list": m.PRICE_LIST_BUYING})
     warehouse = f"Stores - {m.ABBR}"
     if not frappe.db.exists("Warehouse", warehouse):
         frappe.get_doc({"doctype": "Warehouse", "warehouse_name": "Stores",
@@ -520,14 +568,16 @@ def _ensure_sales(customers: list) -> None:
         return
     selling.create_sales_invoice(
         m.COMPANY, customers[0],
-        [{"item_code": "ASOUD-DEMO-SERVICE-01", "qty": 1},
-         {"item_code": "ASOUD-DEMO-ITEM-01", "qty": 2}],
-        remarks="[ASOUD-DEMO] فروش نمایشی ۱", submit=1)
+        [{"item_code": "ASOUD-DEMO-SERVICE-01", "qty": 1, "rate": 5000000},
+         {"item_code": "ASOUD-DEMO-ITEM-01", "qty": 2, "rate": 1500000}],
+        remarks="[ASOUD-DEMO] فروش نمایشی ۱", submit=1,
+        currency=m.CURRENCY, selling_price_list=m.PRICE_LIST_SELLING)
     selling.create_sales_invoice(
         m.COMPANY, customers[1],
-        [{"item_code": "ASOUD-DEMO-ITEM-02", "qty": 3},
-         {"item_code": "ASOUD-DEMO-ITEM-03", "qty": 1}],
-        remarks="[ASOUD-DEMO] فروش نمایشی ۲", submit=1)
+        [{"item_code": "ASOUD-DEMO-ITEM-02", "qty": 3, "rate": 2800000},
+         {"item_code": "ASOUD-DEMO-ITEM-03", "qty": 1, "rate": 950000}],
+        remarks="[ASOUD-DEMO] فروش نمایشی ۲", submit=1,
+        currency=m.CURRENCY, selling_price_list=m.PRICE_LIST_SELLING)
     _count("sales_invoices", created=2)
 
 
@@ -541,7 +591,8 @@ def _ensure_purchase(suppliers: list, warehouse: str) -> None:
         m.COMPANY, suppliers[0],
         [{"item_code": "ASOUD-DEMO-ITEM-01", "qty": 10, "rate": 1400000,
           "warehouse": warehouse}],
-        schedule_date=str(add_days(nowdate(), 7)), submit=1)["data"]
+        schedule_date=str(add_days(nowdate(), 7)), submit=1,
+        currency=m.CURRENCY, buying_price_list=m.PRICE_LIST_BUYING)["data"]
     buying.create_purchase_receipt_from_order(order["name"], submit=1)
     buying.create_purchase_invoice_from_order(order["name"], bill_no=m.PURCHASE_BILL_NO, submit=1)
     _count("purchase_flow", created=1)
@@ -761,21 +812,145 @@ def _cancel_and_delete(doctype: str, names: list, purge_ledger: bool = False) ->
     for name in names:
         if not frappe.db.exists(doctype, name):
             continue
-        doc = frappe.get_doc(doctype, name)
-        if doc.get("docstatus") == 1:
-            doc.cancel()
-            doc.reload()
-        if purge_ledger:
-            for table in ("GL Entry", "Payment Ledger Entry", "Stock Ledger Entry"):
-                frappe.db.sql(f"delete from `tab{table}` where voucher_type=%s and voucher_no=%s",
-                              (doctype, name))
-        frappe.delete_doc(doctype, name, ignore_permissions=True)
+        _delete_one(doctype, name, purge_ledger)
         removed += 1
     return removed
 
 
+def _delete_one(doctype: str, name: str, purge_ledger: bool) -> None:
+    """Cancel (if submitted), purge ledgers, delete — retrying lock contention.
+
+    The site is shared, so a row lock held by another connection surfaces as
+    QueryTimeoutError/QueryDeadlockError. The failed statement is atomic, so
+    retrying the whole step without rolling back is safe; earlier deletes in
+    this transaction are untouched.
+    """
+    for attempt in range(4):
+        try:
+            doc = frappe.get_doc(doctype, name)
+            if doc.get("docstatus") == 1:
+                doc.cancel()
+            if purge_ledger:
+                for table in ("GL Entry", "Payment Ledger Entry", "Stock Ledger Entry"):
+                    frappe.db.sql(f"delete from `tab{table}` where voucher_type=%s and voucher_no=%s",
+                                  (doctype, name))
+            frappe.delete_doc(doctype, name, ignore_permissions=True)
+            return
+        except (frappe.QueryTimeoutError, frappe.QueryDeadlockError):
+            if attempt == 3:
+                raise
+            time.sleep(2 * (attempt + 1))
+
+
 def _pluck(doctype: str, filters: dict) -> list:
     return frappe.get_all(doctype, filters=filters, pluck="name", limit_page_length=0)
+
+
+def _definition_names() -> list:
+    return _pluck("ASOUD Workflow Definition", {"company": m.COMPANY})
+
+
+def _demo_instance_names(definitions: list | None = None) -> list:
+    definitions = definitions if definitions is not None else _definition_names()
+    if not definitions:
+        return []
+    return frappe.get_all("ASOUD Workflow Instance",
+                           filters={"workflow_definition": ["in", definitions]},
+                           pluck="name", limit_page_length=0)
+
+
+def check() -> dict:
+    """Read-only count of demo-marked records per DocType (all zero = clean)."""
+    frappe.set_user("Administrator")
+    demo_employees = _pluck("Employee", {"company": m.COMPANY})
+    demo_profiles = _pluck("ASOUD Party Profile", {"company": m.COMPANY})
+    definitions = _definition_names()
+    instances = _demo_instance_names(definitions)
+
+    def in_demo(values: list) -> list:
+        return ["in", values] if values else ["in", [""]]
+
+    result = {
+        "Company": frappe.db.count("Company", {"name": m.COMPANY}),
+        "Employee": len(demo_employees),
+        "Department": frappe.db.count("Department", {"company": m.COMPANY}),
+        "User": sum(1 for local, _i, _r, _n in m.USERS
+                     if frappe.db.exists("User", m.demo_email(local))),
+        "ASOUD Party Profile": len(demo_profiles),
+        "ASOUD Personnel Record": frappe.db.count(
+            "ASOUD Personnel Record", {"party": in_demo(demo_profiles)}),
+        "ASOUD Personnel Operation": frappe.db.count(
+            "ASOUD Personnel Operation", {"party": in_demo(demo_profiles)}),
+        "ASOUD Floating Detail": frappe.db.count(
+            "ASOUD Floating Detail", {"linked_document": in_demo(demo_profiles)}),
+        "Customer": sum(1 for title in m.CUSTOMERS if frappe.db.exists("Customer", title)),
+        "Supplier": sum(1 for title in m.SUPPLIERS if frappe.db.exists("Supplier", title)),
+        "Item": sum(1 for code, _t, _s, _r in m.ITEMS if frappe.db.exists("Item", code)),
+        "Item Price": frappe.db.count(
+            "Item Price", {"item_code": in_demo([code for code, _t, _s, _r in m.ITEMS])}),
+        "Price List": sum(1 for name in (m.PRICE_LIST_SELLING, m.PRICE_LIST_BUYING)
+                          if frappe.db.exists("Price List", name)),
+        "Warehouse": frappe.db.count("Warehouse", {"company": m.COMPANY}),
+        "Stock Entry": frappe.db.count("Stock Entry", {"company": m.COMPANY}),
+        "Sales Invoice": frappe.db.count("Sales Invoice", {"company": m.COMPANY}),
+        "Purchase Order": frappe.db.count("Purchase Order", {"company": m.COMPANY}),
+        "Purchase Receipt": frappe.db.count("Purchase Receipt", {"company": m.COMPANY}),
+        "Purchase Invoice": frappe.db.count("Purchase Invoice", {"company": m.COMPANY}),
+        "Payment Entry": frappe.db.count("Payment Entry", {"company": m.COMPANY}),
+        "Attendance": frappe.db.count("Attendance", {"company": m.COMPANY}),
+        "Leave Application": frappe.db.count("Leave Application", {"company": m.COMPANY}),
+        "Leave Allocation": frappe.db.count("Leave Allocation", {"company": m.COMPANY}),
+        "Salary Structure": frappe.db.count("Salary Structure",
+                                            {"name": m.SALARY_STRUCTURE}),
+        "Salary Component": sum(1 for name in (m.SALARY_EARNING, m.SALARY_DEDUCTION)
+                                if frappe.db.exists("Salary Component", name)),
+        "Salary Structure Assignment": frappe.db.count(
+            "Salary Structure Assignment", {"company": m.COMPANY}),
+        "Salary Slip": frappe.db.count("Salary Slip", {"company": m.COMPANY}),
+        "Payroll Entry": frappe.db.count("Payroll Entry", {"company": m.COMPANY}),
+        "Holiday List": frappe.db.count(
+            "Holiday List", {"holiday_list_name": ["like", f"{m.HOLIDAY_LIST}%"]}),
+        "Leave Type": sum(1 for title, _max_leaves in m.LEAVE_TYPES
+                          if frappe.db.exists("Leave Type", title)),
+        "Designation": sum(1 for name in m.DESIGNATIONS
+                           if frappe.db.exists("Designation", name)),
+        "ASOUD Workflow Definition": len(definitions),
+        "ASOUD Workflow Stage": frappe.db.count(
+            "ASOUD Workflow Stage", {"workflow_definition": in_demo(definitions)}),
+        "ASOUD Workflow Transition": frappe.db.count(
+            "ASOUD Workflow Transition", {"workflow_definition": in_demo(definitions)}),
+        "ASOUD Workflow Request": frappe.db.count(
+            "ASOUD Workflow Request", {"company": m.COMPANY}),
+        "ASOUD Workflow Instance": len(instances),
+        "ASOUD Workflow Task": frappe.db.count(
+            "ASOUD Workflow Task", {"workflow_instance": in_demo(instances)}),
+        "ASOUD Workflow Activity": frappe.db.count(
+            "ASOUD Workflow Activity", {"workflow_instance": in_demo(instances)}),
+        "Workflow": sum(1 for name in (f"{m.WORKFLOW_LEAVE_CODE}-NATIVE",
+                                       f"{m.WORKFLOW_PURCHASE_CODE}-NATIVE")
+                        if frappe.db.exists("Workflow", name)),
+        "Workflow State": 1 if frappe.db.exists("Workflow State", f"{m.PREFIX} Draft") else 0,
+        "Notification Log": frappe.db.count(
+            "Notification Log", {"document_type": "ASOUD Workflow Instance",
+                                 "document_name": in_demo(instances)}),
+        "GL Entry": frappe.db.count("GL Entry", {"company": m.COMPANY}),
+        "Stock Ledger Entry": frappe.db.count("Stock Ledger Entry", {"company": m.COMPANY}),
+        "Payment Ledger Entry": frappe.db.count("Payment Ledger Entry", {"company": m.COMPANY}),
+        "Leave Ledger Entry": frappe.db.count(
+            "Leave Ledger Entry", {"employee": in_demo(demo_employees)}),
+        "Repost Item Valuation": frappe.db.count(
+            "Repost Item Valuation",
+            {"item_code": in_demo([code for code, _t, _s, _r in m.ITEMS])}),
+        "File": frappe.db.count(
+            "File", {"attached_to_doctype": "Employee",
+                     "attached_to_name": in_demo(demo_employees)}),
+        "Fiscal Year rows": sum(
+            1 for year in frappe.get_all("Fiscal Year", pluck="name")
+            if frappe.db.exists("Fiscal Year Company",
+                                {"parent": year, "company": m.COMPANY})),
+    }
+    result["TOTAL"] = sum(result.values())
+    return result
 
 
 def _reset() -> None:
@@ -787,6 +962,7 @@ def _reset() -> None:
                 doctype, names, purge_ledger)
 
     demo_employees = _pluck("Employee", {"company": m.COMPANY})
+    demo_items = [code for code, _t, _s, _r in m.ITEMS]
     # 1. Submitted transactions first (cancel, purge their ledger rows, delete).
     wipe("Purchase Invoice", _pluck("Purchase Invoice", {"company": m.COMPANY}), purge_ledger=True)
     wipe("Purchase Receipt", _pluck("Purchase Receipt", {"company": m.COMPANY}), purge_ledger=True)
@@ -797,37 +973,52 @@ def _reset() -> None:
     wipe("Attendance", _pluck("Attendance", {"company": m.COMPANY}))
     wipe("Leave Application", _pluck("Leave Application", {"company": m.COMPANY}))
     wipe("Leave Allocation", _pluck("Leave Allocation", {"company": m.COMPANY}))
+    # Leave ledger rows are ERPNext-internal postings of the allocations and
+    # applications above; purge exactly the demo employees' rows.
+    if demo_employees:
+        purged = frappe.db.count(
+            "Leave Ledger Entry", {"employee": ["in", demo_employees]})
+        frappe.db.sql("delete from `tabLeave Ledger Entry` where employee in %s",
+                      [tuple(demo_employees)])
+        deleted["Leave Ledger Entry"] = deleted.get("Leave Ledger Entry", 0) + purged
     wipe("Salary Structure Assignment", _pluck("Salary Structure Assignment",
                                                {"company": m.COMPANY}))
     wipe("Salary Slip", _pluck("Salary Slip", {"company": m.COMPANY}), purge_ledger=True)
     wipe("Payroll Entry", _pluck("Payroll Entry", {"company": m.COMPANY}))
     # 2. ASOUD workflow records of the demo company.
-    instances = frappe.get_all(
-        "ASOUD Workflow Instance", pluck="name", limit_page_length=0,
-        filters={"workflow_definition": ["in", _pluck("ASOUD Workflow Definition",
-                                                      {"company": m.COMPANY})] or [""]})
-    wipe("ASOUD Workflow Task", _pluck("ASOUD Workflow Task",
-                                       {"workflow_instance": ["in", instances] or [""]})
-         if instances else [])
+    definitions = _definition_names()
+    instances = _demo_instance_names(definitions)
+    # Activities reference their task, so they go before the tasks.
     wipe("ASOUD Workflow Activity", _pluck("ASOUD Workflow Activity",
                                            {"workflow_instance": ["in", instances] or [""]})
          if instances else [])
-    wipe("ASOUD Workflow Request", _pluck("ASOUD Workflow Request", {"company": m.COMPANY}))
+    wipe("ASOUD Workflow Task", _pluck("ASOUD Workflow Task",
+                                       {"workflow_instance": ["in", instances] or [""]})
+         if instances else [])
+    # Requests and instances reference each other (Request.workflow_instance
+    # and the instance's dynamic reference), so the link is cleared first.
+    for request in _pluck("ASOUD Workflow Request", {"company": m.COMPANY}):
+        _set_values("ASOUD Workflow Request", request, {"workflow_instance": None})
     wipe("ASOUD Workflow Instance", instances)
+    wipe("ASOUD Workflow Request", _pluck("ASOUD Workflow Request", {"company": m.COMPANY}))
     wipe("Notification Log", _pluck("Notification Log",
                                     {"document_type": "ASOUD Workflow Instance",
                                      "document_name": ["in", instances] or [""]}) if instances else [])
     wipe("ASOUD Workflow Transition", _pluck("ASOUD Workflow Transition",
-                                             {"workflow_definition": ["in", _pluck(
-                                                 "ASOUD Workflow Definition",
-                                                 {"company": m.COMPANY})] or [""]}))
+                                             {"workflow_definition": ["in", definitions]
+                                              or [""]}) if definitions else [])
     wipe("ASOUD Workflow Stage", _pluck("ASOUD Workflow Stage",
-                                        {"workflow_definition": ["in", _pluck(
-                                            "ASOUD Workflow Definition",
-                                            {"company": m.COMPANY})] or [""]}))
-    wipe("ASOUD Workflow Definition", _pluck("ASOUD Workflow Definition", {"company": m.COMPANY}))
+                                        {"workflow_definition": ["in", definitions]
+                                         or [""]}) if definitions else [])
+    wipe("ASOUD Workflow Definition", definitions)
     wipe("Workflow", [f"{m.WORKFLOW_LEAVE_CODE}-NATIVE", f"{m.WORKFLOW_PURCHASE_CODE}-NATIVE"])
-    wipe("Workflow State", [f"{m.PREFIX} Draft"])
+    # Workflow States live in a shared namespace: another workflow on this
+    # site may reference the demo state (e.g. stamps it on its own requests).
+    # Remove it only when nothing else links it; never touch other data.
+    try:
+        wipe("Workflow State", [f"{m.PREFIX} Draft"])
+    except frappe.LinkExistsError:
+        SUMMARY.setdefault("kept", {})["Workflow State"] = f"{m.PREFIX} Draft"
     # 3. Personnel records, profiles, employees, users.
     demo_profiles = _pluck("ASOUD Party Profile", {"company": m.COMPANY})
     wipe("ASOUD Personnel Record", _pluck("ASOUD Personnel Record",
@@ -847,12 +1038,27 @@ def _reset() -> None:
                             "reference_name": ["in", demo_employees] or [""]},
         pluck="name", limit_page_length=0) if demo_employees else [])
     wipe("ASOUD Party Profile", demo_profiles)
+    # Break the reports_to chain first: a manager cannot be deleted while
+    # their reports still point at them. Scoped to demo employees only.
+    for employee in demo_employees:
+        _set_values("Employee", employee, {"reports_to": None})
     wipe("Employee", demo_employees)
     wipe("User", [m.demo_email(local) for local, _i, _r, _n in m.USERS])
     # 4. Trade masters and HR masters.
+    # Cancelling stock vouchers spawns fresh Repost Item Valuation rows, so
+    # they are wiped here, after every voucher is gone. A Queued repost
+    # cannot be cancelled (and never runs where the scheduler is off), so
+    # those rows are marked Failed first — reposting deleted vouchers is moot.
+    for riv in _pluck("Repost Item Valuation", {"item_code": ["in", demo_items]}):
+        if frappe.db.get_value("Repost Item Valuation", riv, "status") in ("Queued", "In Progress"):
+            frappe.db.set_value("Repost Item Valuation", riv, "status", "Failed")
+    wipe("Repost Item Valuation", _pluck("Repost Item Valuation",
+                                         {"item_code": ["in", demo_items]}))
     wipe("Item", [code for code, _t, _s, _r in m.ITEMS])
     wipe("Customer", list(m.CUSTOMERS))
     wipe("Supplier", list(m.SUPPLIERS))
+    # Parties reference the demo lists, and items cascade their prices.
+    wipe("Price List", [m.PRICE_LIST_SELLING, m.PRICE_LIST_BUYING])
     wipe("Warehouse", frappe.get_all("Warehouse", filters={"company": m.COMPANY},
                                         pluck="name", order_by="lft desc",
                                         limit_page_length=0))
@@ -861,7 +1067,7 @@ def _reset() -> None:
     wipe("Leave Type", list(dict(m.LEAVE_TYPES).keys()))
     if frappe.db.exists("Company", m.COMPANY):
         # The company links its default holiday list; clear it before deleting the list.
-        frappe.db.set_value("Company", m.COMPANY, "default_holiday_list", None)
+        _set_values("Company", m.COMPANY, {"default_holiday_list": None})
     wipe("Holiday List", _pluck("Holiday List",
                                 {"holiday_list_name": ["like", f"{m.HOLIDAY_LIST}%"]}))
     wipe("Designation", [name for name in m.DESIGNATIONS])

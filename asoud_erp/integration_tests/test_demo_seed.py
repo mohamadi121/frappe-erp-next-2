@@ -20,6 +20,21 @@ from asoud_erp.demo import seed as demo_seed
 PASSWORD = "asoud-demo-123"
 
 
+def _delete_robustly(doctype: str, name: str, attempts: int = 5) -> None:
+    """Delete one doc, retrying transient row locks from concurrent workers."""
+    import time
+
+    for attempt in range(attempts):
+        try:
+            if frappe.db.exists(doctype, name):
+                frappe.delete_doc(doctype, name, ignore_permissions=True)
+            return
+        except (frappe.QueryTimeoutError, frappe.QueryDeadlockError):
+            if attempt == attempts - 1:
+                raise
+            time.sleep(2 * (attempt + 1))
+
+
 def demo_counts() -> dict:
     exists_user = sum(
         1 for local, _index, _roles, _note in m.USERS
@@ -85,9 +100,14 @@ class TestDemoSeed(FrappeTestCase):
         self.assertTrue(created)
         self.assertEqual(sum(created), 0, second["summary"])
         self.assertEqual(
-            (before["employees"], before["departments"], before["users"],
+            (before["employees"], before["users"],
              before["profiles"], before["definitions"], before["requests"]),
-            (12, 4, 4, 12, 2, 4))
+            (12, 4, 12, 2, 4))
+        # ERPNext adds its own standard departments to every new company, so
+        # only the four demo departments are asserted by name.
+        for name in m.DEPARTMENTS:
+            self.assertTrue(frappe.db.exists(
+                "Department", {"company": m.COMPANY, "department_name": name}), name)
         self.assertEqual(before["leave_allocations"], 24)
         self.assertEqual(before["assignments"], 12)
         self.assertEqual(before["leave_applications"], 2)
@@ -100,7 +120,7 @@ class TestDemoSeed(FrappeTestCase):
         self.assertEqual(request_status(m.REQUEST_IDS["purchase-rejected"]), "Rejected")
         self.assertEqual(request_status(m.REQUEST_IDS["leave-cancelled"]), "Cancelled")
         newcomer = m.demo_email("newcomer")
-        self.assertIsNone(frappe.db.get_value("User", newcomer, "last_login"))
+        self.assertFalse(frappe.db.get_value("User", newcomer, "last_login"))
         self.assertIn("HR Manager", frappe.get_roles(m.demo_email("hr-manager")))
         employee = frappe.db.get_value(
             "Employee", {"user_id": m.demo_email("employee")},
@@ -109,6 +129,24 @@ class TestDemoSeed(FrappeTestCase):
             "Employee", {"user_id": m.demo_email("sales-manager")}, "name")
         self.assertEqual(employee.reports_to, manager)
         self.assertIn(m.FA_MARKER, employee.designation)
+        # Every party and every trade document uses the company currency (IRR):
+        # a USD document against an IRR party account is rejected by ERPNext.
+        for title in m.CUSTOMERS:
+            party = frappe.db.get_value(
+                "Customer", title, ["default_currency", "default_price_list"], as_dict=True)
+            self.assertEqual((party.default_currency, party.default_price_list),
+                             (m.CURRENCY, m.PRICE_LIST_SELLING))
+        for title in m.SUPPLIERS:
+            party = frappe.db.get_value(
+                "Supplier", title, ["default_currency", "default_price_list"], as_dict=True)
+            self.assertEqual((party.default_currency, party.default_price_list),
+                             (m.CURRENCY, m.PRICE_LIST_BUYING))
+        for doctype in ("Sales Invoice", "Purchase Invoice",
+                        "Purchase Order", "Purchase Receipt"):
+            currencies = frappe.get_all(
+                doctype, filters={"company": m.COMPANY}, pluck="currency")
+            self.assertTrue(currencies, doctype)
+            self.assertEqual(set(currencies), {"IRR"}, doctype)
 
     def test_reset_removes_marked_records_and_keeps_unrelated(self):
         others = [name for name in frappe.get_all("Company", pluck="name")
@@ -125,6 +163,12 @@ class TestDemoSeed(FrappeTestCase):
         try:
             demo_seed.run(force=True, password=PASSWORD)
             self.assertTrue(frappe.db.exists("Company", m.COMPANY))
+            # A Queued repost (scheduler off) must still reset cleanly.
+            demo_items = [code for code, _title, _stock, _rate in m.ITEMS]
+            for riv in frappe.get_all("Repost Item Valuation",
+                                       filters={"item_code": ["in", demo_items]},
+                                       pluck="name"):
+                frappe.db.set_value("Repost Item Valuation", riv, "status", "Queued")
             deleted = demo_seed.run(reset=True, force=True)["summary"]["deleted"]
             self.assertTrue(deleted.get("Company"), deleted)
             self.assertFalse(frappe.db.exists("Company", m.COMPANY))
@@ -140,19 +184,21 @@ class TestDemoSeed(FrappeTestCase):
                             "Leave Allocation", "Leave Application",
                             "Salary Structure Assignment", "Sales Invoice",
                             "Purchase Order", "Purchase Receipt", "Purchase Invoice",
-                            "Stock Entry", "ASOUD Party Profile",
+                            "Stock Entry", "Repost Item Valuation",
+                            "ASOUD Party Profile",
                             "ASOUD Workflow Definition", "ASOUD Workflow Request"):
                 filters = {"company": m.COMPANY}
                 self.assertEqual(frappe.db.count(doctype, filters), 0, doctype)
             for title, _max_leaves in m.LEAVE_TYPES:
                 self.assertFalse(frappe.db.exists("Leave Type", title))
             self.assertFalse(frappe.db.exists("Salary Structure", m.SALARY_STRUCTURE))
+            for price_list in (m.PRICE_LIST_SELLING, m.PRICE_LIST_BUYING):
+                self.assertFalse(frappe.db.exists("Price List", price_list))
             # Ledger rows of the seed's vouchers are purged with the vouchers.
             for table in ("GL Entry", "Stock Ledger Entry", "Payment Ledger Entry"):
                 self.assertEqual(frappe.db.count(table, {"company": m.COMPANY}), 0, table)
             self.assertTrue(frappe.db.exists("Employee", unrelated))
             self.assertEqual(frappe.db.get_value("Employee", unrelated, "company"), others[0])
         finally:
-            if frappe.db.exists("Employee", unrelated):
-                frappe.delete_doc("Employee", unrelated, ignore_permissions=True)
-                frappe.db.commit()
+            _delete_robustly("Employee", unrelated)
+            frappe.db.commit()

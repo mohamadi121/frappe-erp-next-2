@@ -74,6 +74,22 @@ class TestStockAndBuying(APITestCase):
         with self.assertRaises(frappe.ValidationError):
             buying.list_purchase_documents(self.company, "Journal Entry")
 
+    def test_currency_and_price_list_overrides(self):
+        lines = [{"item_code": ITEM, "qty": 1, "rate": 90, "warehouse": warehouse()}]
+        with self.assertRaisesRegex(frappe.ValidationError, "Invalid currency"):
+            buying.create_purchase_order(self.company, SUPPLIER, lines,
+                                         schedule_date=self.future(), currency="XXX")
+        with self.assertRaisesRegex(frappe.ValidationError, "Invalid buying price list"):
+            buying.create_purchase_order(self.company, SUPPLIER, lines,
+                                         schedule_date=self.future(),
+                                         buying_price_list="No Such List")
+        order = buying.create_purchase_order(
+            self.company, SUPPLIER, lines, schedule_date=self.future(),
+            currency="USD", buying_price_list="Standard Buying")["data"]
+        self.assertEqual(frappe.db.get_value("Purchase Order", order["name"], "currency"), "USD")
+        self.assertEqual(frappe.db.get_value("Purchase Order", order["name"], "buying_price_list"),
+                         "Standard Buying")
+
     def test_employee_cannot_move_stock(self):
         frappe.set_user(EMPLOYEE_USER)
         with self.assertRaises(frappe.PermissionError):

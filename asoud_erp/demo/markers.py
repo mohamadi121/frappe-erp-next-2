@@ -90,6 +90,13 @@ ITEMS = [
 CUSTOMERS = ["مشتری نمونه آسود ۱", "مشتری نمونه آسود ۲", "مشتری نمونه آسود ۳"]
 SUPPLIERS = ["تأمین‌کننده نمونه آسود ۱", "تأمین‌کننده نمونه آسود ۲"]
 
+# Demo price lists in the company currency. The site defaults
+# ("Standard Selling"/"Standard Buying") are usually in the site currency,
+# which would force a currency conversion on every demo invoice — and fail
+# without an exchange rate. Parties point at these lists instead.
+PRICE_LIST_SELLING = "ASOUD-DEMO Selling"
+PRICE_LIST_BUYING = "ASOUD-DEMO Buying"
+
 HOLIDAY_LIST = "تعطیلات نمونه آسود"
 
 WORKFLOW_LEAVE_CODE = "ASOUD-DEMO-LEAVE"
