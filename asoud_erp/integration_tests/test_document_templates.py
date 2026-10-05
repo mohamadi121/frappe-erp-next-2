@@ -1,5 +1,6 @@
 """Document templates and the workflow system actions that use them."""
 
+import base64
 import json
 from unittest.mock import patch
 from uuid import uuid4
@@ -15,6 +16,9 @@ from asoud_erp.integration_tests.fixtures import (
     APITestCase,
     abbr,
 )
+
+PROOF_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==")
 
 
 def _leaf_account(root_type: str) -> str:
@@ -306,6 +310,161 @@ class TestDocumentTemplates(APITestCase):
         frappe.set_user(ACCOUNTANT_USER)
         with self.assertRaises(frappe.PermissionError):
             workflow_request.get_request(request["name"])
+
+    def test_query_hooks_scope_requests_attachments_and_workflow_records(self):
+        from frappe.client import get, get_list
+
+        frappe.set_user(EMPLOYEE_USER)
+        with patch.object(workflow_runtime, "_notify_user"):
+            request = workflow_request.create_request(
+                self.company, self.definition.name, "خرید تجهیزات", "doc-hooks-" + self.token,
+                values={"amount": 10},
+                attachments=[{"filename": "proof.png",
+                              "content_base64": base64.b64encode(PROOF_PNG).decode()}])["data"]
+        instance = request["workflow_instance"]
+        task = frappe.db.get_value("ASOUD Workflow Task",
+                                   {"workflow_instance": instance, "status": "Open"}, "name")
+        activity = frappe.db.get_value("ASOUD Workflow Activity", {"workflow_instance": instance},
+                                       "name", order_by="creation asc")
+        attachment = request["attachments"][0]["name"]
+        self.assertTrue(all([task, activity, attachment]))
+        records = [("ASOUD Workflow Request", request["name"]), ("ASOUD Workflow Instance", instance),
+                   ("ASOUD Workflow Task", task), ("ASOUD Workflow Activity", activity)]
+        assignee = self._user_with_roles("assignee", ["Accounts User"])
+        frappe.db.set_value("ASOUD Workflow Task", task, "assigned_to", assignee)
+        self._foreign_company()
+        restricted = self._restricted_accounts("restricted")
+        unrelated = self._unrelated_employee("other")
+        foreign = self._foreign_request(EMPLOYEE_USER, restricted)
+
+        def request_files(name: str) -> list:
+            return [row.name for row in get_list("File", fields=["name"], filters={
+                "attached_to_doctype": "ASOUD Workflow Request", "attached_to_name": name})]
+
+        # The requester lists their own request and downloads their private attachment.
+        frappe.set_user(EMPLOYEE_USER)
+        self.assertEqual([row.name for row in get_list("ASOUD Workflow Request",
+                                                        filters={"name": request["name"]},
+                                                        fields=["name"])], [request["name"]])
+        self.assertEqual(request_files(request["name"]), [attachment])
+        self.assertEqual(get("ASOUD Workflow Request", request["name"])["subject"], "خرید تجهیزات")
+        own_file = frappe.get_doc("File", attachment)
+        self.assertTrue(frappe.has_permission("File", "read", own_file))
+        self.assertTrue(own_file.is_downloadable())
+
+        # Another employee of the same company neither lists nor downloads it.
+        frappe.set_user(unrelated)
+        self.assertEqual(get_list("ASOUD Workflow Request", filters={"name": request["name"]},
+                                  fields=["name"]), [])
+        self.assertEqual(request_files(request["name"]), [])
+        with self.assertRaises(frappe.PermissionError):
+            get("ASOUD Workflow Request", request["name"])
+        self.assertFalse(frappe.has_permission("File", "read", own_file))
+        self.assertFalse(own_file.is_downloadable())
+
+        # The assignee sees the records; another privileged role does not.
+        for user, visible in [(assignee, True), (ACCOUNTANT_USER, False)]:
+            frappe.set_user(user)
+            for doctype, name in records:
+                listed = [row.name for row in get_list(doctype, filters={"name": name}, fields=["name"])]
+                self.assertEqual(listed, [name] if visible else [], user)
+                if not visible:
+                    with self.assertRaises(frappe.PermissionError):
+                        get(doctype, name)
+            self.assertEqual(request_files(request["name"]), [attachment] if visible else [], user)
+
+        # The records of another company stay hidden even from their own owner or assignee.
+        for user in (EMPLOYEE_USER, restricted):
+            frappe.set_user(user)
+            self.assertEqual(get_list("ASOUD Workflow Request", filters={"name": foreign["request"]},
+                                      fields=["name"]), [], user)
+            self.assertEqual(request_files(foreign["request"]), [], user)
+            with self.assertRaises(frappe.PermissionError):
+                get("ASOUD Workflow Request", foreign["request"])
+            foreign_file = frappe.get_doc("File", foreign["file"])
+            self.assertFalse(frappe.has_permission("File", "read", foreign_file), user)
+            self.assertFalse(foreign_file.is_downloadable(), user)
+            self.assertFalse(frappe.has_permission("File", "read", frappe.get_doc(
+                "File", foreign["public_file"])), user)
+            if user == restricted:
+                # The privileged assignee only loses access because of the company boundary.
+                for doctype, name in [("ASOUD Workflow Instance", foreign["instance"]),
+                                      ("ASOUD Workflow Task", foreign["task"])]:
+                    self.assertEqual(get_list(doctype, filters={"name": name}, fields=["name"]), [], user)
+                    with self.assertRaises(frappe.PermissionError):
+                        get(doctype, name)
+
+        frappe.set_user("Administrator")
+        self.assertEqual(get("ASOUD Workflow Request", request["name"])["subject"], "خرید تجهیزات")
+        self.assertTrue(frappe.get_doc("File", attachment).is_downloadable())
+        self.assertEqual(get("ASOUD Workflow Request", foreign["request"])["subject"],
+                         "درخواست خارجی " + self.token)
+        self.assertTrue(frappe.get_doc("File", foreign["file"]).is_downloadable())
+        self.assertFalse(frappe.get_doc("File", foreign["public_file"]).is_downloadable())
+
+    def _user_with_roles(self, prefix: str, roles: list[str]) -> str:
+        frappe.set_user("Administrator")
+        return frappe.get_doc({"doctype": "User", "email": f"doc.{prefix}-{self.token}@example.com",
+                               "first_name": prefix, "send_welcome_email": 0,
+                               "roles": [{"role": role} for role in roles]}).insert().name
+
+    def _restricted_accounts(self, prefix: str) -> str:
+        user = self._user_with_roles(prefix, ["Accounts Manager"])
+        frappe.get_doc({"doctype": "User Permission", "user": user, "allow": "Company",
+                        "for_value": "ASOUD Foreign Request Co", "apply_to_all_doctypes": 1}).insert()
+        return user
+
+    def _unrelated_employee(self, prefix: str) -> str:
+        user = self._user_with_roles(prefix, ["Employee"])
+        frappe.get_doc({"doctype": "Employee", "first_name": prefix, "gender": "Male",
+                        "date_of_birth": "1993-03-03", "date_of_joining": "2022-01-01",
+                        "company": self.company, "status": "Active", "user_id": user,
+                        "create_user_permission": 0}).insert(ignore_permissions=True)
+        return user
+
+    def _foreign_company(self) -> str:
+        frappe.set_user("Administrator")
+        if not frappe.db.exists("Company", "ASOUD Foreign Request Co"):
+            frappe.get_doc({"doctype": "Company", "company_name": "ASOUD Foreign Request Co",
+                            "abbr": "AFRC", "default_currency": "USD", "country": "United States",
+                            "chart_of_accounts": "Standard"}).insert()
+        return "ASOUD Foreign Request Co"
+
+    def _foreign_request(self, owner: str, assignee: str) -> dict:
+        """A request, instance, task and attachments that belong to another company."""
+        frappe.set_user("Administrator")
+        company = self._foreign_company()
+        request = frappe.get_doc({"doctype": "ASOUD Workflow Request", "company": company,
+                                  "workflow_definition": self.definition.name,
+                                  "request_type": self.definition.workflow_title,
+                                  "subject": "درخواست خارجی " + self.token, "priority": "Normal",
+                                  "status": "Submitted", "owner": owner,
+                                  "request_id": "doc-foreign-" + self.token,
+                                  "values_json": json.dumps({"amount": 5}),
+                                  "attachments_json": "[]"}).insert()
+        frappe.db.set_value("ASOUD Workflow Request", request.name, "owner", owner)
+        instance = frappe.get_doc({"doctype": "ASOUD Workflow Instance",
+                                   "workflow_definition": self.definition.name,
+                                   "subject": request.subject, "status": "Running",
+                                   "reference_doctype": "ASOUD Workflow Request",
+                                   "reference_name": request.name, "started_by": owner,
+                                   "started_on": frappe.utils.now()}).insert()
+        task = frappe.get_doc({"doctype": "ASOUD Workflow Task", "workflow_instance": instance.name,
+                               "workflow_stage": self.stages["Approval"].name,
+                               "task_title": "تأیید خارجی", "assigned_to": assignee,
+                               "status": "Open"}).insert()
+        file_doc = frappe.get_doc({"doctype": "File", "file_name": "foreign.png",
+                                   "content": PROOF_PNG, "is_private": 1, "owner": owner,
+                                   "attached_to_doctype": "ASOUD Workflow Request",
+                                   "attached_to_name": request.name}).insert(ignore_permissions=True)
+        frappe.db.set_value("File", file_doc.name, "owner", owner)
+        public_file = frappe.get_doc({"doctype": "File", "file_name": "foreign-public.png",
+                                      "content": PROOF_PNG, "owner": owner,
+                                      "attached_to_doctype": "ASOUD Workflow Request",
+                                      "attached_to_name": request.name}).insert(ignore_permissions=True)
+        frappe.db.set_value("File", public_file.name, "owner", owner)
+        return {"request": request.name, "instance": instance.name, "task": task.name,
+                "file": file_doc.name, "public_file": public_file.name}
 
     def test_material_request_template_copies_request_items(self):
         saved = document_templates.save_document_template(
