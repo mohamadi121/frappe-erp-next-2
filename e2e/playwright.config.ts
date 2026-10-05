@@ -47,7 +47,10 @@ export default defineConfig({
       testMatch: /desk\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
-        executablePath: process.env.PLAYWRIGHT_CHROME_PATH ?? '/usr/bin/google-chrome',
+        channel: 'chrome',
+        launchOptions: {
+          executablePath: process.env.PLAYWRIGHT_CHROME_PATH ?? '/usr/bin/google-chrome',
+        },
         viewport: { width: 1440, height: 900 },
       },
     },
