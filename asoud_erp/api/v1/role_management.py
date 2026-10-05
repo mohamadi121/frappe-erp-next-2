@@ -9,11 +9,12 @@ import frappe
 from frappe.utils import cint
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.role_templates import BASE_ROLES, CATEGORIES, TEMPLATES
 
 
 def _access():
-    frappe.only_for("System Manager")
+    require_roles("System Manager")
 
 
 def _lock_definitions():

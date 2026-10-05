@@ -4,6 +4,7 @@ import frappe
 from frappe import _
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_access import require_company
 from asoud_erp.services.voucher_service import validate_voucher_lines
 
@@ -48,7 +49,7 @@ def _serialize(doc) -> dict:
 
 @frappe.whitelist()
 def list_vouchers(company: str, status: str | None = None, search: str | None = None) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     require_company(company)
     filters = {"company": company}
     if status:
@@ -78,7 +79,7 @@ def save_voucher(
     description: str | None = None,
     name: str | None = None,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     require_company(company)
     values = _parse_lines(lines)
     doc = frappe.get_doc("ASOUD Accounting Voucher", name) if name else frappe.new_doc("ASOUD Accounting Voucher")
@@ -107,7 +108,7 @@ def save_voucher(
 
 @frappe.whitelist(methods=["POST"])
 def submit_for_approval(name: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     doc = frappe.get_doc("ASOUD Accounting Voucher", name)
     require_company(doc.company)
     if doc.workflow_status not in {"Draft", "Rejected"}:
@@ -120,7 +121,7 @@ def submit_for_approval(name: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def approve_voucher(name: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     doc = frappe.get_doc("ASOUD Accounting Voucher", name)
     require_company(doc.company)
     if doc.workflow_status != "Pending Approval":
@@ -155,7 +156,7 @@ def approve_voucher(name: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def reject_voucher(name: str, reason: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     if not reason or len(reason.strip()) < 3:
         frappe.throw(_("Rejection reason is required"))
     doc = frappe.get_doc("ASOUD Accounting Voucher", name)

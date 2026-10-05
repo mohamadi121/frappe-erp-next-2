@@ -5,6 +5,7 @@ from frappe import _
 from frappe.utils import getdate
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.jalali import jalali_fiscal_period
 from asoud_erp.services.party_validation import is_valid_iranian_legal_id
 from asoud_erp.services.setup_service import (
@@ -66,7 +67,7 @@ def _serialize_setup(doc) -> dict:
 
 @frappe.whitelist()
 def get_setup_status(company: str | None = None) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     selected = company
     if not selected:
         candidates = frappe.get_all(
@@ -84,7 +85,7 @@ def get_setup_status(company: str | None = None) -> dict:
 @frappe.whitelist(methods=["POST"])
 def set_default_office(company: str) -> dict:
     """Select the active company for the current user."""
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     doc = _setup(str(company or "").strip())
     frappe.defaults.set_user_default("company", doc.company)
     return success(_serialize_setup(doc))
@@ -114,7 +115,7 @@ def save_office(
     chart_template: str | None = None,
     description: str | None = None,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     if company and not frappe.has_permission("Company", ptype="write", doc=company):
         frappe.throw(_("You cannot edit this company"), frappe.PermissionError)
     if not company and not frappe.has_permission("Company", ptype="create"):
@@ -202,7 +203,7 @@ def save_office(
 
 @frappe.whitelist()
 def get_company_settings(company: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     return success(_serialize_setup(_setup(company)))
 
 
@@ -216,7 +217,7 @@ def update_company_settings(
     fiscal_year: int = 1405,
     auto_generate_detail_code: int | bool = 1,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     if display_currency not in ALLOWED_DISPLAY_CURRENCIES:
         frappe.throw(_("Display currency must be Rial or Toman"))
     if chart_template not in ALLOWED_CHART_TEMPLATES:
@@ -245,7 +246,7 @@ def update_company_settings(
 
 @frappe.whitelist()
 def list_fiscal_years(company: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     _setup(company)
     fiscal_year_names = frappe.get_all(
         "Fiscal Year Company",
@@ -270,7 +271,7 @@ def create_fiscal_year(
     start_month: int,
     start_day: int,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     _setup(company)
     year = int(fiscal_year)
     if not 1300 <= year <= 1600:
@@ -316,14 +317,14 @@ def create_fiscal_year(
 
 @frappe.whitelist()
 def get_enabled_roles(company: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     setup = _setup(company)
     return success({"company": company, "enabled_roles": json.loads(setup.enabled_roles_json or "[]")})
 
 
 @frappe.whitelist(methods=["POST"])
 def update_enabled_roles(company: str, roles: str | list[str]) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     values = json.loads(roles) if isinstance(roles, str) else roles
     try:
         normalized = normalize_enabled_roles(values)
@@ -338,7 +339,7 @@ def update_enabled_roles(company: str, roles: str | list[str]) -> dict:
 
 @frappe.whitelist()
 def get_settings() -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     settings = frappe.get_single("ASOUD Settings")
     return success(
         {
@@ -364,7 +365,7 @@ def update_settings(
     auto_generate_detail_code: int | bool = 1,
     detail_code_digits: int = 5,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     if display_currency not in {"Rial", "Toman"}:
         frappe.throw(_("Display currency must be Rial or Toman"))
     digits = int(detail_code_digits)
@@ -389,7 +390,7 @@ def update_settings(
 
 @frappe.whitelist()
 def get_account_code_settings(company: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     setup = _setup(company)
     return success(
         {
@@ -410,7 +411,7 @@ def update_account_code_settings(
     general_code_digits: int = 2,
     ledger_code_digits: int = 2,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     setup = _setup(company)
     values = [int(group_code_digits), int(general_code_digits), int(ledger_code_digits)]
     if any(value < 1 or value > 4 for value in values):

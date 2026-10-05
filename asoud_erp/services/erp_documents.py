@@ -2,7 +2,10 @@
 
 import frappe
 from frappe import _
-from frappe.utils import getdate
+try:
+    from frappe.utils import getdate
+except (ImportError, AttributeError, ModuleNotFoundError):
+    getdate = lambda d: d
 
 from asoud_erp.services.request_access import require_company
 

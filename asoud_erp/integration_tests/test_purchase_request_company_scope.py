@@ -10,7 +10,7 @@ import frappe
 
 from asoud_erp.api.v1 import purchase_request
 from asoud_erp.integration_tests.fixtures import APITestCase
-from asoud_erp.integration_tests.tenancy import ACCOUNTS_A_USER, setup_tenancy
+from asoud_erp.integration_tests.tenancy import MANAGER_USER, setup_tenancy
 
 
 class TestPurchaseRequestCompanyScope(APITestCase):
@@ -25,12 +25,12 @@ class TestPurchaseRequestCompanyScope(APITestCase):
                                       pluck="name", limit=1))
 
     def test_purchase_request_options_rejects_foreign_company(self):
-        frappe.set_user(ACCOUNTS_A_USER)
+        frappe.set_user(MANAGER_USER)
         with self.assertRaises(frappe.PermissionError):
             purchase_request.purchase_request_options(company=self.second)
 
     def test_own_company_options_still_read(self):
-        frappe.set_user(ACCOUNTS_A_USER)
+        frappe.set_user(MANAGER_USER)
         data = purchase_request.purchase_request_options(company=self.company)["data"]
         self.assertTrue(data["warehouses"])
         foreign = set(frappe.get_all("Warehouse", filters={"company": self.second, "is_group": 0}, pluck="name"))

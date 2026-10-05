@@ -4,6 +4,11 @@
 
 Security:
 
+- Replaced `frappe.only_for` with `erp_documents.require_roles` across all `api/v1`
+  modules (`account`, `detail_group`, `floating_detail`, `party`, `purchase_request`,
+  `role_management`, `setup`, `voucher`, `workflow`, `workflow_runtime`).
+  `frappe.only_for` was bypassed in test mode (`in_test=True`), leaving role gates
+  unprotected against regressions; `require_roles` enforces role requirements under tests.
 - `projects.create_timesheet` now validates foreign and unknown projects on time
   logs without a task. Such logs now require a project belonging to the caller's
   company and read permission, preventing employees from logging time to projects

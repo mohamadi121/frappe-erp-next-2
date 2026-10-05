@@ -3,6 +3,7 @@ from frappe import _
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.detail_code_service import next_detail_code
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_access import require_company
 
 
@@ -28,7 +29,7 @@ def _require_linked_company(linked_doctype: str | None, linked_document: str | N
 @frappe.whitelist()
 def preview_next_detail_code(detail_group: str) -> dict:
     """Return the next server-generated detail code without creating a row."""
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     if not frappe.db.exists("ASOUD Detail Group", detail_group):
         frappe.throw(_("Detail group does not exist"))
     settings = frappe.get_single("ASOUD Settings")
@@ -44,7 +45,7 @@ def preview_next_detail_code(detail_group: str) -> dict:
 
 @frappe.whitelist()
 def list_floating_details(detail_group: str | None = None, search: str | None = None) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     filters: dict = {"disabled": 0}
     if detail_group:
         filters["detail_group"] = detail_group
@@ -75,7 +76,7 @@ def create_floating_detail(
     linked_document: str | None = None,
     detail_code: str | None = None,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     if not title or len(title.strip()) < 3:
         frappe.throw(_("Title must contain at least 3 characters"))
     if not frappe.db.exists("ASOUD Detail Group", detail_group):
@@ -108,7 +109,7 @@ def create_floating_detail(
 
 @frappe.whitelist(methods=["POST"])
 def link_floating_detail(name: str, party_profile: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     if not frappe.db.exists("ASOUD Party Profile", party_profile):
         frappe.throw(_("Party profile does not exist"))
     _require_linked_company("ASOUD Party Profile", party_profile)
@@ -128,7 +129,7 @@ def link_floating_detail(name: str, party_profile: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def disable_floating_detail(name: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     doc = frappe.get_doc("ASOUD Floating Detail", name)
     doc.disabled = 1
     doc.save()

@@ -6,6 +6,7 @@ from frappe.utils import getdate, nowdate
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.workflow_runtime import start_workflow_instance
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.purchase_request import normalize_purchase_items
 from asoud_erp.services.request_access import require_company
 
@@ -59,7 +60,7 @@ def create_purchase_request(
     items: str | list[dict],
     subject: str | None = None,
 ) -> dict:
-    frappe.only_for(
+    require_roles(
         ("System Manager", "Purchase Manager", "Purchase User", "Accounts Manager")
     )
     if not frappe.db.exists("Company", company):
@@ -98,7 +99,7 @@ def create_purchase_request(
 
 @frappe.whitelist()
 def purchase_request_options(company: str) -> dict:
-    frappe.only_for(
+    require_roles(
         ("System Manager", "Purchase Manager", "Purchase User", "Accounts Manager")
     )
     require_company(company)
@@ -121,7 +122,7 @@ def purchase_request_options(company: str) -> dict:
 
 @frappe.whitelist()
 def list_my_purchase_requests(company: str) -> dict:
-    frappe.only_for(
+    require_roles(
         ("System Manager", "Purchase Manager", "Purchase User", "Accounts Manager")
     )
     require_company(company)

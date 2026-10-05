@@ -5,6 +5,7 @@ from frappe import _
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.detail_code_service import next_detail_code
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_access import require_company
 from asoud_erp.services.party_validation import (
     is_valid_iranian_legal_id,
@@ -346,7 +347,7 @@ def save_party(
     longitude: str | float | None = None,
     employee_roles: str | list[str] | None = None,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     if party_type not in {"Individual", "Organization"}:
         frappe.throw(_("Party type must be Individual or Organization"))
     if not display_name or len(display_name.strip()) < 3:
@@ -481,7 +482,7 @@ def save_party(
 @frappe.whitelist(methods=["POST"])
 def disable_party(name: str) -> dict:
     """Logically disable a party profile; linked ERPNext records are preserved."""
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     if not frappe.db.exists("ASOUD Party Profile", name):
         frappe.throw(_("Party profile does not exist"))
     target = frappe.db.get_value("ASOUD Party Profile", name, "company")

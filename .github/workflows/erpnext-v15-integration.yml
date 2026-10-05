@@ -106,7 +106,7 @@ jobs:
                         test_payroll test_projects test_financial_reports test_pos test_dashboard_support_sync \
                         test_personnel_file test_document_templates test_report_company_scope \
                         test_party_company_scope test_party_employee_sod test_purchase_request_company_scope test_company_scope_enforced \
-                        test_projects_timesheet; do
+                        test_projects_timesheet test_role_gate_enforcement; do
             bench --site test.localhost run-tests --app asoud_erp --skip-test-records \
               --module asoud_erp.integration_tests.$module
           done
