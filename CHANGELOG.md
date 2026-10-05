@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+Security:
+
+- `report.trial_balance` and `report.general_ledger` are now company scoped
+  (`request_access.require_company`) instead of only role scoped, so a User
+  Permission on `Company` really limits the ledger. `report.general_ledger` also
+  works again on ERPNext v15 (it called `frappe.get_descendants_of`, removed in
+  v15, and raised `AttributeError` for every request). See `docs/api/report.md`.
+
 ## 0.12.0
 
 - Document templates (`document_templates`): map request, user, company and system values onto an

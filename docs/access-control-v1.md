@@ -45,3 +45,29 @@ Only a `System Manager` may call this endpoint. Required inputs are
 
 Flutter must use this context to shape navigation, but every API remains
 responsible for enforcing permissions on the server.
+
+## Role gates and company scope
+
+Two gates, always both, on every company-scoped method:
+
+1. `erp_documents.require_roles(...)` for the Frappe roles a method accepts. It is
+   the same check as `frappe.only_for`, except that it is **not** skipped when
+   `frappe.flags.in_test` is set, so an integration test can prove that a role is
+   refused. `frappe.only_for` must not be used in `asoud_erp/api/v1`.
+2. `request_access.require_company(company)` with the `company` the method acts
+   on, called before any query. A manager needs read access to that Company;
+   everyone else needs an active Employee in it. This is what makes a User
+   Permission on `Company` a real tenant boundary, because `frappe.get_all()` and
+   `frappe.db.sql()` set `ignore_permissions=True` and therefore never apply
+   User Permissions on their own.
+
+A method whose `company` argument is optional must not fall back to "every
+company": an absent company is either refused or resolved from the record the
+method already resolved, never from a site-wide list. Records that are genuinely
+site-wide (`ASOUD Settings`, `ASOUD Detail Group`, the role catalog) carry no
+company field and are documented as such in their `docs/api/*.md` page.
+
+Bank details (`bank_name`, `iban`, `account_number`, `card_number`,
+`account_holder`) live on the ERPNext Employee form. No ASOUD API returns them to
+a role that is not a personnel manager, and `personnel.update_personnel` refuses
+them outright.
