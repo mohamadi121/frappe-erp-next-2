@@ -28,6 +28,9 @@ class TestFinancialReports(APITestCase):
         company = frappe.get_doc({"doctype": "Company", "company_name": "Report " + token,
             "abbr": token, "default_currency": "USD", "country": "United States",
             "chart_of_accounts": "Standard"}).insert()
+        fy = frappe.get_doc("Fiscal Year", "2026")
+        fy.append("companies", {"company": company.name})
+        fy.save(ignore_permissions=True)
         expense = f"Office Rent - {token}"
         liability = f"Asset Received But Not Billed - {token}"
         entry = frappe.get_doc({"doctype": "Journal Entry", "company": company.name,
