@@ -174,7 +174,7 @@ class TestDocumentTemplates(APITestCase):
         self.assertEqual(frappe.db.get_value("Journal Entry", name, "docstatus"), 1)
         self.assertTrue(frappe.db.exists("GL Entry", {"voucher_no": name, "account": self.expense}))
 
-    def test_failed_action_rolls_back_and_follows_the_error_route(self):
+    def test_failed_action_without_error_route_stops_the_instance(self):
         template = self._template(amount={"source": "fixed", "value": "5"})
         self._use_template(template["name"])
         # A Receivable account needs a party, so ERPNext rejects the entry.
@@ -192,6 +192,45 @@ class TestDocumentTemplates(APITestCase):
         self.assertEqual(frappe.db.count("Journal Entry"), before)
         self.assertTrue(frappe.db.exists("ASOUD Workflow Activity", {
             "workflow_instance": instance.name, "action": "System Action Failed"}))
+
+    def test_partial_write_rolls_back_and_activates_error_task(self):
+        template = self._template()
+        self._use_template(template["name"])
+        error_stage = frappe.get_doc({
+            "doctype": "ASOUD Workflow Stage", "workflow_definition": self.definition.name,
+            "stage_key": "error-" + self.token, "stage_title": "بررسی خطا", "stage_type": "User Task",
+            "sequence_no": 6, "configuration_status": "Complete",
+            "config_json": json.dumps({"title": "بررسی خطا", "assignment_type": "Initiator"}),
+        }).insert()
+        workflow.save_stage_routes(self.definition.name, self.stages["System Action"].name,
+                                   {"Success": self.stages["End"].name, "Error": error_stage.name})
+        created = []
+        create_document = document_templates.create_document
+
+        def fail_after_insert(*args, **kwargs):
+            doc = create_document(*args, **kwargs)
+            self.assertTrue(frappe.db.exists("Journal Entry", doc.name))
+            self.assertEqual(doc.total_debit, 1250)
+            created.append(doc.name)
+            raise frappe.ValidationError("failure after journal insert")
+
+        before = frappe.db.count("Journal Entry")
+        with patch.object(document_templates, "create_document", side_effect=fail_after_insert):
+            request = self._submit_and_approve()
+        self.assertEqual(len(created), 1)
+        self.assertFalse(frappe.db.exists("Journal Entry", created[0]))
+        self.assertEqual(frappe.db.count("Journal Entry"), before)
+        instance = frappe.get_doc("ASOUD Workflow Instance", request["workflow_instance"])
+        self.assertEqual((instance.status, instance.current_stage), ("Running", error_stage.name))
+        tasks = frappe.get_all("ASOUD Workflow Task", filters={
+            "workflow_instance": instance.name, "status": "Open"}, fields=["workflow_stage", "assigned_to"])
+        self.assertEqual([(row.workflow_stage, row.assigned_to) for row in tasks],
+                         [(error_stage.name, EMPLOYEE_USER)])
+        activities = frappe.get_all("ASOUD Workflow Activity", filters={
+            "workflow_instance": instance.name, "action": ["in", ["System Action Failed", "System Action Succeeded"]]},
+            fields=["action", "comment", "reference_name"])
+        self.assertEqual([(row.action, row.comment, row.reference_name or "") for row in activities],
+                         [("System Action Failed", "failure after journal insert", "")])
 
     def test_change_status_action_sets_the_display_status(self):
         request = self._submit_and_approve()

@@ -81,9 +81,14 @@ class TestPayroll(APITestCase):
         self.assertEqual(slip.docstatus, 0)
         submitted = payroll.submit_payroll_salary_slips(entry["name"])["data"]
         self.assertTrue(all(row.docstatus == 1 for row in submitted["salary_slips"]))
+        self.assertEqual(len(submitted["salary_slips"]), 1)
+        self.assertEqual(submitted["salary_slips"][0].name, slip.name)
+        self.assertEqual(frappe.db.get_value("Salary Slip", slip.name, "docstatus"), 1)
         frappe.set_user(self.user)
         mine = hr_self_service.list_my_salary_slips()["data"]
-        self.assertEqual(mine[0].net_pay, 27_900_000)
+        self.assertEqual([row.name for row in mine], [slip.name])
+        self.assertEqual(mine[0].status, "Submitted")
+        self.assertEqual((mine[0].gross_pay, mine[0].net_pay), (30_000_000, 27_900_000))
         detail = hr_self_service.get_my_salary_slip(mine[0].name)["data"]
         self.assertEqual([row["component"] for row in detail["deductions"]], ["ASOUD Insurance"])
 
