@@ -172,6 +172,33 @@ def _department(name: str, target: str) -> str:
     ).insert(ignore_permissions=True).name
 
 
+def coded_accounts(target: str, count: int = 3) -> list[str]:
+    """Give ``target`` coded accounts, the way ``account.create_account`` does.
+
+    ``list_accounts`` only lists accounts with an account number, so without this
+    a cross-company read would return an empty list and prove nothing.
+    """
+    existing = frappe.get_all(
+        "Account",
+        filters={"company": target, "account_number": ["is", "set"]},
+        pluck="name",
+        order_by="account_number asc",
+        limit=count,
+    )
+    if existing:
+        return existing
+    names = frappe.get_all(
+        "Account",
+        filters={"company": target, "is_group": 0},
+        pluck="name",
+        order_by="name asc",
+        limit=count,
+    )
+    for index, account in enumerate(names, start=1):
+        frappe.db.set_value("Account", account, "account_number", f"9{index:03d}", update_modified=False)
+    return names
+
+
 def setup_tenancy() -> dict:
     """Idempotently creates the second company, its postings and the test users."""
     frappe.set_user("Administrator")
@@ -215,6 +242,7 @@ def setup_tenancy() -> dict:
 
     _post_gl(first)
     _post_gl(second)
+    coded = coded_accounts(second)
 
     party_a = _party("ASOUD Scope Party A", first, ["Customer"], iban=IBAN_A, bank_name="Bank A",
                      account_number="1000000001", card_number="6100000000000001")
@@ -239,4 +267,5 @@ def setup_tenancy() -> dict:
         "personnel_b": personnel_b,
         "employee_a": employee_a,
         "employee_b": employee_b,
+        "coded_accounts_b": coded,
     }

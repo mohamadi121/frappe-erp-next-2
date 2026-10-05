@@ -6,6 +6,7 @@ from frappe import _
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.account_code_service import next_account_code
 from asoud_erp.services.chart_template_service import template_rows
+from asoud_erp.services.request_access import require_company
 
 
 def _detail_groups(value):
@@ -59,6 +60,7 @@ def _resolve_parent_account(company: str, value: str | None) -> str | None:
 @frappe.whitelist()
 def list_accounts(company: str) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_company(company)
     rows = frappe.get_all(
         "Account",
         filters={"company": company, "account_number": ["is", "set"]},
@@ -112,6 +114,7 @@ def list_accounts(company: str) -> dict:
 @frappe.whitelist()
 def preview_next_code(company: str, level: str, parent_account: str | None = None) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_company(company)
     return success({"account_number": next_account_code(company, level, parent_account)})
 
 
@@ -128,6 +131,7 @@ def create_account(
     detail_groups: str | list[str] | None = None,
 ) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
+    require_company(company)
     if not account_name or len(account_name.strip()) < 3:
         frappe.throw(_("Account name must contain at least 3 characters"))
     groups = _detail_groups(detail_groups) if detail_groups is not None else []
@@ -215,6 +219,7 @@ def create_account(
 def import_accounts(company: str, rows: str | list[dict]) -> dict:
     """Import a validated batch atomically; Frappe rolls the request back on failure."""
     frappe.only_for(("System Manager", "Accounts Manager"))
+    require_company(company)
     payload = json.loads(rows) if isinstance(rows, str) else rows
     if not isinstance(payload, list) or not payload or len(payload) > 500:
         frappe.throw(_("The import must contain between 1 and 500 rows"))
@@ -246,6 +251,7 @@ def import_accounts(company: str, rows: str | list[dict]) -> dict:
 @frappe.whitelist()
 def preview_chart_template(company: str, template: str = "Iran Standard") -> dict:
     frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_company(company)
     if not frappe.db.exists("Company", company):
         frappe.throw(_("Company does not exist"))
     try:
@@ -258,6 +264,7 @@ def preview_chart_template(company: str, template: str = "Iran Standard") -> dic
 @frappe.whitelist(methods=["POST"])
 def apply_chart_template(company: str, template: str = "Iran Standard") -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
+    require_company(company)
     if not frappe.db.exists("Company", company):
         frappe.throw(_("Company does not exist"))
     existing_coded_accounts = frappe.get_all(
@@ -319,6 +326,7 @@ def _validate_detail_company(company: str, account: str) -> None:
 def delete_account(company: str, account: str) -> dict:
     """Delete an unused leaf account while preserving ERPNext accounting integrity."""
     frappe.only_for(("System Manager", "Accounts Manager"))
+    require_company(company)
     if account.startswith("DETAIL::"):
         _validate_detail_company(company, account)
         detail_name = account.split("::", 2)[1]
@@ -348,6 +356,7 @@ def update_account(
     detail_groups: str | list[str] | None = None,
 ) -> dict:
     frappe.only_for(("System Manager", "Accounts Manager"))
+    require_company(company)
     if account.startswith("DETAIL::"):
         _validate_detail_company(company, account)
         detail_name = account.split("::", 2)[1]

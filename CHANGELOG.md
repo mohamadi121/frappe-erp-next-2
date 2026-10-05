@@ -4,6 +4,10 @@
 
 Security:
 
+- Every `account.*` endpoint now checks `company` with
+  `request_access.require_company`. The module gated on roles only and read with
+  `frappe.get_all`, so a Company User Permission did not limit the chart of
+  accounts at all.
 - `purchase_request.purchase_request_options`, `create_purchase_request` and
   `list_my_purchase_requests` now check `company` with
   `request_access.require_company`. The option lists are built with
