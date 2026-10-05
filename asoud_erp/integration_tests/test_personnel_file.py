@@ -9,11 +9,12 @@ from asoud_erp.api.v1 import personnel, personnel_file
 from asoud_erp.asoud_erp.doctype.asoud_personnel_record import test_asoud_personnel_record as fixtures
 
 
-def _pdf() -> str:
+def _pdf(pages: int = 1) -> str:
     from pypdf import PdfWriter
 
     writer, buffer = PdfWriter(), BytesIO()
-    writer.add_blank_page(width=72, height=72)
+    for width in range(70 + pages, 71 + pages):
+        writer.add_blank_page(width=width, height=72)
     writer.write(buffer)
     return base64.b64encode(buffer.getvalue()).decode()
 
@@ -134,6 +135,113 @@ class TestPersonnelFile(FrappeTestCase):
         personnel_file.create_announcement("قدیمی", "منقضی", expire_on=add_days(nowdate(), -1))
         titles = [row["title"] for row in personnel_file.list_announcements()["data"]]
         self.assertNotIn("قدیمی", titles)
+
+    def _other_employee(self, email: str, first_name: str):
+        user = frappe.get_doc({"doctype": "User", "email": email, "first_name": first_name,
+                               "send_welcome_email": 0, "roles": [{"role": "Employee"}]}).insert().name
+        employee = frappe.get_doc({"doctype": "Employee", "first_name": first_name,
+                                   "company": self.company, "gender": "Male", "date_of_birth": "1992-02-02",
+                                   "date_of_joining": "2021-01-01", "designation": "کارشناس فروش",
+                                   "user_id": user, "create_user_permission": 0}).insert()
+        person = frappe.get_doc({"doctype": "ASOUD Party Profile", "party_type": "Individual",
+                                 "display_name": first_name, "company": self.company,
+                                 "roles_text": '["Employee"]', "employee": employee.name}).insert()
+        return user, employee, person
+
+    def _contract(self, values: dict, content: str = PDF, filename: str = "contract.pdf") -> str:
+        frappe.set_user("Administrator")
+        doc = frappe.get_doc(values).insert()
+        frappe.get_doc({"doctype": "File", "file_name": filename, "content": base64.b64decode(content),
+                        "is_private": 1, "attached_to_doctype": "Contract",
+                        "attached_to_name": doc.name}).insert(ignore_permissions=True)
+        return doc.name
+
+    def test_contract_file_download_is_limited_to_its_own_employee_and_hr(self):
+        secret, other_secret = _pdf(), _pdf(pages=2)
+        self.assertNotEqual(base64.b64decode(secret), base64.b64decode(other_secret))
+        own = personnel_file.save_contract(self.person.name, "2026-01-01", "terms", is_signed=1, file=secret,
+                                           filename="mine.pdf", submit=1)["data"][0]["name"]
+        other_user, _, other_person = self._other_employee("file.other@example.com", "Other")
+        other = personnel_file.save_contract(other_person.name, "2026-01-01", "terms", is_signed=1,
+                                             file=other_secret, filename="other.pdf",
+                                             submit=1)["data"][0]["name"]
+        own_file = frappe.get_doc("File", frappe.db.get_value("File", {"attached_to_doctype": "Contract",
+                                                                       "attached_to_name": own,
+                                                                       "is_private": 1}, "name"))
+
+        frappe.set_user(self.user)
+        downloaded = personnel_file.get_contract_file(own)["data"]
+        self.assertEqual(downloaded["filename"], "mine.pdf")
+        self.assertEqual(base64.b64decode(downloaded["content_base64"]), base64.b64decode(secret))
+        with self.assertRaises(frappe.PermissionError) as denied:
+            personnel_file.get_contract_file(other)
+        self.assertIn("Personnel access denied", str(denied.exception))
+        self.assertNotIn(base64.b64decode(other_secret), str(denied.exception).encode())
+        self.assertNotIn("other.pdf", str(denied.exception))
+
+        frappe.set_user(other_user)
+        with self.assertRaises(frappe.PermissionError) as reversed_denial:
+            personnel_file.get_contract_file(own)
+        self.assertIn("Personnel access denied", str(reversed_denial.exception))
+        self.assertNotIn(base64.b64decode(secret), str(reversed_denial.exception).encode())
+        self.assertNotIn("mine.pdf", str(reversed_denial.exception))
+        other_file = frappe.get_doc("File", frappe.db.get_value("File", {"attached_to_doctype": "Contract",
+                                                                         "attached_to_name": other,
+                                                                         "is_private": 1}, "name"))
+        self.assertFalse(frappe.has_permission("File", "read", other_file))
+        self.assertFalse(other_file.is_downloadable())
+
+        frappe.set_user("Administrator")
+        foreign = "ASOUD Foreign HR Test"
+        if not frappe.db.exists("Company", foreign):
+            frappe.get_doc({"doctype": "Company", "company_name": foreign, "abbr": "AFHT",
+                            "default_currency": "USD", "country": "United States",
+                            "chart_of_accounts": "Standard"}).insert()
+        hr_user = frappe.get_doc({"doctype": "User", "email": "file.foreign.hr@example.com",
+                                  "first_name": "Foreign HR", "send_welcome_email": 0,
+                                  "roles": [{"role": "HR Manager"}]}).insert().name
+        frappe.get_doc({"doctype": "User Permission", "user": hr_user, "allow": "Company",
+                        "for_value": foreign, "apply_to_all_doctypes": 1}).insert()
+        frappe.set_user(hr_user)
+        with self.assertRaises(frappe.PermissionError) as hr_denied:
+            personnel_file.get_contract_file(own)
+        self.assertIn("Company access denied", str(hr_denied.exception))
+        self.assertNotIn(base64.b64decode(secret), str(hr_denied.exception).encode())
+        self.assertNotIn("mine.pdf", str(hr_denied.exception))
+
+        supplier = frappe.db.get_value("Supplier", {"is_transporter": 0}, "name") or ensure(
+            "Supplier", "file-test-supplier", {"supplier_name": "file-test-supplier",
+                                               "supplier_group": "All Supplier Groups",
+                                               "supplier_type": "Company"})
+        orphan = frappe.db.get_value("Employee", {"company": self.company, "user_id": ("is", "not set")},
+                                     "name", order_by="creation desc")
+        frappe.set_user("Administrator")
+        vendor_contract = self._contract({"doctype": "Contract", "party_type": "Supplier",
+                                          "party_name": supplier, "start_date": "2026-01-01",
+                                          "contract_terms": "vendor", "is_signed": 1,
+                                          "signee": "Vendor", "signed_on": nowdate()})
+        if orphan:
+            orphan_contract = self._contract({"doctype": "Contract", "party_type": "Employee",
+                                              "party_name": orphan, "start_date": "2026-01-01",
+                                              "contract_terms": "orphan", "is_signed": 1,
+                                              "signee": orphan, "signed_on": nowdate()})
+        frappe.set_user(self.user)
+        with self.assertRaises(frappe.PermissionError) as vendor:
+            personnel_file.get_contract_file(vendor_contract)
+        self.assertIn("Not a personnel contract", str(vendor.exception))
+        self.assertNotIn(base64.b64decode(secret), str(vendor.exception).encode())
+        self.assertNotIn("vendor.pdf", str(vendor.exception))
+        if orphan:
+            with self.assertRaises(frappe.PermissionError) as missing:
+                personnel_file.get_contract_file(orphan_contract)
+            self.assertIn("Employee has no personnel file", str(missing.exception))
+            self.assertNotIn("orphan.pdf", str(missing.exception))
+
+        frappe.set_user("Administrator")
+        self.assertEqual(base64.b64decode(personnel_file.get_contract_file(own)["data"]["content_base64"]),
+                         base64.b64decode(secret))
+        self.assertTrue(frappe.has_permission("File", "read", own_file))
+        self.assertTrue(own_file.is_downloadable())
 
     def test_contract_rules(self):
         with self.assertRaises(frappe.ValidationError):
