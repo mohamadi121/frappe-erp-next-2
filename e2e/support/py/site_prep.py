@@ -163,17 +163,22 @@ def drop_definition(definition: str) -> dict:
 
 def ensure_company_permission(user: str, company_name: str) -> None:
     """Restrict a user to one company, the way a real multi-company site does."""
-    if frappe.db.exists("User Permission", {"user": user, "allow": "Company", "for_value": company_name}):
-        return
-    frappe.get_doc(
-        {
-            "doctype": "User Permission",
-            "user": user,
-            "allow": "Company",
-            "for_value": company_name,
-            "apply_to_all_doctypes": 1,
-        }
-    ).insert(ignore_permissions=True)
+    existing = frappe.get_all("User Permission", filters={"user": user, "allow": "Company"}, pluck="name")
+    for name in existing:
+        doc = frappe.get_doc("User Permission", name)
+        if doc.for_value != company_name:
+            frappe.delete_doc("User Permission", name, ignore_permissions=True)
+    if not frappe.db.exists("User Permission", {"user": user, "allow": "Company", "for_value": company_name}):
+        frappe.get_doc(
+            {
+                "doctype": "User Permission",
+                "user": user,
+                "allow": "Company",
+                "for_value": company_name,
+                "apply_to_all_doctypes": 1,
+            }
+        ).insert(ignore_permissions=True)
+    frappe.clear_cache(user=user)
 
 
 def state() -> dict:
@@ -228,7 +233,7 @@ def ensure() -> dict:
     ensure_employee("e2e.accounts@example.com", "E2E Accounts")
     ensure_employee("e2e.outsider@example.com", "E2E Outsider")
     ensure_second_company()
-    ensure_company_permission("e2e.accounts@example.com", SECOND_COMPANY)
+    ensure_company_permission("e2e.accounts@example.com", company())
     frappe.db.commit()
     result = state()
     result["fixture_approver"] = approver

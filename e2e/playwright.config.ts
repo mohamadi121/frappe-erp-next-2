@@ -45,7 +45,11 @@ export default defineConfig({
     {
       name: 'ui',
       testMatch: /desk\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+      use: {
+        ...devices['Desktop Chrome'],
+        executablePath: process.env.PLAYWRIGHT_CHROME_PATH ?? '/usr/bin/google-chrome',
+        viewport: { width: 1440, height: 900 },
+      },
     },
   ],
   webServer: externalBaseUrl

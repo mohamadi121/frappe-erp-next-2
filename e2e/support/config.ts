@@ -56,4 +56,6 @@ export interface SiteState {
   fixture_employee?: string;
   /** Written by global setup: the ASOUD Workflow Definition the request tests use. */
   request_type?: string;
+  doc_request_type?: string;
+  doc_stage?: string;
 }

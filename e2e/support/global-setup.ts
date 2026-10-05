@@ -21,6 +21,7 @@ import { PYTHON, BENCH, USERS, PREFIX, type SiteState } from './config';
 
 const STATE_FILE = `${__dirname}/../test-results/site-state.json`;
 const REQUEST_TYPE_TITLE = `${PREFIX} درخواست تستی گردش کار`;
+const DOC_REQUEST_TYPE_TITLE = `${PREFIX} گردش کار صدور سند تستی`;
 
 const FORM_FIELDS = [
   { key: 'amount', label: 'مبلغ درخواست', type: 'Number', required: true },
@@ -85,9 +86,13 @@ function designIsUsable(design: { stages: Stage[] }): boolean {
   });
 }
 
-async function designRequestType(admin: ApiSession, company: string): Promise<string> {
+async function designRequestType(
+  admin: ApiSession,
+  company: string,
+  title: string = REQUEST_TYPE_TITLE,
+): Promise<string> {
   const draft = await admin.mutate<{ name: string }>(METHOD.createWorkflowDraft, {
-    workflow_title: REQUEST_TYPE_TITLE,
+    workflow_title: title,
     module_key: 'Support',
     target_doctype: 'ASOUD Workflow Request',
     company,
@@ -157,7 +162,7 @@ async function designRequestType(admin: ApiSession, company: string): Promise<st
 
   await admin.mutate(METHOD.updateRequestTypeInfo, {
     name: draft.name,
-    workflow_title: REQUEST_TYPE_TITLE,
+    workflow_title: title,
     short_title: 'درخواست تستی',
     process_description: 'گردش کار آزمون سرتاسری',
     request_category: 'General',
@@ -185,31 +190,57 @@ export default async function globalSetup(): Promise<void> {
   try {
     const admin = await ApiSession.login(apiRequest, USERS.admin.email, USERS.admin.password);
 
-    let definition = state.definitions.find((row) => row.workflow_title === REQUEST_TYPE_TITLE);
-    // A definition left half-designed by an earlier interrupted run is dropped,
-    // never patched: the suite always designs through the real endpoints.
-    if (definition && !designIsUsable(await readDesign(admin, definition.name))) {
-      sitePrep('drop-definition', { definition: definition.name });
-      definition = undefined;
+    async function ensureDefinition(title: string): Promise<{ name: string; systemStage: string }> {
+      let def = state.definitions.find((row) => row.workflow_title === title);
+      // A definition left half-designed by an earlier interrupted run is dropped,
+      // never patched: the suite always designs through the real endpoints.
+      if (def && !designIsUsable(await readDesign(admin, def.name))) {
+        sitePrep('drop-definition', { definition: def.name });
+        def = undefined;
+      }
+      if (!def) {
+        def = {
+          name: await designRequestType(admin, state.company, title),
+          workflow_title: title,
+          status: 'Inactive',
+          readiness_status: 'Pending',
+          frappe_workflow: '',
+          company: state.company,
+        };
+      }
+      const design = await readDesign(admin, def.name);
+      if (!designIsUsable(design)) {
+        throw new Error(`request type ${def.name} is not fully configured`);
+      }
+      if (def.status !== 'Active') {
+        sitePrep('activate', { definition: def.name });
+        await admin.mutate(METHOD.setWorkflowStatus, { name: def.name, status: 'Active' });
+      }
+      const currentStatus =
+        sitePrep('status').definitions.find((row) => row.name === def!.name)?.status ?? 'Active';
+      if (currentStatus !== 'Active') throw new Error(`request type ${def.name} is not Active`);
+
+      const systemStage = design.stages.find((stage) => stage.stage_type === 'System Action')!.name;
+      return { name: def.name, systemStage };
     }
-    if (!definition) {
-      definition = { name: await designRequestType(admin, state.company), workflow_title: REQUEST_TYPE_TITLE, status: 'Inactive', readiness_status: 'Pending', frappe_workflow: '', company: state.company };
-    }
-    if (!designIsUsable(await readDesign(admin, definition.name))) {
-      throw new Error(`request type ${definition.name} is not fully configured`);
-    }
-    if (definition.status !== 'Active') {
-      sitePrep('activate', { definition: definition.name });
-      await admin.mutate(METHOD.setWorkflowStatus, { name: definition.name, status: 'Active' });
-    }
-    definition = {
-      ...definition,
-      status: sitePrep('status').definitions.find((row) => row.name === definition!.name)?.status ?? 'Active',
-    };
-    if (definition.status !== 'Active') throw new Error(`request type ${definition.name} is not Active`);
+
+    const mainDef = await ensureDefinition(REQUEST_TYPE_TITLE);
+    const docDef = await ensureDefinition(DOC_REQUEST_TYPE_TITLE);
 
     mkdirSync(`${__dirname}/../test-results`, { recursive: true });
-    writeFileSync(STATE_FILE, JSON.stringify({ ...sitePrep('status'), request_type: definition.name }, null, 2));
+    writeFileSync(
+      STATE_FILE,
+      JSON.stringify(
+        {
+          ...sitePrep('status'),
+          request_type: mainDef.name,
+          doc_request_type: docDef.name,
+          doc_stage: docDef.systemStage,
+        },
+        null,
+        2,
+      ),
+    );
   } finally {
     await apiRequest.dispose();
   }
