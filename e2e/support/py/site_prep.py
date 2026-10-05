@@ -261,9 +261,22 @@ def activate(definition: str) -> dict:
     }
 
 
+def attach(request_name: str, filename: str = "receipt.txt", content: str = "e2e receipt content") -> dict:
+    file_doc = frappe.new_doc("File")
+    file_doc.file_name = f"{PREFIX}{filename}"
+    file_doc.attached_to_doctype = "ASOUD Workflow Request"
+    file_doc.attached_to_name = request_name
+    file_doc.is_private = 1
+    file_doc.content = content
+    file_doc.save(ignore_permissions=True)
+    frappe.db.commit()
+    return {"name": file_doc.name, "file_url": file_doc.file_url}
+
+
 def cleanup() -> dict:
     removed = []
     for doctype, filters in (
+        ("File", {"file_name": ["like", f"{PREFIX}%"]}),
         ("ASOUD Workflow Request", {"name": ["like", f"{PREFIX}%"]}),
         ("ASOUD Document Template", {"name": ["like", f"{PREFIX}%"]}),
         ("ASOUD Workflow Definition", {"name": ["like", f"{PREFIX}%"]}),
@@ -289,6 +302,8 @@ def main() -> None:
         result = activate(options["definition"])
     elif action == "drop-definition":
         result = drop_definition(options["definition"])
+    elif action == "attach":
+        result = attach(options["request"], options.get("filename", "receipt.txt"), options.get("content", "e2e receipt content"))
     elif action == "cleanup":
         result = cleanup()
     else:
