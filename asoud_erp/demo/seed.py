@@ -114,15 +114,32 @@ def _ensure_company() -> str:
 def _ensure_fiscal_year() -> str:
     year = _today().year
     name = str(year)
-    if frappe.db.exists("Fiscal Year", name):
-        doc = frappe.get_doc("Fiscal Year", name)
-        if not any(row.company == m.COMPANY for row in doc.companies):
+    today = _today()
+    covering = frappe.get_all(
+        "Fiscal Year",
+        filters={
+            "disabled": 0,
+            "year_start_date": ["<=", today],
+            "year_end_date": [">=", today],
+        },
+        pluck="name",
+        order_by="year_start_date desc",
+        limit=1,
+    )
+    if covering:
+        doc = frappe.get_doc("Fiscal Year", covering[0])
+        action = m.fiscal_year_seed_action(
+            [row.company for row in doc.companies], m.COMPANY
+        )
+        if action == "append":
             doc.append("companies", {"company": m.COMPANY})
             doc.save(ignore_permissions=True)
             _count("fiscal_year", created=1)
         else:
+            # "use": no company rows means the year applies to every company, so
+            # adding a row would restrict it to the demo company.
             _count("fiscal_year", skipped=1)
-        return name
+        return doc.name
     frappe.get_doc({
         "doctype": "Fiscal Year",
         "year": name,
@@ -1077,16 +1094,22 @@ def _reset() -> None:
     # 5. Fiscal year row, then the company itself.
     for year in frappe.get_all("Fiscal Year", pluck="name"):
         doc = frappe.get_doc("Fiscal Year", year)
-        rows = [row for row in doc.companies if row.company == m.COMPANY]
-        if not rows:
+        action = m.fiscal_year_reset_action(
+            doc.name,
+            doc.year_start_date,
+            doc.year_end_date,
+            [row.company for row in doc.companies],
+            m.COMPANY,
+        )
+        if action == "keep":
             continue
-        for row in rows:
-            doc.remove(row)
-        if not doc.companies:
+        if action == "delete":
             frappe.delete_doc("Fiscal Year", year, ignore_permissions=True)
             deleted["Fiscal Year"] = deleted.get("Fiscal Year", 0) + 1
-        else:
-            doc.save(ignore_permissions=True)
+            continue
+        for row in [row for row in doc.companies if row.company == m.COMPANY]:
+            doc.remove(row)
+        doc.save(ignore_permissions=True)
     if frappe.db.exists("Company", m.COMPANY):
         frappe.delete_doc("Company", m.COMPANY, ignore_permissions=True)
         deleted["Company"] = deleted.get("Company", 0) + 1

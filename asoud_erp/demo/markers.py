@@ -145,3 +145,35 @@ def guard_error(site: str | None, developer_mode: bool, force: bool) -> str | No
             "(pass force=True to override)."
         )
     return None
+
+
+def fiscal_year_seed_action(company_rows: list, company: str) -> str:
+    """How the seed must treat an existing Fiscal Year that covers today.
+
+    A Fiscal Year without company rows applies to every company in ERPNext, so
+    it already covers the demo company and must not be restricted.
+    """
+    if not company_rows:
+        return "use"
+    return "present" if company in company_rows else "append"
+
+
+def fiscal_year_reset_action(name: str, start, end, company_rows: list, company: str) -> str:
+    """What reset does with a Fiscal Year: ``keep``, ``remove_row`` or ``delete``.
+
+    Only a year shaped exactly like the one the seed creates (named after its
+    calendar year, Jan 1 - Dec 31) that holds nothing but the demo row is
+    deleted. Anything else, including a shared year the seed only appended to,
+    just loses the demo row, so a pre-existing Fiscal Year is never deleted.
+    """
+    if company not in company_rows:
+        return "keep"
+    year = str(start)[:4]
+    seed_shaped = (
+        name == year
+        and str(start) == f"{year}-01-01"
+        and str(end) == f"{year}-12-31"
+    )
+    if seed_shaped and set(company_rows) == {company}:
+        return "delete"
+    return "remove_row"

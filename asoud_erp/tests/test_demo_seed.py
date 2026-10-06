@@ -82,5 +82,46 @@ class TestDemoNaming(unittest.TestCase):
         self.assertTrue(m.PRICE_LIST_BUYING.startswith(m.PREFIX))
 
 
+class TestDemoFiscalYearRules(unittest.TestCase):
+    def test_global_year_is_used_without_restricting_it(self):
+        self.assertEqual(m.fiscal_year_seed_action([], m.COMPANY), "use")
+
+    def test_restricted_year_gets_the_demo_company_when_missing(self):
+        self.assertEqual(m.fiscal_year_seed_action(["Other"], m.COMPANY), "append")
+
+    def test_restricted_year_with_demo_company_is_reused(self):
+        self.assertEqual(m.fiscal_year_seed_action(["Other", m.COMPANY], m.COMPANY), "present")
+
+    def test_reset_keeps_global_or_unrelated_years(self):
+        self.assertEqual(
+            m.fiscal_year_reset_action("2026", "2026-01-01", "2026-12-31", [], m.COMPANY),
+            "keep",
+        )
+        self.assertEqual(
+            m.fiscal_year_reset_action("2026", "2026-01-01", "2026-12-31", ["Other"], m.COMPANY),
+            "keep",
+        )
+
+    def test_reset_removes_only_the_demo_row_from_preexisting_years(self):
+        self.assertEqual(
+            m.fiscal_year_reset_action(
+                "2026", "2026-01-01", "2026-12-31", ["Other", m.COMPANY], m.COMPANY
+            ),
+            "remove_row",
+        )
+        self.assertEqual(
+            m.fiscal_year_reset_action(
+                "FY 2026", "2026-01-01", "2026-12-31", [m.COMPANY], m.COMPANY
+            ),
+            "remove_row",
+        )
+
+    def test_reset_deletes_only_seed_shaped_year_owned_by_demo_company(self):
+        self.assertEqual(
+            m.fiscal_year_reset_action("2026", "2026-01-01", "2026-12-31", [m.COMPANY], m.COMPANY),
+            "delete",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

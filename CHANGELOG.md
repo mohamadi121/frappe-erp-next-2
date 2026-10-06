@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.13.1
+
+Security:
+
+- `party.list_parties` now restores the accounting role gate before company-scope checks, so an Employee-only user cannot list party profiles for their own company.
+
+Fixed:
+
+- Demo seed fiscal-year handling now reuses a global Fiscal Year without adding a company row, avoiding accidental restriction of a shared year. Demo reset only deletes a seed-shaped Fiscal Year owned solely by the demo company and otherwise removes just the demo company row.
+
 ## 0.13.0
 
 Fixed:

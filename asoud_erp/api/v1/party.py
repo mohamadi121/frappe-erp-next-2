@@ -205,6 +205,7 @@ def _require_personnel_master() -> None:
 
 @frappe.whitelist()
 def list_parties(company: str, search: str | None = None, role: str | None = None) -> dict:
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     require_company(company)
     filters = {"disabled": 0, "company": company}
     if role:

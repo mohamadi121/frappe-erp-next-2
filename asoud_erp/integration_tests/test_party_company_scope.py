@@ -12,7 +12,13 @@ import frappe
 
 from asoud_erp.api.v1 import party
 from asoud_erp.integration_tests.fixtures import APITestCase
-from asoud_erp.integration_tests.tenancy import ACCOUNTS_A_USER, IBAN_B, MANAGER_USER, setup_tenancy
+from asoud_erp.integration_tests.tenancy import (
+    ACCOUNTS_A_USER,
+    EMPLOYEE_A_USER,
+    IBAN_B,
+    MANAGER_USER,
+    setup_tenancy,
+)
 
 
 def _rows(**kwargs) -> list[dict]:
@@ -40,6 +46,12 @@ class TestPartyCompanyScope(APITestCase):
         frappe.set_user(ACCOUNTS_A_USER)
         with self.assertRaises(frappe.PermissionError):
             party.list_parties(company=self.second)
+
+    def test_employee_role_cannot_list_parties_of_own_company(self):
+        """An Active Employee passes the company check but holds no accounting role."""
+        frappe.set_user(EMPLOYEE_A_USER)
+        with self.assertRaises(frappe.PermissionError):
+            party.list_parties(company=self.company)
 
     def test_foreign_party_and_bank_details_never_leak(self):
         """Company B's party exists and carries IBAN_B, so the leak is observable."""
