@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.13.0
+
 Fixed:
 
 - `sync.execute_mutation` now binds an idempotency key to both the target method
