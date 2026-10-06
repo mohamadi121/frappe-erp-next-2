@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+Fixed:
+
+- `sync.execute_mutation` now binds an idempotency key to both the target method
+  and payload fingerprint. Retrying the same write still returns the stored
+  envelope, but reusing that key for different work returns
+  `REQUEST_KEY_CONFLICT` instead of a successful response from the first write.
+- `financial_reports.run_financial_report(..., report="stock_balance")` accepts a
+  single `item_code` string and passes it to ERPNext's Stock Balance report in
+  the list form the report expects.
+- Workflow request list permission now matches direct-read permission for
+  System Manager and HR Manager users within companies they can access, including
+  request-related instances, tasks and activities.
+
 Security:
 
 - Replaced `frappe.only_for` with `erp_documents.require_roles` across all `api/v1`

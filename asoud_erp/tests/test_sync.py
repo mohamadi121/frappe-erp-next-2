@@ -44,6 +44,7 @@ def test_execute_mutation_returns_saved_response_without_second_execution(monkey
         def __init__(self, values):
             self.request_key = values["request_key"]
             self.method = values["method"]
+            self.payload_hash = values["payload_hash"]
             self.status = values["status"]
             self.response_json = None
 
@@ -52,6 +53,8 @@ def test_execute_mutation_returns_saved_response_without_second_execution(monkey
                 "status": self.status,
                 "response_json": self.response_json,
                 "owner": sync.frappe.session.user,
+                "method": self.method,
+                "payload_hash": self.payload_hash,
             }
 
         def save(self, ignore_permissions=False):
@@ -59,6 +62,8 @@ def test_execute_mutation_returns_saved_response_without_second_execution(monkey
                 "status": self.status,
                 "response_json": self.response_json,
                 "owner": sync.frappe.session.user,
+                "method": self.method,
+                "payload_hash": self.payload_hash,
             }
 
     sync.frappe.session = types.SimpleNamespace(user="a@example.com")
@@ -78,6 +83,57 @@ def test_execute_mutation_returns_saved_response_without_second_execution(monkey
     other = sync.execute_mutation("request-1", "asoud_erp.api.v1.party.save_party", {"name": "A"})
     assert other["ok"] is False
     assert other["error"]["code"] == "INVALID_REQUEST_KEY"
+    assert calls == [{"name": "A"}]
+
+
+def test_same_key_with_a_different_payload_is_a_conflict(monkeypatch):
+    sync = _load_module(monkeypatch)
+    records = {}
+    calls = []
+
+    class DB:
+        @staticmethod
+        def get_value(_doctype, key, _fields, as_dict=False):
+            value = records.get(key)
+            return types.SimpleNamespace(**value) if value and as_dict else value
+
+    class Receipt:
+        def __init__(self, values):
+            self.__dict__.update(values)
+            self.owner = sync.frappe.session.user
+            self.response_json = None
+
+        def _store(self):
+            records[self.request_key] = {
+                "status": self.status,
+                "response_json": self.response_json,
+                "owner": self.owner,
+                "method": self.method,
+                "payload_hash": self.payload_hash,
+            }
+
+        def insert(self, **kwargs):
+            self._store()
+
+        def save(self, **kwargs):
+            self._store()
+
+    sync.frappe.session = types.SimpleNamespace(user="a@example.com")
+    sync.frappe.db = DB()
+    sync.frappe.get_doc = Receipt
+    sync.frappe.get_attr = lambda _method: (lambda **values: calls.append(values) or {
+        "ok": True, "data": {"name": values.get("name")}, "meta": {"api_version": "v1"}})
+    method = "asoud_erp.api.v1.party.save_party"
+
+    first = sync.execute_mutation("key-1", method, {"name": "A"})
+    conflict = sync.execute_mutation("key-1", method, {"name": "B"})
+    other_target = sync.execute_mutation("key-1", "asoud_erp.api.v1.party.save_party_detail", {"name": "C"})
+
+    assert first["data"]["name"] == "A"
+    assert conflict["ok"] is False
+    assert conflict["error"]["code"] == "REQUEST_KEY_CONFLICT"
+    assert other_target["ok"] is False
+    assert other_target["error"]["code"] == "REQUEST_KEY_CONFLICT"
     assert calls == [{"name": "A"}]
 
 

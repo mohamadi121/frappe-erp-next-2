@@ -1,4 +1,5 @@
 import json
+from hashlib import sha256
 from typing import Any
 
 import frappe
@@ -50,26 +51,33 @@ def execute_mutation(
     if method == "asoud_erp.api.v1.sync.execute_mutation":
         return failure("METHOD_NOT_ALLOWED", "فراخوانی بازگشتی مجاز نیست.")
 
+    values = _payload(payload)
+    fingerprint = _fingerprint(method, values)
+
     existing = frappe.db.get_value(
         "ASOUD API Request",
         key,
-        ["status", "response_json", "owner"],
+        ["status", "response_json", "owner", "method", "payload_hash"],
         as_dict=True,
     )
     if existing and existing.owner != frappe.session.user:
         # Keys are client UUIDs; a key owned by someone else must never replay their response.
         return failure("INVALID_REQUEST_KEY", "شناسه یکتای درخواست معتبر نیست.")
+    if existing and (
+        existing.method != method or (getattr(existing, "payload_hash", None) and existing.payload_hash != fingerprint)
+    ):
+        return failure("REQUEST_KEY_CONFLICT", "این شناسه قبلا برای عملیات دیگری ثبت شده است.")
     if existing and existing.status == "Completed":
         return json.loads(existing.response_json)
     if existing:
         return failure("REQUEST_IN_PROGRESS", "این درخواست در حال پردازش است.")
 
-    values = _payload(payload)
     request_doc = frappe.get_doc(
         {
             "doctype": "ASOUD API Request",
             "request_key": key,
             "method": method,
+            "payload_hash": fingerprint,
             "status": "Processing",
         }
     )
@@ -93,3 +101,8 @@ def _payload(value: str | dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         frappe.throw("Mutation payload must be an object")
     return parsed
+
+
+def _fingerprint(method: str, payload: dict[str, Any]) -> str:
+    raw = json.dumps({"method": method, "payload": payload}, ensure_ascii=False, sort_keys=True, default=str)
+    return sha256(raw.encode()).hexdigest()

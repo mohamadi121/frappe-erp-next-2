@@ -15,7 +15,7 @@ Auditor; Stock Balance: Stock User, Accounts Manager).
 | `payable` | Accounts Payable | `report_date` | `party` (supplier) |
 | `profit_and_loss` | Profit and Loss Statement | `from_date`, `to_date` | `periodicity` ∈ Monthly, Quarterly, Half-Yearly, Yearly |
 | `balance_sheet` | Balance Sheet (accumulated) | `from_date`, `to_date` | `periodicity` |
-| `stock_balance` | Stock Balance | `from_date`, `to_date` | `warehouse`, `item_code` |
+| `stock_balance` | Stock Balance | `from_date`, `to_date` | `warehouse`, `item_code` (single code or list) |
 
 Response: `{"report", "report_name", "filters", "columns": [{"fieldname", "label", "fieldtype", "options"}], "rows": [...], "truncated"}`.
 Rows are ERPNext's own dicts (statements carry `account`, `indent` and one key

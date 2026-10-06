@@ -100,6 +100,22 @@ class TestFinancialReports(APITestCase):
                          [(ITEM, warehouse, company.name, "Nos", 0.0, 7.0, 0.0, 7.0,
                            0.0, 840.0, 0.0, 840.0, 120.0)])
 
+    def test_stock_balance_accepts_one_item_code(self):
+        token = frappe.generate_hash(length=8)
+        company = frappe.get_doc({"doctype": "Company", "company_name": "Stock Filter " + token,
+            "abbr": token, "default_currency": "USD", "country": "United States",
+            "chart_of_accounts": "Standard"}).insert()
+        allow_fiscal_year(company.name)
+        warehouse = frappe.db.get_value("Warehouse", {"company": company.name, "warehouse_name": "Stores"})
+        stock.create_stock_entry(company.name, "Material Receipt",
+            [{"item_code": ITEM, "qty": 3, "rate": 100, "t_warehouse": warehouse}], submit=1)
+        data = financial_reports.run_financial_report(company.name, "stock_balance",
+            from_date=str(get_year_start(nowdate())), to_date=str(get_year_ending(nowdate())),
+            warehouse=warehouse, item_code=ITEM)["data"]
+
+        self.assertEqual([row["item_code"] for row in data["rows"]], [ITEM])
+        self.assertEqual([row["bal_qty"] for row in data["rows"]], [3.0])
+
     def test_report_roles_are_erpnexts(self):
         frappe.set_user(EMPLOYEE_USER)
         with self.assertRaises(frappe.PermissionError):

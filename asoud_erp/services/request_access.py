@@ -37,11 +37,13 @@ def request_query(user=None):
     allowed = [company for company in companies if company_access(company, user)]
     if not allowed:
         return "1=0"
+    allowed_sql = ",".join(frappe.db.escape(company) for company in allowed)
+    if {"System Manager", "HR Manager"}.intersection(frappe.get_roles(user)):
+        return "`tabASOUD Workflow Request`.`company` IN (" + allowed_sql + ")"
     return ("(`tabASOUD Workflow Request`.`owner` = " + frappe.db.escape(user)
         + " OR `tabASOUD Workflow Request`.`workflow_instance` IN (SELECT `workflow_instance`"
         " FROM `tabASOUD Workflow Task` WHERE `assigned_to` = " + frappe.db.escape(user) + "))"
-        + " AND `tabASOUD Workflow Request`.`company` IN ("
-        + ",".join(frappe.db.escape(company) for company in allowed) + ")")
+        + " AND `tabASOUD Workflow Request`.`company` IN (" + allowed_sql + ")")
 
 
 def file_permission(doc, user=None, permission_type=None):

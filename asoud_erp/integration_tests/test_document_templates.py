@@ -395,6 +395,9 @@ class TestDocumentTemplates(APITestCase):
                         get(doctype, name)
 
         frappe.set_user("Administrator")
+        for doctype, name in records:
+            self.assertEqual([row.name for row in get_list(doctype, filters={"name": name}, fields=["name"])],
+                             [name])
         self.assertEqual(get("ASOUD Workflow Request", request["name"])["subject"], "خرید تجهیزات")
         self.assertTrue(frappe.get_doc("File", attachment).is_downloadable())
         self.assertEqual(get("ASOUD Workflow Request", foreign["request"])["subject"],

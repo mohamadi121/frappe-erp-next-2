@@ -36,7 +36,7 @@ def list_financial_reports() -> dict:
 @frappe.whitelist()
 def run_financial_report(company: str, report: str, from_date: str | None = None, to_date: str | None = None,
                          report_date: str | None = None, periodicity: str = "Yearly", party: str | None = None,
-                         warehouse: str | None = None, item_code: str | None = None) -> dict:
+                         warehouse: str | None = None, item_code: str | list[str] | None = None) -> dict:
     """Runs one of `list_financial_reports` and returns its columns and rows.
 
     receivable / payable need ``report_date``; the others need ``from_date`` and ``to_date``.

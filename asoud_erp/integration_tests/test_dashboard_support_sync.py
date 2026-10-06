@@ -62,13 +62,20 @@ class TestSupport(APITestCase):
 class TestSyncReplay(APITestCase):
     def test_request_key_is_bound_to_its_user(self):
         frappe.set_user(EMPLOYEE_USER)
-        payload = {"subject": "درخواست تکراری"}
-        first = sync.execute_mutation("asoud-test-key-1", "asoud_erp.api.v1.support.create_issue", payload)
-        again = sync.execute_mutation("asoud-test-key-1", "asoud_erp.api.v1.support.create_issue", payload)
+        key = "asoud-test-key-" + frappe.generate_hash(length=12)
+        payload = {"subject": "درخواست تکراری " + key}
+        first = sync.execute_mutation(key, "asoud_erp.api.v1.support.create_issue", payload)
+        again = sync.execute_mutation(key, "asoud_erp.api.v1.support.create_issue", payload)
         self.assertEqual(first, again)
-        self.assertEqual(frappe.db.count("Issue", {"subject": "درخواست تکراری"}), 1)
+        self.assertEqual(frappe.db.count("Issue", {"subject": payload["subject"]}), 1)
+        conflict = sync.execute_mutation(key, "asoud_erp.api.v1.support.create_issue",
+                                         {"subject": payload["subject"] + " متفاوت"})
+        self.assertEqual(conflict["error"]["code"], "REQUEST_KEY_CONFLICT")
+        other_target = sync.execute_mutation(key, "asoud_erp.api.v1.support.add_issue_comment",
+                                             {"name": first["data"]["name"], "text": "پیگیری"})
+        self.assertEqual(other_target["error"]["code"], "REQUEST_KEY_CONFLICT")
         frappe.set_user(APPROVER_USER)
-        other = sync.execute_mutation("asoud-test-key-1", "asoud_erp.api.v1.support.create_issue", payload)
+        other = sync.execute_mutation(key, "asoud_erp.api.v1.support.create_issue", payload)
         self.assertEqual(other["error"]["code"], "INVALID_REQUEST_KEY")
 
     def test_cancel_replays_the_real_target_once(self):
