@@ -295,6 +295,7 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
             "title": title,
             **assignment,
             "approval_mode": mode,
+            "form_fields": _normalize_form_fields(raw.get("form_fields")),
             "document_access": _document_access(raw),
             "allow_reject": bool(raw.get("allow_reject", True)),
             "allow_return": bool(raw.get("allow_return", True)),
