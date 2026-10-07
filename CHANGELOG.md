@@ -1,6 +1,46 @@
 # Changelog
 
-## Unreleased
+## 0.14.0
+
+Added:
+
+- Request engine for the purchase, supply and leave templates (`docs/api/request_templates.md`).
+  - `ASOUD Workflow Request` gains `template_key`, `template_version`, `requester_employee`,
+    `status_key`, `search_text` and the `native_*` fields; `ASOUD Workflow Definition` gains
+    `template_key`, `template_version` and `is_system_template`. Custom Fields:
+    `Company.asoud_daily_working_hours`, `Company.asoud_request_cost_center_required`,
+    `Leave Type.asoud_leave_category` and `asoud_request` on Material Request and Leave Application.
+  - Template registry (`services/request_templates`), idempotent seeding per company on migrate
+    and on company creation, and a locked form stage for system templates.
+  - Request numbers `PR|SP|LV-<Jalali year>-####`; custom types keep `REQ-#####` without a gap.
+  - New form field types `Time`, `System Select` and `Auto`, `visible_when`, `option_labels`,
+    item-row notes and files, and the lookup sources behind `request_field_options`.
+  - Stored `status_key` mirrored from the workflow instance, and a query-based
+    `list_my_requests` with status tabs, `meta.counts`, search, filters and pagination.
+  - Richer `get_request` (status, `can_edit`, `can_cancel`, attachments with scope, row files,
+    comment count, native document), `list_request_comments`, `add_request_comment`,
+    `get_attachment(thumbnail=1)`, and `create_native_document` to retry a failed native document.
+  - `create_request` accepts `template_key`; uploads take a `ref` so duplicate file names work;
+    `update_request` adds and removes files; `.xls` and `.doc` are allowed.
+  - Error codes travel in `_server_messages[].title` (for example `REQUESTER_MISMATCH`).
+  - Patches `v0_14`: backfill `status_key`/`search_text`, map Leave Type categories.
+- Leave requests (`docs/api/leave_request.md`): `leave_request.get_leave_balance` and
+  `leave_request.preview_leave_request` (read-only, business errors come back as data), daily and hourly
+  leave with exact half-up hour/day maths, overlap, balance and HRMS dry-run rules, and error code
+  `LEAVE_RULE_VIOLATION` for HRMS validations without a contract code.
+  After final approval a daily request becomes an approved Leave Application and an hourly request a
+  Leave Ledger Entry; purchase and supply requests become Material Requests. A failure is stored as
+  `native_status = Failed` and can be retried with `create_native_document`.
+- The demo seed creates the three system templates and six requests with template keys; reset keeps the
+  shared native Workflow while a definition links it (`docs/demo-seed.md`).
+
+Changed:
+
+- `workflow_request.list_my_requests` no longer returns `values` and `attachments` per row
+  (use `get_request`) and returns at most 100 rows per page.
+- `workflow_request.create_request` takes `request_id` as before but its other arguments are
+  keyword-friendly (`workflow_definition` or `template_key`); invalid JSON arguments now raise
+  a validation error instead of a server error.
 
 ## 0.13.1
 
