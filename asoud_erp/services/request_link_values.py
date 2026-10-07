@@ -1,9 +1,12 @@
-"""Form values that name ERPNext records: User, Department and Item rows.
+"""Form values that name ERPNext records: User, Department, System Select and Item rows.
 
 `normalize_form_response` checks their shape; this module resolves them against
 the standard masters. A "User" value must be the ERPNext user of an active
 Employee of the request company (Employee is authoritative for HR identity).
-Item rows reuse ERPNext's end-of-life check and UOM conversion factor.
+A "System Select" value must be an enabled record of its source, in the request
+company where the source is company scoped. Item rows reuse ERPNext's end-of-life
+check and UOM conversion factor; with `row_options` they also honor the item scope
+(`purchase` limits them to purchase items) and keep the row note and file.
 """
 
 import frappe
@@ -41,8 +44,13 @@ def validate_link_values(fields: list, values: dict, company: str | None) -> dic
             _validate_user(value, company)
         elif field_type == "Department":
             _validate_department(value, company)
+        elif field_type == "System Select":
+            from asoud_erp.services.request_lookup import validate_source_value
+
+            validate_source_value(field.get("source"), value, company)
         elif field_type == "Item Table":
-            values[key] = [_item_row(row) for row in value]
+            options = field.get("row_options")
+            values[key] = [_item_row(row, options) for row in value]
     return values
 
 
@@ -81,14 +89,15 @@ def item_uoms(item_code: str) -> list[dict]:
     return result
 
 
-def _item_row(row: dict) -> dict:
+def _item_row(row: dict, row_options: dict | None = None) -> dict:
     from erpnext.stock.doctype.item.item import validate_end_of_life
 
     item_code = row["item_code"]
     item = frappe.db.get_value(
         "Item",
         item_code,
-        ["item_name", "stock_uom", "has_variants", "disabled", "end_of_life"],
+        ["item_name", "stock_uom", "has_variants", "disabled", "end_of_life", "is_stock_item",
+         "is_purchase_item"],
         as_dict=True,
     )
     if not item:
@@ -96,11 +105,13 @@ def _item_row(row: dict) -> dict:
     if item.has_variants:
         frappe.throw(_("Item {0} is a template; select one of its variants").format(item_code))
     validate_end_of_life(item_code, item.end_of_life, item.disabled)
+    if row_options and row_options.get("item_scope") == "purchase" and not item.is_purchase_item:
+        frappe.throw(_("Item {0} is not a purchase item").format(item_code))
     uom = row.get("uom") or item.stock_uom
     factor = next((u["conversion_factor"] for u in item_uoms(item_code) if u["uom"] == uom), None)
     if factor is None:
         frappe.throw(_("UOM {0} is not defined for item {1}").format(uom, item_code))
-    return {
+    result = {
         "item_code": item_code,
         "item_name": item.item_name,
         "qty": row["qty"],
@@ -110,3 +121,10 @@ def _item_row(row: dict) -> dict:
         "stock_qty": flt(row["qty"] * factor, 6),
         "description": row.get("description") or "",
     }
+    if row_options is not None:
+        result["is_stock_item"] = 1 if item.is_stock_item else 0
+        if row_options.get("note"):
+            result["note"] = row.get("note") or ""
+        if row_options.get("attachment"):
+            result["attachment"] = row.get("attachment") or None
+    return result

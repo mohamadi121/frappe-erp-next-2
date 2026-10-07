@@ -13,6 +13,7 @@ for the other modules.
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import get_year_ending, getdate, nowdate
 
 from asoud_erp.demo import markers as m
 from asoud_erp.demo import seed as demo_seed
@@ -55,9 +56,23 @@ def demo_counts() -> dict:
             "Sales Invoice", {"company": m.COMPANY, "docstatus": 1}),
         "purchase_orders": frappe.db.count("Purchase Order", {"company": m.COMPANY}),
         "stock_entries": frappe.db.count("Stock Entry", {"company": m.COMPANY, "docstatus": 1}),
+        "material_requests": frappe.db.count("Material Request", {"company": m.COMPANY}),
         "definitions": frappe.db.count("ASOUD Workflow Definition", {"company": m.COMPANY}),
         "requests": frappe.db.count("ASOUD Workflow Request", {"company": m.COMPANY}),
     }
+
+
+def demo_request(key: str):
+    return frappe.db.get_value(
+        "ASOUD Workflow Request", {"request_id": m.REQUEST_IDS[key]},
+        ["name", "template_key", "status_key", "native_doctype", "native_name", "native_status"], as_dict=True)
+
+
+def leave_requests_seeded() -> bool:
+    """The leave requests are skipped in the last days of the calendar year (no room for them)."""
+    holidays = {str(day) for day in frappe.get_all(
+        "Holiday", filters={"parent": ["like", f"{m.HOLIDAY_LIST}%"]}, pluck="holiday_date")}
+    return m.demo_leave_dates(getdate(nowdate()), getdate(get_year_ending(nowdate())), holidays) is not None
 
 
 def request_status(request_id: str) -> str:
@@ -99,10 +114,11 @@ class TestDemoSeed(FrappeTestCase):
                    if isinstance(value, dict)]
         self.assertTrue(created)
         self.assertEqual(sum(created), 0, second["summary"])
+        leaves = leave_requests_seeded()
         self.assertEqual(
             (before["employees"], before["users"],
              before["profiles"], before["definitions"], before["requests"]),
-            (12, 4, 12, 2, 4))
+            (12, 4, 12, 3, 6 if leaves else 3))
         # ERPNext adds its own standard departments to every new company, so
         # only the four demo departments are asserted by name.
         for name in m.DEPARTMENTS:
@@ -110,15 +126,45 @@ class TestDemoSeed(FrappeTestCase):
                 "Department", {"company": m.COMPANY, "department_name": name}), name)
         self.assertEqual(before["leave_allocations"], 24)
         self.assertEqual(before["assignments"], 12)
-        self.assertEqual(before["leave_applications"], 2)
+        # Two seeded applications, plus the one our approved daily leave request created.
+        self.assertEqual(before["leave_applications"], 3 if leaves else 2)
+        self.assertEqual(before["material_requests"], 2)
         self.assertGreaterEqual(before["sales_invoices"], 2)
         self.assertGreaterEqual(before["purchase_orders"], 1)
         self.assertGreaterEqual(before["stock_entries"], 1)
         self.assertGreater(before["attendance"], 12)
-        self.assertEqual(request_status(m.REQUEST_IDS["leave-approved"]), "Completed")
-        self.assertEqual(request_status(m.REQUEST_IDS["leave-pending"]), "Running")
+        self.assertEqual(request_status(m.REQUEST_IDS["purchase-approved"]), "Completed")
         self.assertEqual(request_status(m.REQUEST_IDS["purchase-rejected"]), "Rejected")
-        self.assertEqual(request_status(m.REQUEST_IDS["leave-cancelled"]), "Cancelled")
+        self.assertEqual(request_status(m.REQUEST_IDS["supply-approved"]), "Completed")
+        if leaves:
+            self.assertEqual(request_status(m.REQUEST_IDS["leave-approved"]), "Completed")
+            self.assertEqual(request_status(m.REQUEST_IDS["leave-pending"]), "Running")
+            self.assertEqual(request_status(m.REQUEST_IDS["leave-cancelled"]), "Cancelled")
+        # The demo company has exactly the three system templates, and requests use their numbering.
+        templates = frappe.get_all(
+            "ASOUD Workflow Definition", filters={"company": m.COMPANY},
+            fields=["template_key", "is_system_template", "workflow_code"], order_by="template_key asc")
+        self.assertEqual([row.template_key for row in templates], ["leave", "purchase", "supply"])
+        self.assertTrue(all(row.is_system_template for row in templates))
+        for key, prefix in (("purchase-approved", "PR-"), ("supply-approved", "SP-")):
+            self.assertTrue(demo_request(key).name.startswith(prefix), key)
+        # Approval created the native documents through the post-approval hook.
+        purchase = demo_request("purchase-approved")
+        self.assertEqual((purchase.native_status, purchase.native_doctype), ("Created", "Material Request"))
+        self.assertEqual(frappe.db.get_value("Material Request", purchase.native_name, "material_request_type"),
+                         "Purchase")
+        supply = demo_request("supply-approved")
+        self.assertEqual(frappe.db.get_value("Material Request", supply.native_name, "material_request_type"),
+                         "Material Transfer")
+        self.assertEqual(demo_request("purchase-rejected").native_status or "", "")
+        if leaves:
+            approved = demo_request("leave-approved")
+            self.assertEqual((approved.native_status, approved.native_doctype), ("Created", "Leave Application"))
+            self.assertEqual(frappe.db.get_value("Leave Application", approved.native_name, "asoud_request"),
+                             approved.name)
+            self.assertEqual(demo_request("leave-pending").native_status or "", "")
+        for title, _max_leaves in m.LEAVE_TYPES:
+            self.assertTrue(frappe.db.get_value("Leave Type", title, "asoud_leave_category"), title)
         newcomer = m.demo_email("newcomer")
         self.assertFalse(frappe.db.get_value("User", newcomer, "last_login"))
         self.assertIn("HR Manager", frappe.get_roles(m.demo_email("hr-manager")))
@@ -184,7 +230,7 @@ class TestDemoSeed(FrappeTestCase):
                             "Leave Allocation", "Leave Application",
                             "Salary Structure Assignment", "Sales Invoice",
                             "Purchase Order", "Purchase Receipt", "Purchase Invoice",
-                            "Stock Entry", "Repost Item Valuation",
+                            "Stock Entry", "Material Request", "Repost Item Valuation",
                             "ASOUD Party Profile",
                             "ASOUD Workflow Definition", "ASOUD Workflow Request"):
                 filters = {"company": m.COMPANY}

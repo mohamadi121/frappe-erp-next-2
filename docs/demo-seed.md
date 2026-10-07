@@ -53,10 +53,24 @@ for the current calendar year, then:
   rate). Stock via a submitted Material Receipt; 2 submitted sales
   invoices; a purchase order → receipt → purchase invoice flow (all
   submitted).
-- 2 workflow definitions (request types) with a linked native Frappe
-  Workflow: «درخواست مرخصی نمونه» (form → direct-manager approval) and
-  «درخواست خرید نمونه» (form → approval → Change Status system action),
-  plus 4 requests in Completed / Running / Rejected / Cancelled states.
+- The three system request templates for the demo company (purchase,
+  supply, leave: `request_templates.seed.ensure_system_templates`) and six
+  requests created through `workflow_request.create_request` with the
+  template field keys, then approved, rejected or cancelled like real users
+  would: purchase approved (draft Material Request, type Purchase), purchase
+  rejected, supply approved with method Transfer (draft Material Request,
+  type Material Transfer), an approved daily leave (submitted Leave
+  Application, 3 days), a pending hourly leave and a cancelled daily leave.
+  The native documents are created by the post-approval hook, not by the
+  seed. Leave is dated 1 to 9 days ahead, inside the allocation year; in
+  the last days of the calendar year (from 23 December) there is no room
+  and the three leave requests are skipped (`skipped_requests` in the
+  summary). The two demo leave types get the Asoud categories `annual` and
+  `sick` that the leave form needs.
+
+An older seed created two custom request types (`ASOUD-DEMO-LEAVE`,
+`ASOUD-DEMO-PURCHASE`) that would duplicate the templates. They are not
+migrated: run `reset=True` once on such a site, then seed again.
 
 Running twice creates nothing new: every section looks its records up
 first (company, prefixed codes, fixed `request_id`s).
@@ -87,9 +101,12 @@ cycle.
 Deliberate leftovers: the hidden Custom Field a native `Workflow` adds
 to `ASOUD Workflow Request` (a compatibility reference shared with any
 workflow on that DocType), and Frappe `Version` audit rows. The
-`ASOUD-DEMO Draft` Workflow State is removed only when nothing else on
+`ASOUD-DEMO Draft` Workflow State (older seeds) is removed only when nothing else on
 the site references it (states live in a shared namespace); otherwise it
-is reported under `kept` and left alone. Nothing else is touched.
+is reported under `kept` and left alone. The native Workflow
+`ASOUD-SYSTEM-REQUEST-NATIVE` is shared by the system templates of every
+company, so reset removes it only when no request type of any company links
+it. Nothing else is touched.
 
 ## Tests
 

@@ -15,6 +15,8 @@ Records created by ``asoud_erp.demo.seed`` are identified for reset by:
   suppliers, holiday lists).
 """
 
+from datetime import date, timedelta
+
 COMPANY = "شرکت نمونه آسود"
 ABBR = "ASDM"
 CURRENCY = "IRR"
@@ -99,20 +101,54 @@ PRICE_LIST_BUYING = "ASOUD-DEMO Buying"
 
 HOLIDAY_LIST = "تعطیلات نمونه آسود"
 
-WORKFLOW_LEAVE_CODE = "ASOUD-DEMO-LEAVE"
-WORKFLOW_LEAVE_TITLE = "درخواست مرخصی نمونه"
-WORKFLOW_PURCHASE_CODE = "ASOUD-DEMO-PURCHASE"
-WORKFLOW_PURCHASE_TITLE = "درخواست خرید نمونه"
+# The demo company uses the system request templates (purchase, supply, leave), seeded by
+# ``request_templates.seed.ensure_system_templates``. Their definitions carry the company, so a
+# reset removes them with it. The native Frappe Workflow they link to is shared by every company.
+SYSTEM_NATIVE_WORKFLOW = "ASOUD-SYSTEM-REQUEST-NATIVE"
+SYSTEM_TEMPLATE_KEYS = ("purchase", "supply", "leave")
+# Request types of older demo seeds; only reset (and cleanup of old sites) still knows them.
+LEGACY_WORKFLOW_CODES = ("ASOUD-DEMO-LEAVE", "ASOUD-DEMO-PURCHASE")
+
+# Asoud leave category (Leave Type.asoud_leave_category) of each demo leave type, by LEAVE_TYPES index.
+LEAVE_CATEGORIES = ["annual", "sick"]
 
 # Fixed request_ids make request creation idempotent by itself.
 REQUEST_IDS = {
     "leave-approved": "asoud-demo-req-leave-approved",
     "leave-pending": "asoud-demo-req-leave-pending",
-    "purchase-rejected": "asoud-demo-req-purchase-rejected",
     "leave-cancelled": "asoud-demo-req-leave-cancelled",
+    "purchase-approved": "asoud-demo-req-purchase-approved",
+    "purchase-rejected": "asoud-demo-req-purchase-rejected",
+    "supply-approved": "asoud-demo-req-supply-approved",
 }
 
 PURCHASE_BILL_NO = "ASOUD-DEMO-B-1"
+
+# How many days ahead the demo leave requests are dated (see ``demo_leave_dates``).
+LEAVE_OFFSET_PENDING = 1
+LEAVE_OFFSET_CANCELLED = 3
+LEAVE_OFFSET_APPROVED = 7
+
+
+def demo_leave_dates(today: date, year_end: date, holidays: set | frozenset = frozenset()) -> dict | None:
+    """Dates of the three demo leave requests, all inside the leave allocation year.
+
+    The demo allocations cover the calendar year and attendance exists up to today, so leave is
+    dated in the future: an hourly leave tomorrow (moved past holidays, which hourly leave refuses),
+    a two-day daily leave and a three-day daily leave for the approved request. Returns ``None``
+    when they no longer fit before ``year_end`` (the last days of the year), and the seed then
+    skips the leave requests instead of failing.
+    """
+    hourly = today + timedelta(days=LEAVE_OFFSET_PENDING)
+    while hourly.isoformat() in holidays:
+        hourly += timedelta(days=1)
+    cancelled = today + timedelta(days=LEAVE_OFFSET_CANCELLED)
+    approved = today + timedelta(days=LEAVE_OFFSET_APPROVED)
+    last = approved + timedelta(days=2)
+    if last > year_end or hourly >= cancelled:
+        return None
+    return {"pending": hourly, "cancelled": (cancelled, cancelled + timedelta(days=1)),
+            "approved": (approved, last)}
 
 
 def demo_email(local_part: str) -> str:

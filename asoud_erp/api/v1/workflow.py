@@ -593,6 +593,16 @@ def add_condition_branch(
     return success(_design_payload(definition))
 
 
+def _assert_form_is_editable(definition: str, stage) -> None:
+    """The form of a system template is owned by its code spec; approvers stay editable."""
+    if not frappe.db.get_value("ASOUD Workflow Definition", definition, "is_system_template"):
+        return
+    from asoud_erp.api.v1.workflow_request import form_stage_name
+
+    if form_stage_name(definition) == stage.name:
+        frappe.throw(_("فرم این نوع درخواست توسط سیستم مدیریت می‌شود"))
+
+
 @frappe.whitelist(methods=["POST"])
 def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
@@ -601,6 +611,7 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
         frappe.throw(_("Stage does not belong to the selected workflow"))
     if doc.stage_type == "Start":
         frappe.throw(_("Use the start settings endpoint for the start stage"))
+    _assert_form_is_editable(definition, doc)
     raw = json.loads(config) if isinstance(config, str) else config
     if not isinstance(raw, dict):
         frappe.throw(_("Stage configuration must be an object"))

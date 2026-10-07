@@ -6,11 +6,22 @@ scoped. Company B is given coded accounts here, otherwise `list_accounts` answer
 with an empty list and the leak is invisible.
 """
 
+import base64
+
 import frappe
 
-from asoud_erp.api.v1 import account, detail_group, floating_detail, voucher
+from asoud_erp.api.v1 import account, detail_group, floating_detail, voucher, workflow_request
 from asoud_erp.integration_tests.fixtures import APITestCase
-from asoud_erp.integration_tests.tenancy import ACCOUNTS_A_USER, MANAGER_USER, setup_tenancy
+from asoud_erp.integration_tests.request_fixtures import make_definition
+from asoud_erp.integration_tests.request_helpers import create, valid_pdf_bytes
+from asoud_erp.integration_tests.tenancy import (
+    ACCOUNTS_A_USER,
+    EMPLOYEE_A_USER,
+    EMPLOYEE_B_USER,
+    HR_MANAGER_USER,
+    MANAGER_USER,
+    setup_tenancy,
+)
 
 
 class TestAccountCompanyScope(APITestCase):
@@ -151,3 +162,71 @@ class TestVoucherCompanyScope(APITestCase):
                     {"account": self.scope["coded_accounts_b"][1], "debit": 0, "credit": 10},
                 ],
             )
+
+def b64(data: bytes) -> str:
+    return base64.b64encode(data).decode()
+
+
+class TestRequestCompanyScope(APITestCase):
+    """The request endpoints answer for the caller's own company and own requests only."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.scope = setup_tenancy()
+        cls.second = cls.scope["second"]
+
+    def setUp(self):
+        super().setUp()
+        # No approval stage: the request completes on submit, which is all these checks need.
+        definition, _stages = make_definition(self.second, approvals=0)
+        self.request_b = create(
+            self.second, definition=definition, user=EMPLOYEE_B_USER, values={"reason": "درخواست شرکت دوم"},
+            attachments=[{"filename": "a.pdf", "content_base64": b64(valid_pdf_bytes()), "ref": "a"}])
+        frappe.set_user(EMPLOYEE_A_USER)
+
+    def test_field_options_of_a_foreign_company_are_refused(self):
+        for field_type in ("User", "Department", "Cost Center", "Warehouse", "Delivery Location", "Branch"):
+            with self.assertRaises(frappe.PermissionError):
+                workflow_request.request_field_options(self.second, field_type)
+        self.assertIsInstance(workflow_request.request_field_options(self.company, "Department")["data"], list)
+
+    def test_options_and_list_of_a_foreign_company_are_refused(self):
+        with self.assertRaises(frappe.PermissionError):
+            workflow_request.request_options(self.second)
+        with self.assertRaises(frappe.PermissionError):
+            workflow_request.list_my_requests(company=self.second)
+
+    def test_creating_in_a_foreign_company_is_refused(self):
+        with self.assertRaises(frappe.PermissionError):
+            workflow_request.create_request(
+                company=self.second, template_key="leave", request_id="foreign-create-0001", values={})
+
+    def test_a_foreign_request_cannot_be_read_commented_or_downloaded(self):
+        name = self.request_b["name"]
+        file_name = self.request_b["attachments"][0]["name"]
+        with self.assertRaises(frappe.PermissionError):
+            workflow_request.get_request(name)
+        with self.assertRaises(frappe.PermissionError):
+            workflow_request.list_request_comments(name)
+        with self.assertRaises(frappe.PermissionError):
+            workflow_request.add_request_comment(name, "نباید ثبت شود")
+        with self.assertRaises(frappe.PermissionError):
+            workflow_request.get_attachment(file_name)
+        self.assertEqual(frappe.db.count("Comment", {"reference_doctype": "ASOUD Workflow Request",
+                                                     "reference_name": name, "comment_type": "Comment"}), 0)
+
+    def test_the_owner_still_reads_their_own_request(self):
+        frappe.set_user(EMPLOYEE_B_USER)
+        self.assertEqual(workflow_request.get_request(self.request_b["name"])["data"]["company"], self.second)
+        self.assertEqual(workflow_request.list_request_comments(self.request_b["name"])["data"], [])
+
+    def test_an_hr_manager_of_another_company_is_refused_and_retry_needs_a_role(self):
+        frappe.set_user(HR_MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            workflow_request.get_request(self.request_b["name"])
+        with self.assertRaises(frappe.PermissionError):
+            workflow_request.create_native_document(self.request_b["name"])
+        frappe.set_user(EMPLOYEE_B_USER)
+        with self.assertRaises(frappe.PermissionError):
+            workflow_request.create_native_document(self.request_b["name"])

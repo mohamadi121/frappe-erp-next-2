@@ -1,6 +1,7 @@
 """Pure tests for the demo-seed markers and safety guard (no site needed)."""
 
 import unittest
+from datetime import date
 
 from asoud_erp.demo import markers as m
 
@@ -73,7 +74,10 @@ class TestDemoNaming(unittest.TestCase):
 
     def test_request_ids_are_unique_and_prefixed(self):
         ids = list(m.REQUEST_IDS.values())
-        self.assertEqual(len(set(ids)), 4)
+        self.assertEqual(len(set(ids)), 6)
+        self.assertEqual(set(m.REQUEST_IDS), {
+            "leave-approved", "leave-pending", "leave-cancelled",
+            "purchase-approved", "purchase-rejected", "supply-approved"})
         self.assertTrue(all(len(request_id) >= 8 for request_id in ids))
 
     def test_demo_price_lists_are_prefixed_and_distinct(self):
@@ -121,6 +125,38 @@ class TestDemoFiscalYearRules(unittest.TestCase):
             m.fiscal_year_reset_action("2026", "2026-01-01", "2026-12-31", [m.COMPANY], m.COMPANY),
             "delete",
         )
+
+
+class TestDemoLeaveDates(unittest.TestCase):
+    YEAR_END = date(2026, 12, 31)
+
+    def test_dates_are_in_the_future_and_do_not_overlap(self):
+        dates = m.demo_leave_dates(date(2026, 10, 6), self.YEAR_END)
+        self.assertEqual(dates["pending"], date(2026, 10, 7))
+        self.assertEqual(dates["cancelled"], (date(2026, 10, 9), date(2026, 10, 10)))
+        self.assertEqual(dates["approved"], (date(2026, 10, 13), date(2026, 10, 15)))
+        self.assertLess(dates["pending"], dates["cancelled"][0])
+        self.assertLess(dates["cancelled"][1], dates["approved"][0])
+
+    def test_hourly_leave_skips_holidays(self):
+        dates = m.demo_leave_dates(date(2026, 10, 6), self.YEAR_END, {"2026-10-07"})
+        self.assertEqual(dates["pending"], date(2026, 10, 8))
+        # ...but never runs into the cancelled leave (then the leave requests are skipped).
+        self.assertIsNone(m.demo_leave_dates(date(2026, 10, 6), self.YEAR_END, {"2026-10-07", "2026-10-08"}))
+
+    def test_last_days_of_the_year_have_no_room(self):
+        self.assertIsNotNone(m.demo_leave_dates(date(2026, 12, 22), self.YEAR_END))
+        self.assertIsNone(m.demo_leave_dates(date(2026, 12, 23), self.YEAR_END))
+        self.assertIsNone(m.demo_leave_dates(date(2026, 12, 31), self.YEAR_END))
+
+    def test_leave_categories_cover_the_demo_leave_types(self):
+        self.assertEqual(len(m.LEAVE_CATEGORIES), len(m.LEAVE_TYPES))
+        self.assertEqual(m.LEAVE_CATEGORIES, ["annual", "sick"])
+
+    def test_system_templates_replace_the_legacy_demo_definitions(self):
+        self.assertEqual(m.SYSTEM_TEMPLATE_KEYS, ("purchase", "supply", "leave"))
+        self.assertEqual(m.SYSTEM_NATIVE_WORKFLOW, "ASOUD-SYSTEM-REQUEST-NATIVE")
+        self.assertEqual(m.LEGACY_WORKFLOW_CODES, ("ASOUD-DEMO-LEAVE", "ASOUD-DEMO-PURCHASE"))
 
 
 if __name__ == "__main__":

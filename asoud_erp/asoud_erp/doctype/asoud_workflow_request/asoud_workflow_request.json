@@ -19,7 +19,16 @@
     "status",
     "display_status",
     "request_id",
-    "request_fingerprint"
+    "request_fingerprint",
+    "template_key",
+    "template_version",
+    "requester_employee",
+    "status_key",
+    "search_text",
+    "native_doctype",
+    "native_name",
+    "native_status",
+    "native_error"
   ],
   "fields": [
     {
@@ -112,6 +121,67 @@
       "fieldname": "request_fingerprint",
       "label": "request_fingerprint",
       "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "template_key",
+      "label": "Template Key",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "search_index": 1,
+      "description": "Copied from the request type at creation; empty for custom request types."
+    },
+    {
+      "fieldname": "template_version",
+      "label": "Template Version",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "requester_employee",
+      "label": "Requester Employee",
+      "fieldtype": "Link",
+      "options": "Employee",
+      "read_only": 1
+    },
+    {
+      "fieldname": "status_key",
+      "label": "Status Key",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "search_index": 1,
+      "description": "Mirrored from the workflow instance by the lifecycle hook."
+    },
+    {
+      "fieldname": "search_text",
+      "label": "Search Text",
+      "fieldtype": "Small Text",
+      "read_only": 1,
+      "description": "Denormalized text used by the request list search."
+    },
+    {
+      "fieldname": "native_doctype",
+      "label": "Native DocType",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "native_name",
+      "label": "Native Document",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "native_status",
+      "label": "Native Document Status",
+      "fieldtype": "Select",
+      "options": "\nPending\nCreated\nSkipped\nFailed",
+      "read_only": 1
+    },
+    {
+      "fieldname": "native_error",
+      "label": "Native Document Error",
+      "fieldtype": "Small Text",
       "read_only": 1
     }
   ],

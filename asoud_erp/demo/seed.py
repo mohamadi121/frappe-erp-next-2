@@ -26,7 +26,6 @@ site whose name contains neither "test" nor "demo", unless ``force=True``.
 """
 
 import base64
-import json
 import secrets
 import time
 from datetime import date
@@ -343,7 +342,7 @@ def _demo_employees() -> list:
 
 def _ensure_leave_types() -> list:
     names = []
-    for title, max_leaves in m.LEAVE_TYPES:
+    for index, (title, max_leaves) in enumerate(m.LEAVE_TYPES):
         if frappe.db.exists("Leave Type", title):
             _count("leave_types", skipped=1)
         else:
@@ -351,6 +350,8 @@ def _ensure_leave_types() -> list:
                             "max_leaves_allowed": max_leaves,
                             "allow_encashment": 0}).insert(ignore_permissions=True)
             _count("leave_types", created=1)
+        # The leave template offers only Leave Types that have an Asoud category.
+        _set_values("Leave Type", title, {"asoud_leave_category": m.LEAVE_CATEGORIES[index]})
         names.append(title)
     return names
 
@@ -617,113 +618,6 @@ def _ensure_purchase(suppliers: list, warehouse: str) -> None:
 
 # ------------------------------------------------------------------ workflows
 
-def _ensure_native_workflow(code: str) -> str:
-    name = f"{code}-NATIVE"
-    if frappe.db.exists("Workflow", name):
-        _count("native_workflows", skipped=1)
-        return name
-    state = f"{m.PREFIX} Draft"
-    if not frappe.db.exists("Workflow State", state):
-        frappe.get_doc({"doctype": "Workflow State",
-                        "workflow_state_name": state}).insert(ignore_permissions=True)
-    frappe.get_doc({
-        "doctype": "Workflow", "workflow_name": name,
-        "document_type": "ASOUD Workflow Request", "is_active": 0,
-        "states": [{"state": state, "doc_status": "0", "allow_edit": "System Manager"}],
-    }).insert(ignore_permissions=True)
-    _count("native_workflows", created=1)
-    return name
-
-
-def _form_fields(kind: str) -> list:
-    if kind == "leave":
-        return [
-            {"key": "reason", "label": "علت مرخصی", "type": "Short Text", "required": True},
-            {"key": "start_date", "label": "از تاریخ", "type": "Date", "required": True},
-            {"key": "days", "label": "مدت (روز)", "type": "Number", "required": True},
-        ]
-    return [
-        {"key": "item", "label": "کالا", "type": "Short Text", "required": True},
-        {"key": "quantity", "label": "تعداد", "type": "Number", "required": True},
-        {"key": "reason", "label": "دلیل خرید", "type": "Long Text", "required": False},
-    ]
-
-
-def _stage_config(stage_type: str, title: str, assignment: str, fields: list | None = None) -> dict:
-    if stage_type == "User Task":
-        return {"title": title, "activity_type": "Data Entry", "assignment_type": assignment,
-                "assignee_roles": [], "assignee_departments": [], "assignee_employees": [],
-                "instructions": "", "form_fields": fields or [], "document_access": "Read Only",
-                "allow_reject": False, "allow_return": False, "comment_required": False,
-                "reject_comment_required": False, "allow_draft": True, "require_all_fields": False,
-                "allow_edit_after_submit": False, "description": ""}
-    if stage_type == "Approval":
-        return {"title": title, "assignment_type": assignment,
-                "approver_roles": [], "approver_departments": [], "approver_employees": [],
-                "approval_mode": "Any", "document_access": "Read Only",
-                "allow_reject": True, "allow_return": False, "comment_required": False,
-                "reject_comment_required": False, "description": ""}
-    if stage_type == "System Action":
-        return {"title": title, "action_type": "Change Status", "request_status": "تأیید شده"}
-    return {"title": title, "outcome": "Completed", "result_label": ""}
-
-
-def _ensure_definition(code: str, title: str, module: str, category: str,
-                       approval_assignment: str, with_system_action: bool) -> str:
-    if frappe.db.exists("ASOUD Workflow Definition", {"workflow_code": code}):
-        _count("workflow_definitions", skipped=1)
-        return frappe.db.get_value("ASOUD Workflow Definition", {"workflow_code": code}, "name")
-    native = _ensure_native_workflow(code)
-    definition = frappe.get_doc({
-        "doctype": "ASOUD Workflow Definition", "workflow_code": code, "workflow_title": title,
-        "company": m.COMPANY, "module_key": module, "creation_mode": "Custom",
-        "target_doctype": "ASOUD Workflow Request", "status": "Active",
-        "readiness_status": "Ready", "frappe_workflow": native,
-        "missing_requirements_json": "[]", "short_title": title,
-        "request_category": category, "show_in_request_list": 1, "allow_user_submission": 1,
-    }).insert(ignore_permissions=True).name
-    kinds = ["Start", "User Task", "Approval"]
-    if with_system_action:
-        kinds.append("System Action")
-    kinds.append("End")
-    stages = {}
-    for seq, kind in enumerate(kinds, start=1):
-        config = {"trigger_type": "Manual", "initiator_roles": [],
-                  "subject_source": "General Subject", "pass_mode": "Direct"} \
-            if kind == "Start" else _stage_config(
-                kind, {"User Task": "تکمیل فرم", "Approval": "تأیید مدیر",
-                       "System Action": "اعلام نتیجه", "End": "پایان"}[kind],
-                "Initiator" if kind == "User Task" else approval_assignment,
-                _form_fields("leave" if code == m.WORKFLOW_LEAVE_CODE else "purchase")
-                if kind == "User Task" else None)
-        stages[kind] = frappe.get_doc({
-            "doctype": "ASOUD Workflow Stage", "workflow_definition": definition,
-            "stage_key": f"{code.lower()}-{kind.lower().replace(' ', '-')}",
-            "stage_type": kind, "stage_title": kind, "sequence_no": seq,
-            "config_json": json.dumps(config, ensure_ascii=False),
-            "configuration_status": "Complete",
-        }).insert(ignore_permissions=True).name
-    previous = None
-    for seq, kind in enumerate(kinds, start=1):
-        if previous is None:
-            previous = stages[kind]
-            continue
-        label, condition = "", "{}"
-        if kinds[seq - 2] == "Approval":
-            label, condition = "تأیید", json.dumps({"action": "Approve"})
-        elif kinds[seq - 2] == "System Action":
-            label, condition = "موفقیت", json.dumps({"action": "Success"})
-        frappe.get_doc({
-            "doctype": "ASOUD Workflow Transition", "workflow_definition": definition,
-            "from_stage": previous, "to_stage": stages[kind],
-            "transition_label": label, "condition_json": condition, "sequence_no": seq,
-        }).insert(ignore_permissions=True)
-        previous = stages[kind]
-    frappe.db.set_value("ASOUD Workflow Definition", definition, "steps_count", len(kinds) - 1)
-    _count("workflow_definitions", created=1)
-    return definition
-
-
 def _drive_to_completed(instance: str, action: str, comment: str) -> None:
     """Complete every open task until the instance leaves Running (max 5 rounds)."""
     from asoud_erp.api.v1 import workflow_runtime
@@ -743,28 +637,71 @@ def _drive_to_completed(instance: str, action: str, comment: str) -> None:
         frappe.set_user("Administrator")
 
 
-def _ensure_requests(definitions: dict) -> None:
+def _request_plans(warehouse: str, holiday_list: str) -> list:
+    """The demo requests: (key, template, requester, subject, values, target status, action).
+
+    Leave dates are in the future (see ``markers.demo_leave_dates``); in the last days of the
+    calendar year there is no room left and the leave requests are skipped.
+    """
+    today = _today()
+    employee, newcomer = m.demo_email("employee"), m.demo_email("newcomer")
+    department = {email: frappe.db.get_value("Employee", {"user_id": email}, "department")
+                  for email in (employee, newcomer)}
+    annual, sick = (title for title, _max_leaves in m.LEAVE_TYPES)
+    needed = str(add_days(today, 10))
+    service = m.ITEMS[3][0]
+
+    def who(email: str) -> dict:
+        return {"requester": email, "org_unit": department[email]}
+
+    plans = [
+        ("purchase-approved", "purchase", employee, "خرید خدمات نصب تجهیزات",
+         {**who(employee), "needed_date": needed, "priority": "Normal", "reason": "نصب تجهیزات واحد فروش",
+          "items": [{"item_code": service, "qty": 1, "description": "نصب و راه‌اندازی",
+                     "note": "هماهنگی با واحد فروش"}]},
+         "Completed", "Approve"),
+        ("purchase-rejected", "purchase", employee, "خرید لپ‌تاپ",
+         {**who(employee), "needed_date": needed, "priority": "High", "reason": "تجهیز واحد فروش",
+          "items": [{"item_code": m.ITEMS[0][0], "qty": 2, "description": "لپ‌تاپ اداری"}]},
+         "Rejected", "Reject"),
+        ("supply-approved", "supply", newcomer, "تأمین کالا برای انبار مرکزی",
+         {**who(newcomer), "delivery_location": f"warehouse:{warehouse}", "needed_date": needed,
+          "supply_method": "Transfer", "priority": "Normal", "reason": "انتقال کالا به انبار مرکزی",
+          "items": [{"item_code": m.ITEMS[1][0], "qty": 3, "description": "انتقال از انبار فرعی"}]},
+         "Completed", "Approve"),
+    ]
+    holidays = {str(day) for day in frappe.get_all("Holiday", filters={"parent": holiday_list},
+                                                   pluck="holiday_date")}
+    dates = m.demo_leave_dates(today, getdate(get_year_ending(nowdate())), holidays)
+    if not dates:
+        SUMMARY.setdefault("skipped_requests", []).extend(
+            key for key in ("leave-approved", "leave-pending", "leave-cancelled"))
+        return plans
+    approved, cancelled = dates["approved"], dates["cancelled"]
+    plans += [
+        ("leave-approved", "leave", employee, "",
+         {**who(employee), "leave_type": annual, "request_kind": "Daily", "start_date": str(approved[0]),
+          "end_date": str(approved[1]), "reason": "سفر خانوادگی"}, "Completed", "Approve"),
+        ("leave-pending", "leave", newcomer, "",
+         {**who(newcomer), "leave_type": sick, "request_kind": "Hourly", "leave_date": str(dates["pending"]),
+          "start_time": "09:00", "end_time": "13:00", "reason": "مراجعه به پزشک"}, "Running", None),
+        ("leave-cancelled", "leave", newcomer, "",
+         {**who(newcomer), "leave_type": annual, "request_kind": "Daily", "start_date": str(cancelled[0]),
+          "end_date": str(cancelled[1]), "reason": "تغییر برنامه"}, "Cancelled", None),
+    ]
+    return plans
+
+
+def _ensure_requests(warehouse: str, holiday_list: str) -> None:
+    """Requests of the system templates, created, approved or cancelled like real users would.
+
+    Approving a purchase or supply request creates a draft Material Request, approving a leave
+    request a Leave Application (daily) or Leave Ledger Entry (hourly); the post-approval hook
+    does that, nothing here writes those documents.
+    """
     from asoud_erp.api.v1 import workflow_request
 
-    employee_email = m.demo_email("employee")
-    newcomer_email = m.demo_email("newcomer")
-    month_start = str(get_first_day(nowdate()))
-    plans = [
-        # (key, definition, requester, subject, values, target, action)
-        ("leave-approved", "leave", employee_email, "مرخصی سه‌روزه",
-         {"reason": "سفر خانوادگی", "start_date": month_start, "days": 3},
-         "Completed", "Approve"),
-        ("leave-pending", "leave", newcomer_email, "مرخصی یک‌روزه",
-         {"reason": "کار اداری", "start_date": month_start, "days": 1},
-         "Running", None),
-        ("purchase-rejected", "purchase", employee_email, "خرید لپ‌تاپ",
-         {"item": "لپ‌تاپ اداری", "quantity": 2, "reason": "تجهیز واحد فروش"},
-         "Rejected", "Reject"),
-        ("leave-cancelled", "leave", newcomer_email, "مرخصی لغوشده",
-         {"reason": "تغییر برنامه", "start_date": month_start, "days": 2},
-         "Cancelled", None),
-    ]
-    for key, definition, requester, subject, values, target, action in plans:
+    for key, template, requester, subject, values, target, action in _request_plans(warehouse, holiday_list):
         request_id = m.REQUEST_IDS[key]
         existing = frappe.db.get_value("ASOUD Workflow Request", {"request_id": request_id},
                                        ["name", "workflow_instance"], as_dict=True)
@@ -774,15 +711,13 @@ def _ensure_requests(definitions: dict) -> None:
         else:
             frappe.set_user(requester)
             created = workflow_request.create_request(
-                company=m.COMPANY, workflow_definition=definitions[definition],
-                subject=subject, request_id=request_id, values=values)["data"]
+                company=m.COMPANY, template_key=template, subject=subject, request_id=request_id,
+                values=values)["data"]
             frappe.set_user("Administrator")
             request_name, instance = created["name"], created["workflow_instance"]
             _count("workflow_requests", created=1)
         status = frappe.db.get_value("ASOUD Workflow Instance", instance, "status")
-        if status == target:
-            continue
-        if status != "Running":
+        if status == target or status != "Running":
             continue
         if target == "Cancelled":
             frappe.set_user(requester)
@@ -791,6 +726,13 @@ def _ensure_requests(definitions: dict) -> None:
         else:
             _drive_to_completed(instance, action,
                                 "تأیید شد" if action == "Approve" else "بودجه کافی نیست")
+            native = frappe.db.get_value("ASOUD Workflow Request", request_name,
+                                         ["native_status", "native_error"], as_dict=True)
+            if native.native_status == "Created":
+                _count("native_documents", created=1)
+            elif native.native_status == "Failed":
+                SUMMARY.setdefault("native_failed", []).append(
+                    {"request": request_name, "error": native.native_error})
 
 
 def _seed(password: str | None) -> None:
@@ -812,13 +754,12 @@ def _seed(password: str | None) -> None:
     _ensure_stock(warehouse)
     _ensure_sales(customers)
     _ensure_purchase(suppliers, warehouse)
-    definitions = {
-        "leave": _ensure_definition(m.WORKFLOW_LEAVE_CODE, m.WORKFLOW_LEAVE_TITLE,
-                                    "Support", "HR", "Direct Manager", False),
-        "purchase": _ensure_definition(m.WORKFLOW_PURCHASE_CODE, m.WORKFLOW_PURCHASE_TITLE,
-                                       "Purchase", "Purchase", "Direct Manager", True),
-    }
-    _ensure_requests(definitions)
+    from asoud_erp.services.request_templates.seed import ensure_system_templates
+
+    templates = ensure_system_templates(m.COMPANY)
+    _count("system_templates", created=templates["created"] + templates["updated"],
+           skipped=templates["skipped"])
+    _ensure_requests(warehouse, holiday_list)
     frappe.set_user("Administrator")
 
 
@@ -861,6 +802,12 @@ def _delete_one(doctype: str, name: str, purge_ledger: bool) -> None:
 
 def _pluck(doctype: str, filters: dict) -> list:
     return frappe.get_all(doctype, filters=filters, pluck="name", limit_page_length=0)
+
+
+def _shared_workflow_unreferenced() -> bool:
+    """The shared native Workflow of the system templates exists and no definition uses it."""
+    return bool(frappe.db.exists("Workflow", m.SYSTEM_NATIVE_WORKFLOW)) and not frappe.db.exists(
+        "ASOUD Workflow Definition", {"frappe_workflow": m.SYSTEM_NATIVE_WORKFLOW})
 
 
 def _definition_names() -> list:
@@ -943,10 +890,11 @@ def check() -> dict:
             "ASOUD Workflow Task", {"workflow_instance": in_demo(instances)}),
         "ASOUD Workflow Activity": frappe.db.count(
             "ASOUD Workflow Activity", {"workflow_instance": in_demo(instances)}),
-        "Workflow": sum(1 for name in (f"{m.WORKFLOW_LEAVE_CODE}-NATIVE",
-                                       f"{m.WORKFLOW_PURCHASE_CODE}-NATIVE")
-                        if frappe.db.exists("Workflow", name)),
+        # The shared system workflow is only counted once nothing else references it.
+        "Workflow": sum(1 for name in (f"{code}-NATIVE" for code in m.LEGACY_WORKFLOW_CODES)
+                        if frappe.db.exists("Workflow", name)) + int(_shared_workflow_unreferenced()),
         "Workflow State": 1 if frappe.db.exists("Workflow State", f"{m.PREFIX} Draft") else 0,
+        "Material Request": frappe.db.count("Material Request", {"company": m.COMPANY}),
         "Notification Log": frappe.db.count(
             "Notification Log", {"document_type": "ASOUD Workflow Instance",
                                  "document_name": in_demo(instances)}),
@@ -987,6 +935,8 @@ def _reset() -> None:
     wipe("Sales Invoice", _pluck("Sales Invoice", {"company": m.COMPANY}), purge_ledger=True)
     wipe("Payment Entry", _pluck("Payment Entry", {"company": m.COMPANY}), purge_ledger=True)
     wipe("Stock Entry", _pluck("Stock Entry", {"company": m.COMPANY}), purge_ledger=True)
+    # Drafts created by the approved purchase/supply requests (they link their request).
+    wipe("Material Request", _pluck("Material Request", {"company": m.COMPANY}))
     wipe("Attendance", _pluck("Attendance", {"company": m.COMPANY}))
     wipe("Leave Application", _pluck("Leave Application", {"company": m.COMPANY}))
     wipe("Leave Allocation", _pluck("Leave Allocation", {"company": m.COMPANY}))
@@ -1017,7 +967,12 @@ def _reset() -> None:
     for request in _pluck("ASOUD Workflow Request", {"company": m.COMPANY}):
         _set_values("ASOUD Workflow Request", request, {"workflow_instance": None})
     wipe("ASOUD Workflow Instance", instances)
-    wipe("ASOUD Workflow Request", _pluck("ASOUD Workflow Request", {"company": m.COMPANY}))
+    requests = _pluck("ASOUD Workflow Request", {"company": m.COMPANY})
+    # Native-document failures notify about the request itself.
+    wipe("Notification Log", _pluck("Notification Log", {"document_type": "ASOUD Workflow Request",
+                                                          "document_name": ["in", requests]})
+         if requests else [])
+    wipe("ASOUD Workflow Request", requests)
     wipe("Notification Log", _pluck("Notification Log",
                                     {"document_type": "ASOUD Workflow Instance",
                                      "document_name": ["in", instances] or [""]}) if instances else [])
@@ -1028,7 +983,11 @@ def _reset() -> None:
                                         {"workflow_definition": ["in", definitions]
                                          or [""]}) if definitions else [])
     wipe("ASOUD Workflow Definition", definitions)
-    wipe("Workflow", [f"{m.WORKFLOW_LEAVE_CODE}-NATIVE", f"{m.WORKFLOW_PURCHASE_CODE}-NATIVE"])
+    # Older seeds had a native Workflow per demo request type. The system templates share one
+    # Workflow across companies: it goes only when no definition of any company still uses it.
+    wipe("Workflow", [f"{code}-NATIVE" for code in m.LEGACY_WORKFLOW_CODES])
+    if _shared_workflow_unreferenced():
+        wipe("Workflow", [m.SYSTEM_NATIVE_WORKFLOW])
     # Workflow States live in a shared namespace: another workflow on this
     # site may reference the demo state (e.g. stamps it on its own requests).
     # Remove it only when nothing else links it; never touch other data.

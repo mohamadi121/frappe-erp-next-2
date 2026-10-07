@@ -72,13 +72,23 @@ def get_my_leave_summary(date: str | None = None) -> dict:
     """Leave types with allocation, taken, pending and remaining days (HRMS `get_leave_details`)."""
     from hrms.hr.doctype.leave_application.leave_application import get_leave_details
 
+    from asoud_erp.services.leave_balance import leave_type_rows
+
     me = _me()
-    details = get_leave_details(me.name, getdate(date or nowdate()))
+    as_of = getdate(date or nowdate())
+    details = get_leave_details(me.name, as_of)
+    # Additive (CONTRACT 4.13): every HRMS key stays as is. HRMS does not see hourly leave
+    # (Leave Ledger Entries of transaction type "ASOUD Workflow Request"), so the extra keys
+    # carry it: hourly_leaves_taken, available_leaves (remaining - hourly - pending) and category.
+    extra = {row["leave_type"]: row for row in leave_type_rows(me.name, as_of, only_allocated=True)}
     return success({
         "employee": me.name,
         "leave_approver": details.get("leave_approver") or "",
         "leave_without_pay_types": details.get("lwps") or [],
-        "balances": [{"leave_type": leave_type, **values}
+        "balances": [{"leave_type": leave_type, **values,
+                      "hourly_leaves_taken": extra.get(leave_type, {}).get("hourly_taken", 0),
+                      "available_leaves": extra.get(leave_type, {}).get("available"),
+                      "category": extra.get(leave_type, {}).get("category", "")}
                      for leave_type, values in (details.get("leave_allocation") or {}).items()],
     })
 
