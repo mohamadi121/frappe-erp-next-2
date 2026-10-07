@@ -5,6 +5,13 @@ def company_access(company, user=None):
     user = user or frappe.session.user
     if user == "Guest" or not company:
         return False
+    if user == frappe.conf.get("asoud_workflow_service_user"):
+        from asoud_erp.services.automatic_action_metadata import service_user
+
+        try:
+            return service_user(company) == user
+        except frappe.PermissionError:
+            return False
     roles = set(frappe.get_roles(user))
     if not roles.intersection({"System Manager", "HR Manager", "Accounts Manager", "Accounts User"}):
         return bool(frappe.db.exists("Employee", {"user_id": user, "company": company, "status": "Active"}))
@@ -18,6 +25,10 @@ def require_company(company):
 
 def request_permission(doc, user=None, permission_type=None):
     user = user or frappe.session.user
+    if user == frappe.conf.get("asoud_workflow_service_user"):
+        # Returning None delegates to ordinary DocType permissions; it does not
+        # grant write/read itself. Admin must explicitly grant the required role.
+        return None if company_access(doc.company, user) else False
     if permission_type not in (None, "read", "select"):
         return False
     if not company_access(doc.company, user):

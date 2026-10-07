@@ -1,0 +1,23 @@
+{
+  "doctype": "DocType", "name": "ASOUD Action Execution", "module": "ASOUD ERP",
+  "autoname": "hash", "track_changes": 1,
+  "field_order": ["workflow_instance", "workflow_stage", "trigger_id", "status", "action_type", "config_json", "routes_json", "attempts", "next_attempt", "started_on", "completed_on", "service_user", "result_json", "error_code", "error_message"],
+  "fields": [
+    {"fieldname":"trigger_id","label":"Activation Trigger","fieldtype":"Data","reqd":1},
+    {"fieldname":"workflow_instance","label":"Workflow Instance","fieldtype":"Link","options":"ASOUD Workflow Instance","reqd":1},
+    {"fieldname":"workflow_stage","label":"Workflow Stage","fieldtype":"Link","options":"ASOUD Workflow Stage","reqd":1},
+    {"fieldname":"status","label":"Status","fieldtype":"Select","options":"Pending\nRunning\nRetry Pending\nSucceeded\nCompleted With Errors\nFailed\nCancelled","default":"Pending","reqd":1},
+    {"fieldname":"action_type","label":"Action Type","fieldtype":"Data","reqd":1},
+    {"fieldname":"config_json","label":"Configuration Snapshot","fieldtype":"Code","options":"JSON","reqd":1},
+    {"fieldname":"routes_json","label":"Route Snapshot","fieldtype":"Code","options":"JSON","reqd":1},
+    {"fieldname":"attempts","label":"Attempts","fieldtype":"Int","default":"0"},
+    {"fieldname":"next_attempt","label":"Next Attempt","fieldtype":"Datetime"},
+    {"fieldname":"started_on","label":"Started On","fieldtype":"Datetime"},
+    {"fieldname":"completed_on","label":"Completed On","fieldtype":"Datetime"},
+    {"fieldname":"service_user","label":"Service User","fieldtype":"Link","options":"User"},
+    {"fieldname":"result_json","label":"Execution Result","fieldtype":"Code","options":"JSON"},
+    {"fieldname":"error_code","label":"Error Code","fieldtype":"Data"},
+    {"fieldname":"error_message","label":"Error Message","fieldtype":"Small Text"}
+  ],
+  "permissions":[{"role":"System Manager","read":1},{"role":"Accounts Manager","read":1}]
+}

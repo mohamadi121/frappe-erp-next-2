@@ -133,3 +133,10 @@ request.
 `purchase_request_options` returns enabled purchase items and non-group
 warehouses. `list_my_purchase_requests` returns only purchase requests owned by
 the current ERPNext user.
+# Automatic action extension
+
+Schema-2 automatic actions, their deployment prerequisites, restricted service
+identity and limitations are documented in [automatic-actions-v2.md](automatic-actions-v2.md).
+Legacy stage configuration remains supported; automatic execution now requires
+the configured restricted service identity, and document creation observes native
+permissions. The older permission-bypass description below is historical.

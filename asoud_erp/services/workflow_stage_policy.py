@@ -228,6 +228,10 @@ def _description(raw: dict[str, Any]) -> str:
 
 def _system_action(raw: dict[str, Any]) -> dict[str, Any]:
     """Automatic actions run by the workflow engine; calling external APIs is not offered."""
+    if "schema_version" in raw:
+        from asoud_erp.services.automatic_action_policy import normalize_action
+
+        return normalize_action(raw)
     action_type = raw.get("action_type")
     if action_type not in SYSTEM_ACTION_TYPES:
         raise ValueError("Unsafe or unsupported system action")

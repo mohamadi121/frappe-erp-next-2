@@ -23,10 +23,12 @@ fixtures = [
 ]
 
 scheduler_events = {
+    "cron": {"* * * * *": ["asoud_erp.services.automatic_action_runtime.dispatch"]},
     "hourly": ["asoud_erp.api.v1.workflow_runtime.process_workflow_deadlines"]
 }
 
 has_permission = {
+    "ASOUD Action Execution": "asoud_erp.services.automatic_action_metadata.execution_permission",
     "ASOUD Workflow Request": "asoud_erp.services.request_access.request_permission",
     "File": "asoud_erp.services.request_access.file_permission",
     "ASOUD Workflow Instance": "asoud_erp.services.request_access.workflow_record_permission",
@@ -34,6 +36,7 @@ has_permission = {
     "ASOUD Workflow Activity": "asoud_erp.services.request_access.workflow_record_permission",
 }
 permission_query_conditions = {
+    "ASOUD Action Execution": "asoud_erp.services.automatic_action_metadata.execution_query",
     "ASOUD Workflow Request": "asoud_erp.services.request_access.request_query",
     "File": "asoud_erp.services.request_access.file_query",
     "ASOUD Workflow Instance": "asoud_erp.services.request_access.instance_query",

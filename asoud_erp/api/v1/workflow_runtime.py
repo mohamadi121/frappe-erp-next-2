@@ -315,7 +315,7 @@ def _previous_task_data(instance, exclude_task: str | None = None) -> list[dict]
     return sections
 
 
-def _activate_stage(instance, stage, source_task=None) -> None:
+def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -> None:
     instance.current_stage = stage.name
     config = json.loads(stage.config_json or "{}")
     if stage.stage_type == "End":
@@ -376,9 +376,16 @@ def _activate_stage(instance, stage, source_task=None) -> None:
             instance,
             frappe.get_doc("ASOUD Workflow Stage", destination),
             source_task=source_task,
+            automatic_trigger=automatic_trigger,
         )
         return
     if stage.stage_type == "System Action":
+        if config.get("schema_version") == 2:
+            from asoud_erp.services.automatic_action_runtime import schedule
+
+            schedule(instance, stage, config,
+                     trigger=source_task.name if source_task else automatic_trigger or "start")
+            return
         _run_system_action(instance, stage, config, source_task=source_task)
         return
     if stage.stage_type not in {"User Task", "Approval"}:
@@ -525,8 +532,14 @@ def _run_system_action(instance, stage, config: dict, source_task=None) -> None:
     """
     instance.save(ignore_permissions=True)
     frappe.db.savepoint("asoud_system_action")
+    identity_ready = False
     try:
-        comment, doctype, name = _execute_system_action(instance, stage, config)
+        from asoud_erp.services.automatic_action_metadata import identity
+
+        company = frappe.db.get_value("ASOUD Workflow Definition", instance.workflow_definition, "company")
+        with identity(company):
+            identity_ready = True
+            comment, doctype, name = _execute_system_action(instance, stage, config)
         outcome = "Success"
     except (frappe.ValidationError, frappe.PermissionError, frappe.DoesNotExistError, ValueError) as error:
         frappe.db.rollback(save_point="asoud_system_action")
@@ -547,7 +560,7 @@ def _run_system_action(instance, stage, config: dict, source_task=None) -> None:
             "reference_name": name,
         }
     ).insert(ignore_permissions=True)
-    target = _system_route(instance, stage.name, outcome)
+    target = _system_route(instance, stage.name, outcome) if identity_ready else None
     if target:
         _activate_stage(instance, target, source_task=source_task)
         return
