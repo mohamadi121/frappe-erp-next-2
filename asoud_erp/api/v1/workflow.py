@@ -672,7 +672,12 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
             if normalized["source_field"] not in form_keys:
                 frappe.throw(_("The selected form field does not exist in this workflow"))
 
-    if doc.stage_type == "System Action" and normalized["action_type"] == "Create Document":
+    if doc.stage_type == "System Action" and normalized.get("schema_version") == 2:
+        from asoud_erp.services.automatic_action_metadata import validate_config
+
+        validate_config(definition, stage, normalized)
+    if (doc.stage_type == "System Action" and normalized.get("schema_version") != 2
+            and normalized["action_type"] == "Create Document"):
         company = frappe.db.get_value("ASOUD Workflow Definition", definition, "company")
         template = frappe.db.get_value(
             "ASOUD Document Template", normalized["document_template"], ["company", "status"], as_dict=True
@@ -739,6 +744,10 @@ def save_stage_routes(definition: str, stage: str, routes: str | dict) -> dict:
             destination = _assert_stage_in_definition(target, definition)
             if target == stage or destination.stage_type == "Start":
                 frappe.throw(_("Invalid workflow transition"))
+            if (source.stage_type == "System Action" and action == "Error"
+                    and json.loads(source.config_json or "{}").get("schema_version") == 2
+                    and destination.stage_type != "User Task"):
+                frappe.throw(_("Automatic action error routes must target a human task"))
         for row in existing:
             if row.name in removed:
                 continue
@@ -802,6 +811,10 @@ def update_request_type_info(
 @frappe.whitelist(methods=["POST"])
 def set_workflow_status(name: str, status: str) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
+    if status == "Active":
+        from asoud_erp.api.v1.automatic_actions import require_execution_ready
+
+        require_execution_ready(name)
     if status not in ALLOWED_STATUSES:
         frappe.throw(_("Invalid workflow status"))
     doc = frappe.get_doc("ASOUD Workflow Definition", name)
