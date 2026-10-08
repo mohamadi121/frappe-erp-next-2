@@ -51,13 +51,16 @@ def _base_roles(values, allow_empty=False):
 
 def _row(doc):
     profile = frappe.get_doc("Role Profile", doc.role_profile)
+    assigned = set(frappe.get_all("User", filters={"role_profile_name": profile.name}, pluck="name"))
+    if frappe.db.exists("DocType", "ASOUD Access Assignment"):
+        assigned.update(frappe.get_all("ASOUD Access Assignment", filters={"managed_role": doc.name}, pluck="user"))
     return {
         "code": doc.role_code, "title": doc.title, "category": doc.category,
         "parent": doc.parent_role or "", "description": doc.description or "",
         "enabled": bool(doc.enabled), "profile": profile.name,
         "base_roles": sorted(row.role for row in profile.roles),
         "modified": str(doc.modified), "profile_modified": str(profile.modified),
-        "assigned_users": frappe.db.count("User", {"role_profile_name": profile.name}),
+        "assigned_users": len(assigned),
     }
 
 
@@ -134,6 +137,10 @@ def _save(data):
     # Metadata-only edits preserve even roles later disabled in native Frappe.
     unchanged = exists and isinstance(requested_roles, list) and requested_roles == current_roles
     if not unchanged:
+        if exists and frappe.db.exists("DocType", "ASOUD Access Assignment") and frappe.db.exists(
+            "ASOUD Access Assignment", {"managed_role": doc.name}
+        ):
+            frappe.throw("این نقش تخصیص شخصی دارد؛ برای تغییر مجوزهای مشترک از دسترسی‌های این نقش استفاده کنید. تغییر نقش‌های پایه نیازمند بازبینی تخصیص‌ها در مدیریت بومی است.")
         roles = _base_roles(requested_roles, allow_empty=True)
         profile.set("roles", [{"role": role} for role in roles])
         # Empty manual profiles grant no access. Existing permissions are not inferred.

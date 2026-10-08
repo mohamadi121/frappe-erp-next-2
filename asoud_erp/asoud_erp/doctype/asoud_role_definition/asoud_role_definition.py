@@ -21,3 +21,7 @@ class ASOUDRoleDefinition(Document):
             parent = frappe.db.get_value("ASOUD Role Definition", parent, "parent_role")
         if not self.enabled and frappe.db.exists("User", {"role_profile_name": self.role_profile}):
             frappe.throw("این نقش به کاربر متصل است؛ پیش از غیرفعال‌سازی، تخصیص آن را در مدیریت کاربران تغییر دهید.")
+        if not self.enabled and frappe.db.exists("DocType", "ASOUD Access Assignment") and frappe.db.exists(
+            "ASOUD Access Assignment", {"managed_role": self.name}
+        ):
+            frappe.throw("این نقش تخصیص شخصی فعال دارد؛ ابتدا تخصیص‌ها را بررسی کنید.")
