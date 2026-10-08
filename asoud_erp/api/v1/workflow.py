@@ -177,7 +177,7 @@ def create_workflow_draft(
         frappe.throw(_("Workflow title must contain at least 3 characters"))
     if module_key not in MODULE_DOCTYPES:
         frappe.throw(_("Invalid workflow module"))
-    if target_doctype not in MODULE_DOCTYPES[module_key]:
+    if target_doctype != "ASOUD Workflow Request" and target_doctype not in MODULE_DOCTYPES[module_key]:
         frappe.throw(_("The selected DocType does not belong to this module"))
     if not frappe.db.exists("DocType", target_doctype):
         frappe.throw(_("The selected DocType is not installed"))
@@ -621,6 +621,9 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
         frappe.throw(_(str(error)))
 
     role_field = ROLE_BASED_TYPES.get(doc.stage_type)
+    if doc.stage_type == "User Task":
+        from asoud_erp.services.user_task_output import validate_target
+        validate_target(definition, normalized)
     roles = normalized.get(role_field, []) if role_field else normalized.get("target_roles", [])
     if roles and any(not frappe.db.exists("Role", role) for role in roles):
         frappe.throw(_("One or more selected roles do not exist"))
@@ -786,24 +789,30 @@ def update_request_type_info(
     color_hex: str | None = None,
     show_in_request_list: int | str = 1,
     allow_user_submission: int | str = 1,
+    module_key: str | None = None,
 ) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
     doc = frappe.get_doc("ASOUD Workflow Definition", name)
-    if doc.target_doctype != "ASOUD Workflow Request":
-        frappe.throw(_("Only request workflows have request type settings"))
+    # Also used by the start-node metadata editor. Never change its reference
+    # DocType, company, graph or start permissions when editing presentation.
+    if module_key is not None and module_key not in MODULE_DOCTYPES:
+        frappe.throw(_("Invalid workflow module"))
     title = (workflow_title or "").strip()
     if len(title) < 3:
         frappe.throw(_("Workflow title must contain at least 3 characters"))
     if request_category and request_category not in REQUEST_CATEGORIES:
         frappe.throw(_("Invalid request category"))
     doc.workflow_title = title
-    doc.short_title = (short_title or "").strip()[:140]
     doc.process_description = (process_description or "").strip()
-    doc.request_category = request_category or ""
+    if module_key is not None:
+        doc.module_key = module_key
     doc.icon_key = icon_key
     doc.color_hex = color_hex
-    doc.show_in_request_list = cint(show_in_request_list)
-    doc.allow_user_submission = cint(allow_user_submission)
+    if doc.target_doctype == "ASOUD Workflow Request":
+        doc.short_title = (short_title or "").strip()[:140]
+        doc.request_category = request_category or ""
+        doc.show_in_request_list = cint(show_in_request_list)
+        doc.allow_user_submission = cint(allow_user_submission)
     doc.save()
     return success(serialize_workflow(doc.as_dict()))
 

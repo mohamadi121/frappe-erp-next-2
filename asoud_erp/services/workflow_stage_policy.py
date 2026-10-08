@@ -266,9 +266,22 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
             raise ValueError("Invalid user task activity")
         assignment = _normalize_assignment(raw, "assignee")
         fields = _normalize_form_fields(raw.get("form_fields"))
+        purpose = raw.get("task_purpose") or "Existing"
+        if purpose not in {"Existing", "Create Request", "Create Document"}:
+            raise ValueError("Invalid task purpose")
+        target_key = {"Create Request": "request_definition", "Create Document": "document_template"}.get(purpose)
+        target = str(raw.get(target_key) or "").strip() if target_key else ""
+        if target_key and not target:
+            raise ValueError("Select the request type or document template")
         return {
             "title": title,
             "activity_type": activity_type,
+            "task_purpose": purpose,
+            **({target_key: target} if target_key else {}),
+            **({"transfer_values": raw.get("transfer_values") is not False,
+                "document_remark": str(raw.get("document_remark") or "")[:500]}
+               if purpose == "Create Document" else {}),
+            **({"request_label": str(raw.get("request_label") or "")[:140]} if purpose == "Create Request" else {}),
             **assignment,
             "instructions": str(raw.get("instructions") or "").strip(),
             "form_fields": fields,

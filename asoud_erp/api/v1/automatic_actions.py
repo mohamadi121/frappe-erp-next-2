@@ -40,6 +40,8 @@ def options(definition: str, stage: str):
         user = service_user(workflow.company)
     except frappe.PermissionError as error:
         user, blocked = None, str(error)
+    if workflow.target_doctype not in RECORDS:
+        user, blocked = None, "The source document type is not supported for automatic execution"
     requests = []
     for row in frappe.get_all(
         "ASOUD Workflow Definition",
@@ -72,7 +74,7 @@ def options(definition: str, stage: str):
         filters={"company": workflow.company, "status": "Active", "user_id": ["is", "set"]},
         fields=["user_id", "employee_name"],
         limit_page_length=200,
-    )
+    ) if frappe.db.exists("DocType", "Employee") else []
     users = [
         {"id": row.user_id, "label": row.employee_name}
         for row in employees

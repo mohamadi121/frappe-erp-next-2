@@ -160,7 +160,9 @@ def _output_type(row, workflow, visited=None):
 
 def schemas(definition, stage):
     workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
-    current = record_fields(workflow.target_doctype)
+    # An unsupported source must not prevent editing unrelated action settings.
+    # Do not expand the execution allowlist or invent writable fields here.
+    current = record_fields(workflow.target_doctype) if workflow.target_doctype in RECORDS else []
     if workflow.target_doctype == "ASOUD Workflow Request":
         current = request_fields(definition, workflow.company) + [
             {"key": "name", "label": "شماره درخواست", "type": "Text"},
@@ -171,7 +173,7 @@ def schemas(definition, stage):
         row = frappe.get_doc("ASOUD Workflow Stage", name)
         config = json.loads(row.config_json or "{}")
         fields, doctype, request_type = [], None, None
-        if row.stage_type == "User Task":
+        if row.stage_type in {"User Task", "Approval"}:
             fields = config.get("form_fields", [])
         elif row.stage_type == "System Action" and config.get("schema_version") == 2:
             doctype, request_type = _output_type(row, workflow)
@@ -199,6 +201,8 @@ def schemas(definition, stage):
             request_fields(definition, workflow.company)
             if workflow.target_doctype == "ASOUD Workflow Request"
             else record_fields(workflow.target_doctype, writable=True)
+            if workflow.target_doctype in RECORDS
+            else []
         ),
         "system": [{"key": key, "label": key, "type": value} for key, value in SYSTEM_FIELDS.items()],
     }
@@ -288,10 +292,12 @@ def validate_config(definition, stage, raw):
                 raise ValueError("Automatic request dependency graph is too large")
             for row in frappe.get_all(
                 "ASOUD Workflow Stage",
-                filters={"workflow_definition": name, "stage_type": "System Action"},
+                filters={"workflow_definition": name},
                 pluck="config_json",
             ):
                 other = json.loads(row or "{}")
+                if other.get("task_purpose") == "Create Request":
+                    pending.append(other["request_definition"])
                 if other.get("schema_version") == 2 and other.get("action_type") == "Create Request":
                     pending.append(other["operation"]["request_type"])
         validate_mapping(op["mapping"], request_fields(op["request_type"], workflow.company), sources)
