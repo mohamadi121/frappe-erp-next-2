@@ -9,7 +9,10 @@ required_apps = ["erpnext", "hrms"]
 
 doc_events = {
     "Employee": {"on_update": "asoud_erp.services.personnel_employee.refresh_profile_cache"},
-    "User": {"validate": "asoud_erp.services.role_assignment.validate_role_profile_assignment"},
+    "User": {"validate": [
+        "asoud_erp.services.role_assignment.validate_role_profile_assignment",
+        "asoud_erp.api.v1.user_access.attach_roles",
+    ]},
     "Company": {"after_insert": "asoud_erp.services.request_templates.seed.on_company_insert"},
     "ASOUD Workflow Instance": {"on_update": "asoud_erp.services.request_templates.lifecycle.on_instance_update"},
     "Leave Application": {"validate": "asoud_erp.services.leave_balance.validate_leave_application"},
