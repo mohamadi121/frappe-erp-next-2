@@ -78,7 +78,7 @@ def _instance_summary(instance) -> dict:
     }
 
 
-def _record_activity(doc, action: str, comment: str = "") -> None:
+def _record_activity(doc, action: str, comment: str = "", *, reference_doctype=None, reference_name=None) -> None:
     frappe.get_doc(
         {
             "doctype": "ASOUD Workflow Activity",
@@ -89,6 +89,8 @@ def _record_activity(doc, action: str, comment: str = "") -> None:
             "action": action,
             "comment": comment,
             "created_on": now_datetime(),
+            "reference_doctype": reference_doctype,
+            "reference_name": reference_name,
         }
     ).insert(ignore_permissions=True)
 
@@ -317,11 +319,18 @@ def _previous_task_data(instance, exclude_task: str | None = None) -> list[dict]
     return sections
 
 
-def _activate_stage(instance, stage, source_task=None) -> None:
+def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -> None:
     instance.current_stage = stage.name
     config = json.loads(stage.config_json or "{}")
     if stage.stage_type == "End":
-        instance.status = "Rejected" if config.get("outcome") == "Rejected" else "Completed"
+        # A stopped/cancelled path is not successful completion. The instance
+        # model has no separate Stopped state; both terminate as Cancelled.
+        instance.status = {
+            "Completed": "Completed",
+            "Rejected": "Rejected",
+            "Cancelled": "Cancelled",
+            "Stopped": "Cancelled",
+        }.get(config.get("outcome", "Completed"), "Failed")
         instance.completed_on = now_datetime()
         instance.save(ignore_permissions=True)
         return
@@ -378,9 +387,16 @@ def _activate_stage(instance, stage, source_task=None) -> None:
             instance,
             frappe.get_doc("ASOUD Workflow Stage", destination),
             source_task=source_task,
+            automatic_trigger=automatic_trigger,
         )
         return
     if stage.stage_type == "System Action":
+        if config.get("schema_version") == 2:
+            from asoud_erp.services.automatic_action_runtime import schedule
+
+            schedule(instance, stage, config,
+                     trigger=source_task.name if source_task else automatic_trigger or "start")
+            return
         _run_system_action(instance, stage, config, source_task=source_task)
         return
     if stage.stage_type not in {"User Task", "Approval"}:
@@ -528,7 +544,15 @@ def _run_system_action(instance, stage, config: dict, source_task=None) -> None:
     instance.save(ignore_permissions=True)
     frappe.db.savepoint("asoud_system_action")
     try:
-        comment, doctype, name = _execute_system_action(instance, stage, config)
+        conf = getattr(frappe, "conf", None) or {}
+        if conf.get("asoud_workflow_service_user"):
+            from asoud_erp.services.automatic_action_metadata import identity
+
+            company = frappe.db.get_value("ASOUD Workflow Definition", instance.workflow_definition, "company")
+            with identity(company):
+                comment, doctype, name = _execute_system_action(instance, stage, config)
+        else:
+            comment, doctype, name = _execute_system_action(instance, stage, config)
         outcome = "Success"
     except (frappe.ValidationError, frappe.PermissionError, frappe.DoesNotExistError, ValueError) as error:
         frappe.db.rollback(save_point="asoud_system_action")
@@ -940,6 +964,21 @@ def complete_workflow_task(
                 frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance), stage, normalized_response
             )
     _validate_response_attachments(config.get("form_fields", []), normalized_response)
+    # Serialize the final assignee's output with other completions in this instance.
+    # Native inserts and task completion share this POST transaction.
+    if action == "Complete" and config.get("task_purpose", "Existing") != "Existing":
+        from asoud_erp.services.user_task_output import create_output
+        locked_instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance, for_update=True)
+        remaining = frappe.db.count("ASOUD Workflow Task", {
+            "workflow_instance": doc.workflow_instance,
+            "workflow_stage": doc.workflow_stage,
+            "status": "Open",
+        })
+        if remaining == 1:
+            output = create_output(doc, locked_instance, config, normalized_response)
+            if output:
+                _record_activity(doc, "Created Output", f"{output['doctype']}: {output['name']}",
+                    reference_doctype=output["doctype"], reference_name=output["name"])
     doc.status = "Rejected" if action == "Reject" else "Completed"
     doc.action = action
     doc.comment = (comment or "").strip()

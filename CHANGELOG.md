@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+Added:
+
+- Guarded automatic workflow actions and execution audit (`docs/automatic-actions-v2.md`).
+- Preserved validated supplementary approval form fields.
+- Workflow task outputs and terminal outcomes (`services/user_task_output.py`).
+- Native role and personal access assignments (`api/v1/user_access.py`).
+
 ## 0.14.0
 
 Added:

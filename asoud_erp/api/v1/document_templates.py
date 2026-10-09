@@ -254,9 +254,8 @@ def create_document(template_name: str, context: dict, company: str, *, transfer
                     remark: str = ""):
     """Insert (and optionally submit) the ERPNext document of a template.
 
-    Runs inside a workflow "Create Document" step configured by a manager, so
-    the document is inserted without the session user's DocType permissions;
-    ERPNext's controller validation still applies. Raises on any failure.
+    Runs with the restricted workflow service identity. Native DocType
+    permissions and ERPNext controller validation both apply.
     """
     template = frappe.get_doc(DOCTYPE, template_name)
     if template.status != "Active" or template.company != company:
@@ -268,8 +267,12 @@ def create_document(template_name: str, context: dict, company: str, *, transfer
     if template.document_type == "Material Request" and not values.get("set_warehouse"):
         values["set_warehouse"] = frappe.db.get_single_value("Stock Settings", "default_warehouse")
     doc = frappe.get_doc(build_document(template.document_type, values, company))
-    doc.flags.ignore_permissions = True
+    conf = getattr(frappe, "conf", None) or {}
+    if not conf.get("asoud_workflow_service_user"):
+        doc.flags.ignore_permissions = True
     doc.insert()
     if template.auto_submit:
+        if not conf.get("asoud_workflow_service_user"):
+            doc.flags.ignore_permissions = True
         doc.submit()
     return doc

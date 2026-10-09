@@ -156,3 +156,16 @@ All three endpoints require `company` to be one the caller may read
 option lists and the request list to that company; a foreign `company` raises
 `PermissionError`. The item master is instance-wide (ERPNext keeps `Item`
 without a company), so it is not filtered by company.
+
+# Automatic action extension
+
+Schema-2 automatic actions, their deployment prerequisites, restricted service
+identity and limitations are documented in [automatic-actions-v2.md](automatic-actions-v2.md).
+Both configuration approaches remain supported in parallel:
+- Schema-1 (System Actions): synchronous inline execution (`Create Document`,
+  `Change Status`, `Send Notification`) with direct document creation or status changes.
+- Schema-2 (Automatic Actions): asynchronous scheduled execution (`schedule`/`dispatch`)
+  with guarded policy validation, explicit exit routes (`Success` / `Error`), and audit
+  trail tracking in `ASOUD Action Execution`.
+Legacy stage configuration remains supported; automatic execution observes native
+permissions and restricted service identity where configured.
