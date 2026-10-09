@@ -16,6 +16,7 @@ from asoud_erp.integration_tests.fixtures import (
     APITestCase,
     abbr,
 )
+from asoud_erp.integration_tests.service_identity import patch_service_conf
 
 PROOF_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==")
@@ -31,6 +32,7 @@ def _leaf_account(root_type: str) -> str:
 class TestDocumentTemplates(APITestCase):
     def setUp(self):
         super().setUp()
+        patch_service_conf(self, self.company)
         self.token = uuid4().hex[:8]
         self.expense = _leaf_account("Expense")
         self.liability = _leaf_account("Liability")
