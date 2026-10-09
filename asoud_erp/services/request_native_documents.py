@@ -141,7 +141,7 @@ def create_material_request(request, template_key: str) -> base.NativeResult:
     values = _complete_rows(effective_values(request))
     default_warehouse = _default_warehouse(request.company)
     if template_key == "purchase" and not default_warehouse and _has_stock_items(values):
-        raise ValueError("Default warehouse is required for stock item purchase requests")
+        base.throw_error("DEFAULT_WAREHOUSE_REQUIRED")
     payload = payloads.material_request_payload(
         template_key=template_key, request_name=request.name, company=request.company,
         creation_date=str(getdate(request.creation)), values=values,

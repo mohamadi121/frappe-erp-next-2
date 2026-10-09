@@ -10,7 +10,7 @@ CONTRACT_CODES = (
     "EMPLOYEE_NOT_FOUND", "COST_CENTER_REQUIRED", "DATE_IN_PAST", "INVALID_DATE_RANGE", "INVALID_TIME_RANGE",
     "LEAVE_ALL_HOLIDAYS", "HOURLY_ON_HOLIDAY", "HOURLY_EXCEEDS_DAY", "LEAVE_OVERLAP",
     "INSUFFICIENT_LEAVE_BALANCE", "DELIVERY_NOT_WAREHOUSE", "ITEM_NOT_STOCKABLE", "ATTACHMENT_INVALID",
-    "EMPTY_COMMENT", "NATIVE_NOT_RETRYABLE",
+    "EMPTY_COMMENT", "NATIVE_NOT_RETRYABLE", "DEFAULT_WAREHOUSE_REQUIRED",
 )
 
 
@@ -24,6 +24,11 @@ class TestRequestErrorMessages(unittest.TestCase):
         for code in ("INVALID_DATE_RANGE", "INVALID_TIME_RANGE", "LEAVE_ALL_HOLIDAYS", "HOURLY_ON_HOLIDAY",
                      "HOURLY_EXCEEDS_DAY", "LEAVE_OVERLAP", "INSUFFICIENT_LEAVE_BALANCE"):
             self.assertEqual(base.ERROR_MESSAGES[code], lh.MESSAGES[code], code)
+
+    def test_default_warehouse_message_is_the_persian_text(self):
+        self.assertEqual(
+            base.ERROR_MESSAGES["DEFAULT_WAREHOUSE_REQUIRED"],
+            "برای درخواست خرید کالای انباری، انبار پیش‌فرض شرکت باید در تنظیمات انبار تعیین شود.")
 
 
 if __name__ == "__main__":
