@@ -38,6 +38,7 @@ ERROR_MESSAGES = {
     "ATTACHMENT_INVALID": "پیوست نامعتبر است.",
     "EMPTY_COMMENT": "متن نظر نمی‌تواند خالی باشد.",
     "NATIVE_NOT_RETRYABLE": "ایجاد سند برای این درخواست قابل تکرار نیست.",
+    "DEFAULT_WAREHOUSE_REQUIRED": "برای درخواست خرید کالای انباری، انبار پیش‌فرض شرکت باید در تنظیمات انبار تعیین شود.",
 }
 # The leave rule codes have one text, the one `preview_leave_request` and `create_request` show
 # (`leave_hours.MESSAGES`); `DATE_IN_PAST` stays generic here (purchase/supply `needed_date`).

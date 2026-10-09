@@ -139,8 +139,10 @@ savepoint and recorded as `Failed`.
 `INVALID_DATE_RANGE`, `INVALID_TIME_RANGE`, `LEAVE_ALL_HOLIDAYS`, `HOURLY_ON_HOLIDAY`,
 `HOURLY_EXCEEDS_DAY`, `LEAVE_OVERLAP`, `INSUFFICIENT_LEAVE_BALANCE`,
 `DELIVERY_NOT_WAREHOUSE`, `ITEM_NOT_STOCKABLE`, `ATTACHMENT_INVALID`, `EMPTY_COMMENT`,
-`NATIVE_NOT_RETRYABLE`. The engine raises the first seven that concern forms, plus the
-attachment, comment and retry codes; the template specs raise the rest. Messages are
+`NATIVE_NOT_RETRYABLE`, `DEFAULT_WAREHOUSE_REQUIRED`. The engine raises the first seven that
+concern forms, plus the attachment, comment and retry codes; the template specs raise the rest.
+`DEFAULT_WAREHOUSE_REQUIRED` is raised while creating the Material Request of an approved
+purchase request: it lands in `native_error` (as `CODE: message`) with `native_status = "Failed"`. Messages are
 Persian.
 
 ## For template authors
