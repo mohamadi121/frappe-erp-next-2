@@ -8,9 +8,6 @@ Added:
 
 - HR Manager read access to manager screens (writes and financial reports stay closed).
 - Playwright e2e suites for HR access, automatic actions and sync request keys.
-
-Added:
-
 - Guarded automatic workflow actions and execution audit (`docs/automatic-actions-v2.md`).
 - Preserved validated supplementary approval form fields.
 - Workflow task outputs and terminal outcomes (`services/user_task_output.py`).
