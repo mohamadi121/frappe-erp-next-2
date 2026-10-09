@@ -8,6 +8,7 @@ from asoud_erp.api.v1.responses import success
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.jalali import jalali_fiscal_period
 from asoud_erp.services.party_validation import is_valid_iranian_legal_id
+from asoud_erp.services.request_access import require_company
 from asoud_erp.services.setup_service import (
     ALLOWED_CHART_TEMPLATES,
     ALLOWED_DISPLAY_CURRENCIES,
@@ -22,6 +23,7 @@ from asoud_erp.services.setup_service import (
 def _setup(company: str):
     if not company or not frappe.db.exists("Company", company):
         frappe.throw(_("Company does not exist"))
+    require_company(company)
     if not frappe.has_permission("Company", ptype="read", doc=company):
         frappe.throw(_("You do not have access to this company"), frappe.PermissionError)
     if not frappe.db.exists("ASOUD Company Setup", company):
@@ -67,7 +69,7 @@ def _serialize_setup(doc) -> dict:
 
 @frappe.whitelist()
 def get_setup_status(company: str | None = None) -> dict:
-    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User", "HR Manager"))
     selected = company
     if not selected:
         candidates = frappe.get_all(
@@ -79,6 +81,7 @@ def get_setup_status(company: str | None = None) -> dict:
         )
     if not selected:
         return success({"company": None, "office_saved": False, "accounting_saved": False, "roles_saved": False, "complete": False})
+    require_company(str(selected))
     return success(_serialize_setup(_setup(str(selected))))
 
 

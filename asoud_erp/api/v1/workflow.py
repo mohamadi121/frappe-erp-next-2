@@ -83,7 +83,7 @@ def list_workflows(
     company: str | None = None,
     order_by: str = "modified desc",
 ) -> dict:
-    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User", "HR Manager"))
     if status and status not in ALLOWED_STATUSES:
         frappe.throw(_("Invalid workflow status"))
     allowed_order = {
@@ -122,7 +122,7 @@ def list_workflows(
 
 @frappe.whitelist()
 def workflow_form_options() -> dict:
-    require_roles(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager", "HR Manager"))
     modules = []
     for key, doctypes in MODULE_DOCTYPES.items():
         options = [
@@ -130,7 +130,7 @@ def workflow_form_options() -> dict:
             for doctype in doctypes
         ]
         modules.append({"key": key, "doctypes": options})
-    companies = frappe.get_all("Company", filters={"disabled": 0}, pluck="name", order_by="name asc")
+    companies = frappe.get_all("Company", pluck="name", order_by="name asc")
     roles = frappe.get_all(
         "Role",
         filters={"disabled": 0, "name": ["not in", ["All", "Guest"]]},
@@ -232,7 +232,10 @@ def create_workflow_draft(
 
 @frappe.whitelist()
 def get_workflow_design(definition: str) -> dict:
-    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User", "HR Manager"))
+    doc = frappe.get_doc("ASOUD Workflow Definition", definition)
+    if doc.company:
+        require_company(doc.company)
     return success(_design_payload(definition))
 
 
@@ -497,7 +500,10 @@ def insert_workflow_stage(
 
 @frappe.whitelist()
 def workflow_condition_fields(definition: str, stage: str | None = None) -> dict:
-    require_roles(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager", "HR Manager"))
+    company = frappe.db.get_value("ASOUD Workflow Definition", definition, "company")
+    if company:
+        require_company(company)
     target_doctype = frappe.db.get_value("ASOUD Workflow Definition", definition, "target_doctype")
     if not target_doctype or not frappe.db.exists("DocType", target_doctype):
         frappe.throw(_("Workflow target DocType does not exist"))

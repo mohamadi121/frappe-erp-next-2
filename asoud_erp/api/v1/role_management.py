@@ -13,6 +13,10 @@ from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.role_templates import BASE_ROLES, CATEGORIES, TEMPLATES
 
 
+def _read_access():
+    require_roles(("System Manager", "HR Manager"))
+
+
 def _access():
     require_roles("System Manager")
 
@@ -67,7 +71,7 @@ def _row(doc):
 
 @frappe.whitelist()
 def catalog():
-    _access()
+    _read_access()
     installed = set(frappe.get_all("Role", filters={"disabled": 0}, pluck="name"))
     roles = [_row(frappe.get_doc("ASOUD Role Definition", name))
              for name in frappe.get_all("ASOUD Role Definition", pluck="name", order_by="title asc")]
@@ -198,7 +202,7 @@ def apply_templates(codes):
 
 @frappe.whitelist()
 def permission_preview(roles):
-    _access()
+    _read_access()
     roles = _base_roles(frappe.parse_json(roles) if isinstance(roles, str) else roles)
     parents = set()
     for table in ("DocPerm", "Custom DocPerm"):
