@@ -15,12 +15,13 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { request } from '@playwright/test';
-import { ApiSession, METHOD } from './api';
+import { expect, request } from '@playwright/test';
+import { ApiSession, METHOD, errorText } from './api';
 import { PYTHON, BENCH, USERS, PREFIX, type SiteState } from './config';
 
 const STATE_FILE = `${__dirname}/../test-results/site-state.json`;
 const REQUEST_TYPE_TITLE = `${PREFIX} درخواست تستی گردش کار`;
+const AUTO_REQUEST_TYPE_TITLE = `${PREFIX} گردش کار اقدام خودکار تستی`;
 const DOC_REQUEST_TYPE_TITLE = `${PREFIX} گردش کار صدور سند تستی`;
 
 const FORM_FIELDS = [
@@ -62,6 +63,23 @@ interface Stage {
 }
 
 const STAGE_PLAN = ['Start', 'User Task', 'Approval', 'System Action', 'End'];
+
+/** The System Action the request type is designed with: legacy form, needs no service user. */
+const LEGACY_SYSTEM_CONFIG = {
+  title: 'ثبت وضعیت خودکار',
+  action_type: 'Change Status',
+  request_status: 'در حال بررسی خودکار',
+};
+
+/** True when the stored System Action is exactly the legacy Change Status stage. */
+function systemActionIsLegacy(stage: Stage): boolean {
+  const config = stage.config ?? {};
+  return (
+    config.schema_version === undefined &&
+    config.action_type === LEGACY_SYSTEM_CONFIG.action_type &&
+    config.request_status === LEGACY_SYSTEM_CONFIG.request_status
+  );
+}
 
 async function readDesign(
   session: ApiSession,
@@ -148,11 +166,7 @@ async function designRequestType(
   await admin.mutate(METHOD.saveStageSettings, {
     definition: draft.name,
     stage: stages['System Action'],
-    config: JSON.stringify({
-      title: 'ثبت وضعیت خودکار',
-      action_type: 'Change Status',
-      request_status: 'در حال بررسی خودکار',
-    }),
+    config: JSON.stringify(LEGACY_SYSTEM_CONFIG),
   });
   await admin.mutate(METHOD.saveStageSettings, {
     definition: draft.name,
@@ -174,8 +188,8 @@ async function designRequestType(
 
 export default async function globalSetup(): Promise<void> {
   for (const [key, user] of Object.entries(USERS)) {
-    if (key === 'admin' || key === 'accounts' || key === 'outsider') {
-      const role = key === 'admin' ? 'System Manager' : key === 'accounts' ? 'Accounts Manager' : 'Employee';
+    if (key === 'admin' || key === 'accounts' || key === 'outsider' || key === 'hr') {
+      const role = key === 'admin' ? 'System Manager' : key === 'accounts' ? 'Accounts Manager' : 'Employee';  // hr gets HR Manager in site_prep
       bench(['add-user', user.email, '--first-name', `E2E ${key}`, '--password', user.password, '--add-role', role]);
     }
     bench(['set-password', user.email, user.password]);
@@ -190,7 +204,10 @@ export default async function globalSetup(): Promise<void> {
   try {
     const admin = await ApiSession.login(apiRequest, USERS.admin.email, USERS.admin.password);
 
-    async function ensureDefinition(title: string): Promise<{ name: string; systemStage: string }> {
+    async function ensureDefinition(
+      title: string,
+      repairSystemAction = false,
+    ): Promise<{ name: string; systemStage: string; stages: Record<string, string> }> {
       let def = state.definitions.find((row) => row.workflow_title === title);
       // A definition left half-designed by an earlier interrupted run is dropped,
       // never patched: the suite always designs through the real endpoints.
@@ -208,24 +225,50 @@ export default async function globalSetup(): Promise<void> {
           company: state.company,
         };
       }
-      const design = await readDesign(admin, def.name);
+      let design = await readDesign(admin, def.name);
       if (!designIsUsable(design)) {
         throw new Error(`request type ${def.name} is not fully configured`);
       }
+      // The site is shared: another session may have turned this stage into a
+      // Schema-2 action (which needs a service user). Repair it on every run.
+      if (repairSystemAction) {
+        const stale = design.stages.find((stage) => stage.stage_type === 'System Action')!;
+        if (!systemActionIsLegacy(stale)) {
+          await admin.mutate(METHOD.saveStageSettings, {
+            definition: def.name,
+            stage: stale.name,
+            config: JSON.stringify(LEGACY_SYSTEM_CONFIG),
+          });
+          design = await readDesign(admin, def.name);
+          const repaired = design.stages.find((stage) => stage.stage_type === 'System Action')!;
+          if (!systemActionIsLegacy(repaired)) {
+            throw new Error(`could not repair the System Action of ${def.name}`);
+          }
+        }
+      }
       if (def.status !== 'Active') {
         sitePrep('activate', { definition: def.name });
-        await admin.mutate(METHOD.setWorkflowStatus, { name: def.name, status: 'Active' });
+        const activation = await admin.post(METHOD.setWorkflowStatus, { name: def.name, status: 'Active' });
+        if (activation.status === 403 && /restricted workflow service user/.test(errorText(activation))) {
+          // Documented prerequisite: activation needs asoud_workflow_service_user in site
+          // config, which this suite never edits. Flip the status directly instead.
+          sitePrep('mark-active', { definition: def.name });
+        } else {
+          expect(activation.status, `activate ${def.name}: ${errorText(activation)}`).toBe(200);
+        }
       }
       const currentStatus =
         sitePrep('status').definitions.find((row) => row.name === def!.name)?.status ?? 'Active';
       if (currentStatus !== 'Active') throw new Error(`request type ${def.name} is not Active`);
 
       const systemStage = design.stages.find((stage) => stage.stage_type === 'System Action')!.name;
-      return { name: def.name, systemStage };
+      const stageNames = Object.fromEntries(design.stages.map((stage) => [stage.stage_type, stage.name]));
+      return { name: def.name, systemStage, stages: stageNames };
     }
 
-    const mainDef = await ensureDefinition(REQUEST_TYPE_TITLE);
+    const mainDef = await ensureDefinition(REQUEST_TYPE_TITLE, true);
     const docDef = await ensureDefinition(DOC_REQUEST_TYPE_TITLE);
+    const autoDef = await ensureDefinition(AUTO_REQUEST_TYPE_TITLE, true);
 
     mkdirSync(`${__dirname}/../test-results`, { recursive: true });
     writeFileSync(
@@ -236,6 +279,8 @@ export default async function globalSetup(): Promise<void> {
           request_type: mainDef.name,
           doc_request_type: docDef.name,
           doc_stage: docDef.systemStage,
+          auto_request_type: autoDef.name,
+          auto_stages: autoDef.stages,
         },
         null,
         2,

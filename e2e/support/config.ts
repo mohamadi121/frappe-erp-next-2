@@ -15,6 +15,7 @@ export const USERS = {
   admin: { email: 'e2e.admin@example.com', password: 'E2e-Pw-Admin-2026' },
   accounts: { email: 'e2e.accounts@example.com', password: 'E2e-Pw-Accounts-2026' },
   outsider: { email: 'e2e.outsider@example.com', password: 'E2e-Pw-Outsider-2026' },
+  hr: { email: 'e2e.hr@example.com', password: 'E2e-Pw-Hr-2026' },
   employee: { email: 'asoud.employee@example.com', password: 'E2e-Pw-Employee-2026' },
   approver: { email: 'asoud.approver@example.com', password: 'E2e-Pw-Approver-2026' },
   accountant: { email: 'asoud.accountant@example.com', password: 'E2e-Pw-Accountant-2026' },
@@ -58,4 +59,7 @@ export interface SiteState {
   request_type?: string;
   doc_request_type?: string;
   doc_stage?: string;
+  /** A third request type reserved for automatic-actions.spec.ts, with its stage names. */
+  auto_request_type?: string;
+  auto_stages?: Record<string, string>;
 }

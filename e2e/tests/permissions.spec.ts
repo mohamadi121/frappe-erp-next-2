@@ -13,7 +13,7 @@
 import { expect, test } from '../support/fixtures';
 import type { ApiSession } from '../support/api';
 import { METHOD, errorText } from '../support/api';
-import { requestId, subject } from '../support/config';
+import { RUN_ID, requestId, subject } from '../support/config';
 import { loadState, sitePrep } from '../support/state';
 
 const state = loadState();
@@ -78,7 +78,7 @@ test.describe('cross-user and cross-company permissions', () => {
   }) => {
     const employee = await api.login('employee');
     const approver = await api.login('approver');
-    const tag = 'manager-read';
+    const tag = `${RUN_ID}-manager-read`;
 
     // 1. Employee creates a request
     const created = await employee.mutate<CreatedRequest>(METHOD.createRequest, {

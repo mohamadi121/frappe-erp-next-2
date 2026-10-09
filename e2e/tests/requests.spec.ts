@@ -118,7 +118,9 @@ test.describe('request lifecycle over HTTP', () => {
       subject: subject('درخواست آزمون', `${tag}-changed`),
     });
     expect(conflict.status).toBe(417);
-    expect(errorText(conflict)).toContain('Request ID conflict');
+    expect(errorText(conflict)).toMatch(
+      /Request ID conflict|این شناسه درخواست قبلاً برای درخواست دیگری استفاده شده است/,
+    );
   });
 
   test('invalid submissions are refused without writing a request', async ({ api }) => {
@@ -213,7 +215,7 @@ test.describe('request lifecycle over HTTP', () => {
     });
     expect(tooLate.status).toBeGreaterThanOrEqual(400);
     // The instance is finished, so the request is no longer in progress.
-    expect(errorText(tooLate)).toContain('in progress');
+    expect(errorText(tooLate)).toMatch(/in progress|این درخواست دیگر قابل ویرایش نیست/);
   });
 
   test('a direct manager approves and the system action closes the instance', async ({ api }) => {
@@ -317,7 +319,7 @@ test.describe('request lifecycle over HTTP', () => {
       values: JSON.stringify({ amount: 5, reason: 'late' }),
     });
     expect(edit.status).toBeGreaterThanOrEqual(400);
-    expect(errorText(edit)).toContain('in progress');
+    expect(errorText(edit)).toMatch(/in progress|این درخواست دیگر قابل ویرایش نیست/);
 
     const done = await submit(employee, 'cancel-after-approval');
     const task = (await openTasks(api, 'approver')).find(

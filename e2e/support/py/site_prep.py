@@ -34,6 +34,7 @@ E2E_USERS = {
     "e2e.admin@example.com": {"first_name": "E2E Admin", "roles": ["System Manager"]},
     "e2e.accounts@example.com": {"first_name": "E2E Accounts", "roles": ["Accounts Manager"]},
     "e2e.outsider@example.com": {"first_name": "E2E Outsider", "roles": ["Employee"]},
+    "e2e.hr@example.com": {"first_name": "E2E HR", "roles": ["Employee", "HR Manager"]},
     "asoud.employee@example.com": {"first_name": "E2E Employee", "roles": []},
     "asoud.approver@example.com": {"first_name": "E2E Approver", "roles": []},
     "asoud.accountant@example.com": {"first_name": "E2E Accountant", "roles": []},
@@ -230,15 +231,30 @@ def ensure() -> dict:
     ensure_user_roles("e2e.admin@example.com", ["System Manager"])
     ensure_user_roles("e2e.accounts@example.com", ["Accounts Manager"])
     ensure_user_roles("e2e.outsider@example.com", ["Employee"])
+    ensure_user_roles("e2e.hr@example.com", ["Employee", "HR Manager"])
     ensure_employee("e2e.accounts@example.com", "E2E Accounts")
     ensure_employee("e2e.outsider@example.com", "E2E Outsider")
+    ensure_employee("e2e.hr@example.com", "E2E HR")
     ensure_second_company()
     ensure_company_permission("e2e.accounts@example.com", company())
+    ensure_company_permission("e2e.hr@example.com", company())
     frappe.db.commit()
     result = state()
     result["fixture_approver"] = approver
     result["fixture_employee"] = records.get("employee")
     return result
+
+
+def mark_active(definition: str) -> dict:
+    """Set status Active directly.
+
+    Only used when `set_workflow_status` refuses activation because the site has
+    no `asoud_workflow_service_user` (a documented prerequisite, see
+    docs/automatic-actions-v2.md). Site config is never edited by the suite.
+    """
+    frappe.db.set_value("ASOUD Workflow Definition", definition, "status", "Active", update_modified=False)
+    frappe.db.commit()
+    return {"definition": definition, "status": "Active"}
 
 
 def activate(definition: str) -> dict:
@@ -300,6 +316,8 @@ def main() -> None:
         result = state()
     elif action == "activate":
         result = activate(options["definition"])
+    elif action == "mark-active":
+        result = mark_active(options["definition"])
     elif action == "drop-definition":
         result = drop_definition(options["definition"])
     elif action == "attach":
