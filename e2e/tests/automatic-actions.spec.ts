@@ -179,6 +179,10 @@ test.describe('automatic actions schema 2 without a service user', () => {
     const admin = await api.login('admin');
     const options = await admin.read<Options>(OPTIONS, { definition, stage: systemStage });
     test.skip(options.execution_ready, 'this site has a workflow service user configured');
+    // Global setup resets the stage to its legacy action on every run, so this test
+    // installs the schema-2 action itself instead of relying on the test before it.
+    const saved = await admin.post(SAVE, saveForm(NOTIFICATION));
+    expect(saved.status, errorText(saved)).toBe(200);
 
     const employee = await api.login('employee');
     const approver = await api.login('approver');
