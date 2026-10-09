@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.15.0 - 2026-10-09
+
+Deployment: run `bench migrate` (new DocTypes ASOUD Action Execution, ASOUD Access Assignment). Workflows with System Action stages need `asoud_workflow_service_user` and `asoud_workflow_service_companies` in the site config.
+
+Added:
+
+- HR Manager read access to manager screens (writes and financial reports stay closed).
+- Playwright e2e suites for HR access, automatic actions and sync request keys.
 
 Added:
 
