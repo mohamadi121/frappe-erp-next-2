@@ -9,6 +9,10 @@ Added:
 - Workflow task outputs and terminal outcomes (`services/user_task_output.py`).
 - Native role and personal access assignments (`api/v1/user_access.py`).
 
+Fixed:
+
+- Allowed `HR Manager` to access read-only manager endpoints required to open the office and settings dashboards (`setup.get_setup_status`, `role_management.catalog`, `role_management.permission_preview`, `workflow.list_workflows`, `workflow.get_workflow_design`, `workflow.workflow_form_options`, `workflow.workflow_condition_fields`) while preserving company isolation and preventing privilege escalation on definitions and writes (`docs/access-control-v1.md`).
+
 ## 0.14.0
 
 Added:
