@@ -2,6 +2,8 @@ import frappe
 from frappe import _
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.erp_documents import require_roles
+from asoud_erp.services.request_access import require_company
 
 DEFAULT_GROUPS = (
     ("10000", "مشتریان", "Customer"),
@@ -17,7 +19,7 @@ DEFAULT_GROUPS = (
 
 @frappe.whitelist()
 def list_detail_groups(include_disabled: int | bool = 0) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     filters = {} if int(include_disabled) else {"disabled": 0}
     rows = frappe.get_all(
         "ASOUD Detail Group",
@@ -40,7 +42,7 @@ def list_detail_groups(include_disabled: int | bool = 0) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def seed_default_detail_groups() -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     created = []
     for code, title, party_role in DEFAULT_GROUPS:
         existing = frappe.db.exists("ASOUD Detail Group", code)
@@ -69,7 +71,7 @@ def save_detail_group(
     group_name: str,
     name: str | None = None,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     code = str(group_code or "").strip()
     title = str(group_name or "").strip()
     if not code.isdigit() or not 3 <= len(code) <= 12:
@@ -94,7 +96,7 @@ def save_detail_group(
 
 @frappe.whitelist(methods=["POST"])
 def disable_detail_group(name: str) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     if not frappe.db.exists("ASOUD Detail Group", name):
         frappe.throw(_("Detail group does not exist"))
     doc = frappe.get_doc("ASOUD Detail Group", name)
@@ -105,7 +107,8 @@ def disable_detail_group(name: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def save_account_mapping(company: str, account: str, detail_group: str, enabled: int | bool = 1) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
+    require_company(company)
     if not frappe.db.exists("Account", {"name": account, "company": company}):
         frappe.throw(_("Account does not belong to the selected company"))
     if int(frappe.db.get_value("Account", account, "is_group") or 0):
@@ -129,7 +132,8 @@ def save_account_mapping(company: str, account: str, detail_group: str, enabled:
 
 @frappe.whitelist()
 def list_account_mappings(company: str, account: str | None = None) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
+    require_company(company)
     filters = {"company": company, "disabled": 0}
     if account:
         filters["account"] = account

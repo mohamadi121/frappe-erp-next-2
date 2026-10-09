@@ -10,7 +10,7 @@
     "frappe_workflow", "status", "readiness_status", "pending_reason",
     "missing_requirements_json", "version_no", "steps_count", "icon_key",
     "color_hex", "short_title", "request_category", "show_in_request_list",
-    "allow_user_submission", "archived_on"
+    "allow_user_submission", "archived_on", "template_key", "template_version", "is_system_template"
   ],
   "fields": [
     {"fieldname": "workflow_code", "label": "Workflow Code", "fieldtype": "Data", "reqd": 1, "unique": 1, "in_list_view": 1},
@@ -33,7 +33,10 @@
     {"fieldname": "request_category", "label": "Request Category", "fieldtype": "Select", "options": "\nFinance\nHR\nPurchase\nIT\nGeneral\nOther"},
     {"fieldname": "show_in_request_list", "label": "Show In Request List", "fieldtype": "Check", "default": "1"},
     {"fieldname": "allow_user_submission", "label": "Allow User Submission", "fieldtype": "Check", "default": "1"},
-    {"fieldname": "archived_on", "label": "Archived On", "fieldtype": "Datetime", "read_only": 1}
+    {"fieldname": "archived_on", "label": "Archived On", "fieldtype": "Datetime", "read_only": 1},
+    {"fieldname": "template_key", "label": "Template Key", "fieldtype": "Data", "read_only": 1, "search_index": 1},
+    {"fieldname": "template_version", "label": "Template Version", "fieldtype": "Int", "read_only": 1},
+    {"fieldname": "is_system_template", "label": "System Template", "fieldtype": "Check", "read_only": 1}
   ],
   "permissions": [
     {"role": "System Manager", "create": 1, "read": 1, "write": 1, "delete": 1},

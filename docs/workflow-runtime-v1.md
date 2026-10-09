@@ -118,10 +118,27 @@ The requester can still act on a request in progress:
 
 | Method | Rule |
 | --- | --- |
-| `update_request(name, subject, values)` | Allowed until a stage other than the form has been completed; attachment fields keep their files. The form stage's response is updated, so later stages see the corrected values. Writes an `Edited` activity. |
+| `update_request(name, subject, values, attachments, remove_attachments)` | Allowed until a stage other than the form has been completed (otherwise `REQUEST_NOT_EDITABLE`). Files can be added and removed; an attachment key missing from `values` keeps its file. The form stage's response is updated, so later stages see the corrected values. Writes an `Edited` activity. |
 | `cancel_request(name, reason?)` | Cancels open tasks, sets the instance and request to `Cancelled` and writes a `Cancelled` activity. |
 
+## System request templates
+
+Purchase, supply and leave requests are system templates of this same engine:
+`ASOUD Workflow Definition` rows with `template_key`, `template_version` and
+`is_system_template`, seeded per company by `request_templates.seed`
+(`after_migrate` and `Company.after_insert`), and described in code by a
+`TemplateSpec`. Request numbers, the `status_key` model, the filterable list,
+comments, per-row attachments and the post-approval native documents are
+documented in [request templates](api/request_templates.md). The form stage of a
+system template is locked in the designer (`save_stage_settings` refuses it);
+approvers can still be redesigned. The `status_key` of a request is mirrored from
+its instance by a hook, and `complete_workflow_task` runs the template validation
+when the requester corrects the form after a Return.
+
 # Purchase request integration
+
+> Legacy path for purchasing staff (Purchase User). It writes a `Material Request`
+> directly. The employee-facing requisition form is the `purchase` request template.
 
 `create_purchase_request` creates an ERPNext v15 `Material Request` with
 `material_request_type = Purchase`, resolves the single active and ready ASOUD
@@ -131,8 +148,15 @@ transaction, so failure to start the workflow prevents a partial committed
 request.
 
 `purchase_request_options` returns enabled purchase items and non-group
-warehouses. `list_my_purchase_requests` returns only purchase requests owned by
-the current ERPNext user.
+warehouses of the requested company. `list_my_purchase_requests` returns only
+purchase requests owned by the current ERPNext user.
+
+All three endpoints require `company` to be one the caller may read
+(`request_access.require_company`), so a Company User Permission limits both the
+option lists and the request list to that company; a foreign `company` raises
+`PermissionError`. The item master is instance-wide (ERPNext keeps `Item`
+without a company), so it is not filtered by company.
+
 # Automatic action extension
 
 Schema-2 automatic actions, their deployment prerequisites, restricted service

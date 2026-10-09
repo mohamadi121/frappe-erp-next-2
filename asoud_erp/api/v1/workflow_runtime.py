@@ -10,7 +10,9 @@ from frappe.utils import add_to_date, get_fullname, getdate, now_datetime, nowda
 from asoud_erp.api.v1 import document_templates
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.document_templates import render_placeholders
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_link_values import validate_link_values, workflow_company
+from asoud_erp.services.request_templates.base import validate_form_stage_response
 from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
 from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
@@ -594,7 +596,7 @@ def start_workflow_instance(
     reference_doctype: str | None = None,
     reference_name: str | None = None,
 ) -> dict:
-    frappe.only_for(
+    require_roles(
         (
             "System Manager",
             "HR Manager",
@@ -947,12 +949,18 @@ def complete_workflow_task(
             fields = config.get("form_fields", [])
             if config.get("require_all_fields"):
                 fields = [{**field, "required": True} for field in fields if isinstance(field, dict)]
-            normalized_response = normalize_form_response(fields, raw_response)
+            # A draft carries Auto values the server computed earlier; they are ignored here
+            # and recomputed by the template validation below.
+            normalized_response = normalize_form_response(fields, raw_response, allow_auto=True)
         except ValueError as error:
             frappe.throw(_(str(error)))
         validate_link_values(
             config.get("form_fields", []), normalized_response, workflow_company(doc.workflow_instance)
         )
+        if stage.stage_type == "User Task":
+            normalized_response = validate_form_stage_response(
+                frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance), stage, normalized_response
+            )
     _validate_response_attachments(config.get("form_fields", []), normalized_response)
     # Serialize the final assignee's output with other completions in this instance.
     # Native inserts and task completion share this POST transaction.

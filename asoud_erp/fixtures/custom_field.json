@@ -11,5 +11,70 @@
     "insert_after": "account_number",
     "read_only": 1,
     "no_copy": 1
+  },
+  {
+    "doctype": "Custom Field",
+    "name": "Company-asoud_daily_working_hours",
+    "dt": "Company",
+    "module": "ASOUD ERP",
+    "fieldname": "asoud_daily_working_hours",
+    "label": "ASOUD Daily Working Hours",
+    "fieldtype": "Float",
+    "default": "8",
+    "insert_after": "default_holiday_list",
+    "description": "Hours in one working day; converts hourly leave to a day fraction."
+  },
+  {
+    "doctype": "Custom Field",
+    "name": "Company-asoud_request_cost_center_required",
+    "dt": "Company",
+    "module": "ASOUD ERP",
+    "fieldname": "asoud_request_cost_center_required",
+    "label": "ASOUD Request Cost Center Required",
+    "fieldtype": "Check",
+    "default": "0",
+    "insert_after": "asoud_daily_working_hours",
+    "description": "Purchase requests must name a cost center."
+  },
+  {
+    "doctype": "Custom Field",
+    "name": "Leave Type-asoud_leave_category",
+    "dt": "Leave Type",
+    "module": "ASOUD ERP",
+    "fieldname": "asoud_leave_category",
+    "label": "ASOUD Leave Category",
+    "fieldtype": "Select",
+    "options": "\nannual\nsick\nunpaid\nother",
+    "insert_after": "is_lwp"
+  },
+  {
+    "doctype": "Custom Field",
+    "name": "Material Request-asoud_request",
+    "dt": "Material Request",
+    "module": "ASOUD ERP",
+    "fieldname": "asoud_request",
+    "label": "ASOUD Request",
+    "fieldtype": "Link",
+    "options": "ASOUD Workflow Request",
+    "insert_after": "company",
+    "read_only": 1,
+    "no_copy": 1,
+    "unique": 1,
+    "search_index": 1
+  },
+  {
+    "doctype": "Custom Field",
+    "name": "Leave Application-asoud_request",
+    "dt": "Leave Application",
+    "module": "ASOUD ERP",
+    "fieldname": "asoud_request",
+    "label": "ASOUD Request",
+    "fieldtype": "Link",
+    "options": "ASOUD Workflow Request",
+    "insert_after": "company",
+    "read_only": 1,
+    "no_copy": 1,
+    "unique": 1,
+    "search_index": 1
   }
 ]

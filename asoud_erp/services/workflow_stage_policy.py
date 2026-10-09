@@ -1,16 +1,32 @@
 import re
 from typing import Any
 
+from asoud_erp.services.request_lookup import ITEM_SCOPES, SOURCE_FIELD_TYPES
+
 STAGE_TYPES = {"User Task", "Approval", "Condition", "System Action", "Wait", "End"}
 ROLE_BASED_TYPES = {"User Task": "assignee_roles", "Approval": "approver_roles"}
 FORM_FIELD_TYPES = {
     "Short Text", "Long Text", "Number", "Currency", "Date", "Choice", "Attachment", "Checkbox",
-    "Multi Choice", "User", "Department", "Item Table", "Table",
+    "Multi Choice", "User", "Department", "Item Table", "Table", "Time", "System Select", "Auto",
 }
 # Values of these types are ERPNext record names, validated against User, Department and Item.
 LINK_FIELD_TYPES = {"User", "Department", "Item Table"}
 CHOICE_FIELD_TYPES = {"Choice", "Multi Choice"}
-NO_DEFAULT_FIELD_TYPES = {"Attachment", "Item Table", "User", "Department", "Table"}
+NO_DEFAULT_FIELD_TYPES = {"Attachment", "Item Table", "User", "Department", "Table", "System Select", "Auto"}
+TEXT_FIELD_TYPES = {"Short Text", "Long Text"}
+AUTO_KINDS = {"request_number", "request_date", "leave_duration"}
+FIELD_WIDGETS = {"segmented", "chips", "dropdown", "textarea"}
+CHOICE_WIDGETS = {"segmented", "chips", "dropdown"}
+# default_source -> the field types it can fill.
+DEFAULT_SOURCES = {
+    "session_user": {"User"},
+    "employee_department": {"Department"},
+    "employee_branch": {"System Select"},
+    "today": {"Date"},
+}
+REQUIRED_BY_SETTINGS = {"request_cost_center_required"}
+MAX_ROW_LIMIT = 100
+TIME_DEFAULT = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 TABLE_COLUMN_TYPES = {"Short Text", "Number", "Currency", "Date", "Choice", "Attachment"}
 REQUEST_CATEGORIES = {"Finance", "HR", "Purchase", "IT", "General", "Other"}
 ASSIGNMENT_TYPES = {"Role", "Department", "Employee", "Initiator", "Initiator Department", "Direct Manager"}
@@ -65,6 +81,8 @@ def _normalize_form_fields(values: Any) -> list[dict[str, Any]]:
             raise ValueError("This form field type has no default value")
         if field_type in CHOICE_FIELD_TYPES and default_value and default_value not in options:
             raise ValueError("Choice default value must be one of the options")
+        if field_type == "Time" and default_value and not TIME_DEFAULT.fullmatch(default_value):
+            raise ValueError("Time default value must be HH:MM")
         keys.add(key)
         result.append({
             "key": key,
@@ -77,8 +95,116 @@ def _normalize_form_fields(values: Any) -> list[dict[str, Any]]:
             "show_in_list": bool(item.get("show_in_list", False)),
             "position": position,
             **({"columns": columns} if field_type == "Table" else {}),
+            **_field_extensions(item, field_type, options),
         })
+    for field in result:
+        rule = field.get("visible_when")
+        if rule and (rule["field"] == field["key"] or rule["field"] not in keys):
+            raise ValueError("A conditional field must depend on another field of the form")
     return result
+
+
+def _field_extensions(item: dict[str, Any], field_type: str, options: list[str]) -> dict[str, Any]:
+    """Optional presentation and validation attributes; only the ones that are set are kept."""
+    result: dict[str, Any] = {}
+    if field_type == "System Select":
+        source = item.get("source")
+        if source not in SOURCE_FIELD_TYPES:
+            raise ValueError("A system select field needs a supported source")
+        result["source"] = source
+    elif item.get("source") not in (None, ""):
+        raise ValueError("Only system select fields have a source")
+    if field_type == "Auto":
+        if item.get("auto") not in AUTO_KINDS:
+            raise ValueError("An auto field needs a supported kind")
+        result["auto"] = item["auto"]
+    elif item.get("auto") not in (None, ""):
+        raise ValueError("Only auto fields have a kind")
+    if item.get("visible_when") not in (None, {}):
+        result["visible_when"] = _visible_when(item["visible_when"])
+    if item.get("option_labels") not in (None, {}):
+        result["option_labels"] = _option_labels(item["option_labels"], field_type, options)
+    if item.get("widget") not in (None, ""):
+        result["widget"] = _widget(item["widget"], field_type)
+    if item.get("default_source") not in (None, ""):
+        source = item["default_source"]
+        if source not in DEFAULT_SOURCES or field_type not in DEFAULT_SOURCES[source]:
+            raise ValueError("Unsupported default source for this field type")
+        result["default_source"] = source
+    if "editable" in item:
+        result["editable"] = bool(item["editable"])
+    if item.get("min_date") not in (None, ""):
+        if item["min_date"] != "today" or field_type != "Date":
+            raise ValueError("Only date fields support a minimum date of today")
+        result["min_date"] = "today"
+    if item.get("max_length") not in (None, ""):
+        limit = item["max_length"]
+        if type(limit) is not int or not 1 <= limit <= 10000 or field_type not in TEXT_FIELD_TYPES:
+            raise ValueError("Maximum length applies to text fields, between 1 and 10000")
+        result["max_length"] = limit
+    if item.get("required_by_setting") not in (None, ""):
+        if item["required_by_setting"] not in REQUIRED_BY_SETTINGS:
+            raise ValueError("Unsupported required-by setting")
+        result["required_by_setting"] = item["required_by_setting"]
+    if field_type == "Item Table" and item.get("row_options") is not None:
+        result["row_options"] = _row_options(item["row_options"])
+    elif item.get("row_options") is not None:
+        raise ValueError("Only item tables have row options")
+    return result
+
+
+def _visible_when(rule: Any) -> dict[str, Any]:
+    if not isinstance(rule, dict) or not isinstance(rule.get("field"), str):
+        raise ValueError("Invalid conditional field rule")
+    if ("equals" in rule) == ("in" in rule):
+        raise ValueError("A conditional field rule needs either equals or in")
+    scalar = (str, int, float, bool)
+    if "equals" in rule:
+        if not isinstance(rule["equals"], scalar):
+            raise ValueError("Invalid conditional field value")
+        return {"field": rule["field"], "equals": rule["equals"]}
+    values = rule["in"]
+    if not isinstance(values, list) or not 1 <= len(values) <= 20 or any(
+            not isinstance(value, scalar) for value in values):
+        raise ValueError("Invalid conditional field values")
+    return {"field": rule["field"], "in": values}
+
+
+def _option_labels(labels: Any, field_type: str, options: list[str]) -> dict[str, str]:
+    if field_type != "Choice" or not isinstance(labels, dict):
+        raise ValueError("Option labels apply to choice fields")
+    result = {}
+    for stored, label in labels.items():
+        if stored not in options or not isinstance(label, str) or not 1 <= len(label.strip()) <= 80:
+            raise ValueError("Option labels must label existing options")
+        result[stored] = label.strip()
+    return result
+
+
+def _widget(widget: Any, field_type: str) -> str:
+    if widget not in FIELD_WIDGETS:
+        raise ValueError("Unsupported field widget")
+    if widget in CHOICE_WIDGETS and field_type not in CHOICE_FIELD_TYPES:
+        raise ValueError("This widget is only for choice fields")
+    if widget == "textarea" and field_type not in TEXT_FIELD_TYPES:
+        raise ValueError("This widget is only for text fields")
+    return widget
+
+
+def _row_options(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError("Invalid item row options")
+    scope = raw.get("item_scope", "all")
+    if scope not in ITEM_SCOPES:
+        raise ValueError("Unsupported item scope")
+    try:
+        minimum, maximum = int(raw.get("min_rows", 0)), int(raw.get("max_rows", MAX_ROW_LIMIT))
+    except (TypeError, ValueError) as error:
+        raise ValueError("Invalid item row limits") from error
+    if not 0 <= minimum <= maximum <= MAX_ROW_LIMIT:
+        raise ValueError("Invalid item row limits")
+    return {"item_scope": scope, "note": bool(raw.get("note", False)),
+            "attachment": bool(raw.get("attachment", False)), "min_rows": minimum, "max_rows": maximum}
 
 
 def _normalize_form_layout(values: Any, fields: list[dict]) -> list[dict]:

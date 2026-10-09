@@ -11,6 +11,9 @@ class ASOUDWorkflowDefinition(Document):
             frappe.throw(_("A workflow with incomplete prerequisites cannot be activated"))
         if self.status == "Active" and not self.frappe_workflow:
             frappe.throw(_("An active definition must be linked to a Frappe Workflow"))
+        if self.template_key and frappe.db.exists("ASOUD Workflow Definition", {
+                "company": self.company, "template_key": self.template_key, "name": ["!=", self.name]}):
+            frappe.throw(_("This company already has a request type for template {0}").format(self.template_key))
         if self.frappe_workflow:
             workflow_doctype = frappe.db.get_value("Workflow", self.frappe_workflow, "document_type")
             if workflow_doctype != self.target_doctype:

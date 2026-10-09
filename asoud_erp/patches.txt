@@ -2,3 +2,5 @@
 
 [post_model_sync]
 asoud_erp.patches.v0_5.normalize_detail_groups
+asoud_erp.patches.v0_14.backfill_request_status_key
+asoud_erp.patches.v0_14.map_leave_type_categories

@@ -14,7 +14,7 @@ Material Request ──make_purchase_order──▶ Purchase Order ──make_pu
 | Method | HTTP | Purpose |
 | --- | --- | --- |
 | `buying_options(company)` | GET | suppliers, purchase tax templates, buying price list, warehouses |
-| `create_purchase_order(company, supplier, items, schedule_date, transaction_date?, taxes_and_charges?, submit=0)` | POST | direct order |
+| `create_purchase_order(company, supplier, items, schedule_date, transaction_date?, taxes_and_charges?, submit=0, currency?, buying_price_list?)` | POST | direct order |
 | `create_purchase_order_from_request(material_request, supplier, submit=0)` | POST | orders what is not yet ordered from a submitted purchase request |
 | `create_purchase_receipt_from_order(purchase_order, submit=0)` | POST | receives what is not yet received |
 | `create_purchase_invoice(company, supplier, items, posting_date?, bill_no?, bill_date?, taxes_and_charges?, update_stock=0, submit=0)` | POST | direct supplier invoice |
@@ -24,7 +24,10 @@ Material Request ──make_purchase_order──▶ Purchase Order ──make_pu
 | `submit_purchase_document(doctype, name)` · `cancel_purchase_document(doctype, name)` | POST | |
 
 Lines use the same shape as [selling](selling.md#invoice-lines); a line without
-`rate` is priced from the buying price list.
+`rate` is priced from the buying price list. Like the sales invoice, an order
+accepts optional `currency` and `buying_price_list` overrides (set before
+ERPNext fills the missing values); the order currency flows into the receipt
+and invoice mapped from it.
 
 The returned object has `doctype`, supplier and totals, `items` (with
 `material_request` / `purchase_order` back-links), and per type:

@@ -5,7 +5,8 @@ def company_access(company, user=None):
     user = user or frappe.session.user
     if user == "Guest" or not company:
         return False
-    if user == frappe.conf.get("asoud_workflow_service_user"):
+    conf = getattr(frappe, "conf", None) or {}
+    if user == conf.get("asoud_workflow_service_user"):
         from asoud_erp.services.automatic_action_metadata import service_user
 
         try:
@@ -25,7 +26,8 @@ def require_company(company):
 
 def request_permission(doc, user=None, permission_type=None):
     user = user or frappe.session.user
-    if user == frappe.conf.get("asoud_workflow_service_user"):
+    conf = getattr(frappe, "conf", None) or {}
+    if user == conf.get("asoud_workflow_service_user"):
         # Returning None delegates to ordinary DocType permissions; it does not
         # grant write/read itself. Admin must explicitly grant the required role.
         return None if company_access(doc.company, user) else False
@@ -48,11 +50,13 @@ def request_query(user=None):
     allowed = [company for company in companies if company_access(company, user)]
     if not allowed:
         return "1=0"
+    allowed_sql = ",".join(frappe.db.escape(company) for company in allowed)
+    if {"System Manager", "HR Manager"}.intersection(frappe.get_roles(user)):
+        return "`tabASOUD Workflow Request`.`company` IN (" + allowed_sql + ")"
     return ("(`tabASOUD Workflow Request`.`owner` = " + frappe.db.escape(user)
         + " OR `tabASOUD Workflow Request`.`workflow_instance` IN (SELECT `workflow_instance`"
         " FROM `tabASOUD Workflow Task` WHERE `assigned_to` = " + frappe.db.escape(user) + "))"
-        + " AND `tabASOUD Workflow Request`.`company` IN ("
-        + ",".join(frappe.db.escape(company) for company in allowed) + ")")
+        + " AND `tabASOUD Workflow Request`.`company` IN (" + allowed_sql + ")")
 
 
 def file_permission(doc, user=None, permission_type=None):

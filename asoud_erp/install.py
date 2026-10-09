@@ -34,6 +34,9 @@ def after_install():
 
 def after_migrate():
     """Keep installation and migration hooks explicitly idempotent."""
+    from asoud_erp.services.request_templates.seed import ensure_system_templates
+
+    ensure_system_templates()
     for code, title, party_role in DEFAULT_GROUPS:
         existing = frappe.db.exists("ASOUD Detail Group", code)
         if not existing:

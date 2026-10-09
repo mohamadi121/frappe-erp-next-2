@@ -32,9 +32,43 @@ def _person(name, write=False):
     return doc
 
 
+def native_photo(employee):
+    """``native:File:<name>`` of the private file behind ``Employee.image``."""
+    if not employee:
+        return None
+    image = frappe.db.get_value("Employee", employee, "image")
+    if not image:
+        return None
+    file_name = frappe.db.get_value(
+        "File",
+        {"attached_to_doctype": "Employee", "attached_to_name": employee,
+         "file_url": image, "is_private": 1},
+        "name",
+    )
+    return f"native:File:{file_name}" if file_name else None
+
+
+def photo_record(party_profile, employee=None):
+    """The private photo reference of a personnel profile.
+
+    The native private ``File`` of ``Employee.image`` wins; the personnel photo
+    record is the fallback so a profile without a file still renders.
+    """
+    row = frappe.db.get_value("ASOUD Party Profile", party_profile, ["company", "employee"], as_dict=True)
+    native = native_photo(employee or (row and row.employee))
+    if native:
+        return native
+    return frappe.db.get_value(
+        "ASOUD Personnel Record",
+        {"party": party_profile, "company": row and row.company, "kind": "photo"},
+        "name",
+        order_by="creation desc",
+    )
+
+
 def _row(doc, include_financial=False):
     row = {"id": doc.name, "employee_code": str(doc.get("employee") or doc.name), "company": doc.company, "disabled": bool(doc.disabled),
-            "photo_record": frappe.db.get_value("ASOUD Personnel Record", {"party": doc.name, "company": doc.company, "kind": "photo"}, "name", order_by="creation desc"),
+            "photo_record": photo_record(doc.name, doc.get("employee")),
             **{field: str(doc.get(field) or "") for field in PERSONAL_FIELDS}}
     if include_financial:
         row.update({field: str(doc.get(field) or "") for field in FINANCIAL_FIELDS})
@@ -49,12 +83,6 @@ def _row(doc, include_financial=False):
     from asoud_erp.services.personnel_employee import shared_values
 
     row.update(shared_values(doc))
-    if doc.get("employee"):
-        image = frappe.db.get_value("Employee", doc.employee, "image")
-        photo = frappe.db.get_value("File", {"attached_to_doctype": "Employee",
-            "attached_to_name": doc.employee, "file_url": image, "is_private": 1}, "name") if image else None
-        if photo:
-            row["photo_record"] = f"native:File:{photo}"
     return row
 
 

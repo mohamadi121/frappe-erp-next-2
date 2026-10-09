@@ -5,12 +5,14 @@ from frappe import _
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.detail_code_service import next_detail_code
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.party_validation import (
     is_valid_iranian_legal_id,
     is_valid_iranian_mobile,
     is_valid_iranian_national_code,
     normalize_optional,
 )
+from asoud_erp.services.request_access import require_company
 
 ALLOWED_ROLES = {"Customer", "Supplier", "Employee", "Shareholder", "Other"}
 PARTY_ROLES_WITH_DEFAULT_GROUP = ("Customer", "Supplier", "Employee")
@@ -119,7 +121,9 @@ def _ensure_employee(
     doc.date_of_joining = date_of_joining
     doc.cell_number = mobile
     doc.personal_email = email
-    doc.save(ignore_permissions=True) if employee else doc.insert(ignore_permissions=True)
+    # HR master data is written through Frappe's own permission check; the caller
+    # must hold the personnel role (see save_party) and the Employee write right.
+    doc.save() if employee else doc.insert()
     return doc.name
 
 
@@ -171,18 +175,46 @@ def _sync_floating_details(
         ).insert()
 
 
+#: A party's bank details pay suppliers and settle receivables, so they stay with
+#: the roles that own the party master. An ``Accounts User`` (cashier) and every
+#: personnel role get the profile without them, and the personnel bank data on
+#: ``Employee`` is never returned here at all.
+BANK_FIELDS = ("bank_name", "iban", "account_number", "card_number", "account_holder")
+BANK_ROLES = ("System Manager", "Accounts Manager")
+
+
+def _may_read_bank_details() -> bool:
+    return bool(set(BANK_ROLES) & set(frappe.get_roles()))
+
+
+#: The personnel master: the roles `personnel.update_personnel` accepts.
+PERSONNEL_ROLES = ("System Manager", "HR Manager")
+
+#: Party fields `write_shared` mirrors onto the linked Employee. Exactly the
+#: `personnel_contract.PERSONAL_FIELDS` allow-list, so no other party argument can
+#: reach Employee master data.
+EMPLOYEE_SHARED_FIELDS = ("display_name", "mobile", "email", "province", "city", "address_line",
+                          "postal_code", "birth_date", "employee_gender", "date_of_joining",
+                          "job_title", "department", "employment_type")
+
+
+def _require_personnel_master() -> None:
+    if not set(PERSONNEL_ROLES).intersection(frappe.get_roles()):
+        frappe.throw(_("Personnel records can only be edited by an HR manager"), frappe.PermissionError)
+
+
 @frappe.whitelist()
-def list_parties(search: str | None = None, role: str | None = None, company: str | None = None) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
-    filters = {"disabled": 0}
-    if company:
-        filters["company"] = company
+def list_parties(company: str, search: str | None = None, role: str | None = None) -> dict:
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
+    require_company(company)
+    filters = {"disabled": 0, "company": company}
     if role:
         filters["roles_text"] = ["like", f'%"{role}"%']
     or_filters = None
     if search:
         term = f"%{search}%"
         or_filters = {"display_name": ["like", term], "national_id": ["like", term], "mobile": ["like", term]}
+    may_read_bank = _may_read_bank_details()
     rows = frappe.get_all(
         "ASOUD Party Profile",
         filters=filters,
@@ -201,9 +233,6 @@ def list_parties(search: str | None = None, role: str | None = None, company: st
             "city",
             "address_line",
             "postal_code",
-            "bank_name",
-            "iban",
-            "account_number",
             "birth_date",
             "employee_gender",
             "date_of_joining",
@@ -223,8 +252,6 @@ def list_parties(search: str | None = None, role: str | None = None, company: st
             "credit_limit",
             "opening_balance",
             "balance_type",
-            "card_number",
-            "account_holder",
             "region",
             "neighborhood",
             "plaque",
@@ -237,6 +264,7 @@ def list_parties(search: str | None = None, role: str | None = None, company: st
             "supplier",
             "employee",
             "disabled",
+            *(BANK_FIELDS if may_read_bank else ()),
         ],
         order_by="modified desc",
         limit_page_length=200,
@@ -246,6 +274,9 @@ def list_parties(search: str | None = None, role: str | None = None, company: st
     for row in rows:
         row.update(shared_values(row))
         row["roles"] = json.loads(row.pop("roles_text") or "[]")
+        if not may_read_bank:
+            for field in BANK_FIELDS:
+                row.pop(field, None)
         details = frappe.get_all(
             "ASOUD Floating Detail",
             filters={
@@ -317,12 +348,18 @@ def save_party(
     longitude: str | float | None = None,
     employee_roles: str | list[str] | None = None,
 ) -> dict:
-    frappe.only_for(("System Manager", "Accounts Manager", "Accounts User"))
+    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
     if party_type not in {"Individual", "Organization"}:
         frappe.throw(_("Party type must be Individual or Organization"))
     if not display_name or len(display_name.strip()) < 3:
         frappe.throw(_("Display name must contain at least 3 characters"))
     selected_roles = _parse_roles(roles)
+    if "Employee" in selected_roles:
+        # The Employee branch writes ERPNext HR master data (gender, birth date,
+        # date of joining) and mirrors `job_title` onto the designation, so it is
+        # the HR path of personnel.update_personnel and not a party field. Refuse
+        # before any payload is applied, exactly like update_personnel does.
+        _require_personnel_master()
     selected_groups = _parse_detail_groups(detail_groups)
     if primary_role and primary_role not in selected_roles:
         frappe.throw(_("Primary role must be one of the selected roles"))
@@ -346,9 +383,15 @@ def save_party(
             frappe.throw(_("A party with this national ID already exists"))
         doc = frappe.new_doc("ASOUD Party Profile")
 
+    # The company the profile belongs to: the argument, or the one it already has.
+    # An omitted argument never moves a profile out of its company.
+    target_company = normalize_optional(company) or doc.company
+    if target_company:
+        require_company(target_company)
+
     title = display_name.strip()
     doc.party_type = party_type
-    doc.company = normalize_optional(company)
+    doc.company = target_company
     doc.display_name = title
     doc.national_id = national_id
     doc.mobile = mobile
@@ -412,8 +455,7 @@ def save_party(
         )
         from asoud_erp.services.personnel_employee import shared_values, write_shared
 
-        write_shared(doc, {"job_title": doc.job_title, "department": doc.department,
-                           "employment_type": doc.employment_type, "address_line": doc.address_line})
+        write_shared(doc, {key: doc.get(key) for key in EMPLOYEE_SHARED_FIELDS})
         for key, value in shared_values(doc).items():
             doc.set(key, value or None)
     doc.save() if name else doc.insert()
@@ -441,9 +483,12 @@ def save_party(
 @frappe.whitelist(methods=["POST"])
 def disable_party(name: str) -> dict:
     """Logically disable a party profile; linked ERPNext records are preserved."""
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     if not frappe.db.exists("ASOUD Party Profile", name):
         frappe.throw(_("Party profile does not exist"))
+    target = frappe.db.get_value("ASOUD Party Profile", name, "company")
+    if target:
+        require_company(target)
     doc = frappe.get_doc("ASOUD Party Profile", name)
     doc.disabled = 1
     doc.save()

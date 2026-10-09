@@ -1,0 +1,43 @@
+{
+  "purchase": [
+    {"key":"request_number","label":"شماره درخواست","type":"Auto","auto":"request_number"},
+    {"key":"request_date","label":"تاریخ درخواست","type":"Auto","auto":"request_date"},
+    {"key":"requester","label":"درخواست‌کننده","type":"User","required":true,"editable":false,"default_source":"session_user"},
+    {"key":"org_unit","label":"واحد درخواست‌کننده","type":"Department","required":true,"default_source":"employee_department"},
+    {"key":"cost_center","label":"مرکز هزینه","type":"System Select","source":"cost_center","required_by_setting":"request_cost_center_required"},
+    {"key":"project","label":"پروژه","type":"System Select","source":"project"},
+    {"key":"needed_date","label":"تاریخ مورد نیاز","type":"Date","required":true,"min_date":"today"},
+    {"key":"priority","label":"اولویت","type":"Choice","required":true,"options":["Normal","High","Urgent"],"option_labels":{"Normal":"عادی","High":"مهم","Urgent":"فوری"},"widget":"segmented","default_value":"Normal","show_in_list":true},
+    {"key":"reason","label":"دلیل درخواست","type":"Long Text","required":true,"max_length":2000},
+    {"key":"items","label":"اقلام","type":"Item Table","required":true,"row_options":{"item_scope":"purchase","note":true,"attachment":true,"min_rows":1,"max_rows":100}}
+  ],
+  "supply": [
+    {"key":"request_number","label":"شماره درخواست","type":"Auto","auto":"request_number"},
+    {"key":"request_date","label":"تاریخ ثبت","type":"Auto","auto":"request_date"},
+    {"key":"requester","label":"درخواست‌کننده","type":"User","required":true,"editable":false,"default_source":"session_user"},
+    {"key":"org_unit","label":"واحد سازمانی","type":"Department","required":true,"default_source":"employee_department"},
+    {"key":"delivery_location","label":"محل تحویل","type":"System Select","source":"delivery_location","required":true},
+    {"key":"needed_date","label":"تاریخ مورد نیاز","type":"Date","required":true,"min_date":"today"},
+    {"key":"supply_method","label":"روش تأمین پیشنهادی","type":"Choice","options":["Warehouse","Purchase","Transfer","Contract","Unspecified"],"option_labels":{"Warehouse":"از انبار","Purchase":"خرید","Transfer":"انتقال","Contract":"قرارداد","Unspecified":"نامشخص"},"widget":"chips","default_value":"Unspecified"},
+    {"key":"suggested_supplier","label":"تأمین‌کننده پیشنهادی","type":"System Select","source":"supplier","help_text":"فقط پیشنهاد است"},
+    {"key":"priority","label":"اولویت","type":"Choice","options":["Normal","High","Urgent"],"option_labels":{"Normal":"عادی","High":"مهم","Urgent":"فوری"},"widget":"segmented","default_value":"Normal","show_in_list":true},
+    {"key":"reason","label":"توضیحات / دلیل درخواست","type":"Long Text","max_length":2000,"help_text":"توصیه می‌شود"},
+    {"key":"items","label":"کالا / خدمت","type":"Item Table","required":true,"row_options":{"item_scope":"all","note":false,"attachment":true,"min_rows":1,"max_rows":100}}
+  ],
+  "leave": [
+    {"key":"request_number","label":"شماره درخواست","type":"Auto","auto":"request_number"},
+    {"key":"request_date","label":"تاریخ ثبت","type":"Auto","auto":"request_date"},
+    {"key":"requester","label":"درخواست‌کننده","type":"User","required":true,"editable":false,"default_source":"session_user"},
+    {"key":"org_unit","label":"واحد سازمانی","type":"Department","required":true,"default_source":"employee_department"},
+    {"key":"leave_type","label":"نوع مرخصی","type":"System Select","source":"leave_type","required":true},
+    {"key":"request_kind","label":"نوع درخواست","type":"Choice","required":true,"options":["Daily","Hourly"],"option_labels":{"Daily":"روزانه","Hourly":"ساعتی"},"widget":"segmented","default_value":"Daily"},
+    {"key":"start_date","label":"تاریخ شروع","type":"Date","required":true,"visible_when":{"field":"request_kind","equals":"Daily"}},
+    {"key":"end_date","label":"تاریخ پایان","type":"Date","required":true,"visible_when":{"field":"request_kind","equals":"Daily"}},
+    {"key":"leave_date","label":"تاریخ مرخصی","type":"Date","required":true,"visible_when":{"field":"request_kind","equals":"Hourly"}},
+    {"key":"start_time","label":"ساعت شروع","type":"Time","required":true,"visible_when":{"field":"request_kind","equals":"Hourly"}},
+    {"key":"end_time","label":"ساعت پایان","type":"Time","required":true,"visible_when":{"field":"request_kind","equals":"Hourly"}},
+    {"key":"duration","label":"مدت مرخصی","type":"Auto","auto":"leave_duration"},
+    {"key":"location","label":"محل خدمت","type":"System Select","source":"branch","default_source":"employee_branch"},
+    {"key":"reason","label":"دلیل مرخصی","type":"Long Text","required":true,"max_length":2000}
+  ]
+}

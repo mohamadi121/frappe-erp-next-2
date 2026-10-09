@@ -119,8 +119,16 @@ def get_item_price(company: str, item_code: str, customer: str | None = None, qt
 @frappe.whitelist(methods=["POST"])
 def create_sales_invoice(company: str, customer: str, items, posting_date: str | None = None,
                          due_date: str | None = None, taxes_and_charges: str | None = None,
-                         remarks: str | None = None, update_stock: int = 0, submit: int = 0) -> dict:
-    """Creates a draft (or, with ``submit=1``, a submitted) sales invoice."""
+                         remarks: str | None = None, update_stock: int = 0, submit: int = 0,
+                         currency: str | None = None,
+                         selling_price_list: str | None = None) -> dict:
+    """Creates a draft (or, with ``submit=1``, a submitted) sales invoice.
+
+    ``currency`` and ``selling_price_list`` are optional overrides, set before
+    ERPNext fills the missing values: a new document otherwise inherits both
+    from the default selling price list, which fails against a party account
+    in another currency (and needs an exchange rate even to price the lines).
+    """
     erp_documents.require_roles(ROLES)
     require_company(company)
     try:
@@ -136,6 +144,16 @@ def create_sales_invoice(company: str, customer: str, items, posting_date: str |
         "update_stock": cint(update_stock),
         "remarks": (remarks or "").strip(),
     })
+    if currency:
+        if not frappe.db.exists("Currency", currency):
+            frappe.throw(_("Invalid currency"))
+        doc.currency = currency
+    if selling_price_list:
+        price_list = frappe.db.get_value("Price List", selling_price_list,
+                                          ["enabled", "selling"], as_dict=True)
+        if not price_list or not price_list.enabled or not price_list.selling:
+            frappe.throw(_("Invalid selling price list"))
+        doc.selling_price_list = selling_price_list
     if due_date:
         doc.due_date = getdate(due_date)
     if taxes_and_charges:

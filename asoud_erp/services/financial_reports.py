@@ -41,7 +41,7 @@ def report_filters(report: str, company: str, *, from_date=None, to_date=None, r
         if warehouse:
             filters["warehouse"] = warehouse
         if item_code:
-            filters["item_code"] = item_code
+            filters["item_code"] = item_code if isinstance(item_code, list) else [item_code]
         return name, filters
     if periodicity not in PERIODICITIES:
         raise ValueError("Invalid periodicity")

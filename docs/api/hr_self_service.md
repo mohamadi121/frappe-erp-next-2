@@ -19,6 +19,9 @@ without an active Employee gets `PermissionError`. HRMS keeps its own rules
 
 Balance row:
 `{"leave_type": "Casual Leave", "total_leaves": 10, "expired_leaves": 0, "leaves_taken": 2, "leaves_pending_approval": 1, "remaining_leaves": 8}`.
+Each row also carries `hourly_leaves_taken`, `available_leaves` (`remaining_leaves - hourly - pending`) and
+`category` (`annual`, `sick`, `unpaid`, `other` or empty): HRMS does not see the hourly leave of the
+[leave request form](leave_request.md), so its own keys are left as HRMS reports them.
 The leave approver comes from the Employee (or Department approvers) in HRMS.
 
 ## Check-in — Employee Checkin

@@ -7,9 +7,9 @@ contract, never a parallel ledger or master (see `AGENTS.md`).
 
 Module references: [module map](../backend-roadmap.md) ·
 [dashboard](dashboard.md) · [selling](selling.md) · [sales pipeline](sales_orders.md) · [payments](payments.md) ·
-[stock](stock.md) · [buying](buying.md) · [HR self-service](hr_self_service.md) ·
-[projects](projects.md) · [financial reports](financial_reports.md) · [payroll](payroll.md) · [POS](pos.md) · [personnel file](personnel_file.md) · [document templates](document_templates.md) ·
-[support](support.md) · [request types](../workflow-runtime-v1.md#request-types)
+[stock](stock.md) · [buying](buying.md) · [HR self-service](hr_self_service.md) · [leave requests](leave_request.md) ·
+[projects](projects.md) · [financial reports](financial_reports.md) · [ledger reports](report.md) · [chart of accounts](account.md) · [parties](party.md) · [payroll](payroll.md) · [POS](pos.md) · [personnel file](personnel_file.md) · [account operations](account_ops.md) · [document templates](document_templates.md) ·
+[support](support.md) · [request types](../workflow-runtime-v1.md#request-types) · [request templates](request_templates.md)
 
 ## Calling a method
 
@@ -48,7 +48,7 @@ client as standard Frappe errors, never as `ok: true`:
 
 `sync.execute_mutation` returns `{"ok": false, "error": {"code", "message"}}`
 only for its own protocol errors (`INVALID_REQUEST_KEY`, `METHOD_NOT_ALLOWED`,
-`REQUEST_IN_PROGRESS`).
+`REQUEST_KEY_CONFLICT`, `REQUEST_IN_PROGRESS`).
 
 ## Authorization
 
@@ -77,8 +77,10 @@ POST /api/method/asoud_erp.api.v1.sync.execute_mutation
 ```
 
 The first call runs the method and stores its envelope in `ASOUD API Request`;
-later calls with the same key by the same user return the stored envelope. A key
-already used by another user is rejected with `INVALID_REQUEST_KEY`.
+later calls with the same key, method and payload by the same user return the
+stored envelope. A key already used by another user is rejected with
+`INVALID_REQUEST_KEY`; the same user reusing a key for a different method or
+payload is rejected with `REQUEST_KEY_CONFLICT`.
 
 ## Dates, numbers and money
 
