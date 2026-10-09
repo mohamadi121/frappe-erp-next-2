@@ -3,7 +3,6 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint
 from frappe import sessions as frappe_sessions
 
 from asoud_erp.api.v1.responses import success
@@ -211,8 +210,8 @@ def _ensure_data_scope(employee) -> None:
 
 def _account_status(profile) -> dict:
     """«حساب کاربری» of a personnel profile, read from the native User record."""
-    from asoud_erp.services.account_status import account_status, allowed_modules
     from asoud_erp.services.access_policy import access_level_for
+    from asoud_erp.services.account_status import account_status, allowed_modules
 
     employee = frappe.db.get_value("Employee", profile.employee, ["name", "user_id"], as_dict=True)
     user_id = (employee and employee.user_id) or ""
