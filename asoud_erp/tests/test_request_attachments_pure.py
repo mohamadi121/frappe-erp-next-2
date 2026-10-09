@@ -139,4 +139,5 @@ def test_thumbnail_is_scaled_to_256_px(fmt, name):
 
 def test_thumbnail_ignores_non_images_and_unreadable_images():
     assert att.thumbnail(b"%PDF-1.4", "a.pdf") == b"%PDF-1.4"
+    pytest.importorskip("PIL")  # not installed in the lightweight contract CI job
     assert att.thumbnail(b"not an image", "a.png") == b"not an image"
