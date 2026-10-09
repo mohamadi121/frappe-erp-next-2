@@ -543,15 +543,13 @@ def _run_system_action(instance, stage, config: dict, source_task=None) -> None:
     """
     instance.save(ignore_permissions=True)
     frappe.db.savepoint("asoud_system_action")
+    identity_ready = False
     try:
-        conf = getattr(frappe, "conf", None) or {}
-        if conf.get("asoud_workflow_service_user"):
-            from asoud_erp.services.automatic_action_metadata import identity
+        from asoud_erp.services.automatic_action_metadata import identity
 
-            company = frappe.db.get_value("ASOUD Workflow Definition", instance.workflow_definition, "company")
-            with identity(company):
-                comment, doctype, name = _execute_system_action(instance, stage, config)
-        else:
+        company = frappe.db.get_value("ASOUD Workflow Definition", instance.workflow_definition, "company")
+        with identity(company):
+            identity_ready = True
             comment, doctype, name = _execute_system_action(instance, stage, config)
         outcome = "Success"
     except (frappe.ValidationError, frappe.PermissionError, frappe.DoesNotExistError, ValueError) as error:
@@ -573,7 +571,7 @@ def _run_system_action(instance, stage, config: dict, source_task=None) -> None:
             "reference_name": name,
         }
     ).insert(ignore_permissions=True)
-    target = _system_route(instance, stage.name, outcome)
+    target = _system_route(instance, stage.name, outcome) if identity_ready else None
     if target:
         _activate_stage(instance, target, source_task=source_task)
         return

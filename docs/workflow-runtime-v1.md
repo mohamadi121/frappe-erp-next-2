@@ -161,11 +161,6 @@ without a company), so it is not filtered by company.
 
 Schema-2 automatic actions, their deployment prerequisites, restricted service
 identity and limitations are documented in [automatic-actions-v2.md](automatic-actions-v2.md).
-Both configuration approaches remain supported in parallel:
-- Schema-1 (System Actions): synchronous inline execution (`Create Document`,
-  `Change Status`, `Send Notification`) with direct document creation or status changes.
-- Schema-2 (Automatic Actions): asynchronous scheduled execution (`schedule`/`dispatch`)
-  with guarded policy validation, explicit exit routes (`Success` / `Error`), and audit
-  trail tracking in `ASOUD Action Execution`.
-Legacy stage configuration remains supported; automatic execution observes native
-permissions and restricted service identity where configured.
+Legacy stage configuration remains supported; automatic execution now requires
+the configured restricted service identity, and document creation observes native
+permissions. The older permission-bypass description below is historical.
