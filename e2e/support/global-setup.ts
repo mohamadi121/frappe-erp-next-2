@@ -63,6 +63,23 @@ interface Stage {
 
 const STAGE_PLAN = ['Start', 'User Task', 'Approval', 'System Action', 'End'];
 
+/** The System Action the request type is designed with: legacy form, needs no service user. */
+const LEGACY_SYSTEM_CONFIG = {
+  title: 'ثبت وضعیت خودکار',
+  action_type: 'Change Status',
+  request_status: 'در حال بررسی خودکار',
+};
+
+/** True when the stored System Action is exactly the legacy Change Status stage. */
+function systemActionIsLegacy(stage: Stage): boolean {
+  const config = stage.config ?? {};
+  return (
+    config.schema_version === undefined &&
+    config.action_type === LEGACY_SYSTEM_CONFIG.action_type &&
+    config.request_status === LEGACY_SYSTEM_CONFIG.request_status
+  );
+}
+
 async function readDesign(
   session: ApiSession,
   definition: string,
@@ -148,11 +165,7 @@ async function designRequestType(
   await admin.mutate(METHOD.saveStageSettings, {
     definition: draft.name,
     stage: stages['System Action'],
-    config: JSON.stringify({
-      title: 'ثبت وضعیت خودکار',
-      action_type: 'Change Status',
-      request_status: 'در حال بررسی خودکار',
-    }),
+    config: JSON.stringify(LEGACY_SYSTEM_CONFIG),
   });
   await admin.mutate(METHOD.saveStageSettings, {
     definition: draft.name,
@@ -190,7 +203,10 @@ export default async function globalSetup(): Promise<void> {
   try {
     const admin = await ApiSession.login(apiRequest, USERS.admin.email, USERS.admin.password);
 
-    async function ensureDefinition(title: string): Promise<{ name: string; systemStage: string }> {
+    async function ensureDefinition(
+      title: string,
+      repairSystemAction = false,
+    ): Promise<{ name: string; systemStage: string }> {
       let def = state.definitions.find((row) => row.workflow_title === title);
       // A definition left half-designed by an earlier interrupted run is dropped,
       // never patched: the suite always designs through the real endpoints.
@@ -208,9 +224,26 @@ export default async function globalSetup(): Promise<void> {
           company: state.company,
         };
       }
-      const design = await readDesign(admin, def.name);
+      let design = await readDesign(admin, def.name);
       if (!designIsUsable(design)) {
         throw new Error(`request type ${def.name} is not fully configured`);
+      }
+      // The site is shared: another session may have turned this stage into a
+      // Schema-2 action (which needs a service user). Repair it on every run.
+      if (repairSystemAction) {
+        const stale = design.stages.find((stage) => stage.stage_type === 'System Action')!;
+        if (!systemActionIsLegacy(stale)) {
+          await admin.mutate(METHOD.saveStageSettings, {
+            definition: def.name,
+            stage: stale.name,
+            config: JSON.stringify(LEGACY_SYSTEM_CONFIG),
+          });
+          design = await readDesign(admin, def.name);
+          const repaired = design.stages.find((stage) => stage.stage_type === 'System Action')!;
+          if (!systemActionIsLegacy(repaired)) {
+            throw new Error(`could not repair the System Action of ${def.name}`);
+          }
+        }
       }
       if (def.status !== 'Active') {
         sitePrep('activate', { definition: def.name });
@@ -224,7 +257,7 @@ export default async function globalSetup(): Promise<void> {
       return { name: def.name, systemStage };
     }
 
-    const mainDef = await ensureDefinition(REQUEST_TYPE_TITLE);
+    const mainDef = await ensureDefinition(REQUEST_TYPE_TITLE, true);
     const docDef = await ensureDefinition(DOC_REQUEST_TYPE_TITLE);
 
     mkdirSync(`${__dirname}/../test-results`, { recursive: true });

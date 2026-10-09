@@ -219,7 +219,6 @@ test.describe('request lifecycle over HTTP', () => {
   });
 
   test('a direct manager approves and the system action closes the instance', async ({ api }) => {
-    test.fail('Send Notification system action fails due to restricted workflow service user configuration');
     const employee = await api.login('employee');
     const approver = await api.login('approver');
     const created = await submit(employee, 'approve');
