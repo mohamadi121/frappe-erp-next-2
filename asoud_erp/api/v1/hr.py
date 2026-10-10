@@ -38,7 +38,30 @@ def _employee_row(doc) -> dict:
 
 @frappe.whitelist()
 def get_dashboard(company: str | None = None):
-    employee = _employee_for_user()
+    employee_name = frappe.db.get_value(
+        "Employee", {"user_id": frappe.session.user, "status": "Active"}, "name"
+    )
+    if not employee_name:
+        roles = set(frappe.get_roles(frappe.session.user))
+        if not roles.intersection({"System Manager", "HR Manager"}):
+            frappe.throw(_("No active Employee is linked to this user"))
+        selected_company = company or frappe.defaults.get_user_default("company")
+        if not selected_company:
+            companies = frappe.get_all("Company", limit=1, pluck="name")
+            selected_company = companies[0] if companies else None
+        unread = frappe.db.count("Notification Log", {"for_user": frappe.session.user, "read": 0})
+        pending = frappe.db.count("ASOUD Workflow Task", {"assigned_to": frappe.session.user, "status": "Open"})
+        received = frappe.db.count(
+            "ASOUD Communication Recipient", {"user": frappe.session.user, "read_at": ["is", "not set"]}
+        )
+        return success({
+            "manager_access": True,
+            "company": selected_company,
+            "pending_tasks": pending,
+            "unread_notifications": unread,
+            "unread_communications": received,
+        })
+    employee = frappe.get_doc("Employee", employee_name)
     selected_company = company or employee.company
     today_report = frappe.db.get_value("ASOUD Work Report", {"employee": employee.name, "report_date": nowdate()}, ["name", "status"], as_dict=True)
     unread = frappe.db.count("Notification Log", {"for_user": frappe.session.user, "read": 0})
