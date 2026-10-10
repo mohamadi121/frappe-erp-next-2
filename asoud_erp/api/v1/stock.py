@@ -132,7 +132,7 @@ def save_item(item_name: str, item_group: str, stock_uom: str, item_code: str | 
 
 
 @frappe.whitelist()
-def stock_balance(company: str, warehouse: str | None = None, item_code: str | None = None,
+def stock_balance(company: str, warehouse: str | None = None, item_code: str | list[str] | None = None,
                   limit_start: int = 0, limit_page_length: int = 50) -> dict:
     """Quantities per item and warehouse from ERPNext `Bin`."""
     erp_documents.require_roles(ROLES)
@@ -145,7 +145,11 @@ def stock_balance(company: str, warehouse: str | None = None, item_code: str | N
         warehouses = [warehouse]
     filters: dict = {"warehouse": ["in", warehouses or [""]]}
     if item_code:
-        filters["item_code"] = item_code
+        from asoud_erp.services.financial_reports import normalize_item_codes
+
+        items = normalize_item_codes(item_code)
+        if items:
+            filters["item_code"] = ["in", items] if len(items) > 1 else items[0]
     rows = frappe.get_all("Bin", filters=filters,
                           fields=["item_code", "warehouse", "actual_qty", "projected_qty",
                                   "reserved_qty", "ordered_qty", "valuation_rate", "stock_value"],

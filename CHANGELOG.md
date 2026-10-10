@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.15.2 - 2026-10-10
+
+Security:
+
+- `party.save_party` redacts `bank_name`, `iban`, `account_number`, `card_number` and `account_holder` from its response for roles without bank access (and ignores such `bank_*` inputs), matching `party.list_parties` (F5).
+- `hr.organization_tree` calls `require_company(company)` before reading the department tree, closing a cross-company read (F7).
+- `floating_detail.list_floating_details` returns only details whose linked record belongs to a company the caller may access; rows with no linked record stay visible to `System Manager`/`Accounts Manager` only (F8).
+
+## 0.15.1 - 2026-10-10
+
+Fixed:
+
+- Seed `ASOUD Company Setup` row for demo company with office_saved, accounting_saved, roles_saved all 1 and enabled_roles_json `["System Manager"]` so setup status resolves as complete.
+- Return management-only dashboard payload with `manager_access: true` for System Manager and HR Manager users without a linked Employee in `hr.get_dashboard`.
+- Accept str, JSON list string and list for `item_code` normalization in `stock_balance` report filters and API.
+- Document and pin with regression tests the current behaviour of `request_query` (list) vs `request_permission` (read) for privileged roles in `docs/access-control-v1.md`.
+
 ## 0.15.0 - 2026-10-09
 
 Deployment: run `bench migrate` (new DocTypes ASOUD Action Execution, ASOUD Access Assignment). Workflows with System Action stages need `asoud_workflow_service_user` and `asoud_workflow_service_companies` in the site config.

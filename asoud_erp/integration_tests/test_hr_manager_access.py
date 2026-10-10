@@ -14,6 +14,7 @@ import frappe
 
 from asoud_erp.api.v1 import (
     document_templates,
+    hr,
     report,
     role_management,
     setup,
@@ -23,6 +24,8 @@ from asoud_erp.api.v1 import (
 from asoud_erp.integration_tests.fixtures import APITestCase
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.tenancy import (
+    DEPARTMENT_A,
+    DEPARTMENT_B,
     EMPLOYEE_A_USER,
     HR_MANAGER_USER,
     MANAGER_USER,
@@ -65,6 +68,16 @@ class TestHrManagerAccess(APITestCase):
         frappe.set_user(HR_MANAGER_USER)
         with self.assertRaises(frappe.PermissionError):
             setup.get_setup_status(company=self.second)
+
+    def test_organization_tree_is_company_scoped(self):
+        """F7: the department tree must be gated by `require_company`."""
+        frappe.set_user(HR_MANAGER_USER)
+        tree = hr.organization_tree(company=self.first)["data"]
+        names = {row["department_name"] for row in tree}
+        self.assertIn(DEPARTMENT_A, names)
+        self.assertNotIn(DEPARTMENT_B, names)
+        with self.assertRaises(frappe.PermissionError):
+            hr.organization_tree(company=self.second)
 
     def test_hr_manager_can_read_role_catalog_and_preview(self):
         frappe.set_user(HR_MANAGER_USER)
@@ -267,3 +280,32 @@ class TestHrManagerAccess(APITestCase):
         self.assertIn("roles", role_management.catalog()["data"])
         self.assertIsInstance(role_management.permission_preview(roles=["HR Manager"])["data"], list)
         self.assertEqual(setup.get_setup_status(company=self.first)["data"]["company"], self.first)
+
+    def test_hr_dashboard_without_employee_record(self):
+        # Administrator has System Manager and no linked Employee
+        frappe.set_user("Administrator")
+        self.assertIsNone(frappe.db.get_value("Employee", {"user_id": "Administrator", "status": "Active"}))
+        res_admin = hr.get_dashboard(company=self.first)
+        self.assertTrue(res_admin["data"].get("manager_access"))
+        self.assertNotIn("employee", res_admin["data"])
+        self.assertNotIn("today_report", res_admin["data"])
+        self.assertEqual(res_admin["data"]["company"], self.first)
+
+        # Employee-only user without linked Employee record keeps current error
+        token = frappe.generate_hash(length=8)
+        no_record_user = f"emp-norec-{token}@example.com"
+        frappe.get_doc({
+            "doctype": "User",
+            "email": no_record_user,
+            "first_name": "No",
+            "last_name": "Record",
+            "enabled": 1,
+            "roles": [{"role": "Employee"}],
+        }).insert(ignore_permissions=True)
+        try:
+            frappe.set_user(no_record_user)
+            with self.assertRaises(frappe.ValidationError):
+                hr.get_dashboard(company=self.first)
+        finally:
+            frappe.set_user("Administrator")
+            frappe.delete_doc("User", no_record_user, ignore_permissions=True)
