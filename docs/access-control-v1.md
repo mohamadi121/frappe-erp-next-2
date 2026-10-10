@@ -136,3 +136,27 @@ The app displays manager views (office dashboard, settings hub, request types an
 | `report.trial_balance` | READ | Company | `Accounts Manager`, `Accounts User` | `Accounts Manager`, `Accounts User` | Unchanged. Trial balance financial report. |
 | `report.general_ledger` | READ | Company | `Accounts Manager`, `Accounts User` | `Accounts Manager`, `Accounts User` | Unchanged. General ledger report. |
 
+## Request query and read access for privileged roles (`request_query` vs `request_permission`)
+
+Generic workflow requests (`ASOUD Workflow Request`) enforce dual gates for queries (`request_query`) and direct reads/actions (`request_permission`):
+
+1. **Direct read (`request_permission`)**:
+   - Requires `company_access(doc.company, user)`.
+   - Granted to the request `owner`, or any user holding `System Manager` or `HR Manager`, or an active stage assignee for the request's workflow task (`ASOUD Workflow Task.assigned_to == user`).
+   - Other privileged roles (such as `Accounts Manager` or `Accounts User`) are **not** permitted to directly read or fetch requests via `frappe.client.get` unless they own the request or are assigned to an active task on it.
+
+2. **List queries (`request_query`)**:
+   - Evaluated during `frappe.client.get_list` and SQL list retrieval.
+   - For users holding `System Manager` or `HR Manager`, returns `` `tabASOUD Workflow Request`.`company` IN (...) `` for all companies where `company_access` is true.
+   - For all other roles (including `Accounts Manager` and regular employees), restricts list visibility strictly to requests where `owner = user` OR `workflow_instance` is in tasks where `assigned_to = user`, within accessible companies.
+   - Dependent query filters (`instance_query`, `task_query`, `activity_query`, `file_query`) inherit this exact condition.
+
+3. **Current role matrix & observations (pinned by tests)**:
+   - `System Manager`: Can both list and read all requests within accessible companies.
+   - `Accounts Manager` / other operational managers: Cannot list or read requests owned by others unless assigned to a task.
+   - `HR Manager`: If `company_access` is satisfied (which requires Company read permission), can list and read all requests across their company. In default ERPNext configuration, however, the `Company` DocType does not grant read permission to `HR Manager` by default, meaning standalone `HR Manager` users without `System Manager` or explicit DocPerm fail `company_access`.
+
+### Architectural decision needed:
+- Should privileged roles such as `Accounts Manager` or department managers have request list/read visibility scoped by module/template (e.g. accounting/purchase vs HR vs generic)?
+- Should `HR Manager` request oversight be constrained only to HR-related request types, or remain company-wide?
+
