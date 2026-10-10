@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+Fixed:
+
+- Seed `ASOUD Company Setup` row for demo company with office_saved, accounting_saved, roles_saved all 1 and enabled_roles_json `["System Manager"]` so setup status resolves as complete.
+
 ## 0.15.0 - 2026-10-09
 
 Deployment: run `bench migrate` (new DocTypes ASOUD Action Execution, ASOUD Access Assignment). Workflows with System Action stages need `asoud_workflow_service_user` and `asoud_workflow_service_companies` in the site config.

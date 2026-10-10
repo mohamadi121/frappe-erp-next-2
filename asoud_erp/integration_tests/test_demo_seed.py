@@ -59,6 +59,7 @@ def demo_counts() -> dict:
         "material_requests": frappe.db.count("Material Request", {"company": m.COMPANY}),
         "definitions": frappe.db.count("ASOUD Workflow Definition", {"company": m.COMPANY}),
         "requests": frappe.db.count("ASOUD Workflow Request", {"company": m.COMPANY}),
+        "company_setup": frappe.db.count("ASOUD Company Setup", {"company": m.COMPANY}),
     }
 
 
@@ -117,8 +118,18 @@ class TestDemoSeed(FrappeTestCase):
         leaves = leave_requests_seeded()
         self.assertEqual(
             (before["employees"], before["users"],
-             before["profiles"], before["definitions"], before["requests"]),
-            (12, 4, 12, 3, 6 if leaves else 3))
+             before["profiles"], before["definitions"], before["requests"], before["company_setup"]),
+            (12, 4, 12, 3, 6 if leaves else 3, 1))
+        from asoud_erp.api.v1 import setup
+
+        status = setup.get_setup_status(m.COMPANY)["data"]
+        self.assertTrue(status["complete"])
+        self.assertTrue(status["office_saved"])
+        self.assertTrue(status["accounting_saved"])
+        self.assertTrue(status["roles_saved"])
+        self.assertEqual(status["enabled_roles"], ["System Manager"])
+        admin_status = setup.get_setup_status()["data"]
+        self.assertTrue(admin_status["complete"])
         # ERPNext adds its own standard departments to every new company, so
         # only the four demo departments are asserted by name.
         for name in m.DEPARTMENTS:
@@ -231,7 +242,7 @@ class TestDemoSeed(FrappeTestCase):
                             "Salary Structure Assignment", "Sales Invoice",
                             "Purchase Order", "Purchase Receipt", "Purchase Invoice",
                             "Stock Entry", "Material Request", "Repost Item Valuation",
-                            "ASOUD Party Profile",
+                            "ASOUD Party Profile", "ASOUD Company Setup",
                             "ASOUD Workflow Definition", "ASOUD Workflow Request"):
                 filters = {"company": m.COMPANY}
                 self.assertEqual(frappe.db.count(doctype, filters), 0, doctype)
