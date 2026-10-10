@@ -6,6 +6,7 @@ Fixed:
 
 - Seed `ASOUD Company Setup` row for demo company with office_saved, accounting_saved, roles_saved all 1 and enabled_roles_json `["System Manager"]` so setup status resolves as complete.
 - Return management-only dashboard payload with `manager_access: true` for System Manager and HR Manager users without a linked Employee in `hr.get_dashboard`.
+- Accept str, JSON list string and list for `item_code` normalization in `stock_balance` report filters and API.
 
 ## 0.15.0 - 2026-10-09
 
