@@ -8,6 +8,7 @@ from frappe.utils import getdate, nowdate
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.hr_contract import normalize_communication_payload, normalize_report_payload
+from asoud_erp.services.request_access import require_company
 
 
 def _payload(value):
@@ -94,6 +95,7 @@ def list_team(query: str | None = None):
 
 @frappe.whitelist()
 def organization_tree(company: str):
+    require_company(company)
     frappe.has_permission("Department", ptype="read", throw=True)
     return success(frappe.get_all("Department", filters={"company": company, "disabled": 0}, fields=["name", "department_name", "parent_department", "is_group"], order_by="lft asc", limit_page_length=500))
 

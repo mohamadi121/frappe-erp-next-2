@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+Security:
+
+- `party.save_party` redacts `bank_name`, `iban`, `account_number`, `card_number` and `account_holder` from its response for roles without bank access (and ignores such `bank_*` inputs), matching `party.list_parties` (F5).
+- `hr.organization_tree` calls `require_company(company)` before reading the department tree, closing a cross-company read (F7).
+- `floating_detail.list_floating_details` returns only details whose linked record belongs to a company the caller may access; rows with no linked record stay visible to `System Manager`/`Accounts Manager` only (F8).
+
 ## 0.15.1 - 2026-10-10
 
 Fixed:

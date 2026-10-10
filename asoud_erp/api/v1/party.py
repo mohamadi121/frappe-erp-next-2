@@ -402,9 +402,10 @@ def save_party(
     doc.city = normalize_optional(city)
     doc.address_line = normalize_optional(address_line)
     doc.postal_code = normalize_optional(postal_code)
-    doc.bank_name = normalize_optional(bank_name)
-    doc.iban = normalize_optional(iban)
-    doc.account_number = normalize_optional(account_number)
+    if _may_read_bank_details():
+        doc.bank_name = normalize_optional(bank_name)
+        doc.iban = normalize_optional(iban)
+        doc.account_number = normalize_optional(account_number)
     doc.birth_date = normalize_optional(birth_date)
     doc.employee_gender = normalize_optional(employee_gender)
     doc.date_of_joining = normalize_optional(date_of_joining)
@@ -424,8 +425,9 @@ def save_party(
     doc.credit_limit = float(credit_limit or 0)
     doc.opening_balance = float(opening_balance or 0)
     doc.balance_type = normalize_optional(balance_type) or "None"
-    doc.card_number = normalize_optional(card_number)
-    doc.account_holder = normalize_optional(account_holder)
+    if _may_read_bank_details():
+        doc.card_number = normalize_optional(card_number)
+        doc.account_holder = normalize_optional(account_holder)
     doc.region = normalize_optional(region)
     doc.neighborhood = normalize_optional(neighborhood)
     doc.plaque = normalize_optional(plaque)
@@ -473,6 +475,9 @@ def save_party(
         from asoud_erp.services.personnel_contract import FINANCIAL_FIELDS
 
         for field in FINANCIAL_FIELDS:
+            result.pop(field, None)
+    if not _may_read_bank_details():
+        for field in BANK_FIELDS:
             result.pop(field, None)
     result["roles"] = selected_roles
     result["detail_groups"] = selected_groups

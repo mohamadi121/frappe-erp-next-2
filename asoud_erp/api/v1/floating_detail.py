@@ -4,7 +4,35 @@ from frappe import _
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.detail_code_service import next_detail_code
 from asoud_erp.services.erp_documents import require_roles
-from asoud_erp.services.request_access import require_company
+from asoud_erp.services.request_access import company_access, require_company
+
+
+def _accessible_companies() -> list[str]:
+    """The companies the session user may see, from the tenant boundary helper."""
+    return [name for name in frappe.get_all("Company", pluck="name") if company_access(name)]
+
+
+def _may_manage_catalogue() -> bool:
+    """Only these roles see catalogue rows that are not tied to a tenant record."""
+    return bool({"System Manager", "Accounts Manager"}.intersection(frappe.get_roles()))
+
+
+def _linked_company(linked_doctype: str | None, linked_document: str | None) -> str | None:
+    """Resolve a catalogue row's tenant without raising, for read filtering.
+
+    Returns the linked record's company, or ``None`` when the row is not tied to
+    a tenanted record (no link, a doctype without a company field, or a dangling
+    link). Mirrors :func:`_require_linked_company` for the write path.
+    """
+    if not linked_doctype or not linked_document:
+        return None
+    if not frappe.db.exists("DocType", linked_doctype):
+        return None
+    if not frappe.db.exists(linked_doctype, linked_document):
+        return None
+    if not frappe.get_meta(linked_doctype).has_field("company"):
+        return None
+    return frappe.db.get_value(linked_doctype, linked_document, "company") or None
 
 
 def _require_linked_company(linked_doctype: str | None, linked_document: str | None) -> None:
@@ -60,6 +88,17 @@ def list_floating_details(detail_group: str | None = None, search: str | None = 
         order_by="detail_code asc",
         limit_page_length=200,
     )
+    allowed_companies = set(_accessible_companies())
+    can_see_unlinked = _may_manage_catalogue()
+    visible = []
+    for row in rows:
+        company = _linked_company(row.get("linked_doctype"), row.get("linked_document"))
+        if company:
+            if company in allowed_companies:
+                visible.append(row)
+        elif can_see_unlinked:
+            visible.append(row)
+    rows = visible
     for row in rows:
         row["group_title"] = frappe.db.get_value(
             "ASOUD Detail Group", row["detail_group"], "group_name"

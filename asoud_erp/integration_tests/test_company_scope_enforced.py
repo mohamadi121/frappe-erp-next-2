@@ -90,6 +90,37 @@ class TestFloatingDetailCompanyScope(APITestCase):
         data = floating_detail.link_floating_detail(name=self.detail, party_profile=self.scope["party_a"])["data"]
         self.assertEqual(data["linked_document"], self.scope["party_a"])
 
+    def _linked_detail(self, title: str, party: str) -> str:
+        return floating_detail.create_floating_detail(
+            title=title, detail_type="Customer", detail_group="10000",
+            linked_doctype="ASOUD Party Profile", linked_document=party,
+        )["data"]["name"]
+
+    def test_list_only_returns_details_of_accessible_companies(self):
+        """F8: the global catalogue is filtered by the linked record's tenant.
+
+        `ASOUD Floating Detail` has no company column, so `list_floating_details`
+        answered with every company's rows. It must keep only rows whose linked
+        record belongs to a company the caller may access; rows with no linked
+        record stay with `System Manager`/`Accounts Manager` only.
+        """
+        frappe.set_user("Administrator")
+        detail_a = self._linked_detail("ASOUD Scope Detail A", self.scope["party_a"])
+        detail_b = self._linked_detail("ASOUD Scope Detail B", self.scope["party_b"])
+        unlinked = self.detail
+
+        frappe.set_user(ACCOUNTS_A_USER)
+        names = {row["name"] for row in floating_detail.list_floating_details()["data"]}
+        self.assertIn(detail_a, names)
+        self.assertNotIn(detail_b, names)
+        self.assertNotIn(unlinked, names)
+
+        frappe.set_user(MANAGER_USER)
+        names = {row["name"] for row in floating_detail.list_floating_details()["data"]}
+        self.assertIn(detail_a, names)
+        self.assertNotIn(detail_b, names)
+        self.assertIn(unlinked, names)
+
 
 class TestDetailGroupCompanyScope(APITestCase):
     """``ASOUD Detail Group`` is a site-wide catalogue, but ``ASOUD Account

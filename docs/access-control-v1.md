@@ -72,6 +72,18 @@ Bank details (`bank_name`, `iban`, `account_number`, `card_number`,
 a role that is not a personnel manager, and `personnel.update_personnel` refuses
 them outright.
 
+The bank-detail rule applies to writes as well as reads: `party.save_party`
+redacts those keys from its response for a role without bank access and ignores
+the corresponding `bank_*` arguments, so an `Accounts User` can neither read nor
+overwrite stored bank data (F5).
+
+Company scope is enforced before the query everywhere it applies:
+`hr.organization_tree` calls `require_company(company)` first, so it no longer
+returns another company's department tree (F7). `floating_detail.list_floating_details`
+keeps only catalogue rows whose linked record belongs to a company the caller may
+access; rows with no linked record stay visible to `System Manager` and
+`Accounts Manager` only (F8).
+
 ## Employee is HR-only master data
 
 `ASOUD Party Profile` with the `Employee` role is the party view of an ERPNext

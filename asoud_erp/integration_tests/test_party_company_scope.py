@@ -15,6 +15,7 @@ from asoud_erp.integration_tests.fixtures import APITestCase
 from asoud_erp.integration_tests.tenancy import (
     ACCOUNTS_A_USER,
     EMPLOYEE_A_USER,
+    IBAN_A,
     IBAN_B,
     MANAGER_USER,
     setup_tenancy,
@@ -70,6 +71,38 @@ class TestPartyCompanyScope(APITestCase):
         own = next(row for row in _rows(company=self.company) if row["name"] == self.party_a)
         for field in ("iban", "bank_name", "account_number", "card_number", "account_holder"):
             self.assertNotIn(field, own)
+
+    def test_save_party_response_redacts_bank_details_for_accounts_user(self):
+        """SEC-BP-05: the write response must not hand a cashier the bank data.
+
+        `save_party` redacted only the salary `FINANCIAL_FIELDS`; the party's bank
+        keys came back to an `Accounts User` even though `list_parties` hides them.
+        """
+        frappe.set_user(ACCOUNTS_A_USER)
+        data = party.save_party(
+            name=self.party_a,
+            party_type="Individual",
+            display_name="ASOUD Scope Party A",
+            roles=json.dumps(["Other"]),
+            company=self.company,
+            iban=IBAN_B,
+        )["data"]
+        for field in ("bank_name", "iban", "account_number", "card_number", "account_holder"):
+            self.assertNotIn(field, data)
+        # The same role must not silently overwrite the stored bank data either.
+        self.assertEqual(frappe.db.get_value("ASOUD Party Profile", self.party_a, "iban"), IBAN_A)
+
+    def test_save_party_response_keeps_bank_details_for_accounts_manager(self):
+        frappe.set_user(MANAGER_USER)
+        data = party.save_party(
+            name=self.party_a,
+            party_type="Individual",
+            display_name="ASOUD Scope Party A",
+            roles=json.dumps(["Other"]),
+            company=self.company,
+        )["data"]
+        for field in ("bank_name", "iban", "account_number", "card_number", "account_holder"):
+            self.assertIn(field, data)
 
 
 class TestPartyWriteCompanyScope(APITestCase):
