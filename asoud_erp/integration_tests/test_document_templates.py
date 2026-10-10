@@ -407,6 +407,47 @@ class TestDocumentTemplates(APITestCase):
         self.assertTrue(frappe.get_doc("File", foreign["file"]).is_downloadable())
         self.assertFalse(frappe.get_doc("File", foreign["public_file"]).is_downloadable())
 
+    def test_privileged_roles_request_query_and_permission_pinned(self):
+        """Pins the current behavior of request_query (list) vs request_permission (read) for privileged roles."""
+        from frappe.client import get, get_list
+
+        frappe.set_user(EMPLOYEE_USER)
+        with patch.object(workflow_runtime, "_notify_user"):
+            request = workflow_request.create_request(
+                self.company, self.definition.name, "خرید تجهیزات پین", "doc-pin-" + self.token,
+                values={"amount": 10})["data"]
+
+        # Administrator (System Manager): both lists and reads requests across company
+        frappe.set_user("Administrator")
+        listed_admin = [row.name for row in get_list("ASOUD Workflow Request", filters={"name": request["name"]}, fields=["name"])]
+        self.assertEqual(listed_admin, [request["name"]])
+        self.assertEqual(get("ASOUD Workflow Request", request["name"])["name"], request["name"])
+        self.assertTrue(frappe.has_permission("ASOUD Workflow Request", "read", request["name"]))
+
+        # Accounts Manager in the same company (not owner, not assigned task): neither lists nor reads
+        acc_manager = self._user_with_roles("acc_mgr_pin", ["Accounts Manager"])
+        frappe.get_doc({"doctype": "User Permission", "user": acc_manager, "allow": "Company",
+                        "for_value": self.company, "apply_to_all_doctypes": 1}).insert()
+
+        frappe.set_user(acc_manager)
+        listed_acc = [row.name for row in get_list("ASOUD Workflow Request", filters={"name": request["name"]}, fields=["name"])]
+        self.assertEqual(listed_acc, [])
+        self.assertFalse(frappe.has_permission("ASOUD Workflow Request", "read", request["name"]))
+        with self.assertRaises(frappe.PermissionError):
+            get("ASOUD Workflow Request", request["name"])
+
+        # HR Manager without native Company read permission: company_access is False, so neither lists nor reads
+        hr_manager = self._user_with_roles("hr_mgr_pin", ["HR Manager"])
+        frappe.get_doc({"doctype": "User Permission", "user": hr_manager, "allow": "Company",
+                        "for_value": self.company, "apply_to_all_doctypes": 1}).insert()
+
+        frappe.set_user(hr_manager)
+        listed_hr = [row.name for row in get_list("ASOUD Workflow Request", filters={"name": request["name"]}, fields=["name"])]
+        self.assertEqual(listed_hr, [])
+        self.assertFalse(frappe.has_permission("ASOUD Workflow Request", "read", request["name"]))
+        with self.assertRaises(frappe.PermissionError):
+            get("ASOUD Workflow Request", request["name"])
+
     def _user_with_roles(self, prefix: str, roles: list[str]) -> str:
         frappe.set_user("Administrator")
         return frappe.get_doc({"doctype": "User", "email": f"doc.{prefix}-{self.token}@example.com",
