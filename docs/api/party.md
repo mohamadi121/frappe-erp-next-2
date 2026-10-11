@@ -51,6 +51,19 @@ several companies calls the endpoint once per company.
 `role` is one of `Customer`, `Supplier`, `Employee`, `Shareholder`, `Other`;
 `search` matches `display_name`, `national_id` or `mobile`.
 
+### Input normalisation
+
+Identifier and number inputs (`national_id`, `economic_code`, `registration_number`,
+`postal_code`, `phone`, `secondary_phone`, `mobile`, `iban`, `account_number`,
+`card_number`, `birth_certificate_number`) are normalised before validation and
+storage: Persian (۰-۹) and Arabic-Indic (٠-٩) digits become ASCII and surrounding
+whitespace is trimmed. Free text is untouched. The same rule applies to
+`setup.save_office` (office `national_id`, `economic_code`, `registration_number`,
+`postal_code`, `phone`, `fiscal_year`) and to `personnel.update_personnel` /
+`personnel_file` (Personnel `national_id`, `mobile`, `phone`, `postal_code`,
+`emergency_phone`, record `document_number`). Existing rows are converted once by
+the `v0_15_3.normalize_persian_digits` patch.
+
 ### Bank details
 
 `bank_name`, `iban`, `account_number`, `card_number` and `account_holder` are

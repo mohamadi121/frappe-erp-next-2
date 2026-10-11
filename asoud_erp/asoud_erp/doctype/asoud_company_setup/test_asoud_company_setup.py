@@ -52,3 +52,23 @@ class TestASOUDCompanySetup(FrappeTestCase):
     def test_invalid_legal_id_is_rejected(self):
         with self.assertRaises(frappe.ValidationError):
             save_office("Legal", self.company_name, national_id="11111111111")
+
+    def test_persian_digits_in_office_fields_are_stored_as_ascii(self):
+        office = save_office(
+            "Personal",
+            self.company_name,
+            postal_code="۹۸۷۷۶۶۶۶۶۶",
+            phone="۰۲۱۸۸۸۸۸۸۸۸",
+            fiscal_year="۱۴۰۵",
+        )
+        stored = frappe.db.get_value(
+            "ASOUD Company Setup",
+            office["data"]["company"],
+            ["postal_code", "phone", "fiscal_year"],
+            as_dict=True,
+        )
+        self.assertEqual(
+            (stored.postal_code, stored.phone, stored.fiscal_year),
+            ("9877666666", "02188888888", "1405"),
+        )
+        self.assertEqual(office["data"]["fiscal_year"], 1405)

@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.15.3 - 2026-10-11
+
+Deployment: the release contains a patch (`v0_15_3.normalize_persian_digits`): run `bench --site <site> migrate`. No new DocTypes.
 
 Security:
 
@@ -9,6 +11,11 @@ Security:
 - `floating_detail.disable_floating_detail` requires the loaded detail's linked company before disabling (F-P3).
 - `account.list_accounts` filters expanded floating details by the linked record's tenant, matching `floating_detail.list_floating_details` (F-P4).
 - `projects.update_task_status` requires the task's project company when the caller is not the assignee, so a manager can no longer move tasks of a foreign company (F-P5).
+
+Fixed:
+
+- Persian (۰-۹) and Arabic-Indic (٠-٩) digits are normalised to ASCII at the write boundaries of `party.save_party`, `setup.save_office` and `personnel.update_personnel` (plus the Employee mirrors), so identifier and number columns (national/economic/registration/postal codes, phone/mobile/fax, account/card/IBAN numbers, fiscal year and code digit counts) never store non-ASCII digits.
+- Migration patch `v0_15_3.normalize_persian_digits` converts existing values in those columns of `ASOUD Party Profile`, `ASOUD Company Setup`, `ASOUD Personnel Record` and `Employee`; it only rewrites rows that contain a Persian/Arabic-Indic digit and is safe to re-run.
 
 ## 0.15.2 - 2026-10-10
 

@@ -5,6 +5,7 @@ from frappe import _
 from frappe.utils import getdate
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.digits import normalize_numeric_text
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.jalali import jalali_fiscal_period
 from asoud_erp.services.party_validation import is_valid_iranian_legal_id
@@ -183,18 +184,18 @@ def save_office(
     setup.national_id = normalized_id or None
     setup.economic_code = normalized_economic_code
     setup.owner_full_name = str(owner_full_name or "").strip()
-    setup.registration_number = str(registration_number or "").strip()
+    setup.registration_number = normalize_numeric_text(registration_number) or ""
     setup.activity_type = str(activity_type or "Commercial").strip()
     setup.company_type = str(company_type or "").strip()
     setup.parent_office = str(parent_office or "").strip()
-    setup.phone = str(phone or "").strip()
+    setup.phone = normalize_numeric_text(phone) or ""
     setup.email = str(email or "").strip()
     setup.website = str(website or "").strip()
     setup.province = str(province or "Tehran").strip()
     setup.city = str(city or "Tehran").strip()
     setup.address = str(address or "").strip()
-    setup.postal_code = str(postal_code or "").strip()
-    setup.fiscal_year = str(fiscal_year or "1405").strip()
+    setup.postal_code = normalize_numeric_text(postal_code) or ""
+    setup.fiscal_year = normalize_numeric_text(fiscal_year) or "1405"
     if chart_template:
         setup.chart_template = str(chart_template).strip()
     setup.description = str(description or "").strip()
@@ -225,9 +226,9 @@ def update_company_settings(
         frappe.throw(_("Display currency must be Rial or Toman"))
     if chart_template not in ALLOWED_CHART_TEMPLATES:
         frappe.throw(_("Chart template is not valid"))
-    month = int(fiscal_year_start_month)
-    day = int(fiscal_year_start_day)
-    year = int(fiscal_year)
+    month = int(normalize_numeric_text(fiscal_year_start_month))
+    day = int(normalize_numeric_text(fiscal_year_start_day))
+    year = int(normalize_numeric_text(fiscal_year))
     if not 1 <= month <= 12:
         frappe.throw(_("Fiscal year start month must be between 1 and 12"))
     if not 1 <= day <= 31:
@@ -276,11 +277,13 @@ def create_fiscal_year(
 ) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
     _setup(company)
-    year = int(fiscal_year)
+    year = int(normalize_numeric_text(fiscal_year))
     if not 1300 <= year <= 1600:
         frappe.throw(_("Fiscal year must be a valid Solar Hijri year"))
     try:
-        start_date, end_date = jalali_fiscal_period(year, int(start_month), int(start_day))
+        start_date, end_date = jalali_fiscal_period(
+            year, int(normalize_numeric_text(start_month)), int(normalize_numeric_text(start_day))
+        )
     except ValueError as exc:
         frappe.throw(_(str(exc)))
     title = str(year)
@@ -371,10 +374,14 @@ def update_settings(
     require_roles(("System Manager", "Accounts Manager"))
     if display_currency not in {"Rial", "Toman"}:
         frappe.throw(_("Display currency must be Rial or Toman"))
-    digits = int(detail_code_digits)
+    digits = int(normalize_numeric_text(detail_code_digits))
     if not 3 <= digits <= 12:
         frappe.throw(_("Detail code digits must be between 3 and 12"))
-    level_digits = [int(group_code_digits), int(general_code_digits), int(ledger_code_digits)]
+    level_digits = [
+        int(normalize_numeric_text(group_code_digits)),
+        int(normalize_numeric_text(general_code_digits)),
+        int(normalize_numeric_text(ledger_code_digits)),
+    ]
     if any(value < 1 or value > 4 for value in level_digits):
         frappe.throw(_("Account level code digits must be between 1 and 4"))
 
@@ -416,7 +423,11 @@ def update_account_code_settings(
 ) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
     setup = _setup(company)
-    values = [int(group_code_digits), int(general_code_digits), int(ledger_code_digits)]
+    values = [
+        int(normalize_numeric_text(group_code_digits)),
+        int(normalize_numeric_text(general_code_digits)),
+        int(normalize_numeric_text(ledger_code_digits)),
+    ]
     if any(value < 1 or value > 4 for value in values):
         frappe.throw(_("Account level code digits must be between 1 and 4"))
     setup.auto_generate_account_code = int(bool(auto_generate_account_code))
