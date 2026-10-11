@@ -91,7 +91,11 @@ resolve the detail's linked record (`_require_linked_company`) and
 `floating_detail.disable_floating_detail` requires it too, so a shared detail
 group can no longer be used to mutate another company's detail (F-P2, F-P3), and
 `account.list_accounts` filters the expanded details by the linked record's
-company like `floating_detail.list_floating_details` (F-P4).
+company like `floating_detail.list_floating_details` (F-P4). A write to a
+record that itself has no company column is tenant-gated through the record it
+belongs to: `projects.update_task_status` requires the task's project company
+unless the caller is the task assignee, so a Projects manager cannot mutate
+tasks of another company while employees still move their own tasks (F-P5).
 
 ## Employee is HR-only master data
 

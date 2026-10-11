@@ -2,7 +2,10 @@ import frappe
 from frappe.utils import add_to_date, now_datetime
 
 from asoud_erp.api.v1 import projects
-from asoud_erp.integration_tests.fixtures import APPROVER_USER, EMPLOYEE_USER, APITestCase
+from asoud_erp.integration_tests.fixtures import APPROVER_USER, EMPLOYEE_USER, APITestCase, _user
+from asoud_erp.integration_tests.tenancy import _employee, setup_tenancy
+
+PROJECTS_A_USER = "asoud.scope-projects-a@example.com"
 
 
 class TestProjects(APITestCase):
@@ -53,3 +56,51 @@ class TestProjects(APITestCase):
         with self.assertRaises(frappe.ValidationError):
             projects.create_timesheet([{"activity_type": "ASOUD Work", "from_time": str(now_datetime()),
                                         "hours": 30}])
+
+
+class TestProjectTaskCompanyScope(APITestCase):
+    """A Task has no company column; its project's company is the tenant guard.
+
+    `update_task_status` let any Projects Manager/User save any task with
+    `ignore_permissions=True` and never tied it to a company (F-P5). A manager
+    may only move tasks of projects in a company they can access; an assignee
+    keeps moving their own task regardless of the project company.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        frappe.set_user("Administrator")
+        cls.scope = setup_tenancy()
+        cls.second = cls.scope["second"]
+        if not frappe.db.exists("Activity Type", "ASOUD Work"):
+            frappe.get_doc({"doctype": "Activity Type", "activity_type": "ASOUD Work"}).insert()
+        _user(PROJECTS_A_USER, ["Projects Manager", "Employee"])
+        _employee(PROJECTS_A_USER, "Scope Projects A", cls.scope["first"])
+        frappe.db.commit()
+
+    def setUp(self):
+        super().setUp()
+        frappe.set_user("Administrator")
+        project_b = projects.create_project(self.second, "پروژه خارجی", notes="")["data"]
+        self.task_b = projects.create_task(project_b["name"], "کار خارجی")["data"]
+        self.assigned_b = projects.create_task(project_b["name"], "کار خارجی من",
+                                               assign_to=[EMPLOYEE_USER])["data"]
+        project_a = projects.create_project(self.company, "پروژه داخلی", notes="")["data"]
+        self.task_a = projects.create_task(project_a["name"], "کار داخلی")["data"]
+
+    def test_a_manager_cannot_move_a_task_of_a_foreign_company(self):
+        frappe.set_user(PROJECTS_A_USER)
+        with self.assertRaises(frappe.PermissionError):
+            projects.update_task_status(self.task_b, "Working")
+        self.assertEqual(frappe.db.get_value("Task", self.task_b, "status"), "Open")
+
+    def test_a_manager_can_move_a_task_of_the_own_company(self):
+        frappe.set_user(PROJECTS_A_USER)
+        moved = projects.update_task_status(self.task_a, "Working", progress=40)["data"]
+        self.assertEqual((moved["status"], moved["progress"]), ("Working", 40))
+
+    def test_an_assignee_still_moves_their_task_regardless_of_the_project_company(self):
+        frappe.set_user(EMPLOYEE_USER)
+        moved = projects.update_task_status(self.assigned_b, "Working", progress=40)["data"]
+        self.assertEqual((moved["status"], moved["progress"]), ("Working", 40))

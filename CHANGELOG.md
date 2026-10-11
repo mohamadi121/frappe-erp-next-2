@@ -8,6 +8,7 @@ Security:
 - `account.delete_account`/`update_account` resolve the floating detail's linked record and `require_company` it, so a detail of another company can no longer be deleted, renamed or disabled through a shared detail group (F-P2).
 - `floating_detail.disable_floating_detail` requires the loaded detail's linked company before disabling (F-P3).
 - `account.list_accounts` filters expanded floating details by the linked record's tenant, matching `floating_detail.list_floating_details` (F-P4).
+- `projects.update_task_status` requires the task's project company when the caller is not the assignee, so a manager can no longer move tasks of a foreign company (F-P5).
 
 ## 0.15.2 - 2026-10-10
 
