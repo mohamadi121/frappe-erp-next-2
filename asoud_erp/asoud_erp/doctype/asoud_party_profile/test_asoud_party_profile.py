@@ -74,7 +74,7 @@ class TestASOUDPartyProfile(FrappeTestCase):
         created = save_party(
             party_type="Individual",
             display_name="ASOUD Digits Party",
-            roles=["Customer"],
+            roles=["Other"],
             company=self.company,
             national_id="۰۰۱۳۵۴۲۴۳۵",
             mobile="۰۹۱۲۱۲۳۴۵۶۷",
@@ -94,14 +94,14 @@ class TestASOUDPartyProfile(FrappeTestCase):
         legacy = save_party(
             party_type="Individual",
             display_name="ASOUD Digits Legacy",
-            roles=["Customer"],
+            roles=["Other"],
             company=self.company,
             postal_code="1111111111",
         )["data"]["name"]
         clean = save_party(
             party_type="Individual",
             display_name="ASOUD Digits Clean",
-            roles=["Customer"],
+            roles=["Other"],
             company=self.company,
             postal_code="2222222222",
         )["data"]["name"]

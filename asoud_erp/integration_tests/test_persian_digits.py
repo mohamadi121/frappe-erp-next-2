@@ -22,7 +22,7 @@ class TestPersianDigits(FrappeTestCase):
         result = save_party(
             party_type="Individual",
             display_name=f"ASOUD Digits Party {frappe.generate_hash(length=6)}",
-            roles=["Customer"],
+            roles=["Other"],
             company=company(),
             national_id="۰۰۱۳۵۴۲۴۳۵",
             mobile="۰۹۱۲۱۲۳۴۵۶۷",
@@ -67,14 +67,14 @@ class TestPersianDigits(FrappeTestCase):
         legacy = save_party(
             party_type="Individual",
             display_name=f"ASOUD Digits Legacy {frappe.generate_hash(length=6)}",
-            roles=["Customer"],
+            roles=["Other"],
             company=company(),
             postal_code="1111111111",
         )["data"]["name"]
         clean = save_party(
             party_type="Individual",
             display_name=f"ASOUD Digits Clean {frappe.generate_hash(length=6)}",
-            roles=["Customer"],
+            roles=["Other"],
             company=company(),
             postal_code="2222222222",
         )["data"]["name"]
