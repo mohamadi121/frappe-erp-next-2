@@ -39,3 +39,14 @@ def test_invalid_filters(args) -> None:
 
 def test_every_report_has_an_erpnext_name() -> None:
     assert set(REPORTS) == {"receivable", "payable", "profit_and_loss", "balance_sheet", "stock_balance"}
+
+
+@pytest.mark.parametrize("item_input,expected", [
+    ("ITEM-1", ["ITEM-1"]),
+    ('["ITEM-1", "ITEM-2"]', ["ITEM-1", "ITEM-2"]),
+    (["ITEM-1", "ITEM-2"], ["ITEM-1", "ITEM-2"]),
+])
+def test_stock_balance_item_code_normalization(item_input, expected) -> None:
+    _, filters = report_filters("stock_balance", "T", from_date="2026-01-01", to_date="2026-01-31",
+                                item_code=item_input)
+    assert filters["item_code"] == expected

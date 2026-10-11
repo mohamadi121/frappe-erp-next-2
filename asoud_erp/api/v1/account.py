@@ -3,6 +3,12 @@ import json
 import frappe
 from frappe import _
 
+from asoud_erp.api.v1.floating_detail import (
+    _accessible_companies,
+    _linked_company,
+    _may_manage_catalogue,
+    _require_linked_company,
+)
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.account_code_service import next_account_code
 from asoud_erp.services.chart_template_service import template_rows
@@ -87,28 +93,39 @@ def list_accounts(company: str) -> dict:
         fields=["account", "detail_group"],
         limit_page_length=0,
     )
+    # A floating detail is a site-wide catalogue row; its linked record is the
+    # tenant. Expanded details follow the same rule as
+    # `floating_detail.list_floating_details` (F-P4 / F8-remnant).
+    allowed_companies = set(_accessible_companies())
+    can_see_unlinked = _may_manage_catalogue()
     for mapping in mappings:
         details = frappe.get_all(
             "ASOUD Floating Detail",
             filters={"detail_group": mapping.detail_group, "disabled": 0},
-            fields=["name", "detail_code", "title"],
+            fields=["name", "detail_code", "title", "linked_doctype", "linked_document"],
             order_by="detail_code asc",
             limit_page_length=0,
         )
-        rows.extend(
-            {
-                "name": f"DETAIL::{detail.name}::{mapping.account}",
-                "account_number": detail.detail_code,
-                "account_name": detail.title,
-                "parent_account": mapping.account,
-                "root_type": None,
-                "is_group": 0,
-                "disabled": 0,
-                "account_type": "ASOUD Floating Detail",
-                "asoud_level": "Detail",
-            }
-            for detail in details
-        )
+        for detail in details:
+            linked = _linked_company(detail.get("linked_doctype"), detail.get("linked_document"))
+            if linked:
+                if linked not in allowed_companies:
+                    continue
+            elif not can_see_unlinked:
+                continue
+            rows.append(
+                {
+                    "name": f"DETAIL::{detail.name}::{mapping.account}",
+                    "account_number": detail.detail_code,
+                    "account_name": detail.title,
+                    "parent_account": mapping.account,
+                    "root_type": None,
+                    "is_group": 0,
+                    "disabled": 0,
+                    "account_type": "ASOUD Floating Detail",
+                    "asoud_level": "Detail",
+                }
+            )
     return success(rows)
 
 
@@ -314,13 +331,22 @@ def _validate_detail_company(company: str, account: str) -> None:
     frappe.get_doc("Company", company).check_permission("read")
     if not frappe.db.exists("Account", {"name": parts[2], "company": company}):
         frappe.throw(_("Account does not belong to the selected company"))
-    group = frappe.db.get_value("ASOUD Floating Detail", parts[1], "detail_group")
-    if not group or not frappe.db.exists(
+    detail = frappe.db.get_value(
+        "ASOUD Floating Detail",
+        parts[1],
+        ["detail_group", "linked_doctype", "linked_document"],
+        as_dict=True,
+    )
+    if not detail or not detail.detail_group or not frappe.db.exists(
         "ASOUD Account Mapping",
-        {"company": company, "account": parts[2], "detail_group": group,
+        {"company": company, "account": parts[2], "detail_group": detail.detail_group,
          "disabled": 0, "allow_floating_detail": 1},
     ):
         frappe.throw(_("Floating detail does not belong to the selected account"))
+    # The detail itself has no company column; the record it is linked to is the
+    # tenant boundary. Refuse to mutate another company's detail through a
+    # shared group (F-P2).
+    _require_linked_company(detail.linked_doctype, detail.linked_document)
 
 
 @frappe.whitelist(methods=["POST"])

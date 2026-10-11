@@ -43,6 +43,25 @@ class TestASOUDPersonnelNative(FrappeTestCase):
         return {"kind": "attendance", "title": "Work day", "date": "2026-01-02",
                 "start": "08:00", "end": "16:00"}
 
+    def test_update_personnel_normalises_persian_digits(self):
+        from asoud_erp.services.personnel_employee import profile_revision
+
+        revision = profile_revision(self.person)
+        personnel.update_personnel(
+            self.person.name,
+            {"mobile": "۰۹۱۲۳۴۵۶۷۸۹", "phone": "۰۲۱۸۸۸۸۸۸۸۸", "postal_code": "۹۸۷۷۶۶۶۶۶۶"},
+            revision,
+            "digits-profile-request",
+        )
+        self.person.reload()
+        self.assertEqual(
+            (self.person.mobile, self.person.phone, self.person.postal_code),
+            ("09123456789", "02188888888", "9877666666"),
+        )
+        self.assertEqual(
+            frappe.db.get_value("Employee", self.employee.name, "cell_number"), "09123456789"
+        )
+
     def test_attendance_uses_checkins_and_retries_once(self):
         payload = self.attendance()
         name = self.add(payload)

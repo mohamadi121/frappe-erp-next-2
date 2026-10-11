@@ -1,5 +1,6 @@
 """Filters of the ERPNext query reports exposed by `api.v1.financial_reports`."""
 
+import json
 from datetime import date
 
 REPORTS = {
@@ -18,6 +19,29 @@ def _date(value, name: str) -> str:
         return date.fromisoformat(str(value)).isoformat()
     except ValueError as error:
         raise ValueError(f"{name} must be a YYYY-MM-DD date") from error
+
+
+def normalize_item_codes(item_code) -> list[str] | None:
+    """Normalizes an item code input (str, JSON list, or list) into a list of strings."""
+    if not item_code:
+        return None
+    if isinstance(item_code, str):
+        item_code = item_code.strip()
+        if not item_code:
+            return None
+        if item_code.startswith("[") and item_code.endswith("]"):
+            try:
+                parsed = json.loads(item_code)
+                if isinstance(parsed, list):
+                    normalized = [str(x).strip() for x in parsed if str(x).strip()]
+                    return normalized or None
+            except (json.JSONDecodeError, ValueError):
+                pass
+        return [item_code]
+    if isinstance(item_code, (list, tuple, set)):
+        normalized = [str(x).strip() for x in item_code if str(x).strip()]
+        return normalized or None
+    return [str(item_code).strip()]
 
 
 def report_filters(report: str, company: str, *, from_date=None, to_date=None, report_date=None,
@@ -40,8 +64,9 @@ def report_filters(report: str, company: str, *, from_date=None, to_date=None, r
         filters.update({"from_date": start, "to_date": end})
         if warehouse:
             filters["warehouse"] = warehouse
-        if item_code:
-            filters["item_code"] = item_code if isinstance(item_code, list) else [item_code]
+        items = normalize_item_codes(item_code)
+        if items:
+            filters["item_code"] = items
         return name, filters
     if periodicity not in PERIODICITIES:
         raise ValueError("Invalid periodicity")

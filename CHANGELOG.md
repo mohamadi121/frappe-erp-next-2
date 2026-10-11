@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.15.3 - 2026-10-11
+
+Deployment: the release contains a patch (`v0_15_3.normalize_persian_digits`): run `bench --site <site> migrate`. No new DocTypes.
+
+Security:
+
+- `party.save_party` calls `require_company` on the loaded profile's own company, so a role scoped to another company can no longer move a foreign party into its own tenant and read its PII (F-P1).
+- `account.delete_account`/`update_account` resolve the floating detail's linked record and `require_company` it, so a detail of another company can no longer be deleted, renamed or disabled through a shared detail group (F-P2).
+- `floating_detail.disable_floating_detail` requires the loaded detail's linked company before disabling (F-P3).
+- `account.list_accounts` filters expanded floating details by the linked record's tenant, matching `floating_detail.list_floating_details` (F-P4).
+- `projects.update_task_status` requires the task's project company when the caller is not the assignee, so a manager can no longer move tasks of a foreign company (F-P5).
+
+Fixed:
+
+- Persian (۰-۹) and Arabic-Indic (٠-٩) digits are normalised to ASCII at the write boundaries of `party.save_party`, `setup.save_office` and `personnel.update_personnel` (plus the Employee mirrors), so identifier and number columns (national/economic/registration/postal codes, phone/mobile/fax, account/card/IBAN numbers, fiscal year and code digit counts) never store non-ASCII digits.
+- Migration patch `v0_15_3.normalize_persian_digits` converts existing values in those columns of `ASOUD Party Profile`, `ASOUD Company Setup`, `ASOUD Personnel Record` and `Employee`; it only rewrites rows that contain a Persian/Arabic-Indic digit and is safe to re-run.
+
+## 0.15.2 - 2026-10-10
+
+Security:
+
+- `party.save_party` redacts `bank_name`, `iban`, `account_number`, `card_number` and `account_holder` from its response for roles without bank access (and ignores such `bank_*` inputs), matching `party.list_parties` (F5).
+- `hr.organization_tree` calls `require_company(company)` before reading the department tree, closing a cross-company read (F7).
+- `floating_detail.list_floating_details` returns only details whose linked record belongs to a company the caller may access; rows with no linked record stay visible to `System Manager`/`Accounts Manager` only (F8).
+
+## 0.15.1 - 2026-10-10
+
+Fixed:
+
+- Seed `ASOUD Company Setup` row for demo company with office_saved, accounting_saved, roles_saved all 1 and enabled_roles_json `["System Manager"]` so setup status resolves as complete.
+- Return management-only dashboard payload with `manager_access: true` for System Manager and HR Manager users without a linked Employee in `hr.get_dashboard`.
+- Accept str, JSON list string and list for `item_code` normalization in `stock_balance` report filters and API.
+- Document and pin with regression tests the current behaviour of `request_query` (list) vs `request_permission` (read) for privileged roles in `docs/access-control-v1.md`.
+
 ## 0.15.0 - 2026-10-09
 
 Deployment: run `bench migrate` (new DocTypes ASOUD Action Execution, ASOUD Access Assignment). Workflows with System Action stages need `asoud_workflow_service_user` and `asoud_workflow_service_companies` in the site config.

@@ -151,8 +151,17 @@ def update_task_status(name: str, status: str, progress=None) -> dict:
         frappe.throw(_("Task {0} does not exist").format(name), frappe.DoesNotExistError)
     doc = frappe.get_doc("Task", name)
     is_manager = frappe.session.user == "Administrator" or set(MANAGER_ROLES) & set(frappe.get_roles())
-    if not is_manager and frappe.session.user not in _assignees(doc):
+    is_assignee = frappe.session.user in _assignees(doc)
+    if not is_manager and not is_assignee:
         frappe.throw(_("This task is not assigned to you"), frappe.PermissionError)
+    # A Task has no company field; its project does. Managers save with
+    # ignore_permissions=True, so the project's company is the tenant guard:
+    # a manager may only move tasks of a company they can access (F-P5).
+    # Assignees keep moving their own tasks regardless of the project company.
+    if not is_assignee and doc.project:
+        project_company = frappe.db.get_value("Project", doc.project, "company")
+        if project_company:
+            require_company(project_company)
     doc.status = status
     if progress not in (None, ""):
         try:

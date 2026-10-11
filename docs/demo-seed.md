@@ -29,7 +29,9 @@ passwords are left alone).
 ## What it creates
 
 Company «شرکت نمونه آسود» (IRR, Iran, Standard chart) with a fiscal year
-for the current calendar year, then:
+for the current calendar year, an `ASOUD Company Setup` row with
+`office_saved=1`, `accounting_saved=1`, `roles_saved=1` and `enabled_roles_json`
+`["System Manager"]` so setup status resolves as complete, then:
 
 - Departments (فروش، مالی، فناوری اطلاعات، اداری و منابع انسانی —
   ERPNext adds its own standard departments to the new company as well),

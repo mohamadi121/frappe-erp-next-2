@@ -26,6 +26,7 @@ site whose name contains neither "test" nor "demo", unless ``force=True``.
 """
 
 import base64
+import json
 import secrets
 import time
 from datetime import date
@@ -108,6 +109,42 @@ def _ensure_company() -> str:
     }).insert(ignore_permissions=True)
     _count("company", created=1)
     return m.COMPANY
+
+
+def _ensure_company_setup() -> None:
+    if frappe.db.exists("ASOUD Company Setup", m.COMPANY):
+        _set_values(
+            "ASOUD Company Setup",
+            m.COMPANY,
+            {
+                "office_saved": 1,
+                "accounting_saved": 1,
+                "roles_saved": 1,
+                "enabled_roles_json": json.dumps(["System Manager"]),
+            },
+        )
+        _count("company_setup", skipped=1)
+        return
+    frappe.get_doc({
+        "doctype": "ASOUD Company Setup",
+        "company": m.COMPANY,
+        "office_type": "Legal",
+        "office_saved": 1,
+        "accounting_saved": 1,
+        "roles_saved": 1,
+        "enabled_roles_json": json.dumps(["System Manager"]),
+        "chart_template": "Iran Standard",
+        "display_currency": "Rial",
+        "accounting_basis": "Accrual",
+        "auto_generate_detail_code": 1,
+        "fiscal_year_start_month": 1,
+        "fiscal_year_start_day": 1,
+        "fiscal_year": "1405",
+        "activity_type": "Commercial",
+        "province": "Tehran",
+        "city": "Tehran",
+    }).insert(ignore_permissions=True)
+    _count("company_setup", created=1)
 
 
 def _ensure_fiscal_year() -> str:
@@ -737,6 +774,7 @@ def _ensure_requests(warehouse: str, holiday_list: str) -> None:
 
 def _seed(password: str | None) -> None:
     _ensure_company()
+    _ensure_company_setup()
     _ensure_fiscal_year()
     departments = _ensure_departments()
     _ensure_designations()
@@ -836,6 +874,7 @@ def check() -> dict:
 
     result = {
         "Company": frappe.db.count("Company", {"name": m.COMPANY}),
+        "ASOUD Company Setup": frappe.db.count("ASOUD Company Setup", {"company": m.COMPANY}),
         "Employee": len(demo_employees),
         "Department": frappe.db.count("Department", {"company": m.COMPANY}),
         "User": sum(1 for local, _i, _r, _n in m.USERS
@@ -1069,6 +1108,7 @@ def _reset() -> None:
         for row in [row for row in doc.companies if row.company == m.COMPANY]:
             doc.remove(row)
         doc.save(ignore_permissions=True)
+    wipe("ASOUD Company Setup", _pluck("ASOUD Company Setup", {"company": m.COMPANY}))
     if frappe.db.exists("Company", m.COMPANY):
         frappe.delete_doc("Company", m.COMPANY, ignore_permissions=True)
         deleted["Company"] = deleted.get("Company", 0) + 1
