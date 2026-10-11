@@ -87,3 +87,36 @@ class TestASOUDPartyProfile(FrappeTestCase):
             ("0013542435", "09121234567", "02188888888", "9877666666"),
         )
         self.assertEqual(created["data"]["postal_code"], "9877666666")
+
+    def test_migration_patch_converts_legacy_rows_and_skips_clean_rows(self):
+        from asoud_erp.patches.v0_15_3.normalize_persian_digits import execute
+
+        legacy = save_party(
+            party_type="Individual",
+            display_name="ASOUD Digits Legacy",
+            roles=["Customer"],
+            company=self.company,
+            postal_code="1111111111",
+        )["data"]["name"]
+        clean = save_party(
+            party_type="Individual",
+            display_name="ASOUD Digits Clean",
+            roles=["Customer"],
+            company=self.company,
+            postal_code="2222222222",
+        )["data"]["name"]
+        # A row that bypassed the write boundary (legacy import).
+        frappe.db.set_value(
+            "ASOUD Party Profile", legacy, "postal_code", "۹۸۷۷۶۶۶۶۶۶", update_modified=False
+        )
+
+        execute()
+
+        self.assertEqual(
+            frappe.db.get_value("ASOUD Party Profile", legacy, "postal_code", cache=False),
+            "9877666666",
+        )
+        self.assertEqual(
+            frappe.db.get_value("ASOUD Party Profile", clean, "postal_code", cache=False),
+            "2222222222",
+        )
