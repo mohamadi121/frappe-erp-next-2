@@ -10,6 +10,7 @@ from asoud_erp.services.party_validation import (
     is_valid_iranian_legal_id,
     is_valid_iranian_mobile,
     is_valid_iranian_national_code,
+    normalize_numeric,
     normalize_optional,
 )
 from asoud_erp.services.request_access import require_company
@@ -365,8 +366,8 @@ def save_party(
         frappe.throw(_("Primary role must be one of the selected roles"))
     if detail_group and not primary_role:
         frappe.throw(_("Primary role is required when selecting a detail group"))
-    national_id = normalize_optional(national_id)
-    mobile = normalize_optional(mobile)
+    national_id = normalize_numeric(national_id)
+    mobile = normalize_numeric(mobile)
     email = normalize_optional(email)
     if national_id and party_type == "Individual" and not is_valid_iranian_national_code(national_id):
         frappe.throw(_("Iranian national code is not valid"))
@@ -395,38 +396,38 @@ def save_party(
     doc.display_name = title
     doc.national_id = national_id
     doc.mobile = mobile
-    doc.phone = normalize_optional(phone)
+    doc.phone = normalize_numeric(phone)
     doc.email = email
     doc.website = normalize_optional(website)
     doc.province = normalize_optional(province)
     doc.city = normalize_optional(city)
     doc.address_line = normalize_optional(address_line)
-    doc.postal_code = normalize_optional(postal_code)
+    doc.postal_code = normalize_numeric(postal_code)
     if _may_read_bank_details():
         doc.bank_name = normalize_optional(bank_name)
-        doc.iban = normalize_optional(iban)
-        doc.account_number = normalize_optional(account_number)
+        doc.iban = normalize_numeric(iban)
+        doc.account_number = normalize_numeric(account_number)
     doc.birth_date = normalize_optional(birth_date)
     doc.employee_gender = normalize_optional(employee_gender)
     doc.date_of_joining = normalize_optional(date_of_joining)
     doc.father_name = normalize_optional(father_name)
-    doc.birth_certificate_number = normalize_optional(birth_certificate_number)
+    doc.birth_certificate_number = normalize_numeric(birth_certificate_number)
     doc.birth_certificate_issue_place = normalize_optional(birth_certificate_issue_place)
     doc.employment_type = normalize_optional(employment_type)
     doc.job_title = normalize_optional(job_title)
     doc.department = normalize_optional(department)
     doc.description = normalize_optional(description)
-    doc.secondary_phone = normalize_optional(secondary_phone)
+    doc.secondary_phone = normalize_numeric(secondary_phone)
     doc.alias_name = normalize_optional(alias_name)
     doc.manager_name = normalize_optional(manager_name)
-    doc.registration_number = normalize_optional(registration_number)
-    doc.economic_code = normalize_optional(economic_code)
+    doc.registration_number = normalize_numeric(registration_number)
+    doc.economic_code = normalize_numeric(economic_code)
     doc.founding_date = normalize_optional(founding_date)
     doc.credit_limit = float(credit_limit or 0)
     doc.opening_balance = float(opening_balance or 0)
     doc.balance_type = normalize_optional(balance_type) or "None"
     if _may_read_bank_details():
-        doc.card_number = normalize_optional(card_number)
+        doc.card_number = normalize_numeric(card_number)
         doc.account_holder = normalize_optional(account_holder)
     doc.region = normalize_optional(region)
     doc.neighborhood = normalize_optional(neighborhood)

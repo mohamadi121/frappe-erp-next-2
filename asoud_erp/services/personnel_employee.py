@@ -7,6 +7,12 @@ import hashlib
 
 import frappe
 
+from asoud_erp.services.digits import normalize_numeric_text
+
+#: Employee columns that hold identifier/number values and must stay ASCII.
+NUMERIC_EMPLOYEE_FIELDS = ("cell_number", "emergency_phone_number", "employee_number",
+                           "attendance_device_id", "notice_number_of_days")
+
 # Keys also kept as columns on ASOUD Party Profile (legacy search cache).
 PROFILE_CACHE_FIELDS = {
     "display_name": "employee_name", "mobile": "cell_number", "email": "personal_email",
@@ -119,6 +125,8 @@ def write_shared(person, values):
                 employee.middle_name = None
                 employee.last_name = None
             continue
+        if target in NUMERIC_EMPLOYEE_FIELDS:
+            value = normalize_numeric_text(value)
         # Link validation is intentionally left to the standard controller.
         employee.set(target, value)
     if "department" in values and employee.department:
@@ -136,8 +144,12 @@ def write_shared(person, values):
 
 def refresh_profile_cache(employee, method=None):
     """Keep legacy search columns usable after a change made in ERPNext itself."""
-    values = {key: employee.get(field) for key, field in PROFILE_CACHE_FIELDS.items()
-              if employee.meta.has_field(field)}
+    values = {}
+    for key, field in PROFILE_CACHE_FIELDS.items():
+        if not employee.meta.has_field(field):
+            continue
+        value = employee.get(field)
+        values[key] = normalize_numeric_text(value) if field in NUMERIC_EMPLOYEE_FIELDS else value
     for name in frappe.get_all("ASOUD Party Profile", filters={"employee": employee.name,
                               "company": employee.company}, pluck="name"):
         # The Employee controller has already validated and authorized the write.

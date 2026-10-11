@@ -3,11 +3,23 @@ import json
 import frappe
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.digits import normalize_numeric_text
 from asoud_erp.services.personnel_contract import (
     FINANCIAL_FIELDS,
     PERSONAL_FIELDS,
     validate_record,
 )
+
+#: ``PERSONAL_FIELDS`` stored in identifier/number columns: Persian digits must
+#: never reach the Party Profile or the linked Employee.
+NUMERIC_PERSONAL_FIELDS = ("national_id", "mobile", "phone", "postal_code", "emergency_phone")
+
+
+def _normalize_numeric(data: dict) -> dict:
+    for field in NUMERIC_PERSONAL_FIELDS:
+        if field in data:
+            data[field] = normalize_numeric_text(data[field])
+    return data
 
 
 def _manager():
@@ -167,6 +179,8 @@ def update_personnel(name, values, revision, request_id=None):
     # Reject unauthorized fields before acquiring locks or consulting receipts.
     person = _person(name, write=True)
     data = json.loads(values) if isinstance(values, str) else values
+    if isinstance(data, dict):
+        _normalize_numeric(data)
     allowed = PERSONAL_FIELDS | (FINANCIAL_FIELDS if _manager() else set())
     if not isinstance(data, dict) or set(data) - allowed:
         frappe.throw("Only authorized HR profile fields can be edited")
@@ -218,6 +232,8 @@ def add_record(name, payload, request_id):
 
     _person(name, write=True)
     data = validate_record(json.loads(payload) if isinstance(payload, str) else payload)
+    if data.get("document_number"):
+        data["document_number"] = normalize_numeric_text(data["document_number"])
     _request(request_id)
     person = _lock_person(name)
     digest = fingerprint(data)
@@ -271,6 +287,8 @@ def update_record(name, record_name, payload, revision, request_id):
     if doc.party != name or doc.company != person.company:
         frappe.throw("Record does not belong to this person", frappe.PermissionError)
     data = validate_record(json.loads(payload) if isinstance(payload, str) else payload)
+    if data.get("document_number"):
+        data["document_number"] = normalize_numeric_text(data["document_number"])
     if data["kind"] != doc.kind:
         frappe.throw("Record kind cannot be changed")
     _request(request_id)
