@@ -5,7 +5,7 @@ from asoud_erp.api.v1 import projects
 from asoud_erp.integration_tests.fixtures import APPROVER_USER, EMPLOYEE_USER, APITestCase, _user
 from asoud_erp.integration_tests.tenancy import _employee, setup_tenancy
 
-PROJECTS_A_USER = "asoud.scope-projects-a@example.com"
+PROJECTS_A_USER = "asoud.scope-projects-user@example.com"
 
 
 class TestProjects(APITestCase):
@@ -75,19 +75,27 @@ class TestProjectTaskCompanyScope(APITestCase):
         cls.second = cls.scope["second"]
         if not frappe.db.exists("Activity Type", "ASOUD Work"):
             frappe.get_doc({"doctype": "Activity Type", "activity_type": "ASOUD Work"}).insert()
-        _user(PROJECTS_A_USER, ["Projects Manager", "Employee"])
+        _user(PROJECTS_A_USER, ["Projects User", "Employee"])
         _employee(PROJECTS_A_USER, "Scope Projects A", cls.scope["first"])
         frappe.db.commit()
 
     def setUp(self):
         super().setUp()
         frappe.set_user("Administrator")
+        # create_task's assign-to commits, so the rows of the previous test are
+        # real rows, not rolled-back ones; remove them by the fixed names.
+        frappe.db.delete("ToDo", {"allocated_to": EMPLOYEE_USER})
+        for project_name in ("پروژه خارجی", "پروژه داخلی"):
+            project = frappe.db.get_value("Project", {"project_name": project_name}, "name")
+            if project:
+                frappe.db.delete("Task", {"project": project})
+                frappe.db.delete("Project", project)
         project_b = projects.create_project(self.second, "پروژه خارجی", notes="")["data"]
-        self.task_b = projects.create_task(project_b["name"], "کار خارجی")["data"]
+        self.task_b = projects.create_task(project_b["name"], "کار خارجی")["data"]["name"]
         self.assigned_b = projects.create_task(project_b["name"], "کار خارجی من",
-                                               assign_to=[EMPLOYEE_USER])["data"]
+                                               assign_to=[EMPLOYEE_USER])["data"]["name"]
         project_a = projects.create_project(self.company, "پروژه داخلی", notes="")["data"]
-        self.task_a = projects.create_task(project_a["name"], "کار داخلی")["data"]
+        self.task_a = projects.create_task(project_a["name"], "کار داخلی")["data"]["name"]
 
     def test_a_manager_cannot_move_a_task_of_a_foreign_company(self):
         frappe.set_user(PROJECTS_A_USER)
