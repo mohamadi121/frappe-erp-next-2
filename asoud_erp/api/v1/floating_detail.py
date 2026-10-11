@@ -170,6 +170,7 @@ def link_floating_detail(name: str, party_profile: str) -> dict:
 def disable_floating_detail(name: str) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
     doc = frappe.get_doc("ASOUD Floating Detail", name)
+    _require_linked_company(doc.linked_doctype, doc.linked_document)
     doc.disabled = 1
     doc.save()
     return success({"name": doc.name, "disabled": True})
