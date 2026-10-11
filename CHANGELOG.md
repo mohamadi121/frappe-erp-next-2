@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Fixed:
+
+- Persian (۰-۹) and Arabic-Indic (٠-٩) digits are normalised to ASCII at the write boundaries of `party.save_party`, `setup.save_office` and `personnel.update_personnel` (plus the Employee mirrors), so identifier and number columns (national/economic/registration/postal codes, phone/mobile/fax, account/card/IBAN numbers, fiscal year and code digit counts) never store non-ASCII digits.
+- Migration patch `v0_15_3.normalize_persian_digits` converts existing values in those columns of `ASOUD Party Profile`, `ASOUD Company Setup`, `ASOUD Personnel Record` and `Employee`; it only rewrites rows that contain a Persian/Arabic-Indic digit and is safe to re-run.
+
 ## 0.15.2 - 2026-10-10
 
 Security:
