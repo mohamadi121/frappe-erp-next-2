@@ -85,7 +85,13 @@ access; rows with no linked record stay visible to `System Manager` and
 `Accounts Manager` only (F8). When an existing record is loaded by name, its own
 company is required, not only the request's target company: `party.save_party`
 requires the loaded profile's company, so a company-scoped role can no longer move
-and read a foreign party profile (F-P1).
+and read a foreign party profile (F-P1). The same tenant of a loaded foreign
+record is enforced for floating details: `account.delete_account`/`update_account`
+resolve the detail's linked record (`_require_linked_company`) and
+`floating_detail.disable_floating_detail` requires it too, so a shared detail
+group can no longer be used to mutate another company's detail (F-P2, F-P3), and
+`account.list_accounts` filters the expanded details by the linked record's
+company like `floating_detail.list_floating_details` (F-P4).
 
 ## Employee is HR-only master data
 

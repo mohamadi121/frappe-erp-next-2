@@ -20,8 +20,98 @@ from asoud_erp.integration_tests.tenancy import (
     EMPLOYEE_B_USER,
     HR_MANAGER_USER,
     MANAGER_USER,
+    _account_mapping,
+    coded_accounts,
     setup_tenancy,
 )
+
+
+def _linked_detail(title: str, party: str, detail_group: str = "10000") -> str:
+    from asoud_erp.services.detail_code_service import next_detail_code
+
+    existing = frappe.db.get_value("ASOUD Floating Detail", {"title": title}, "name")
+    if existing:
+        return existing
+    settings = frappe.get_single("ASOUD Settings")
+    return frappe.get_doc(
+        {
+            "doctype": "ASOUD Floating Detail",
+            "title": title,
+            "detail_type": "Customer",
+            "detail_group": detail_group,
+            "detail_code": next_detail_code(detail_group, int(settings.detail_code_digits or 5)),
+            "linked_doctype": "ASOUD Party Profile",
+            "linked_document": party,
+        }
+    ).insert(ignore_permissions=True).name
+
+
+class TestFloatingDetailMutationCompanyScope(APITestCase):
+    """A floating detail is a site-wide catalogue row, so its linked record is the tenant.
+
+    `delete_account`/`update_account` validated only the base account and the
+    shared group mapping, never the detail itself; `disable_floating_detail` had
+    no tenant check at all; `list_accounts` expanded every detail of a mapped
+    group. F-P2 / F-P3 / F-P4.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        frappe.set_user("Administrator")
+        scope = setup_tenancy()
+        cls.party_a = scope["party_a"]
+        cls.party_b = scope["party_b"]
+        cls.account_a = coded_accounts(scope["first"], count=1)[0]
+        _account_mapping(scope["first"], cls.account_a)
+        cls.detail_a = _linked_detail("ASOUD Scope Detail A", cls.party_a)
+        cls.detail_b = _linked_detail("ASOUD Scope Detail B", cls.party_b)
+        frappe.db.commit()
+
+    def _detail_ref(self, detail: str) -> str:
+        return f"DETAIL::{detail}::{self.account_a}"
+
+    def test_deleting_a_foreign_linked_detail_through_a_shared_group_is_refused(self):
+        frappe.set_user(MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            account.delete_account(company=self.company, account=self._detail_ref(self.detail_b))
+        self.assertTrue(frappe.db.exists("ASOUD Floating Detail", self.detail_b))
+        self.assertEqual(frappe.db.get_value("ASOUD Floating Detail", self.detail_b, "disabled"), 0)
+
+    def test_updating_a_foreign_linked_detail_is_refused(self):
+        frappe.set_user(MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            account.update_account(
+                company=self.company,
+                account=self._detail_ref(self.detail_b),
+                account_name="ASOUD Scope Detail B Edited",
+                disabled=1,
+            )
+        self.assertEqual(frappe.db.get_value("ASOUD Floating Detail", self.detail_b, "title"),
+                         "ASOUD Scope Detail B")
+        self.assertEqual(frappe.db.get_value("ASOUD Floating Detail", self.detail_b, "disabled"), 0)
+
+    def test_own_company_linked_detail_still_mutates(self):
+        frappe.set_user(MANAGER_USER)
+        account.update_account(
+            company=self.company,
+            account=self._detail_ref(self.detail_a),
+            account_name="ASOUD Scope Detail A Edited",
+            disabled=1,
+        )
+        self.assertEqual(frappe.db.get_value("ASOUD Floating Detail", self.detail_a, "disabled"), 1)
+
+    def test_disabling_a_foreign_linked_detail_is_refused(self):
+        frappe.set_user(MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            floating_detail.disable_floating_detail(name=self.detail_b)
+        self.assertEqual(frappe.db.get_value("ASOUD Floating Detail", self.detail_b, "disabled"), 0)
+
+    def test_list_accounts_keeps_only_details_of_accessible_companies(self):
+        frappe.set_user(ACCOUNTS_A_USER)
+        names = {row["name"] for row in account.list_accounts(company=self.company)["data"]}
+        self.assertIn(self._detail_ref(self.detail_a), names)
+        self.assertNotIn(self._detail_ref(self.detail_b), names)
 
 
 class TestAccountCompanyScope(APITestCase):

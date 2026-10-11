@@ -5,6 +5,9 @@
 Security:
 
 - `party.save_party` calls `require_company` on the loaded profile's own company, so a role scoped to another company can no longer move a foreign party into its own tenant and read its PII (F-P1).
+- `account.delete_account`/`update_account` resolve the floating detail's linked record and `require_company` it, so a detail of another company can no longer be deleted, renamed or disabled through a shared detail group (F-P2).
+- `floating_detail.disable_floating_detail` requires the loaded detail's linked company before disabling (F-P3).
+- `account.list_accounts` filters expanded floating details by the linked record's tenant, matching `floating_detail.list_floating_details` (F-P4).
 
 ## 0.15.2 - 2026-10-10
 
