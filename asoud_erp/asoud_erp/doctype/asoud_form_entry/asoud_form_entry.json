@@ -1,0 +1,75 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Form Entry",
+  "module": "ASOUD ERP",
+  "autoname": "hash",
+  "track_changes": 1,
+  "field_order": [
+    "form",
+    "revision",
+    "company",
+    "subject",
+    "values_json",
+    "reference_doctype",
+    "reference_name",
+    "request_key",
+    "fingerprint"
+  ],
+  "fields": [
+    {
+      "fieldname": "form",
+      "label": "form",
+      "fieldtype": "Link",
+      "options": "ASOUD Form"
+    },
+    {
+      "fieldname": "revision",
+      "label": "revision",
+      "fieldtype": "Link",
+      "options": "ASOUD Form Revision"
+    },
+    {
+      "fieldname": "company",
+      "label": "company",
+      "fieldtype": "Link",
+      "options": "Company"
+    },
+    {
+      "fieldname": "subject",
+      "label": "subject",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "values_json",
+      "label": "values_json",
+      "fieldtype": "Long Text"
+    },
+    {
+      "fieldname": "reference_doctype",
+      "label": "reference_doctype",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "reference_name",
+      "label": "reference_name",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "request_key",
+      "label": "request_key",
+      "fieldtype": "Data",
+      "unique": 1
+    },
+    {
+      "fieldname": "fingerprint",
+      "label": "fingerprint",
+      "fieldtype": "Data"
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1
+    }
+  ]
+}

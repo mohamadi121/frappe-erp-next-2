@@ -1,0 +1,74 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Form",
+  "module": "ASOUD ERP",
+  "autoname": "hash",
+  "track_changes": 1,
+  "field_order": [
+    "title",
+    "company",
+    "kind",
+    "module_key",
+    "draft_json",
+    "draft_version",
+    "active_revision",
+    "disabled",
+    "pending_review"
+  ],
+  "fields": [
+    {
+      "fieldname": "title",
+      "label": "title",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "company",
+      "label": "company",
+      "fieldtype": "Link",
+      "options": "Company"
+    },
+    {
+      "fieldname": "kind",
+      "label": "kind",
+      "fieldtype": "Select",
+      "options": "Request\nDocument"
+    },
+    {
+      "fieldname": "module_key",
+      "label": "module_key",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "draft_json",
+      "label": "draft_json",
+      "fieldtype": "Long Text"
+    },
+    {
+      "fieldname": "draft_version",
+      "label": "draft_version",
+      "fieldtype": "Int"
+    },
+    {
+      "fieldname": "active_revision",
+      "label": "active_revision",
+      "fieldtype": "Link",
+      "options": "ASOUD Form Revision"
+    },
+    {
+      "fieldname": "disabled",
+      "label": "disabled",
+      "fieldtype": "Check"
+    },
+    {
+      "fieldname": "pending_review",
+      "label": "pending_review",
+      "fieldtype": "Check"
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1
+    }
+  ]
+}

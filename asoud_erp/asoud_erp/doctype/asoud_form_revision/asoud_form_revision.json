@@ -1,0 +1,55 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Form Revision",
+  "module": "ASOUD ERP",
+  "autoname": "hash",
+  "track_changes": 1,
+  "field_order": [
+    "form",
+    "version",
+    "schema_json",
+    "published_by",
+    "published_on",
+    "change_note"
+  ],
+  "fields": [
+    {
+      "fieldname": "form",
+      "label": "form",
+      "fieldtype": "Link",
+      "options": "ASOUD Form"
+    },
+    {
+      "fieldname": "version",
+      "label": "version",
+      "fieldtype": "Int"
+    },
+    {
+      "fieldname": "schema_json",
+      "label": "schema_json",
+      "fieldtype": "Long Text"
+    },
+    {
+      "fieldname": "published_by",
+      "label": "published_by",
+      "fieldtype": "Link",
+      "options": "User"
+    },
+    {
+      "fieldname": "published_on",
+      "label": "published_on",
+      "fieldtype": "Datetime"
+    },
+    {
+      "fieldname": "change_note",
+      "label": "change_note",
+      "fieldtype": "Small Text"
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1
+    }
+  ]
+}
