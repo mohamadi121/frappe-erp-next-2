@@ -82,7 +82,10 @@ Company scope is enforced before the query everywhere it applies:
 returns another company's department tree (F7). `floating_detail.list_floating_details`
 keeps only catalogue rows whose linked record belongs to a company the caller may
 access; rows with no linked record stay visible to `System Manager` and
-`Accounts Manager` only (F8).
+`Accounts Manager` only (F8). When an existing record is loaded by name, its own
+company is required, not only the request's target company: `party.save_party`
+requires the loaded profile's company, so a company-scoped role can no longer move
+and read a foreign party profile (F-P1).
 
 ## Employee is HR-only master data
 

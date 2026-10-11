@@ -377,6 +377,10 @@ def save_party(
 
     if name:
         doc = frappe.get_doc("ASOUD Party Profile", name)
+        # The profile's own company is the tenant it was created in; never let a
+        # caller scoped to another company load and move it (F-P1).
+        if doc.company:
+            require_company(doc.company)
     else:
         duplicate = frappe.db.exists("ASOUD Party Profile", {"national_id": national_id}) if national_id else None
         if duplicate:

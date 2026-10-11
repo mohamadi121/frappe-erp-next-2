@@ -128,6 +128,29 @@ class TestPartyWriteCompanyScope(APITestCase):
             party.disable_party(name=self.party_b)
         self.assertEqual(frappe.db.get_value("ASOUD Party Profile", self.party_b, "disabled"), 0)
 
+    def test_moving_a_foreign_party_into_the_own_company_is_refused(self):
+        """F-P1: the loaded profile's own company was never checked.
+
+        An Accounts User of company A could load company B's profile and pass
+        ``company=A``: only the *target* company was validated, so ``doc.save()``
+        moved B's party (and returned its PII) into A. The origin company must be
+        required too.
+        """
+        frappe.set_user(ACCOUNTS_A_USER)
+        with self.assertRaises(frappe.PermissionError):
+            party.save_party(
+                name=self.party_b,
+                party_type="Individual",
+                display_name="ASOUD Scope Party B Moved",
+                roles=json.dumps(["Other"]),
+                company=self.company,
+                iban=IBAN_A,
+            )
+        self.assertEqual(frappe.db.get_value("ASOUD Party Profile", self.party_b, "company"), self.second)
+        self.assertEqual(
+            frappe.db.get_value("ASOUD Party Profile", self.party_b, "display_name"), "ASOUD Scope Party B"
+        )
+
     def test_update_keeps_the_company_when_the_argument_is_omitted(self):
         """Omitting `company` must not move a profile out of its tenant."""
         frappe.set_user(ACCOUNTS_A_USER)

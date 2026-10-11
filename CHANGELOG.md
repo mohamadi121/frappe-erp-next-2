@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+Security:
+
+- `party.save_party` calls `require_company` on the loaded profile's own company, so a role scoped to another company can no longer move a foreign party into its own tenant and read its PII (F-P1).
+
 ## 0.15.2 - 2026-10-10
 
 Security:
