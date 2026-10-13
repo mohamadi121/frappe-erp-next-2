@@ -1,0 +1,75 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Calendar Scope",
+  "module": "ASOUD ERP",
+  "autoname": "hash",
+  "track_changes": 1,
+  "field_order": [
+    "company",
+    "user",
+    "client_id",
+    "event",
+    "kind",
+    "active",
+    "last_mutation",
+    "fingerprint",
+    "notified_version"
+  ],
+  "fields": [
+    {
+      "fieldname": "company",
+      "fieldtype": "Link",
+      "label": "company",
+      "options": "Company"
+    },
+    {
+      "fieldname": "user",
+      "fieldtype": "Link",
+      "label": "user",
+      "options": "User"
+    },
+    {
+      "fieldname": "client_id",
+      "fieldtype": "Data",
+      "label": "client id"
+    },
+    {
+      "fieldname": "event",
+      "fieldtype": "Link",
+      "label": "event",
+      "options": "Event"
+    },
+    {
+      "fieldname": "kind",
+      "fieldtype": "Select",
+      "label": "kind",
+      "options": "Reminder\nPersonalDay"
+    },
+    {
+      "fieldname": "active",
+      "fieldtype": "Check",
+      "label": "active"
+    },
+    {
+      "fieldname": "last_mutation",
+      "fieldtype": "Data",
+      "label": "last mutation"
+    },
+    {
+      "fieldname": "fingerprint",
+      "fieldtype": "Data",
+      "label": "fingerprint"
+    },
+    {
+      "fieldname": "notified_version",
+      "fieldtype": "Datetime",
+      "label": "notified version"
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1
+    }
+  ]
+}

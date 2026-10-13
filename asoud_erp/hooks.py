@@ -29,7 +29,9 @@ fixtures = [
 ]
 
 scheduler_events = {
-    "cron": {"* * * * *": ["asoud_erp.services.automatic_action_runtime.dispatch"]},
+    "daily": ["asoud_erp.api.v1.calendar.refresh_official_holidays"],
+    "cron": {"* * * * *": ["asoud_erp.services.automatic_action_runtime.dispatch",
+                            "asoud_erp.api.v1.calendar.dispatch_reminders"]},
     "hourly": ["asoud_erp.api.v1.workflow_runtime.process_workflow_deadlines"]
 }
 

@@ -1,0 +1,74 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Calendar Holiday",
+  "module": "ASOUD ERP",
+  "autoname": "hash",
+  "track_changes": 1,
+  "field_order": [
+    "company",
+    "kind",
+    "title",
+    "start_date",
+    "end_date",
+    "active",
+    "source_url",
+    "reviewed_by",
+    "reviewed_on"
+  ],
+  "fields": [
+    {
+      "fieldname": "company",
+      "fieldtype": "Link",
+      "label": "company",
+      "options": "Company"
+    },
+    {
+      "fieldname": "kind",
+      "fieldtype": "Select",
+      "label": "kind",
+      "options": "Official\nOrganization"
+    },
+    {
+      "fieldname": "title",
+      "fieldtype": "Data",
+      "label": "title"
+    },
+    {
+      "fieldname": "start_date",
+      "fieldtype": "Date",
+      "label": "start date"
+    },
+    {
+      "fieldname": "end_date",
+      "fieldtype": "Date",
+      "label": "end date"
+    },
+    {
+      "fieldname": "active",
+      "fieldtype": "Check",
+      "label": "active"
+    },
+    {
+      "fieldname": "source_url",
+      "fieldtype": "Small Text",
+      "label": "source url"
+    },
+    {
+      "fieldname": "reviewed_by",
+      "fieldtype": "Link",
+      "label": "reviewed by",
+      "options": "User"
+    },
+    {
+      "fieldname": "reviewed_on",
+      "fieldtype": "Datetime",
+      "label": "reviewed on"
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1
+    }
+  ]
+}
