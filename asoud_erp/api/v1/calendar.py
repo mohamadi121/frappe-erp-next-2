@@ -2,15 +2,15 @@
 import hashlib
 import json
 import re
-from html import escape
 from datetime import date, datetime, time, timedelta
+from html import escape
 from urllib.parse import urlparse
 
 import frappe
-from frappe.utils import get_datetime, now_datetime, get_system_timezone
+from frappe.utils import get_datetime, get_system_timezone, now_datetime
 
 from asoud_erp.api.v1.responses import success
-from asoud_erp.services.request_access import require_company, company_access
+from asoud_erp.services.request_access import company_access, require_company
 
 SCOPE = 'ASOUD Calendar Scope'
 HOLIDAY = 'ASOUD Calendar Holiday'
@@ -22,16 +22,19 @@ def fail(message):
 
 def parse_payload(value):
     if isinstance(value, str):
-        if len(value) > 100000: fail('حجم داده بیش از حد است.')
+        if len(value) > 100000:
+            fail('حجم داده بیش از حد است.')
         value = json.loads(value)
-    if not isinstance(value, dict): fail('ساختار داده معتبر نیست.')
+    if not isinstance(value, dict):
+        fail('ساختار داده معتبر نیست.')
     return value
 
 
 def day(value):
     try:
         result = date.fromisoformat(str(value))
-        if not 1900 <= result.year <= 2100: raise ValueError()
+        if not 1900 <= result.year <= 2100:
+            raise ValueError()
         return result
     except (TypeError, ValueError):
         fail('تاریخ معتبر نیست.')
@@ -39,7 +42,8 @@ def day(value):
 
 def title(value):
     text = str(value or '').strip()
-    if not text or len(text) > 140: fail('عنوان باید بین ۱ تا ۱۴۰ نویسه باشد.')
+    if not text or len(text) > 140:
+        fail('عنوان باید بین ۱ تا ۱۴۰ نویسه باشد.')
     return text
 
 
@@ -69,7 +73,8 @@ def personal_row(scope, event):
 def get_calendar(company, start, end):
     require_company(company)
     start, end = day(start), day(end)
-    if end < start or (end - start).days > 62: fail('بازه تقویم حداکثر ۶۳ روز است.')
+    if end < start or (end - start).days > 62:
+        fail('بازه تقویم حداکثر ۶۳ روز است.')
     # Scope is a private binding to native Event, not a duplicate task ledger.
     records = frappe.db.sql('''select s.name from `tabASOUD Calendar Scope` s
         inner join `tabEvent` e on e.name=s.event
@@ -77,7 +82,8 @@ def get_calendar(company, start, end):
         and e.starts_on < %s and coalesce(e.ends_on,e.starts_on) >= %s
         order by e.starts_on limit 2001''',
         (company, frappe.session.user, str(end + timedelta(days=1)), str(start)), as_dict=True)
-    if len(records) > 2000: fail('تعداد موارد زیاد است؛ بازه کوچک‌تری انتخاب کنید.')
+    if len(records) > 2000:
+        fail('تعداد موارد زیاد است؛ بازه کوچک‌تری انتخاب کنید.')
     items = []
     for record in records:
         scope = frappe.get_doc(SCOPE, record.name)
@@ -87,7 +93,8 @@ def get_calendar(company, start, end):
     for kind, filters in [('Organization', {'company': company}), ('Official', {'kind': 'Official'})]:
         filters.update(kind=kind, start_date=['<=', end], end_date=['>=', start], active=1)
         holidays = frappe.get_all(HOLIDAY, filters=filters, fields=['name', 'title', 'start_date', 'end_date', 'modified'], limit_page_length=2001)
-        if len(holidays) > 2000: fail('تعداد تعطیلات بیش از حد مجاز است.')
+        if len(holidays) > 2000:
+            fail('تعداد تعطیلات بیش از حد مجاز است.')
         for h in holidays:
             items.append(dict(id=h.name, title=h.title, date=str(h.start_date), end_date=str(h.end_date),
                               kind=kind, version=str(h.modified)))
@@ -131,7 +138,8 @@ def save_personal(company, payload):
         doctype=SCOPE, name=name, user=user, company=company, client_id=client_id, active=1))
     fingerprint = hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     if exists and scope.last_mutation == mutation:
-        if scope.fingerprint != fingerprint: fail('شناسه ارسال تکراری با محتوای متفاوت است.')
+        if scope.fingerprint != fingerprint:
+            fail('شناسه ارسال تکراری با محتوای متفاوت است.')
         return success(dict(saved=True))
     event = frappe.get_doc('Event', scope.event, for_update=True) if exists and scope.event else None
     if event and (event.owner != user or scope.user != user or scope.company != company):
@@ -145,11 +153,14 @@ def save_personal(company, payload):
         scope.active = 0
     else:
         kind = data.get('kind')
-        if kind not in ('Reminder', 'PersonalDay'): fail('نوع تقویم معتبر نیست.')
+        if kind not in ('Reminder', 'PersonalDay'):
+            fail('نوع تقویم معتبر نیست.')
         start, end = day(data.get('date')), day(data.get('end_date', data.get('date')))
-        if end < start or (end - start).days > 366: fail('بازه تاریخ معتبر نیست.')
+        if end < start or (end - start).days > 366:
+            fail('بازه تاریخ معتبر نیست.')
         clock = str(data.get('time', '09:00'))
-        if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', clock): fail('ساعت معتبر نیست.')
+        if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', clock):
+            fail('ساعت معتبر نیست.')
         if not event:
             event = frappe.get_doc(dict(doctype='Event', event_type='Private', owner=user,
                 event_category='Other', send_reminder=0, sync_with_google_calendar=0))
@@ -169,20 +180,24 @@ def save_personal(company, payload):
 @frappe.whitelist(methods=['POST'])
 def save_holiday(company, payload):
     require_company(company)
-    if not manager(): frappe.throw('مجوز مدیریت تعطیلی لازم است.', frappe.PermissionError)
+    if not manager():
+        frappe.throw('مجوز مدیریت تعطیلی لازم است.', frappe.PermissionError)
     data = parse_payload(payload)
     ident = str(data.get('id', ''))
-    if not re.fullmatch(r'[a-f0-9]{24}', ident): fail('شناسه نامعتبر است.')
+    if not re.fullmatch(r'[a-f0-9]{24}', ident):
+        fail('شناسه نامعتبر است.')
     frappe.get_doc('Company', company, for_update=True)
     exists = frappe.db.exists(HOLIDAY, ident)
     doc = frappe.get_doc(HOLIDAY, ident, for_update=True) if exists else frappe.get_doc(dict(
         doctype=HOLIDAY, name=ident, company=company, kind='Organization', active=1))
-    if doc.company != company or doc.kind != 'Organization': frappe.throw('دسترسی مجاز نیست.', frappe.PermissionError)
+    if doc.company != company or doc.kind != 'Organization':
+        frappe.throw('دسترسی مجاز نیست.', frappe.PermissionError)
     if exists and str(doc.modified) != str(data.get('version', '')):
         frappe.throw('تعطیلی تغییر کرده؛ تقویم را تازه کنید.', frappe.TimestampMismatchError)
     doc.title = title(data.get('title'))
     doc.start_date, doc.end_date = day(data.get('date')), day(data.get('end_date'))
-    if doc.end_date < doc.start_date or (doc.end_date - doc.start_date).days > 366: fail('بازه تعطیلی معتبر نیست.')
+    if doc.end_date < doc.start_date or (doc.end_date - doc.start_date).days > 366:
+        fail('بازه تعطیلی معتبر نیست.')
     doc.active = 0 if data.get('deleted') is True else 1
     store(doc)
     return success(dict(saved=True))
@@ -191,12 +206,14 @@ def save_holiday(company, payload):
 @frappe.whitelist(methods=['POST'])
 def import_official(payload):
     """Explicit reviewed batch import; never scrape or guess lunar holidays."""
-    if 'System Manager' not in frappe.get_roles(): frappe.throw('مجوز مدیر سیستم لازم است.', frappe.PermissionError)
+    if 'System Manager' not in frappe.get_roles():
+        frappe.throw('مجوز مدیر سیستم لازم است.', frappe.PermissionError)
     data = parse_payload(payload)
     source = str(data.get('source_url', ''))
     if urlparse(source).hostname != 'calendar.ut.ac.ir' or urlparse(source).scheme != 'https':
         fail('مرجع تطبیق باید نشانی HTTPS مرکز تقویم دانشگاه تهران باشد.')
-    if data.get('reviewed') is not True: fail('تأیید تطبیق انسانی با تقویم رسمی لازم است.')
+    if data.get('reviewed') is not True:
+        fail('تأیید تطبیق انسانی با تقویم رسمی لازم است.')
     start, end = day(data.get('start')), day(data.get('end'))
     rows = data.get('days')
     if end < start or (end - start).days > 366 or not isinstance(rows, list) or len(rows) > 366:
@@ -204,7 +221,8 @@ def import_official(payload):
     prepared = {}
     for row in rows:
         date_value = day(row.get('date'))
-        if not start <= date_value <= end: fail('تاریخ خارج از بازه است.')
+        if not start <= date_value <= end:
+            fail('تاریخ خارج از بازه است.')
         prepared.setdefault(date_value, []).append(title(row.get('title')))
     frappe.get_doc('User', 'Administrator', for_update=True)
     for name in frappe.get_all(HOLIDAY, filters={'kind': 'Official', 'start_date': ['between', [start, end]]}, pluck='name'):

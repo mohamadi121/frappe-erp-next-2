@@ -3,7 +3,7 @@ import copy
 import json
 import re
 from datetime import date, datetime, time
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 import frappe
 
@@ -22,9 +22,12 @@ LINK_FILTERS = {'Employee': {'department'}, 'Item': {'item_group'}, 'Customer': 
 
 def default_value(field, company):
     source = field.get('default_source')
-    if source == 'user': return frappe.session.user
-    if source == 'company': return company
-    if source == 'today': return date.today().isoformat()
+    if source == 'user':
+        return frappe.session.user
+    if source == 'company':
+        return company
+    if source == 'today':
+        return date.today().isoformat()
     if source in {'employee', 'department'}:
         return frappe.db.get_value('Employee', {'company': company, 'user_id': frappe.session.user, 'status': 'Active'}, 'name' if source == 'employee' else 'department')
     return field.get('default')
@@ -86,7 +89,8 @@ def validate_schema(raw):
     def check_fields(items, nested=False):
         keys = set()
         for field in items:
-            if not isinstance(field, dict): fail('ساختار فیلد معتبر نیست.')
+            if not isinstance(field, dict):
+                fail('ساختار فیلد معتبر نیست.')
             key = field.get("key", "")
             if not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,59}", key) or key in keys:
                 fail("شناسه فیلد نامعتبر یا تکراری است.")
@@ -143,7 +147,8 @@ def validate_schema(raw):
                     fail('پسوندهای فایل مجاز نیستند.')
                 if not 1 <= int(field.get('max_mb', 10)) <= 10:
                     fail('حجم فایل باید بین یک تا ده مگابایت باشد.')
-                if not 1 <= int(field.get('max_files', 1)) <= 10: fail('تعداد فایل باید بین یک تا ده باشد.')
+                if not 1 <= int(field.get('max_files', 1)) <= 10:
+                    fail('تعداد فایل باید بین یک تا ده باشد.')
         # Column formulas are evaluated in dependency order, like top-level fields.
         graph = {f['key']: set(f.get('formula', {}).get('inputs', [])) if f['type'] == 'Formula' else set() for f in items}
         kinds = {f['key']: f['type'] for f in items}
@@ -151,17 +156,23 @@ def validate_schema(raw):
             if field.get('link_filter'):
                 graph[field['key']].add(field['link_filter'].get('value_field'))
             for dep in field.get('formula', {}).get('inputs', []) if field['type'] == 'Formula' else []:
-                if kinds.get(dep) not in NUMBERS: fail('ورودی محاسبه باید عددی باشد.')
+                if kinds.get(dep) not in NUMBERS:
+                    fail('ورودی محاسبه باید عددی باشد.')
         active, finished = set(), set()
         def visit_column(key):
-            if key not in graph: fail('ورودی محاسبه وجود ندارد.')
-            if key in active: fail('چرخه محاسبات وجود دارد.')
-            if key in finished: return
+            if key not in graph:
+                fail('ورودی محاسبه وجود ندارد.')
+            if key in active:
+                fail('چرخه محاسبات وجود دارد.')
+            if key in finished:
+                return
             active.add(key)
-            for dep in graph[key]: visit_column(dep)
+            for dep in graph[key]:
+                visit_column(dep)
             active.remove(key)
             finished.add(key)
-        for key in graph: visit_column(key)
+        for key in graph:
+            visit_column(key)
         return keys
 
     keys = check_fields(all_fields)
@@ -170,14 +181,16 @@ def validate_schema(raw):
     for field in all_fields:
         if field.get('link_filter'):
             dependency = field['link_filter'].get('value_field')
-            if dependency not in keys: fail('فیلد وابسته منبع اطلاعات وجود ندارد.')
+            if dependency not in keys:
+                fail('فیلد وابسته منبع اطلاعات وجود ندارد.')
             graph[field['key']].add(dependency)
         formula = field.get("formula") if field["type"] == "Formula" else None
         if formula:
             for key in formula.get("inputs", []):
                 if key not in keys:
                     fail("ورودی فرمول وجود ندارد.")
-                if by_key[key]['type'] not in NUMBERS: fail('ورودی محاسبه باید عددی باشد.')
+                if by_key[key]['type'] not in NUMBERS:
+                    fail('ورودی محاسبه باید عددی باشد.')
                 graph[field["key"]].add(key)
             if formula.get("table"):
                 table = by_key.get(formula["table"], {})
@@ -205,9 +218,12 @@ def validate_schema(raw):
             kind = by_key[key]['type']
             if kind == 'Table' and op not in {'empty', 'not_empty'} or kind == 'MultiSelect' and op not in {'contains', 'empty', 'not_empty'}:
                 fail('عملگر با فیلد جدولی یا چندانتخابی سازگار نیست.')
-            if op == 'contains' and kind not in {'Text', 'LongText', 'Barcode', 'MultiSelect'}: fail('عملگر شامل برای این فیلد مجاز نیست.')
-            if op not in {'empty', 'not_empty'} and condition.get('value') is None: fail('مقدار شرط را وارد کنید.')
-            if kind in NUMBERS and op not in {'empty', 'not_empty'}: number(condition.get('value'))
+            if op == 'contains' and kind not in {'Text', 'LongText', 'Barcode', 'MultiSelect'}:
+                fail('عملگر شامل برای این فیلد مجاز نیست.')
+            if op not in {'empty', 'not_empty'} and condition.get('value') is None:
+                fail('مقدار شرط را وارد کنید.')
+            if kind in NUMBERS and op not in {'empty', 'not_empty'}:
+                number(condition.get('value'))
             graph[rule["target"]].add(key)
     visiting, done = set(), set()
 
@@ -241,12 +257,15 @@ def validate_schema(raw):
 def matches(condition, values, field_type=None):
     actual, expected, op = values.get(condition["field"]), condition.get("value"), condition["op"]
     empty = actual is None or actual == "" or actual == []
-    if op == "empty": return empty
-    if op == "not_empty": return not empty
+    if op == "empty":
+        return empty
+    if op == "not_empty":
+        return not empty
     if op in {'eq', 'ne'}:
         equal = number(actual) == number(expected) if field_type in NUMBERS else str(actual).lower() == str(expected).lower()
         return equal if op == 'eq' else not equal
-    if op == "contains": return expected in actual if isinstance(actual, list) else str(expected) in str(actual or "")
+    if op == "contains":
+        return expected in actual if isinstance(actual, list) else str(expected) in str(actual or "")
     try:
         left, right = Decimal(str(actual)), Decimal(str(expected))
     except InvalidOperation:
@@ -270,20 +289,27 @@ def calculate(formula, values):
     rows = values.get(formula.get("table"), []) or []
     columns = formula.get("columns", [])
     args = [number(values.get(key)) for key in formula.get("inputs", [])]
-    if op == "count": value = Decimal(len(rows))
+    if op == "count":
+        value = Decimal(len(rows))
     elif op in {"sum", "average", "sum_product"}:
         nums = [number(row.get(columns[0])) * (number(row.get(columns[1])) if op == 'sum_product' and len(columns) > 1 else 1) for row in rows] if columns else []
         value = sum(nums, Decimal(0)) / (len(nums) if op == 'average' and nums else 1)
-    elif op == "add": value = sum(args, Decimal(0))
-    elif len(args) != 2: fail("این محاسبه به دو ورودی نیاز دارد.")
-    elif op == "subtract": value = args[0] - args[1]
-    elif op == "multiply": value = args[0] * args[1]
-    elif op == "percent": value = args[0] * args[1] / 100
+    elif op == "add":
+        value = sum(args, Decimal(0))
+    elif len(args) != 2:
+        fail("این محاسبه به دو ورودی نیاز دارد.")
+    elif op == "subtract":
+        value = args[0] - args[1]
+    elif op == "multiply":
+        value = args[0] * args[1]
+    elif op == "percent":
+        value = args[0] * args[1] / 100
     elif op == "divide":
         if args[1] == 0:
             fail("تقسیم بر صفر در فرمول مجاز نیست.")
         value = args[0] / args[1]
-    else: fail("محاسبه پشتیبانی نمی‌شود.")
+    else:
+        fail("محاسبه پشتیبانی نمی‌شود.")
     return str(number(value).quantize(Decimal(10) ** -int(formula.get("precision", 2)), rounding=ROUND_HALF_UP))
 
 
@@ -303,52 +329,68 @@ def validate_values(schema, raw, company, _file_budget=None):
             values.setdefault(field['key'], default_value(field, company))
 
     def compute(field):
-        if field['key'] in calculated: return
-        if field['key'] in evaluating: fail('چرخه وابستگی معتبر نیست.')
+        if field['key'] in calculated:
+            return
+        if field['key'] in evaluating:
+            fail('چرخه وابستگی معتبر نیست.')
         evaluating.add(field['key'])
-        if field.get('link_filter'): compute(by_key[field['link_filter']['value_field']])
+        if field.get('link_filter'):
+            compute(by_key[field['link_filter']['value_field']])
         for rule in schema.get('rules', []):
             if rule.get('enabled', True) and rule['target'] == field['key']:
-                for condition in rule['conditions']: compute(by_key[condition['field']])
+                for condition in rule['conditions']:
+                    compute(by_key[condition['field']])
         formula = field.get('formula')
         if field['type'] == 'Formula' and formula:
             for key in formula.get('inputs', []):
                 compute(by_key[key])
-            if formula.get('table'): compute(by_key[formula['table']])
+            if formula.get('table'):
+                compute(by_key[formula['table']])
         state = flags(field, schema, values)
         if not state['visible']:
             values.pop(field['key'], None)
         else:
             value = calculate(formula, values) if field['type'] == 'Formula' else values.get(field['key'])
-            if state['readonly'] and field['type'] != 'Formula': value = default_value(field, company)
+            if state['readonly'] and field['type'] != 'Formula':
+                value = default_value(field, company)
             values[field['key']] = check(field, value, state['required'])
         evaluating.remove(field['key'])
         calculated.add(field['key'])
 
     def check(field, value, required):
         label, kind = field['label'], field['type']
-        if kind == 'Table' and value is None: value = []
+        if kind == 'Table' and value is None:
+            value = []
         if kind != 'Table' and (value is None or value == '' or value == []):
-            if required: fail(f"{label}: تکمیل این فیلد الزامی است.")
+            if required:
+                fail(f"{label}: تکمیل این فیلد الزامی است.")
             return value
         if kind in NUMBERS:
             n = number(value)
-            if kind == 'Integer' and n != n.to_integral(): fail(f"{label}: عدد صحیح وارد کنید.")
-            if field.get('min') is not None and n < number(field['min']): fail(f"{label}: کمتر از حداقل است.")
-            if field.get('max') is not None and n > number(field['max']): fail(f"{label}: بیشتر از حداکثر است.")
+            if kind == 'Integer' and n != n.to_integral():
+                fail(f"{label}: عدد صحیح وارد کنید.")
+            if field.get('min') is not None and n < number(field['min']):
+                fail(f"{label}: کمتر از حداقل است.")
+            if field.get('max') is not None and n > number(field['max']):
+                fail(f"{label}: بیشتر از حداکثر است.")
             return str(n)
-        if kind in {'Boolean', 'Checkbox'} and not isinstance(value, bool): fail(f"{label}: مقدار بله یا خیر لازم است.")
+        if kind in {'Boolean', 'Checkbox'} and not isinstance(value, bool):
+            fail(f"{label}: مقدار بله یا خیر لازم است.")
         if kind not in {'Boolean', 'Checkbox', 'Table', 'MultiSelect', 'File', 'Image', 'Signature'} | NUMBERS and not isinstance(value, str):
             fail(f"{label}: نوع مقدار معتبر نیست.")
         if kind in {'Select', 'MultiSelect'}:
             chosen = value if kind == 'MultiSelect' else [value]
-            if not isinstance(chosen, list) or any(v not in field['options'] for v in chosen): fail(f"{label}: انتخاب معتبر نیست.")
+            if not isinstance(chosen, list) or any(v not in field['options'] for v in chosen):
+                fail(f"{label}: انتخاب معتبر نیست.")
         if kind in {'Date', 'Time', 'DateTime'}:
             try:
                 {'Date': date, 'Time': time, 'DateTime': datetime}[kind].fromisoformat(value)
-            except (TypeError, ValueError): fail(f"{label}: تاریخ یا ساعت معتبر نیست.")
-            if field.get('min_date') and value[:10] < field['min_date'][:10]: fail(f"{label}: پیش از بازه مجاز است.")
-            if field.get('max_date') and value[:10] > field['max_date'][:10]: fail(f"{label}: پس از بازه مجاز است.")
+            except (TypeError, ValueError):
+                fail(f"{label}: تاریخ یا ساعت معتبر نیست.")
+            if field.get('min_date') and value[:10] < field['min_date'][:10]:
+                fail(f"{label}: پیش از بازه مجاز است.")
+            if field.get('max_date') and value[:10] > field['max_date'][:10]:
+                fail(f"{label}: پس از بازه مجاز است.")
         if kind == 'Link':
             source = field['source']
             if not isinstance(value, str) or not frappe.has_permission(source, 'read', value):
@@ -358,30 +400,38 @@ def validate_values(schema, raw, company, _file_budget=None):
                 fail(f"{label}: رکورد متعلق به این دفتر نیست.")
             if field.get('link_filter'):
                 rule = field['link_filter']
-                if record.get(rule['field']) != values.get(rule['value_field']): fail(f"{label}: رکورد با فیلتر وابسته سازگار نیست.")
+                if record.get(rule['field']) != values.get(rule['value_field']):
+                    fail(f"{label}: رکورد با فیلتر وابسته سازگار نیست.")
         if kind in {'File', 'Image', 'Signature'}:
             if isinstance(value, list):
-                if len(value) > int(field.get('max_files', 1)) or any(not isinstance(v, str) for v in value): fail(f'{label}: تعداد یا شناسه فایل‌ها معتبر نیست.')
+                if len(value) > int(field.get('max_files', 1)) or any(not isinstance(v, str) for v in value):
+                    fail(f'{label}: تعداد یا شناسه فایل‌ها معتبر نیست.')
                 return [check({**field, 'max_files': 1}, v, False) for v in value]
-            if not isinstance(value, str) or not frappe.db.exists('File', value): fail(f"{label}: فایل معتبر نیست.")
+            if not isinstance(value, str) or not frappe.db.exists('File', value):
+                fail(f"{label}: فایل معتبر نیست.")
             file = frappe.get_doc('File', value)
             file.check_permission('read')
-            if not file.is_private or file.owner != frappe.session.user: fail(f"{label}: فایل خصوصی خود را انتخاب کنید.")
-            if int(file.file_size or 0) > min(int(field.get('max_mb', 10)), 10) * 1024 * 1024: fail(f"{label}: فایل بیش از حد بزرگ است.")
+            if not file.is_private or file.owner != frappe.session.user:
+                fail(f"{label}: فایل خصوصی خود را انتخاب کنید.")
+            if int(file.file_size or 0) > min(int(field.get('max_mb', 10)), 10) * 1024 * 1024:
+                fail(f"{label}: فایل بیش از حد بزرگ است.")
             if file.name not in file_budget['names']:
                 file_budget['names'].add(file.name)
                 file_budget['bytes'] += int(file.file_size or 0)
-            if file_budget['bytes'] > 25 * 1024 * 1024 or len(file_budget['names']) > 30: fail('تعداد یا حجم مجموع پیوست‌ها بیش از حد مجاز است.')
+            if file_budget['bytes'] > 25 * 1024 * 1024 or len(file_budget['names']) > 30:
+                fail('تعداد یا حجم مجموع پیوست‌ها بیش از حد مجاز است.')
             suffix = (file.file_name or '').rsplit('.', 1)[-1].lower()
             extensions = field.get('extensions', ['pdf', 'jpg', 'jpeg', 'png'])
-            if suffix not in extensions or (kind in {'Image', 'Signature'} and suffix not in {'jpg', 'jpeg', 'png'}): fail(f"{label}: نوع فایل مجاز نیست.")
+            if suffix not in extensions or (kind in {'Image', 'Signature'} and suffix not in {'jpg', 'jpeg', 'png'}):
+                fail(f"{label}: نوع فایل مجاز نیست.")
         if kind == 'Table':
             if not isinstance(value, list) or not max(int(field.get('min_rows', 0)), 1 if required else 0) <= len(value) <= int(field.get('max_rows', 100)):
                 fail(f"{label}: تعداد ردیف‌ها مجاز نیست.")
             result = []
             for row in value:
                 columns = field['columns']
-                if not isinstance(row, dict) or set(row) - {c['key'] for c in columns}: fail(f"{label}: ستون ناشناخته است.")
+                if not isinstance(row, dict) or set(row) - {c['key'] for c in columns}:
+                    fail(f"{label}: ستون ناشناخته است.")
                 result.append(validate_values({'sections': [{'fields': columns}], 'rules': []}, row, company, file_budget))
             return result
         if isinstance(value, str) and kind not in NUMBERS:
@@ -393,7 +443,8 @@ def validate_values(schema, raw, company, _file_budget=None):
                     fail(field.get('error_message') or f'{label}: ایمیل معتبر نیست.')
             if field.get('format') == 'mobile':
                 value = value.translate(str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩', '01234567890123456789'))
-                if not re.fullmatch(r'09[0-9]{9}', value): fail(field.get('error_message') or f'{label}: شماره همراه معتبر نیست.')
+                if not re.fullmatch(r'09[0-9]{9}', value):
+                    fail(field.get('error_message') or f'{label}: شماره همراه معتبر نیست.')
         return value
 
     for field in definitions:
