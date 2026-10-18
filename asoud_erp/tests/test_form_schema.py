@@ -135,6 +135,72 @@ def test_form_formula_vectors(schema):
             assert result == item["expected"], f"{name}: expected {item['expected']}, got {result}"
 
 
+def test_formula_if_lazy_evaluation(schema):
+    # Division by zero in unused false branch must not fail
+    res_true = schema.calculate({
+        "op": "if",
+        "condition": {"op": ">", "inputs": ["a", "zero"]},
+        "then": {"op": "divide", "inputs": ["x", "a"]},
+        "else": {"op": "divide", "inputs": ["x", "zero"]},
+    }, {"a": "5", "x": "100", "zero": "0"})
+    assert res_true == "20.00"
+
+    # Division by zero in unused true branch must not fail
+    res_false = schema.calculate({
+        "op": "if",
+        "condition": {"op": "=", "inputs": ["a", "zero"]},
+        "then": {"op": "divide", "inputs": ["x", "zero"]},
+        "else": {"op": "divide", "inputs": ["x", "b"]},
+    }, {"a": "1", "b": "5", "x": "100", "zero": "0"})
+    assert res_false == "20.00"
+
+
+def test_formula_round_min_max(schema):
+    assert schema.calculate({"op": "round", "inputs": ["a", "b"]}, {"a": "2.555", "b": "2"}) == "2.56"
+    assert schema.calculate({"op": "round", "inputs": ["a"], "precision": 0}, {"a": "15.6"}) == "16"
+    assert schema.calculate({"op": "min", "inputs": ["a", "b", "c"]}, {"a": "15", "b": "3.5", "c": "7"}) == "3.50"
+    assert schema.calculate({"op": "max", "inputs": ["a", "b", "c"]}, {"a": "15", "b": "3.5", "c": "7"}) == "15.00"
+
+
+def test_formula_operator_precedence(schema):
+    # * and / before + and -
+    res = schema.calculate({
+        "op": "chain",
+        "inputs": ["a", "b", "c"],
+        "ops": ["add", "multiply"],
+    }, {"a": "2", "b": "3", "c": "4"})
+    assert res == "14.00"
+
+    res_sub = schema.calculate({
+        "op": "chain",
+        "inputs": ["a", "b", "c"],
+        "ops": ["subtract", "divide"],
+    }, {"a": "10", "b": "6", "c": "2"})
+    assert res_sub == "7.00"
+
+
+def test_formula_table_min_max(schema):
+    rows = [{"amount": "10"}, {"amount": "2.5"}, {"amount": "8"}]
+    assert schema.calculate({"op": "min", "table": "rows", "columns": ["amount"]}, {"rows": rows}) == "2.50"
+    assert schema.calculate({"op": "max", "table": "rows", "columns": ["amount"]}, {"rows": rows}) == "10.00"
+    assert schema.calculate({"op": "min", "table": "rows", "columns": ["amount"]}, {"rows": []}) == "0.00"
+    assert schema.calculate({"op": "max", "table": "rows", "columns": ["amount"]}, {"rows": []}) == "0.00"
+
+
+def test_formula_nested_expressions(schema):
+    res = schema.calculate({
+        "expression": "IF(a > 0, ROUND(b / a, 2), 0)",
+        "inputs": ["a", "b"],
+    }, {"a": "3", "b": "10"})
+    assert res == "3.33"
+
+    res_mm = schema.calculate({
+        "expression": "MAX(a, MIN(b, c))",
+        "inputs": ["a", "b", "c"],
+    }, {"a": "5", "b": "10", "c": "3"})
+    assert res_mm == "5.00"
+
+
 def test_migrate_schema_legacy_v1_to_v2_fixture(schema):
     import json
     from pathlib import Path
