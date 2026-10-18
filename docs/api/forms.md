@@ -11,12 +11,18 @@ Every call takes or resolves the form's company and checks company access.
 ## Schema and revisions
 
 `save_form(company, schema, name?, expected_version?, client_id?)` saves a draft.
+Accepted `schema_version` values are 1 and 2; `save_form` always stores version 2,
+while unknown versions are rejected with a validation error.
 Section, field, table-column, and select-option identifiers are stable ASCII IDs;
 select options are `{id, label}` objects. Formula inputs and rule conditions refer
 to field IDs, never labels. Payloads, field counts, rows, attachments, and text
 lengths are bounded. A published revision is immutable: changing a draft and
 publishing creates a new revision, while re-publishing unchanged JSON only enables
-the existing revision.
+the existing revision. Legacy v1 schemas (plain-string options without IDs) are
+migrated on read by `get_form`, `list_forms`, and `get_entry` using deterministic
+position-based option IDs while keeping database snapshot revisions immutable.
+Formula evaluation normalizes Persian/Arabic numerals and the Persian decimal
+separator (`٫`) to ASCII Decimal arithmetic with Half-Up rounding.
 
 ## Consumption
 
