@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.16.0 - 2026-10-18
+
+Deployment: run `bench --site <site> migrate` (new DocTypes: `ASOUD Form`, `ASOUD Form Revision`, `ASOUD Form Entry`, `ASOUD Calendar Scope`, `ASOUD Calendar Holiday`; directive receipts). Pairs with app 0.28.0.
 
 Added:
 
