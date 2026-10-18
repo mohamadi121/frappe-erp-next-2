@@ -14,8 +14,8 @@ SOURCES = {"Employee", "Customer", "Supplier", "Item", "Warehouse", "Account", "
            "Project", "Department"}
 NUMBERS = {"Integer", "Decimal", "Money", "Rating", "Formula"}
 OPERATORS = {"eq", "ne", "gt", "lt", "ge", "le", "empty", "not_empty", "contains"}
-FORMULAS = {"add", "subtract", "multiply", "divide", "percent", "sum", "sum_product", "average", "count", "chain"}
-CHAIN_OPS = {"add", "subtract", "multiply", "divide"}
+FORMULAS = {"add", "subtract", "multiply", "divide", "percent", "sum", "sum_product", "average", "count", "chain", "if", "round", "min", "max", "expression"}
+CHAIN_OPS = {"add", "subtract", "multiply", "divide", "percent"}
 LINK_FILTERS = {'Employee': {'department'}, 'Item': {'item_group'}, 'Customer': {'customer_group'},
                 'Supplier': {'supplier_group'}, 'Account': {'account_type'}, 'Warehouse': {'parent_warehouse'},
                 'Cost Center': {'parent_cost_center'}, 'Project': {'status'}, 'Department': {'parent_department'}}
@@ -148,28 +148,31 @@ def validate_schema(raw):
                     fail("حداکثر ردیف جدول باید بین یک تا صد باشد.")
                 check_fields(columns, True)
             if kind == "Formula":
-                formula = field.get("formula", {})
-                if (not isinstance(formula, dict) or formula.get("op") not in FORMULAS
-                        or not 0 <= int(formula.get("precision", 2)) <= 8):
+                formula = field.get("formula")
+                if not isinstance(formula, dict):
+                    fail("فرمول معتبر نیست.")
+                op = formula.get("op", "expression" if formula.get("expression") else None)
+                if op not in FORMULAS or not 0 <= int(formula.get("precision", 2)) <= 8:
                     fail("فرمول معتبر نیست.")
                 if not isinstance(formula.get('inputs', []), list) or len(formula.get('inputs', [])) > 100:
                     fail('ورودی فرمول معتبر نیست.')
-                if formula['op'] in {'subtract', 'multiply', 'divide', 'percent'} and len(formula.get('inputs', [])) != 2:
+                if formula.get('op') in {'subtract', 'multiply', 'divide', 'percent'} and len(formula.get('inputs', [])) != 2:
                     fail('این فرمول به دو ورودی نیاز دارد.')
-                if formula['op'] == 'add' and not formula.get('inputs'):
+                if formula.get('op') == 'add' and not formula.get('inputs'):
                     fail('ورودی جمع را انتخاب کنید.')
-                if formula['op'] == 'chain':
+                if formula.get('op') == 'chain':
                     ops = formula.get('ops')
                     inputs = formula.get('inputs', [])
                     if not isinstance(ops, list) or len(inputs) < 2 or len(ops) != len(inputs) - 1:
                         fail('تعداد عملگرهای فرمول معتبر نیست.')
                     if any(not isinstance(o, str) or o not in CHAIN_OPS for o in ops):
                         fail('عملگر فرمول معتبر نیست.')
-                if formula['op'] in {'sum', 'sum_product', 'average', 'count'} and (nested or not formula.get('table')):
+                if formula.get('op') in {'sum', 'sum_product', 'average', 'count', 'min', 'max'} and (nested or (formula.get('table') and not formula.get('table'))):
                     fail('جدول محاسبه را انتخاب کنید؛ محاسبه تجمیعی داخل ستون مجاز نیست.')
-                count = len(formula.get('columns', []))
-                if formula['op'] in {'sum', 'average'} and count != 1 or formula['op'] == 'sum_product' and count != 2:
-                    fail('تعداد ستون‌های فرمول معتبر نیست.')
+                if formula.get('table'):
+                    count = len(formula.get('columns', []))
+                    if formula.get('op') in {'sum', 'average', 'min', 'max'} and count != 1 or formula.get('op') == 'sum_product' and count != 2:
+                        fail('تعداد ستون‌های فرمول معتبر نیست.')
             if kind in {'File', 'Image', 'Signature'}:
                 extensions = field.get('extensions', ['pdf', 'jpg', 'jpeg', 'png'])
                 if not isinstance(extensions, list) or not extensions or not set(extensions).issubset({'pdf', 'jpg', 'jpeg', 'png', 'xlsx', 'csv', 'docx'}):
@@ -313,40 +316,267 @@ def flags(field, schema, values):
     return result
 
 
-def calculate(formula, values):
-    op = formula["op"]
+class _ExprParser:
+    def __init__(self, expr_str, values):
+        self.expr_str = expr_str
+        self.values = values
+        self.tokens = self.tokenize(expr_str)
+        self.pos = 0
+
+    def tokenize(self, s):
+        s = str(s).strip().translate(_DIGIT_TRANSLATION).replace("٬", "")
+        pattern = r"\s*([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|[A-Za-z_][A-Za-z0-9_]*|<=|>=|!=|==|[<>=+\-*/%(),«»])"
+        raw = re.findall(pattern, s)
+        tokens = []
+        for t in raw:
+            if t not in ("«", "»"):
+                tokens.append(t)
+        return tokens
+
+    def peek(self):
+        return self.tokens[self.pos] if self.pos < len(self.tokens) else None
+
+    def consume(self, expected=None):
+        tok = self.peek()
+        if expected and tok != expected:
+            fail(f"فرمول معتبر نیست: انتظار {expected} به جای {tok}")
+        self.pos += 1
+        return tok
+
+    def parse(self):
+        return self.parse_expr(True)
+
+    def parse_expr(self, execute):
+        return self.parse_comparison(execute)
+
+    def parse_comparison(self, execute):
+        left = self.parse_additive(execute)
+        while self.peek() in (">", "<", "=", "==", ">=", "<=", "!="):
+            op = self.consume()
+            right = self.parse_additive(execute)
+            if execute:
+                if op == ">":
+                    left = Decimal(1) if left > right else Decimal(0)
+                elif op == "<":
+                    left = Decimal(1) if left < right else Decimal(0)
+                elif op in ("=", "=="):
+                    left = Decimal(1) if left == right else Decimal(0)
+                elif op == ">=":
+                    left = Decimal(1) if left >= right else Decimal(0)
+                elif op == "<=":
+                    left = Decimal(1) if left <= right else Decimal(0)
+                elif op == "!=":
+                    left = Decimal(1) if left != right else Decimal(0)
+        return left
+
+    def parse_additive(self, execute):
+        left = self.parse_multiplicative(execute)
+        while self.peek() in ("+", "-"):
+            op = self.consume()
+            right = self.parse_multiplicative(execute)
+            if execute:
+                left = (left + right) if op == "+" else (left - right)
+        return left
+
+    def parse_multiplicative(self, execute):
+        left = self.parse_unary(execute)
+        while self.peek() in ("*", "/", "%"):
+            op = self.consume()
+            right = self.parse_unary(execute)
+            if execute:
+                if op == "*":
+                    left = left * right
+                elif op == "/":
+                    if right == 0:
+                        fail("تقسیم بر صفر در فرمول مجاز نیست.")
+                    left = left / right
+                elif op == "%":
+                    left = (left * right) / Decimal(100)
+        return left
+
+    def parse_unary(self, execute):
+        if self.peek() == "-":
+            self.consume("-")
+            val = self.parse_unary(execute)
+            return -val if execute else Decimal(0)
+        if self.peek() == "+":
+            self.consume("+")
+            return self.parse_unary(execute)
+        return self.parse_primary(execute)
+
+    def parse_primary(self, execute):
+        tok = self.peek()
+        if tok is None:
+            fail("فرمول خالی است.")
+        if tok == "(":
+            self.consume("(")
+            val = self.parse_expr(execute)
+            self.consume(")")
+            return val
+
+        try:
+            val = Decimal(tok)
+            self.consume()
+            return val
+        except Exception:
+            pass
+
+        ident = self.consume()
+        if self.peek() == "(":
+            self.consume("(")
+            fn = ident.upper()
+            if fn == "IF":
+                cond_val = self.parse_expr(execute)
+                cond_bool = (cond_val != Decimal(0)) if execute else False
+                self.consume(",")
+                true_val = self.parse_expr(execute and cond_bool)
+                self.consume(",")
+                false_val = self.parse_expr(execute and not cond_bool)
+                self.consume(")")
+                return true_val if (execute and cond_bool) else (false_val if execute else Decimal(0))
+            elif fn == "ROUND":
+                x = self.parse_expr(execute)
+                digits = 0
+                if self.peek() == ",":
+                    self.consume(",")
+                    d_val = self.parse_expr(execute)
+                    if execute:
+                        digits = int(d_val)
+                self.consume(")")
+                if execute:
+                    return x.quantize(Decimal(10) ** -digits, rounding=ROUND_HALF_UP)
+                return Decimal(0)
+            elif fn in ("MAX", "MIN"):
+                args = [self.parse_expr(execute)]
+                while self.peek() == ",":
+                    self.consume(",")
+                    args.append(self.parse_expr(execute))
+                self.consume(")")
+                if execute:
+                    return max(args) if fn == "MAX" else min(args)
+                return Decimal(0)
+            else:
+                fail(f"تابع ناشناخته در فرمول: {ident}")
+        else:
+            if execute:
+                return number(self.values.get(ident))
+            return Decimal(0)
+
+
+def _eval_condition(cond, values):
+    if isinstance(cond, str):
+        return _ExprParser(cond, values).parse() != Decimal(0)
+    if isinstance(cond, dict):
+        op = cond.get("op", cond.get("cmp", "eq"))
+        if "inputs" in cond:
+            left_key, right_key = cond["inputs"][0], cond["inputs"][1]
+            left = _eval_branch(left_key, values)
+            right = _eval_branch(right_key, values)
+        else:
+            left = _eval_branch(cond.get("left"), values)
+            right = _eval_branch(cond.get("right"), values)
+        if op in (">", "gt"):
+            return left > right
+        if op in ("<", "lt"):
+            return left < right
+        if op in ("=", "==", "eq"):
+            return left == right
+        if op in (">=", "ge"):
+            return left >= right
+        if op in ("<=", "le"):
+            return left <= right
+        if op in ("!=", "ne"):
+            return left != right
+    return False
+
+
+def _eval_branch(branch, values):
+    if isinstance(branch, dict):
+        return Decimal(calculate(branch, values, raw_decimal=True))
+    if isinstance(branch, (int, float, Decimal)):
+        return Decimal(str(branch))
+    if isinstance(branch, str):
+        if branch in values:
+            return number(values.get(branch))
+        try:
+            cleaned = branch.strip().translate(_DIGIT_TRANSLATION).replace("٬", "")
+            return Decimal(cleaned)
+        except Exception:
+            return number(values.get(branch))
+    return Decimal(0)
+
+
+def calculate(formula, values, raw_decimal=False):
+    if "expression" in formula:
+        val = _ExprParser(formula["expression"], values).parse()
+        if raw_decimal:
+            return val
+        prec = int(formula.get("precision", 2))
+        return str(val.quantize(Decimal(10) ** -prec, rounding=ROUND_HALF_UP))
+
+    op = formula.get("op")
     rows = values.get(formula.get("table"), []) or []
     columns = formula.get("columns", [])
     args = [number(values.get(key)) for key in formula.get("inputs", [])]
     if op == "count":
         value = Decimal(len(rows))
-    elif op in {"sum", "average", "sum_product"}:
+    elif op in {"sum", "average", "sum_product", "min", "max"} and (formula.get("table") or (rows and columns)):
         nums = [number(row.get(columns[0])) * (number(row.get(columns[1])) if op == 'sum_product' and len(columns) > 1 else 1) for row in rows] if columns else []
-        value = sum(nums, Decimal(0)) / (len(nums) if op == 'average' and nums else 1)
+        if not nums:
+            value = Decimal(0)
+        elif op == "min":
+            value = min(nums)
+        elif op == "max":
+            value = max(nums)
+        elif op == "average":
+            value = sum(nums, Decimal(0)) / len(nums)
+        else:
+            value = sum(nums, Decimal(0))
     elif op == "add":
         value = sum(args, Decimal(0))
+    elif op in {"min", "max"}:
+        if not args:
+            fail("این محاسبه به ورودی نیاز دارد.")
+        value = min(args) if op == "min" else max(args)
+    elif op == "round":
+        if not args:
+            fail("این محاسبه به ورودی نیاز دارد.")
+        digits = int(args[1]) if len(args) > 1 else int(formula.get("digits", formula.get("precision", 0)))
+        value = args[0].quantize(Decimal(10) ** -digits, rounding=ROUND_HALF_UP)
+    elif op == "if":
+        cond = _eval_condition(formula.get("condition"), values)
+        branch = formula.get("then") if cond else formula.get("else")
+        value = _eval_branch(branch, values)
     elif op == "chain" or (isinstance(formula.get("ops"), list) and formula.get("ops")):
         if not args:
             fail("این محاسبه به ورودی نیاز دارد.")
         ops = formula.get("ops")
         if not isinstance(ops, list) or len(args) != len(ops) + 1:
             fail("این محاسبه به دو ورودی نیاز دارد.")
-        value = args[0]
+        rem_args = [args[0]]
+        rem_ops = []
         for operation, next_val in zip(ops, args[1:]):
+            if operation in ("multiply", "divide", "percent"):
+                prev_val = rem_args.pop()
+                if operation == "multiply":
+                    rem_args.append(prev_val * next_val)
+                elif operation == "divide":
+                    if next_val == Decimal(0):
+                        fail("تقسیم بر صفر در فرمول مجاز نیست.")
+                    rem_args.append(prev_val / next_val)
+                elif operation == "percent":
+                    rem_args.append((prev_val * next_val) / Decimal(100))
+            elif operation in ("add", "subtract"):
+                rem_ops.append(operation)
+                rem_args.append(next_val)
+            else:
+                fail("محاسبه پشتیبانی نمی‌شود.")
+        value = rem_args[0]
+        for operation, next_val in zip(rem_ops, rem_args[1:]):
             if operation == "add":
                 value = value + next_val
             elif operation == "subtract":
                 value = value - next_val
-            elif operation == "multiply":
-                value = value * next_val
-            elif operation == "divide":
-                if next_val == Decimal(0):
-                    fail("تقسیم بر صفر در فرمول مجاز نیست.")
-                value = value / next_val
-            elif operation == "percent":
-                value = (value * next_val) / Decimal(100)
-            else:
-                fail("محاسبه پشتیبانی نمی‌شود.")
     elif len(args) != 2:
         fail("این محاسبه به دو ورودی نیاز دارد.")
     elif op == "subtract":
@@ -361,6 +591,9 @@ def calculate(formula, values):
         value = args[0] / args[1]
     else:
         fail("محاسبه پشتیبانی نمی‌شود.")
+
+    if raw_decimal:
+        return value
     return str(number(value).quantize(Decimal(10) ** -int(formula.get("precision", 2)), rounding=ROUND_HALF_UP))
 
 

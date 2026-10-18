@@ -1,36 +1,1004 @@
 {
   "header": "ASOUD form formula vectors v1; copy unchanged and verify SHA-256 before using.",
   "cases": [
-    {"name":"add integers","formula":{"op":"add","inputs":["a","b"]},"values":{"a":"2","b":"3"},"expected":"5.00"},
-    {"name":"add empty","formula":{"op":"add","inputs":["a","b"]},"values":{"a":"","b":null},"expected":"0.00"},
-    {"name":"add decimal","formula":{"op":"add","inputs":["a","b"]},"values":{"a":"0.1","b":"0.2"},"expected":"0.30"},
-    {"name":"subtract","formula":{"op":"subtract","inputs":["a","b"]},"values":{"a":"2","b":"3"},"expected":"-1.00"},
-    {"name":"multiply","formula":{"op":"multiply","inputs":["a","b"]},"values":{"a":"2.5","b":"4"},"expected":"10.00"},
-    {"name":"percent","formula":{"op":"percent","inputs":["a","b"]},"values":{"a":"20","b":"5"},"expected":"1.00"},
-    {"name":"divide","formula":{"op":"divide","inputs":["a","b"]},"values":{"a":"1","b":"8"},"expected":"0.13"},
-    {"name":"divide zero","formula":{"op":"divide","inputs":["a","b"]},"values":{"a":"1","b":"0"},"error":"divide_by_zero"},
-    {"name":"divide inputs","formula":{"op":"divide","inputs":["a"]},"values":{"a":"1"},"error":"two_inputs"},
-    {"name":"unknown operator","formula":{"op":"pow","inputs":["a","b"]},"values":{"a":"2","b":"2"},"error":"unsupported"},
-    {"name":"sum table","formula":{"op":"sum","table":"rows","columns":["amount"]},"values":{"rows":[{"amount":"2"},{"amount":"3"}]},"expected":"5.00"},
-    {"name":"sum decimals","formula":{"op":"sum","table":"rows","columns":["amount"]},"values":{"rows":[{"amount":"0.1"},{"amount":"0.2"}]},"expected":"0.30"},
-    {"name":"sum product","formula":{"op":"sum_product","table":"rows","columns":["qty","price"]},"values":{"rows":[{"qty":"2","price":"3.5"},{"qty":"1","price":"4"}]},"expected":"11.00"},
-    {"name":"average","formula":{"op":"average","table":"rows","columns":["amount"]},"values":{"rows":[{"amount":"1"},{"amount":"2"},{"amount":"2"}]},"expected":"1.67"},
-    {"name":"average empty","formula":{"op":"average","table":"rows","columns":["amount"]},"values":{"rows":[]},"expected":"0.00"},
-    {"name":"count","formula":{"op":"count","table":"rows"},"values":{"rows":[{},{}]},"expected":"2.00"},
-    {"name":"precision zero half up","formula":{"op":"divide","inputs":["a","b"],"precision":0},"values":{"a":"5","b":"2"},"expected":"3"},
-    {"name":"precision one half up","formula":{"op":"divide","inputs":["a","b"],"precision":1},"values":{"a":"1","b":"8"},"expected":"0.1"},
-    {"name":"precision eight","formula":{"op":"divide","inputs":["a","b"],"precision":8},"values":{"a":"1","b":"3"},"expected":"0.33333333"},
-    {"name":"positive half up","formula":{"op":"add","inputs":["a"],"precision":2},"values":{"a":"2.675"},"expected":"2.68"},
-    {"name":"negative half up","formula":{"op":"add","inputs":["a"],"precision":2},"values":{"a":"-2.675"},"expected":"-2.68"},
-    {"name":"persian digits","formula":{"op":"add","inputs":["a","b"]},"values":{"a":"۱٫۵","b":"۲"},"expected":"3.50"},
-    {"name":"scientific notation","formula":{"op":"add","inputs":["a","b"]},"values":{"a":"1e2","b":"0.5"},"expected":"100.50"},
-    {"name":"negative sum","formula":{"op":"sum","table":"rows","columns":["amount"]},"values":{"rows":[{"amount":"-1.5"},{"amount":"0.25"}]},"expected":"-1.25"},
-    {"name":"missing table value","formula":{"op":"sum","table":"rows","columns":["amount"]},"values":{},"expected":"0.00"},
-    {"name":"missing row value","formula":{"op":"sum","table":"rows","columns":["amount"]},"values":{"rows":[{}]},"expected":"0.00"},
-    {"name":"multiply precision","formula":{"op":"multiply","inputs":["a","b"],"precision":3},"values":{"a":"1.2345","b":"2"},"expected":"2.469"},
-    {"name":"percent precision","formula":{"op":"percent","inputs":["a","b"],"precision":4},"values":{"a":"12.345","b":"6.789"},"expected":"0.8381"},
-    {"name":"chain multiply divide","formula":{"op":"chain","ops":["multiply","divide"],"inputs":["a","b","c"]},"values":{"a":"3","b":"500000","c":"1500000"},"expected":"1.00"},
-    {"name":"schema cycle","schema":{"sections":[{"fields":[{"key":"a","label":"الف","type":"Formula","formula":{"op":"add","inputs":["b"]}},{"key":"b","label":"ب","type":"Formula","formula":{"op":"add","inputs":["a"]}}]}],"rules":[]},"error":"cycle"},
-    {"name":"schema unknown key","schema":{"sections":[{"fields":[{"key":"a","label":"الف","type":"Formula","formula":{"op":"add","inputs":["missing"]}}]}],"rules":[]},"error":"unknown_key"}
+    {
+      "name": "add integers",
+      "formula": {
+        "op": "add",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "2",
+        "b": "3"
+      },
+      "expected": "5.00"
+    },
+    {
+      "name": "add empty",
+      "formula": {
+        "op": "add",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "",
+        "b": null
+      },
+      "expected": "0.00"
+    },
+    {
+      "name": "add decimal",
+      "formula": {
+        "op": "add",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "0.1",
+        "b": "0.2"
+      },
+      "expected": "0.30"
+    },
+    {
+      "name": "subtract",
+      "formula": {
+        "op": "subtract",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "2",
+        "b": "3"
+      },
+      "expected": "-1.00"
+    },
+    {
+      "name": "multiply",
+      "formula": {
+        "op": "multiply",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "2.5",
+        "b": "4"
+      },
+      "expected": "10.00"
+    },
+    {
+      "name": "percent",
+      "formula": {
+        "op": "percent",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "20",
+        "b": "5"
+      },
+      "expected": "1.00"
+    },
+    {
+      "name": "divide",
+      "formula": {
+        "op": "divide",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "1",
+        "b": "8"
+      },
+      "expected": "0.13"
+    },
+    {
+      "name": "divide zero",
+      "formula": {
+        "op": "divide",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "1",
+        "b": "0"
+      },
+      "error": "divide_by_zero"
+    },
+    {
+      "name": "divide inputs",
+      "formula": {
+        "op": "divide",
+        "inputs": [
+          "a"
+        ]
+      },
+      "values": {
+        "a": "1"
+      },
+      "error": "two_inputs"
+    },
+    {
+      "name": "unknown operator",
+      "formula": {
+        "op": "pow",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "2",
+        "b": "2"
+      },
+      "error": "unsupported"
+    },
+    {
+      "name": "sum table",
+      "formula": {
+        "op": "sum",
+        "table": "rows",
+        "columns": [
+          "amount"
+        ]
+      },
+      "values": {
+        "rows": [
+          {
+            "amount": "2"
+          },
+          {
+            "amount": "3"
+          }
+        ]
+      },
+      "expected": "5.00"
+    },
+    {
+      "name": "sum decimals",
+      "formula": {
+        "op": "sum",
+        "table": "rows",
+        "columns": [
+          "amount"
+        ]
+      },
+      "values": {
+        "rows": [
+          {
+            "amount": "0.1"
+          },
+          {
+            "amount": "0.2"
+          }
+        ]
+      },
+      "expected": "0.30"
+    },
+    {
+      "name": "sum product",
+      "formula": {
+        "op": "sum_product",
+        "table": "rows",
+        "columns": [
+          "qty",
+          "price"
+        ]
+      },
+      "values": {
+        "rows": [
+          {
+            "qty": "2",
+            "price": "3.5"
+          },
+          {
+            "qty": "1",
+            "price": "4"
+          }
+        ]
+      },
+      "expected": "11.00"
+    },
+    {
+      "name": "average",
+      "formula": {
+        "op": "average",
+        "table": "rows",
+        "columns": [
+          "amount"
+        ]
+      },
+      "values": {
+        "rows": [
+          {
+            "amount": "1"
+          },
+          {
+            "amount": "2"
+          },
+          {
+            "amount": "2"
+          }
+        ]
+      },
+      "expected": "1.67"
+    },
+    {
+      "name": "average empty",
+      "formula": {
+        "op": "average",
+        "table": "rows",
+        "columns": [
+          "amount"
+        ]
+      },
+      "values": {
+        "rows": []
+      },
+      "expected": "0.00"
+    },
+    {
+      "name": "count",
+      "formula": {
+        "op": "count",
+        "table": "rows"
+      },
+      "values": {
+        "rows": [
+          {},
+          {}
+        ]
+      },
+      "expected": "2.00"
+    },
+    {
+      "name": "precision zero half up",
+      "formula": {
+        "op": "divide",
+        "inputs": [
+          "a",
+          "b"
+        ],
+        "precision": 0
+      },
+      "values": {
+        "a": "5",
+        "b": "2"
+      },
+      "expected": "3"
+    },
+    {
+      "name": "precision one half up",
+      "formula": {
+        "op": "divide",
+        "inputs": [
+          "a",
+          "b"
+        ],
+        "precision": 1
+      },
+      "values": {
+        "a": "1",
+        "b": "8"
+      },
+      "expected": "0.1"
+    },
+    {
+      "name": "precision eight",
+      "formula": {
+        "op": "divide",
+        "inputs": [
+          "a",
+          "b"
+        ],
+        "precision": 8
+      },
+      "values": {
+        "a": "1",
+        "b": "3"
+      },
+      "expected": "0.33333333"
+    },
+    {
+      "name": "positive half up",
+      "formula": {
+        "op": "add",
+        "inputs": [
+          "a"
+        ],
+        "precision": 2
+      },
+      "values": {
+        "a": "2.675"
+      },
+      "expected": "2.68"
+    },
+    {
+      "name": "negative half up",
+      "formula": {
+        "op": "add",
+        "inputs": [
+          "a"
+        ],
+        "precision": 2
+      },
+      "values": {
+        "a": "-2.675"
+      },
+      "expected": "-2.68"
+    },
+    {
+      "name": "persian digits",
+      "formula": {
+        "op": "add",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "۱٫۵",
+        "b": "۲"
+      },
+      "expected": "3.50"
+    },
+    {
+      "name": "scientific notation",
+      "formula": {
+        "op": "add",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "1e2",
+        "b": "0.5"
+      },
+      "expected": "100.50"
+    },
+    {
+      "name": "negative sum",
+      "formula": {
+        "op": "sum",
+        "table": "rows",
+        "columns": [
+          "amount"
+        ]
+      },
+      "values": {
+        "rows": [
+          {
+            "amount": "-1.5"
+          },
+          {
+            "amount": "0.25"
+          }
+        ]
+      },
+      "expected": "-1.25"
+    },
+    {
+      "name": "missing table value",
+      "formula": {
+        "op": "sum",
+        "table": "rows",
+        "columns": [
+          "amount"
+        ]
+      },
+      "values": {},
+      "expected": "0.00"
+    },
+    {
+      "name": "missing row value",
+      "formula": {
+        "op": "sum",
+        "table": "rows",
+        "columns": [
+          "amount"
+        ]
+      },
+      "values": {
+        "rows": [
+          {}
+        ]
+      },
+      "expected": "0.00"
+    },
+    {
+      "name": "multiply precision",
+      "formula": {
+        "op": "multiply",
+        "inputs": [
+          "a",
+          "b"
+        ],
+        "precision": 3
+      },
+      "values": {
+        "a": "1.2345",
+        "b": "2"
+      },
+      "expected": "2.469"
+    },
+    {
+      "name": "percent precision",
+      "formula": {
+        "op": "percent",
+        "inputs": [
+          "a",
+          "b"
+        ],
+        "precision": 4
+      },
+      "values": {
+        "a": "12.345",
+        "b": "6.789"
+      },
+      "expected": "0.8381"
+    },
+    {
+      "name": "chain multiply divide",
+      "formula": {
+        "op": "chain",
+        "ops": [
+          "multiply",
+          "divide"
+        ],
+        "inputs": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      "values": {
+        "a": "3",
+        "b": "500000",
+        "c": "1500000"
+      },
+      "expected": "1.00"
+    },
+    {
+      "name": "schema cycle",
+      "schema": {
+        "sections": [
+          {
+            "fields": [
+              {
+                "key": "a",
+                "label": "الف",
+                "type": "Formula",
+                "formula": {
+                  "op": "add",
+                  "inputs": [
+                    "b"
+                  ]
+                }
+              },
+              {
+                "key": "b",
+                "label": "ب",
+                "type": "Formula",
+                "formula": {
+                  "op": "add",
+                  "inputs": [
+                    "a"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "rules": []
+      },
+      "error": "cycle"
+    },
+    {
+      "name": "schema unknown key",
+      "schema": {
+        "sections": [
+          {
+            "fields": [
+              {
+                "key": "a",
+                "label": "الف",
+                "type": "Formula",
+                "formula": {
+                  "op": "add",
+                  "inputs": [
+                    "missing"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "rules": []
+      },
+      "error": "unknown_key"
+    },
+    {
+      "name": "chain precedence add multiply",
+      "formula": {
+        "op": "chain",
+        "inputs": [
+          "a",
+          "b",
+          "c"
+        ],
+        "ops": [
+          "add",
+          "multiply"
+        ]
+      },
+      "values": {
+        "a": "2",
+        "b": "3",
+        "c": "4"
+      },
+      "expected": "14.00"
+    },
+    {
+      "name": "chain precedence subtract divide",
+      "formula": {
+        "op": "chain",
+        "inputs": [
+          "a",
+          "b",
+          "c"
+        ],
+        "ops": [
+          "subtract",
+          "divide"
+        ]
+      },
+      "values": {
+        "a": "10",
+        "b": "6",
+        "c": "2"
+      },
+      "expected": "7.00"
+    },
+    {
+      "name": "chain precedence negative numbers",
+      "formula": {
+        "op": "chain",
+        "inputs": [
+          "a",
+          "b",
+          "c"
+        ],
+        "ops": [
+          "add",
+          "multiply"
+        ]
+      },
+      "values": {
+        "a": "10",
+        "b": "-3",
+        "c": "2"
+      },
+      "expected": "4.00"
+    },
+    {
+      "name": "min table",
+      "formula": {
+        "op": "min",
+        "table": "rows",
+        "columns": [
+          "amount"
+        ]
+      },
+      "values": {
+        "rows": [
+          {
+            "amount": "10"
+          },
+          {
+            "amount": "2.5"
+          },
+          {
+            "amount": "8"
+          }
+        ]
+      },
+      "expected": "2.50"
+    },
+    {
+      "name": "max table",
+      "formula": {
+        "op": "max",
+        "table": "rows",
+        "columns": [
+          "amount"
+        ]
+      },
+      "values": {
+        "rows": [
+          {
+            "amount": "10"
+          },
+          {
+            "amount": "2.5"
+          },
+          {
+            "amount": "8"
+          }
+        ]
+      },
+      "expected": "10.00"
+    },
+    {
+      "name": "min table empty",
+      "formula": {
+        "op": "min",
+        "table": "rows",
+        "columns": [
+          "amount"
+        ]
+      },
+      "values": {
+        "rows": []
+      },
+      "expected": "0.00"
+    },
+    {
+      "name": "max table empty",
+      "formula": {
+        "op": "max",
+        "table": "rows",
+        "columns": [
+          "amount"
+        ]
+      },
+      "values": {
+        "rows": []
+      },
+      "expected": "0.00"
+    },
+    {
+      "name": "min values",
+      "formula": {
+        "op": "min",
+        "inputs": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      "values": {
+        "a": "15",
+        "b": "3.5",
+        "c": "7"
+      },
+      "expected": "3.50"
+    },
+    {
+      "name": "max values",
+      "formula": {
+        "op": "max",
+        "inputs": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      "values": {
+        "a": "15",
+        "b": "3.5",
+        "c": "7"
+      },
+      "expected": "15.00"
+    },
+    {
+      "name": "round value two decimals",
+      "formula": {
+        "op": "round",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "2.555",
+        "b": "2"
+      },
+      "expected": "2.56"
+    },
+    {
+      "name": "round value precision zero",
+      "formula": {
+        "op": "round",
+        "inputs": [
+          "a"
+        ],
+        "precision": 0
+      },
+      "values": {
+        "a": "15.6"
+      },
+      "expected": "16"
+    },
+    {
+      "name": "if condition gt true",
+      "formula": {
+        "op": "if",
+        "condition": {
+          "op": ">",
+          "inputs": [
+            "a",
+            "b"
+          ]
+        },
+        "then": "a",
+        "else": "b"
+      },
+      "values": {
+        "a": "10",
+        "b": "5"
+      },
+      "expected": "10.00"
+    },
+    {
+      "name": "if condition gt false",
+      "formula": {
+        "op": "if",
+        "condition": {
+          "op": ">",
+          "inputs": [
+            "a",
+            "b"
+          ]
+        },
+        "then": "a",
+        "else": "b"
+      },
+      "values": {
+        "a": "3",
+        "b": "5"
+      },
+      "expected": "5.00"
+    },
+    {
+      "name": "if lazy division by zero in unused false branch",
+      "formula": {
+        "op": "if",
+        "condition": {
+          "op": ">",
+          "inputs": [
+            "a",
+            "zero"
+          ]
+        },
+        "then": {
+          "op": "divide",
+          "inputs": [
+            "x",
+            "a"
+          ]
+        },
+        "else": {
+          "op": "divide",
+          "inputs": [
+            "x",
+            "zero"
+          ]
+        }
+      },
+      "values": {
+        "a": "5",
+        "x": "100",
+        "zero": "0"
+      },
+      "expected": "20.00"
+    },
+    {
+      "name": "if lazy division by zero in unused true branch",
+      "formula": {
+        "op": "if",
+        "condition": {
+          "op": "=",
+          "inputs": [
+            "a",
+            "zero"
+          ]
+        },
+        "then": {
+          "op": "divide",
+          "inputs": [
+            "x",
+            "zero"
+          ]
+        },
+        "else": {
+          "op": "divide",
+          "inputs": [
+            "x",
+            "b"
+          ]
+        }
+      },
+      "values": {
+        "a": "1",
+        "b": "5",
+        "x": "100",
+        "zero": "0"
+      },
+      "expected": "20.00"
+    },
+    {
+      "name": "if comparison lt",
+      "formula": {
+        "op": "if",
+        "condition": {
+          "op": "<",
+          "inputs": [
+            "a",
+            "b"
+          ]
+        },
+        "then": "a",
+        "else": "b"
+      },
+      "values": {
+        "a": "2",
+        "b": "5"
+      },
+      "expected": "2.00"
+    },
+    {
+      "name": "if comparison ge",
+      "formula": {
+        "op": "if",
+        "condition": {
+          "op": ">=",
+          "inputs": [
+            "a",
+            "b"
+          ]
+        },
+        "then": "a",
+        "else": "b"
+      },
+      "values": {
+        "a": "5",
+        "b": "5"
+      },
+      "expected": "5.00"
+    },
+    {
+      "name": "if comparison le",
+      "formula": {
+        "op": "if",
+        "condition": {
+          "op": "<=",
+          "inputs": [
+            "a",
+            "b"
+          ]
+        },
+        "then": "a",
+        "else": "b"
+      },
+      "values": {
+        "a": "5",
+        "b": "5"
+      },
+      "expected": "5.00"
+    },
+    {
+      "name": "if comparison ne",
+      "formula": {
+        "op": "if",
+        "condition": {
+          "op": "!=",
+          "inputs": [
+            "a",
+            "b"
+          ]
+        },
+        "then": "a",
+        "else": "b"
+      },
+      "values": {
+        "a": "2",
+        "b": "5"
+      },
+      "expected": "2.00"
+    },
+    {
+      "name": "expression parentheses precedence",
+      "formula": {
+        "expression": "(a + b) * c",
+        "inputs": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      "values": {
+        "a": "2",
+        "b": "3",
+        "c": "4"
+      },
+      "expected": "20.00"
+    },
+    {
+      "name": "expression constant number and negative",
+      "formula": {
+        "expression": "a * 2 + -5",
+        "inputs": [
+          "a"
+        ]
+      },
+      "values": {
+        "a": "10"
+      },
+      "expected": "15.00"
+    },
+    {
+      "name": "expression nested if and round",
+      "formula": {
+        "expression": "IF(a > 0, ROUND(b / a, 2), 0)",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "3",
+        "b": "10"
+      },
+      "expected": "3.33"
+    },
+    {
+      "name": "expression nested max min",
+      "formula": {
+        "expression": "MAX(a, MIN(b, c))",
+        "inputs": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      "values": {
+        "a": "5",
+        "b": "10",
+        "c": "3"
+      },
+      "expected": "5.00"
+    },
+    {
+      "name": "expression lazy division by zero in if",
+      "formula": {
+        "expression": "IF(a > 0, 100 / a, 100 / b)",
+        "inputs": [
+          "a",
+          "b"
+        ]
+      },
+      "values": {
+        "a": "5",
+        "b": "0"
+      },
+      "expected": "20.00"
+    }
   ]
 }

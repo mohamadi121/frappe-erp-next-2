@@ -25,8 +25,11 @@ Formula evaluation normalizes Persian/Arabic numerals and the Persian decimal
 separator (`٫`) to ASCII Decimal arithmetic with Half-Up rounding. Supported
 formula operations include binary operations (`add`, `subtract`, `multiply`,
 `divide`, `percent`), table aggregations (`sum`, `average`, `count`,
-`sum_product`), and multi-step left-to-right evaluation (`chain` with `ops`
-drawn from `add`, `subtract`, `multiply`, `divide` matching `len(inputs) - 1`).
+`sum_product`, `min`, `max`), scalar functions (`min`, `max`, `round`),
+conditional branching (`if` with lazy evaluation avoiding evaluation of inactive
+branches), standard comparison operators in conditions (`>`, `<`, `=`, `==`, `>=`, `<=`, `!=`),
+operator precedence (`*`, `/`, `%` evaluated before `+`, `-`), negative numbers,
+parentheses `()`, and nested expressions (`expression` / `chain`).
 
 ## Consumption
 

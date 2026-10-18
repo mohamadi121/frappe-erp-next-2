@@ -6,6 +6,10 @@ Deployment: run `bench --site <site> migrate` (new DocTypes: `ASOUD Form`, `ASOU
 
 Added:
 
+- Advanced formula functions `IF` (with lazy branch evaluation), `ROUND`, `MAX`, and `MIN` across scalar values and repeatable table columns.
+- Comparison operators (`>`, `<`, `=`, `==`, `>=`, `<=`, `!=`) for conditional formula evaluation.
+- Arithmetic operator precedence (`*`, `/`, `%` before `+`, `-`), negative numbers, parentheses `()`, and nested expressions in formula calculation.
+- Extended shared formula vectors fixture to 55 test cases with parity verification against Flutter engine.
 - Multi-step `chain` formula operator in form schema validation and Decimal evaluation matching Flutter engine parity, with left-to-right calculation, precision rounding, divide-by-zero protection, and dependency cycle validation.
 - Shared formula evaluation vectors test suite ensuring backend/Flutter engine parity across operations, precision, rounding, and Persian numerals.
 - Versioned form schema validation supporting `schema_version` 1 and 2, enforcing version 2 on `save_form`, and rejecting unsupported versions.
