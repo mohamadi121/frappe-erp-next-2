@@ -495,7 +495,7 @@ def migrate_schema(source, values=None):
                         option = copy.deepcopy(old)
                     else:
                         option = {"label": str(old)}
-                    if "id" not in option or not option["id"]:
+                    if "id" not in option:
                         option["id"] = f"option_{'_'.join(str(p) for p in [*field_path, option_index])}"
                     if option.get("id") is not None and option.get("label") is not None:
                         options.append(option)

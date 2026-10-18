@@ -130,6 +130,28 @@ class TestForms(APITestCase):
         entry_db = frappe.get_doc("ASOUD Form Entry", entry_doc.name)
         self.assertEqual(json.loads(entry_db.values_json)["priority"], "عادی")
 
+    def test_saving_legacy_schema_stores_version_two(self):
+        legacy_schema = {
+            "kind": "Request",
+            "title": "فرم ذخیره قدیمی",
+            "schema_version": 1,
+            "sections": [{"id": "main", "title": "اصلی", "fields": [{
+                "key": "priority", "label": "اولویت", "type": "Select",
+                "options": ["عادی", "فوری"],
+            }]}],
+        }
+        saved = forms.save_form(
+            company=self.company,
+            schema=legacy_schema,
+            client_id="legacy-save-" + "s" * 20,
+        )["data"]
+        stored = json.loads(frappe.get_doc("ASOUD Form", saved["name"]).draft_json)
+        self.assertEqual(stored["schema_version"], 2)
+        self.assertEqual(stored["sections"][0]["fields"][0]["options"], [
+            {"id": "option_0_0_0", "label": "عادی"},
+            {"id": "option_0_0_1", "label": "فوری"},
+        ])
+
     def test_active_employee_without_an_application_role_cannot_read_forms(self):
         user = "asoud.form-no-role@example.com"
         frappe.get_doc({"doctype": "User", "email": user, "first_name": "Form no role",

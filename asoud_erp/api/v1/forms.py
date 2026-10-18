@@ -122,6 +122,12 @@ def get_form(name, manage=0, revision_name=None):
 def save_form(company, schema, name=None, expected_version=0, client_id=None):
     require_roles(DESIGNERS)
     require_company(company)
+    schema = parse(schema)
+    schema_version = schema.get('schema_version', 1)
+    # Existing v1 designs used choice labels in their payload.  Upgrade only v1
+    # before validating so v2 still requires its stable client-side identifiers.
+    if schema_version is None or (schema_version == 1 and not isinstance(schema_version, bool)):
+        schema = migrate_schema(schema)
     schema = validate_schema(schema)
     schema['schema_version'] = 2
     # Stable client ID makes retrying a timed-out create idempotent.
