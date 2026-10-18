@@ -355,12 +355,18 @@ class _ExprParser:
             op = self.consume()
             right = self.parse_additive(execute)
             if execute:
-                if op == ">": left = Decimal(1) if left > right else Decimal(0)
-                elif op == "<": left = Decimal(1) if left < right else Decimal(0)
-                elif op in ("=", "=="): left = Decimal(1) if left == right else Decimal(0)
-                elif op == ">=": left = Decimal(1) if left >= right else Decimal(0)
-                elif op == "<=": left = Decimal(1) if left <= right else Decimal(0)
-                elif op == "!=": left = Decimal(1) if left != right else Decimal(0)
+                if op == ">":
+                    left = Decimal(1) if left > right else Decimal(0)
+                elif op == "<":
+                    left = Decimal(1) if left < right else Decimal(0)
+                elif op in ("=", "=="):
+                    left = Decimal(1) if left == right else Decimal(0)
+                elif op == ">=":
+                    left = Decimal(1) if left >= right else Decimal(0)
+                elif op == "<=":
+                    left = Decimal(1) if left <= right else Decimal(0)
+                elif op == "!=":
+                    left = Decimal(1) if left != right else Decimal(0)
         return left
 
     def parse_additive(self, execute):
@@ -378,12 +384,14 @@ class _ExprParser:
             op = self.consume()
             right = self.parse_unary(execute)
             if execute:
-                if op == "*": left = left * right
+                if op == "*":
+                    left = left * right
                 elif op == "/":
                     if right == 0:
                         fail("تقسیم بر صفر در فرمول مجاز نیست.")
                     left = left / right
-                elif op == "%": left = (left * right) / Decimal(100)
+                elif op == "%":
+                    left = (left * right) / Decimal(100)
         return left
 
     def parse_unary(self, execute):
@@ -432,7 +440,8 @@ class _ExprParser:
                 if self.peek() == ",":
                     self.consume(",")
                     d_val = self.parse_expr(execute)
-                    if execute: digits = int(d_val)
+                    if execute:
+                        digits = int(d_val)
                 self.consume(")")
                 if execute:
                     return x.quantize(Decimal(10) ** -digits, rounding=ROUND_HALF_UP)
@@ -466,12 +475,18 @@ def _eval_condition(cond, values):
         else:
             left = _eval_branch(cond.get("left"), values)
             right = _eval_branch(cond.get("right"), values)
-        if op in (">", "gt"): return left > right
-        if op in ("<", "lt"): return left < right
-        if op in ("=", "==", "eq"): return left == right
-        if op in (">=", "ge"): return left >= right
-        if op in ("<=", "le"): return left <= right
-        if op in ("!=", "ne"): return left != right
+        if op in (">", "gt"):
+            return left > right
+        if op in ("<", "lt"):
+            return left < right
+        if op in ("=", "==", "eq"):
+            return left == right
+        if op in (">=", "ge"):
+            return left >= right
+        if op in ("<=", "le"):
+            return left <= right
+        if op in ("!=", "ne"):
+            return left != right
     return False
 
 
