@@ -14,7 +14,8 @@ SOURCES = {"Employee", "Customer", "Supplier", "Item", "Warehouse", "Account", "
            "Project", "Department"}
 NUMBERS = {"Integer", "Decimal", "Money", "Rating", "Formula"}
 OPERATORS = {"eq", "ne", "gt", "lt", "ge", "le", "empty", "not_empty", "contains"}
-FORMULAS = {"add", "subtract", "multiply", "divide", "percent", "sum", "sum_product", "average", "count"}
+FORMULAS = {"add", "subtract", "multiply", "divide", "percent", "sum", "sum_product", "average", "count", "chain"}
+CHAIN_OPS = {"add", "subtract", "multiply", "divide"}
 LINK_FILTERS = {'Employee': {'department'}, 'Item': {'item_group'}, 'Customer': {'customer_group'},
                 'Supplier': {'supplier_group'}, 'Account': {'account_type'}, 'Warehouse': {'parent_warehouse'},
                 'Cost Center': {'parent_cost_center'}, 'Project': {'status'}, 'Department': {'parent_department'}}
@@ -157,6 +158,13 @@ def validate_schema(raw):
                     fail('این فرمول به دو ورودی نیاز دارد.')
                 if formula['op'] == 'add' and not formula.get('inputs'):
                     fail('ورودی جمع را انتخاب کنید.')
+                if formula['op'] == 'chain':
+                    ops = formula.get('ops')
+                    inputs = formula.get('inputs', [])
+                    if not isinstance(ops, list) or len(inputs) < 2 or len(ops) != len(inputs) - 1:
+                        fail('تعداد عملگرهای فرمول معتبر نیست.')
+                    if any(not isinstance(o, str) or o not in CHAIN_OPS for o in ops):
+                        fail('عملگر فرمول معتبر نیست.')
                 if formula['op'] in {'sum', 'sum_product', 'average', 'count'} and (nested or not formula.get('table')):
                     fail('جدول محاسبه را انتخاب کنید؛ محاسبه تجمیعی داخل ستون مجاز نیست.')
                 count = len(formula.get('columns', []))
@@ -317,6 +325,28 @@ def calculate(formula, values):
         value = sum(nums, Decimal(0)) / (len(nums) if op == 'average' and nums else 1)
     elif op == "add":
         value = sum(args, Decimal(0))
+    elif op == "chain" or (isinstance(formula.get("ops"), list) and formula.get("ops")):
+        if not args:
+            fail("این محاسبه به ورودی نیاز دارد.")
+        ops = formula.get("ops")
+        if not isinstance(ops, list) or len(args) != len(ops) + 1:
+            fail("این محاسبه به دو ورودی نیاز دارد.")
+        value = args[0]
+        for operation, next_val in zip(ops, args[1:]):
+            if operation == "add":
+                value = value + next_val
+            elif operation == "subtract":
+                value = value - next_val
+            elif operation == "multiply":
+                value = value * next_val
+            elif operation == "divide":
+                if next_val == Decimal(0):
+                    fail("تقسیم بر صفر در فرمول مجاز نیست.")
+                value = value / next_val
+            elif operation == "percent":
+                value = (value * next_val) / Decimal(100)
+            else:
+                fail("محاسبه پشتیبانی نمی‌شود.")
     elif len(args) != 2:
         fail("این محاسبه به دو ورودی نیاز دارد.")
     elif op == "subtract":

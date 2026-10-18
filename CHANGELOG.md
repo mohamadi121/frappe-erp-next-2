@@ -4,6 +4,7 @@
 
 Added:
 
+- Multi-step `chain` formula operator in form schema validation and Decimal evaluation matching Flutter engine parity, with left-to-right calculation, precision rounding, divide-by-zero protection, and dependency cycle validation.
 - Shared formula evaluation vectors test suite ensuring backend/Flutter engine parity across operations, precision, rounding, and Persian numerals.
 - Versioned form schema validation supporting `schema_version` 1 and 2, enforcing version 2 on `save_form`, and rejecting unsupported versions.
 - Pure `migrate_schema` and `migrate_record` functions upgrading legacy v1 schemas to v2 with deterministic option IDs and value/rule mapping on read across `get_form`, `list_forms`, and `get_entry` while preserving immutable database revisions.
