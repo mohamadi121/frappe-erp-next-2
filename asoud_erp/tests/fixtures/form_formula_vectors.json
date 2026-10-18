@@ -29,6 +29,7 @@
     {"name":"missing row value","formula":{"op":"sum","table":"rows","columns":["amount"]},"values":{"rows":[{}]},"expected":"0.00"},
     {"name":"multiply precision","formula":{"op":"multiply","inputs":["a","b"],"precision":3},"values":{"a":"1.2345","b":"2"},"expected":"2.469"},
     {"name":"percent precision","formula":{"op":"percent","inputs":["a","b"],"precision":4},"values":{"a":"12.345","b":"6.789"},"expected":"0.8381"},
+    {"name":"chain multiply divide","formula":{"op":"chain","ops":["multiply","divide"],"inputs":["a","b","c"]},"values":{"a":"3","b":"500000","c":"1500000"},"expected":"1.00"},
     {"name":"schema cycle","schema":{"sections":[{"fields":[{"key":"a","label":"الف","type":"Formula","formula":{"op":"add","inputs":["b"]}},{"key":"b","label":"ب","type":"Formula","formula":{"op":"add","inputs":["a"]}}]}],"rules":[]},"error":"cycle"},
     {"name":"schema unknown key","schema":{"sections":[{"fields":[{"key":"a","label":"الف","type":"Formula","formula":{"op":"add","inputs":["missing"]}}]}],"rules":[]},"error":"unknown_key"}
   ]

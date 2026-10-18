@@ -22,7 +22,11 @@ the existing revision. Legacy v1 schemas (plain-string options without IDs) are
 migrated on read by `get_form`, `list_forms`, and `get_entry` using deterministic
 position-based option IDs while keeping database snapshot revisions immutable.
 Formula evaluation normalizes Persian/Arabic numerals and the Persian decimal
-separator (`٫`) to ASCII Decimal arithmetic with Half-Up rounding.
+separator (`٫`) to ASCII Decimal arithmetic with Half-Up rounding. Supported
+formula operations include binary operations (`add`, `subtract`, `multiply`,
+`divide`, `percent`), table aggregations (`sum`, `average`, `count`,
+`sum_product`), and multi-step left-to-right evaluation (`chain` with `ops`
+drawn from `add`, `subtract`, `multiply`, `divide` matching `len(inputs) - 1`).
 
 ## Consumption
 

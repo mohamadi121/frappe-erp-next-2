@@ -204,3 +204,201 @@ def test_migrate_record(schema):
     assert migrated_record["values"]["request_type"] == "option_0_0_0"
     # Original record unmutated
     assert record["schema"]["schema_version"] == 1
+
+
+def test_chain_formula_validation_and_calculation(schema):
+    payload = {
+        "kind": "Request",
+        "title": "فرمول زنجیره‌ای",
+        "sections": [{
+            "id": "main",
+            "title": "اصلی",
+            "fields": [
+                {"key": "a", "label": "الف", "type": "Decimal"},
+                {"key": "b", "label": "ب", "type": "Decimal"},
+                {"key": "c", "label": "ج", "type": "Decimal"},
+                {
+                    "key": "result",
+                    "label": "نتیجه",
+                    "type": "Formula",
+                    "formula": {
+                        "op": "chain",
+                        "ops": ["multiply", "divide"],
+                        "inputs": ["a", "b", "c"],
+                        "precision": 2,
+                    },
+                },
+            ],
+        }],
+    }
+    validated = schema.validate_schema(payload)
+    assert validated["sections"][0]["fields"][3]["formula"]["op"] == "chain"
+
+    # Evaluation via validate_values with Persian digits
+    values = {"a": "۳", "b": "۵۰۰۰۰۰", "c": "۱۵۰۰۰۰۰"}
+    computed = schema.validate_values(validated, values, company="ACME")
+    assert computed["result"] == "1.00"
+
+    # Direct calculation
+    formula = {"op": "chain", "ops": ["multiply", "divide"], "inputs": ["a", "b", "c"]}
+    assert schema.calculate(formula, {"a": "3", "b": "500000", "c": "1500000"}) == "1.00"
+
+    # Round half-up precision test
+    rounding_formula = {"op": "chain", "ops": ["divide"], "inputs": ["a", "b"], "precision": 2}
+    assert schema.calculate(rounding_formula, {"a": "1", "b": "8"}) == "0.13"
+
+
+def test_chain_formula_wrong_ops_count_rejected(schema):
+    payload = {
+        "kind": "Request",
+        "title": "خطای عملگرها",
+        "sections": [{
+            "id": "main",
+            "title": "اصلی",
+            "fields": [
+                {"key": "a", "label": "الف", "type": "Decimal"},
+                {"key": "b", "label": "ب", "type": "Decimal"},
+                {"key": "c", "label": "ج", "type": "Decimal"},
+                {
+                    "key": "calc",
+                    "label": "محاسبه",
+                    "type": "Formula",
+                    "formula": {"op": "chain", "ops": ["multiply"], "inputs": ["a", "b", "c"]},
+                },
+            ],
+        }],
+    }
+    # Ops count too small
+    with pytest.raises(ValueError, match="تعداد عملگرهای فرمول معتبر نیست"):
+        schema.validate_schema(payload)
+
+    # Less than 2 inputs
+    payload["sections"][0]["fields"][3]["formula"] = {
+        "op": "chain", "ops": [], "inputs": ["a"]
+    }
+    with pytest.raises(ValueError, match="تعداد عملگرهای فرمول معتبر نیست"):
+        schema.validate_schema(payload)
+
+    # Ops not a list
+    payload["sections"][0]["fields"][3]["formula"] = {
+        "op": "chain", "ops": "multiply", "inputs": ["a", "b"]
+    }
+    with pytest.raises(ValueError, match="تعداد عملگرهای فرمول معتبر نیست"):
+        schema.validate_schema(payload)
+
+    # Direct calculate with mismatching count
+    with pytest.raises(ValueError, match="این محاسبه به دو ورودی نیاز دارد"):
+        schema.calculate({"op": "chain", "ops": ["multiply"], "inputs": ["a", "b", "c"]}, {"a": 1, "b": 2, "c": 3})
+
+    # Direct calculate with empty inputs
+    with pytest.raises(ValueError, match="این محاسبه به ورودی نیاز دارد"):
+        schema.calculate({"op": "chain", "ops": [], "inputs": []}, {})
+
+
+def test_chain_formula_unknown_op_rejected(schema):
+    payload = {
+        "kind": "Request",
+        "title": "عملگر ناشناخته",
+        "sections": [{
+            "id": "main",
+            "title": "اصلی",
+            "fields": [
+                {"key": "a", "label": "الف", "type": "Decimal"},
+                {"key": "b", "label": "ب", "type": "Decimal"},
+                {
+                    "key": "calc",
+                    "label": "محاسبه",
+                    "type": "Formula",
+                    "formula": {"op": "chain", "ops": ["unknown_op"], "inputs": ["a", "b"]},
+                },
+            ],
+        }],
+    }
+    with pytest.raises(ValueError, match="عملگر فرمول معتبر نیست"):
+        schema.validate_schema(payload)
+
+    # Direct calculate with unsupported op
+    with pytest.raises(ValueError, match="محاسبه پشتیبانی نمی‌شود"):
+        schema.calculate({"op": "chain", "ops": ["power"], "inputs": ["a", "b"]}, {"a": 2, "b": 3})
+
+
+def test_chain_formula_unknown_input_rejected(schema):
+    payload = {
+        "kind": "Request",
+        "title": "ورودی ناشناخته",
+        "sections": [{
+            "id": "main",
+            "title": "اصلی",
+            "fields": [
+                {"key": "a", "label": "الف", "type": "Decimal"},
+                {
+                    "key": "calc",
+                    "label": "محاسبه",
+                    "type": "Formula",
+                    "formula": {"op": "chain", "ops": ["add"], "inputs": ["a", "missing_key"]},
+                },
+            ],
+        }],
+    }
+    with pytest.raises(ValueError, match="ورودی"):
+        schema.validate_schema(payload)
+
+
+def test_chain_formula_divide_by_zero_rejected(schema):
+    # Direct calculate with explicit zero
+    with pytest.raises(ValueError, match="تقسیم بر صفر در فرمول مجاز نیست"):
+        schema.calculate({"op": "chain", "ops": ["divide"], "inputs": ["a", "b"]}, {"a": "10", "b": "0"})
+
+    # Missing value treated as zero in divide
+    with pytest.raises(ValueError, match="تقسیم بر صفر در فرمول مجاز نیست"):
+        schema.calculate({"op": "chain", "ops": ["divide"], "inputs": ["a", "b"]}, {"a": "10"})
+
+    # Via validate_values
+    payload = {
+        "kind": "Request",
+        "title": "تقسیم بر صفر",
+        "sections": [{
+            "id": "main",
+            "title": "اصلی",
+            "fields": [
+                {"key": "a", "label": "الف", "type": "Decimal"},
+                {"key": "b", "label": "ب", "type": "Decimal"},
+                {
+                    "key": "calc",
+                    "label": "محاسبه",
+                    "type": "Formula",
+                    "formula": {"op": "chain", "ops": ["divide"], "inputs": ["a", "b"]},
+                },
+            ],
+        }],
+    }
+    validated = schema.validate_schema(payload)
+    with pytest.raises(ValueError, match="تقسیم بر صفر در فرمول مجاز نیست"):
+        schema.validate_values(validated, {"a": "10", "b": "0"}, company="ACME")
+
+
+def test_chain_formula_cycle_rejected(schema):
+    payload = {
+        "kind": "Request",
+        "title": "چرخه فرمول زنجیره‌ای",
+        "sections": [{
+            "id": "main",
+            "title": "اصلی",
+            "fields": [
+                {
+                    "key": "a",
+                    "label": "الف",
+                    "type": "Formula",
+                    "formula": {"op": "chain", "ops": ["add"], "inputs": ["b", "b"]},
+                },
+                {
+                    "key": "b",
+                    "label": "ب",
+                    "type": "Formula",
+                    "formula": {"op": "chain", "ops": ["multiply"], "inputs": ["a", "a"]},
+                },
+            ],
+        }],
+    }
+    with pytest.raises(ValueError, match="چرخه"):
+        schema.validate_schema(payload)
