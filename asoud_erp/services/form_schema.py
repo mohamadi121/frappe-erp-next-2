@@ -472,3 +472,87 @@ def validate_values(schema, raw, company, _file_budget=None):
     for field in definitions:
         compute(field)
     return values
+
+
+def migrate_schema(source, values=None):
+    schema = copy.deepcopy(source) if isinstance(source, dict) else parse(source)
+    labels_by_field = {}
+
+    def migrate_fields(fields_list, path, current_values):
+        for index, field in enumerate(fields_list):
+            if not isinstance(field, dict):
+                continue
+            field_path = [*path, index]
+            field_type = field.get("type")
+            if field_type in ("Select", "MultiSelect"):
+                old_options = field.get("options") or []
+                if not isinstance(old_options, list):
+                    old_options = []
+                labels = {}
+                options = []
+                for option_index, old in enumerate(old_options):
+                    if isinstance(old, dict):
+                        option = copy.deepcopy(old)
+                    else:
+                        option = {"label": str(old)}
+                    if "id" not in option or not option["id"]:
+                        option["id"] = f"option_{'_'.join(str(p) for p in [*field_path, option_index])}"
+                    if option.get("id") is not None and option.get("label") is not None:
+                        options.append(option)
+                        labels[str(option["label"])] = str(option["id"])
+                field["options"] = options
+                field_key = str(field.get("key", ""))
+                labels_by_field[field_key] = labels
+                if current_values is not None and field_key in current_values:
+                    val = current_values[field_key]
+                    if isinstance(val, list):
+                        current_values[field_key] = [labels.get(str(item), item) for item in val]
+                    elif val is not None:
+                        current_values[field_key] = labels.get(str(val), val)
+            elif field_type == "Table":
+                columns = field.get("columns") or []
+                if isinstance(columns, list):
+                    rows = current_values.get(field.get("key")) if current_values else None
+                    if isinstance(rows, list):
+                        for row in rows:
+                            if isinstance(row, dict):
+                                migrate_fields(columns, field_path, row)
+                    else:
+                        migrate_fields(columns, field_path, None)
+
+    sections = schema.get("sections") or []
+    for section_index, section in enumerate(sections):
+        if not isinstance(section, dict):
+            continue
+        sec_fields = section.get("fields") or []
+        if isinstance(sec_fields, list):
+            migrate_fields(sec_fields, [section_index], values)
+
+    rules = schema.get("rules") or []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        conditions = rule.get("conditions") or []
+        for condition in conditions:
+            if not isinstance(condition, dict):
+                continue
+            cond_field = str(condition.get("field", ""))
+            option_ids = labels_by_field.get(cond_field)
+            if option_ids:
+                val = condition.get("value")
+                if isinstance(val, list):
+                    condition["value"] = [option_ids.get(str(item), item) for item in val]
+                elif val is not None:
+                    condition["value"] = option_ids.get(str(val), val)
+
+    schema["schema_version"] = 2
+    return schema
+
+
+def migrate_record(record):
+    migrated = copy.deepcopy(record)
+    values = migrated.get("values") if isinstance(migrated.get("values"), dict) else None
+    migrated["schema"] = migrate_schema(migrated.get("schema", {}), values=values)
+    if values is not None:
+        migrated["values"] = values
+    return migrated

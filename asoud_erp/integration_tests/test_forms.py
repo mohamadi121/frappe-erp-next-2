@@ -1,6 +1,9 @@
 """Versioned forms and calendar records remain inside the caller's company."""
 
+import json
+
 import frappe
+from frappe.utils import now_datetime
 
 from asoud_erp.api.v1 import calendar, forms
 from asoud_erp.integration_tests.fixtures import APITestCase
@@ -50,6 +53,82 @@ class TestForms(APITestCase):
         self.assertEqual(forms.get_entry(entry["name"])["data"]["values"]["priority"], "normal")
         with self.assertRaises(frappe.PermissionError):
             forms.list_forms(company=self.second)
+
+    def test_legacy_schema_migrated_on_read_and_revisions_stay_immutable(self):
+        legacy_schema = {
+            "kind": "Request",
+            "title": "فرم قدیمی",
+            "schema_version": 1,
+            "sections": [{"id": "main", "title": "اصلی", "fields": [
+                {"key": "amount", "label": "مبلغ", "type": "Money", "required": True},
+                {"key": "priority", "label": "اولویت", "type": "Select", "required": True,
+                 "options": ["عادی", "فوری"]},
+            ]}],
+        }
+        form_name = "test_legacy_form_migrate"
+        if frappe.db.exists("ASOUD Form", form_name):
+            frappe.db.delete("ASOUD Form Revision", {"form": form_name})
+            frappe.db.delete("ASOUD Form", {"name": form_name})
+        form_doc = frappe.get_doc({
+            "doctype": "ASOUD Form",
+            "name": form_name,
+            "company": self.company,
+            "title": "فرم قدیمی",
+            "kind": "Request",
+            "module_key": "General",
+            "draft_version": 1,
+            "draft_json": json.dumps(legacy_schema, ensure_ascii=False),
+        })
+        form_doc.flags.form_service = True
+        form_doc.insert(ignore_permissions=True, set_name=form_name)
+
+        rev = frappe.get_doc({
+            "doctype": "ASOUD Form Revision",
+            "form": form_doc.name,
+            "version": 1,
+            "schema_json": json.dumps(legacy_schema, ensure_ascii=False),
+            "published_by": "Administrator",
+            "published_on": now_datetime(),
+        })
+        rev.flags.form_service = True
+        rev.insert(ignore_permissions=True)
+        form_doc.active_revision = rev.name
+        form_doc.save(ignore_permissions=True)
+
+        read_form = forms.get_form(name=form_doc.name)["data"]
+        self.assertEqual(read_form["schema"]["schema_version"], 2)
+        options = read_form["schema"]["sections"][0]["fields"][1]["options"]
+        self.assertEqual(options, [
+            {"id": "option_0_1_0", "label": "عادی"},
+            {"id": "option_0_1_1", "label": "فوری"},
+        ])
+
+        managed = forms.list_forms(company=self.company, manage=1)["data"]
+        legacy_row = next(r for r in managed if r["name"] == form_doc.name)
+        self.assertEqual(legacy_row["schema"]["schema_version"], 2)
+
+        frappe.set_user(MANAGER_USER)
+        entry_doc = frappe.get_doc({
+            "doctype": "ASOUD Form Entry",
+            "form": form_doc.name,
+            "revision": rev.name,
+            "company": self.company,
+            "subject": "ثبت قدیمی",
+            "values_json": json.dumps({"amount": "200", "priority": "عادی"}, ensure_ascii=False),
+            "request_key": "c" * 32,
+            "fingerprint": "d" * 32,
+        })
+        entry_doc.flags.form_service = True
+        entry_doc.insert(ignore_permissions=True)
+
+        read_entry = forms.get_entry(entry_doc.name)["data"]
+        self.assertEqual(read_entry["schema"]["schema_version"], 2)
+        self.assertEqual(read_entry["values"]["priority"], "option_0_1_0")
+
+        rev_db = frappe.get_doc("ASOUD Form Revision", rev.name)
+        self.assertEqual(json.loads(rev_db.schema_json)["sections"][0]["fields"][1]["options"], ["عادی", "فوری"])
+        entry_db = frappe.get_doc("ASOUD Form Entry", entry_doc.name)
+        self.assertEqual(json.loads(entry_db.values_json)["priority"], "عادی")
 
     def test_active_employee_without_an_application_role_cannot_read_forms(self):
         user = "asoud.form-no-role@example.com"

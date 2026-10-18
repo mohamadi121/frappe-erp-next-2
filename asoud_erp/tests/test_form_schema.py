@@ -133,3 +133,74 @@ def test_form_formula_vectors(schema):
         else:
             result = schema.calculate(item["formula"], item["values"])
             assert result == item["expected"], f"{name}: expected {item['expected']}, got {result}"
+
+
+def test_migrate_schema_legacy_v1_to_v2_fixture(schema):
+    import json
+    from pathlib import Path
+
+    v1_path = Path(__file__).parent / "fixtures" / "form_schema_legacy_v1.json"
+    v2_path = Path(__file__).parent / "fixtures" / "form_schema_legacy_v2.json"
+
+    with open(v1_path, encoding="utf-8") as f:
+        v1 = json.load(f)
+    with open(v2_path, encoding="utf-8") as f:
+        v2_expected = json.load(f)
+
+    # Migrate without mutating source
+    v2_actual = schema.migrate_schema(v1)
+    assert v2_actual == v2_expected
+    assert v1["sections"][0]["fields"][0]["options"] == ["مرخصی", "ماموریت"]
+
+    # Validates cleanly under validate_schema
+    validated = schema.validate_schema(v2_actual)
+    assert validated["schema_version"] == 2
+
+
+def test_migrate_schema_values_and_rules(schema):
+    import json
+    from pathlib import Path
+
+    v1_path = Path(__file__).parent / "fixtures" / "form_schema_legacy_v1.json"
+    with open(v1_path, encoding="utf-8") as f:
+        v1 = json.load(f)
+
+    values = {
+        "request_type": "ماموریت",
+        "channels": ["پیامک", "ایمیل"],
+        "expenses": [{"expense_type": "اقامت"}, {"expense_type": "ایاب و ذهاب"}],
+    }
+
+    migrated_schema = schema.migrate_schema(v1, values=values)
+    assert migrated_schema["schema_version"] == 2
+
+    # Verify scalar select mapped to option ID
+    assert values["request_type"] == "option_0_0_1"
+    # Verify multiselect mapped to option IDs
+    assert values["channels"] == ["option_0_1_0", "option_0_1_1"]
+    # Verify table column select mapped to option IDs
+    assert values["expenses"][0]["expense_type"] == "option_0_2_0_0"
+    assert values["expenses"][1]["expense_type"] == "option_0_2_0_1"
+
+    # Verify rule condition value was mapped
+    assert migrated_schema["rules"][0]["conditions"][0]["value"] == "option_0_0_1"
+
+
+def test_migrate_record(schema):
+    import json
+    from pathlib import Path
+
+    v1_path = Path(__file__).parent / "fixtures" / "form_schema_legacy_v1.json"
+    with open(v1_path, encoding="utf-8") as f:
+        v1 = json.load(f)
+
+    record = {
+        "name": "ENTRY-00001",
+        "schema": v1,
+        "values": {"request_type": "مرخصی"},
+    }
+    migrated_record = schema.migrate_record(record)
+    assert migrated_record["schema"]["schema_version"] == 2
+    assert migrated_record["values"]["request_type"] == "option_0_0_0"
+    # Original record unmutated
+    assert record["schema"]["schema_version"] == 1

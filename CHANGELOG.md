@@ -4,6 +4,10 @@
 
 Added:
 
+- Shared formula evaluation vectors test suite ensuring backend/Flutter engine parity across operations, precision, rounding, and Persian numerals.
+- Versioned form schema validation supporting `schema_version` 1 and 2, enforcing version 2 on `save_form`, and rejecting unsupported versions.
+- Pure `migrate_schema` and `migrate_record` functions upgrading legacy v1 schemas to v2 with deterministic option IDs and value/rule mapping on read across `get_form`, `list_forms`, and `get_entry` while preserving immutable database revisions.
+- Fixture test pair `form_schema_legacy_v1.json` and `form_schema_legacy_v2.json` for cross-engine migration parity.
 - Versioned form-builder API coverage and documentation, including stable schema IDs,
   immutable published revisions, entry revision checks, and company-scoped calendar coverage.
 - Integration tests for directives lifecycle (`test_directives.py`: draft, issue, transfer,

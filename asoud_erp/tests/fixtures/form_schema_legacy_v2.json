@@ -1,0 +1,79 @@
+{
+  "kind": "Request",
+  "title": "درخواست مرخصی و ماموریت",
+  "schema_version": 2,
+  "sections": [
+    {
+      "id": "main",
+      "title": "اطلاعات اصلی",
+      "fields": [
+        {
+          "key": "request_type",
+          "label": "نوع درخواست",
+          "type": "Select",
+          "options": [
+            {
+              "id": "option_0_0_0",
+              "label": "مرخصی"
+            },
+            {
+              "id": "option_0_0_1",
+              "label": "ماموریت"
+            }
+          ]
+        },
+        {
+          "key": "channels",
+          "label": "روش‌های اطلاع‌رسانی",
+          "type": "MultiSelect",
+          "options": [
+            {
+              "id": "option_0_1_0",
+              "label": "پیامک"
+            },
+            {
+              "id": "option_0_1_1",
+              "label": "ایمیل"
+            }
+          ]
+        },
+        {
+          "key": "expenses",
+          "label": "هزینه‌های سفر",
+          "type": "Table",
+          "columns": [
+            {
+              "key": "expense_type",
+              "label": "نوع هزینه",
+              "type": "Select",
+              "options": [
+                {
+                  "id": "option_0_2_0_0",
+                  "label": "اقامت"
+                },
+                {
+                  "id": "option_0_2_0_1",
+                  "label": "ایاب و ذهاب"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "target": "expenses",
+      "action": "visible",
+      "join": "and",
+      "conditions": [
+        {
+          "field": "request_type",
+          "op": "eq",
+          "value": "option_0_0_1"
+        }
+      ]
+    }
+  ]
+}

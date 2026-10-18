@@ -14,6 +14,7 @@ from asoud_erp.services.form_schema import (
     default_value,
     fail,
     fields,
+    migrate_schema,
     parse,
     validate_schema,
     validate_values,
@@ -77,7 +78,7 @@ def row(doc, schema=False):
     result['version'] = active.version if active else 0
     result['has_changes'] = bool(active and doc.draft_json != active.schema_json)
     if schema:
-        result['schema'] = json.loads(doc.draft_json)
+        result['schema'] = migrate_schema(json.loads(doc.draft_json)) if doc.draft_json else {}
     return result
 
 
@@ -95,7 +96,7 @@ def list_forms(company, kind='Request', manage=0):
             result.append(row(doc, schema=True))
         elif not doc.disabled and doc.active_revision:
             rev = revision(doc)
-            schema = json.loads(rev.schema_json)
+            schema = migrate_schema(json.loads(rev.schema_json))
             if allowed(schema, company):
                 result.append({'name': doc.name, 'title': schema['title'], 'company': company, 'kind': schema['kind'], 'module_key': schema.get('module'), 'category': schema.get('category', ''), 'status': 'Published', 'version': rev.version})
     return success(result)
@@ -108,7 +109,7 @@ def get_form(name, manage=0, revision_name=None):
     if int(manage) and not revision_name:
         return success(row(doc, schema=True))
     rev = revision(doc, revision_name)
-    schema = json.loads(rev.schema_json)
+    schema = migrate_schema(json.loads(rev.schema_json))
     if not int(manage) and (doc.disabled or rev.name != doc.active_revision or not allowed(schema, doc.company)):
         frappe.throw('این فرم در دسترس نیست.', frappe.PermissionError)
     for field in fields(schema):
@@ -375,7 +376,7 @@ def submit_form(name, revision_name, subject, values, request_key):
     # Open, incomplete forms are never silently migrated to the new version.
     if doc.disabled or rev.name != doc.active_revision:
         fail('نسخه فرم تغییر کرده یا غیرفعال شده است؛ فرم جدید را دریافت کنید.')
-    schema = json.loads(rev.schema_json)
+    schema = migrate_schema(json.loads(rev.schema_json))
     if not allowed(schema, doc.company):
         frappe.throw('ثبت این فرم مجاز نیست.', frappe.PermissionError)
     checked = validate_values(schema, raw, doc.company)
@@ -431,7 +432,10 @@ def get_entry(name):
     if entry.owner != frappe.session.user and frappe.session.user != 'Administrator' and 'System Manager' not in frappe.get_roles():
         frappe.throw('دسترسی مجاز نیست.', frappe.PermissionError)
     rev = frappe.get_doc('ASOUD Form Revision', entry.revision)
-    result = {'name': entry.name, 'subject': entry.subject, 'schema': json.loads(rev.schema_json), 'values': json.loads(entry.values_json or '{}'), 'version': rev.version}
+    schema = json.loads(rev.schema_json)
+    values = json.loads(entry.values_json or '{}')
+    schema = migrate_schema(schema, values=values)
+    result = {'name': entry.name, 'subject': entry.subject, 'schema': schema, 'values': values, 'version': rev.version}
     if entry.reference_name:
         native = frappe.get_doc(entry.reference_doctype, entry.reference_name)
         native.check_permission('read')
