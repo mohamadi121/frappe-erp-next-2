@@ -10,10 +10,13 @@ import frappe
 from frappe.utils import get_datetime, get_system_timezone, now_datetime
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_access import company_access, require_company
 
 SCOPE = 'ASOUD Calendar Scope'
 HOLIDAY = 'ASOUD Calendar Holiday'
+CALENDAR_USERS = ('System Manager', 'HR Manager', 'Accounts Manager', 'Purchase Manager',
+                  'Employee', 'Accounts User', 'HR User', 'Purchase User', 'Sales User', 'Stock User')
 
 
 def fail(message):
@@ -51,6 +54,10 @@ def manager():
     return frappe.session.user == 'Administrator' or bool({'System Manager', 'HR Manager'} & set(frappe.get_roles()))
 
 
+def require_calendar_user():
+    require_roles(CALENDAR_USERS)
+
+
 def store(doc):
     doc.flags.calendar_service = True
     return doc.insert(ignore_permissions=True, set_name=doc.name) if doc.is_new() else doc.save(ignore_permissions=True)
@@ -71,6 +78,7 @@ def personal_row(scope, event):
 
 @frappe.whitelist()
 def get_calendar(company, start, end):
+    require_calendar_user()
     require_company(company)
     start, end = day(start), day(end)
     if end < start or (end - start).days > 62:
@@ -112,6 +120,7 @@ def get_calendar(company, start, end):
 
 @frappe.whitelist(methods=['POST'])
 def read_alert(company, name):
+    require_calendar_user()
     require_company(company)
     doc = frappe.get_doc('Notification Log', name)
     if doc.for_user != frappe.session.user or doc.document_type != 'Event' or not frappe.db.exists(
@@ -123,6 +132,7 @@ def read_alert(company, name):
 
 @frappe.whitelist(methods=['POST'])
 def save_personal(company, payload):
+    require_calendar_user()
     require_company(company)
     data = parse_payload(payload)
     client_id = str(data.get('id', ''))
@@ -179,6 +189,7 @@ def save_personal(company, payload):
 
 @frappe.whitelist(methods=['POST'])
 def save_holiday(company, payload):
+    require_calendar_user()
     require_company(company)
     if not manager():
         frappe.throw('مجوز مدیریت تعطیلی لازم است.', frappe.PermissionError)
@@ -206,6 +217,7 @@ def save_holiday(company, payload):
 @frappe.whitelist(methods=['POST'])
 def import_official(payload):
     """Explicit reviewed batch import; never scrape or guess lunar holidays."""
+    require_roles(('System Manager',))
     if 'System Manager' not in frappe.get_roles():
         frappe.throw('مجوز مدیر سیستم لازم است.', frappe.PermissionError)
     data = parse_payload(payload)

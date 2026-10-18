@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Added:
+
+- Versioned form-builder API coverage and documentation, including stable schema IDs,
+  immutable published revisions, entry revision checks, and company-scoped calendar coverage.
+
 ## 0.15.3 - 2026-10-11
 
 Deployment: the release contains a patch (`v0_15_3.normalize_persian_digits`): run `bench --site <site> migrate`. No new DocTypes.
