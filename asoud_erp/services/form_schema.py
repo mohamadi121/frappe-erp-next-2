@@ -73,13 +73,17 @@ def number(value):
 
 def validate_schema(raw):
     schema = parse(raw)
-    if schema.get("kind") not in {"Request", "Document"} or not str(schema.get("title", "")).strip():
+    if (schema.get("kind") not in {"Request", "Document"}
+            or not 1 <= len(str(schema.get("title", "")).strip()) <= 140):
         fail("عنوان و نوع فرم را مشخص کنید.")
     sections = schema.get("sections")
     if not isinstance(sections, list) or not 1 <= len(sections) <= 30:
         fail("فرم باید بین یک تا سی بخش داشته باشد.")
-    if any(not isinstance(s, dict) or not s.get("id") or not s.get("title") or not isinstance(s.get("fields"), list) for s in sections):
-        fail("بخش‌های فرم معتبر نیستند.")
+    if any(not isinstance(s, dict) or not isinstance(s.get("id"), str)
+           or not re.fullmatch(r"[a-z][a-z0-9_]{0,59}", s["id"])
+           or not 1 <= len(str(s.get("title", "")).strip()) <= 140
+           or not isinstance(s.get("fields"), list) for s in sections):
+        fail("بخش‌ها یا شناسه بخش فرم معتبر نیست.")
     if len({s['id'] for s in sections}) != len(sections):
         fail("شناسه بخش‌ها تکراری است.")
     all_fields = fields(schema)
@@ -96,7 +100,7 @@ def validate_schema(raw):
                 fail("شناسه فیلد نامعتبر یا تکراری است.")
             keys.add(key)
             kind = field.get("type")
-            if not field.get("label") or kind not in TYPES:
+            if not 1 <= len(str(field.get("label", "")).strip()) <= 140 or kind not in TYPES:
                 fail("عنوان یا نوع فیلد نامعتبر است.")
             if kind == "Link" and field.get("source") not in SOURCES:
                 fail("منبع اطلاعات سیستم معتبر نیست.")
@@ -109,7 +113,13 @@ def validate_schema(raw):
                     fail('فیلتر اطلاعات سیستم مجاز نیست.')
             if kind in {"Select", "MultiSelect"}:
                 choices = field.get("options", [])
-                if not isinstance(choices, list) or not choices or len(choices) > 100 or any(not isinstance(v, str) or not v.strip() for v in choices) or len(set(choices)) != len(choices):
+                if (not isinstance(choices, list) or not choices or len(choices) > 100
+                        or any(not isinstance(v, dict)
+                               or not isinstance(v.get("id"), str)
+                               or not re.fullmatch(r"[a-z][a-z0-9_]{0,59}", v["id"])
+                               or not 1 <= len(str(v.get("label", "")).strip()) <= 140
+                               for v in choices)
+                        or len({v["id"] for v in choices}) != len(choices)):
                     fail("گزینه‌های انتخابی معتبر نیستند.")
             for low, high in (("min", "max"), ("min_length", "max_length"), ("min_rows", "max_rows")):
                 if field.get(low) is not None and field.get(high) is not None and number(field[low]) > number(field[high]):
@@ -128,7 +138,8 @@ def validate_schema(raw):
                 check_fields(columns, True)
             if kind == "Formula":
                 formula = field.get("formula", {})
-                if formula.get("op") not in FORMULAS or not 0 <= int(formula.get("precision", 2)) <= 8:
+                if (not isinstance(formula, dict) or formula.get("op") not in FORMULAS
+                        or not 0 <= int(formula.get("precision", 2)) <= 8):
                     fail("فرمول معتبر نیست.")
                 if not isinstance(formula.get('inputs', []), list) or len(formula.get('inputs', [])) > 100:
                     fail('ورودی فرمول معتبر نیست.')
@@ -380,7 +391,8 @@ def validate_values(schema, raw, company, _file_budget=None):
             fail(f"{label}: نوع مقدار معتبر نیست.")
         if kind in {'Select', 'MultiSelect'}:
             chosen = value if kind == 'MultiSelect' else [value]
-            if not isinstance(chosen, list) or any(v not in field['options'] for v in chosen):
+            option_ids = {option['id'] for option in field['options']}
+            if not isinstance(chosen, list) or any(v not in option_ids for v in chosen):
                 fail(f"{label}: انتخاب معتبر نیست.")
         if kind in {'Date', 'Time', 'DateTime'}:
             try:
