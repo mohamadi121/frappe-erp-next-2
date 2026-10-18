@@ -16,7 +16,7 @@ from asoud_erp.services.request_access import company_access, require_company
 SCOPE = 'ASOUD Calendar Scope'
 HOLIDAY = 'ASOUD Calendar Holiday'
 CALENDAR_USERS = ('System Manager', 'HR Manager', 'Accounts Manager', 'Purchase Manager',
-                  'Employee', 'Accounts User', 'HR User', 'Purchase User', 'Sales User', 'Stock User')
+                  'Accounts User', 'HR User', 'Purchase User', 'Sales User', 'Stock User')
 
 
 def fail(message):
@@ -60,7 +60,8 @@ def require_calendar_user():
 
 def store(doc):
     doc.flags.calendar_service = True
-    return doc.insert(ignore_permissions=True, set_name=doc.name) if doc.is_new() else doc.save(ignore_permissions=True)
+    is_new = doc.is_new() or not doc.name or not frappe.db.exists(doc.doctype, doc.name)
+    return doc.insert(ignore_permissions=True, set_name=doc.name) if is_new else doc.save(ignore_permissions=True)
 
 
 def guard(doc):

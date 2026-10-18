@@ -21,7 +21,7 @@ from asoud_erp.services.form_schema import (
 from asoud_erp.services.request_access import require_company
 
 DESIGNERS = ('System Manager', 'HR Manager', 'Accounts Manager', 'Purchase Manager')
-FORM_USERS = DESIGNERS + ('Employee', 'Accounts User', 'HR User', 'Purchase User', 'Sales User', 'Stock User')
+FORM_USERS = DESIGNERS + ('Accounts User', 'HR User', 'Purchase User', 'Sales User', 'Stock User')
 NATIVE = {'Journal Entry': {'voucher_type', 'posting_date', 'user_remark', 'accounts'},
           'Material Request': {'material_request_type', 'schedule_date', 'items'}}
 CHILDREN = {'accounts': {'account', 'party_type', 'party', 'cost_center', 'project', 'debit_in_account_currency', 'credit_in_account_currency'},
@@ -38,7 +38,8 @@ def require_form_user():
 
 def store(doc):
     doc.flags.form_service = True
-    return doc.insert(ignore_permissions=True, set_name=doc.name if doc.doctype == 'ASOUD Form' else None) if doc.is_new() else doc.save(ignore_permissions=True)
+    is_new = doc.is_new() or not doc.name or not frappe.db.exists(doc.doctype, doc.name)
+    return doc.insert(ignore_permissions=True, set_name=doc.name if doc.doctype == 'ASOUD Form' else None) if is_new else doc.save(ignore_permissions=True)
 
 
 def load(name, edit=False, lock=False):
