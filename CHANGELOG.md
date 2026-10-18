@@ -6,6 +6,16 @@ Added:
 
 - Versioned form-builder API coverage and documentation, including stable schema IDs,
   immutable published revisions, entry revision checks, and company-scoped calendar coverage.
+- Integration tests for directives lifecycle (`test_directives.py`: draft, issue, transfer,
+  report submission, change request, review approval, close, and cross-company tenant isolation).
+- Dedicated integration tests for calendar scope and organization holidays (`test_calendar.py`).
+
+Fixed:
+
+- Enforce permitted application roles on form-builder and calendar endpoints, preventing active
+  employees without application roles from accessing protected definitions.
+- Persist new `ASOUD Form`, `ASOUD Calendar Scope`, and `ASOUD Calendar Holiday` records via `insert`
+  to support deterministic identifiers before insert.
 
 ## 0.15.3 - 2026-10-11
 
