@@ -20,13 +20,19 @@ the existing revision.
 
 ## Consumption
 
-`list_forms(company)`, `get_form(name)`, `get_link_options(company, source, ...)`,
-`upload_file(form, filename, content)`, `submit_form(name, revision_name, subject,
-values, request_key)`, `list_my_entries(company)`, and `get_entry(name)` are for
-the current user. Submission accepts only the active revision of an enabled,
-company-scoped form. Entries retain their revision and cannot be redirected to a
-draft or a revision belonging to another form.
+Any active employee of the company consumes forms: `list_forms(company)`, `get_form(name)`,
+`get_link_options(company, source, ...)`, `upload_file(form, filename, content)`,
+`submit_form(name, revision_name, subject, values, request_key)`, `list_my_entries(company)`,
+and `get_entry(name)`. Plain employees without an application role can list published forms,
+submit request forms (which run through the active ASOUD workflow), read their own entries,
+and use the personal calendar API. Users who are not active employees of the company are
+refused access.
 
-Document forms create an ERPNext draft with native permissions and controllers;
-request forms use the selected active ASOUD workflow. Neither path auto-submits a
-native document.
+Designer and lifecycle operations (`save_form`, `transition`, `get_history`, `get_validation`,
+`get_options`) remain gated by `DESIGNERS` and `System Manager`. Submission accepts only the
+active revision of an enabled, company-scoped form. Entries retain their revision and cannot be
+redirected to a draft or foreign revision.
+
+Document forms create an ERPNext draft with native permissions and controllers; employees without
+native permission on the target document type are refused by ERPNext. Request forms use the
+selected active ASOUD workflow. Neither path auto-submits a native document.

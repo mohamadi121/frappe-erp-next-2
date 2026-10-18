@@ -12,8 +12,10 @@ Added:
 
 Fixed:
 
-- Enforce permitted application roles on form-builder and calendar endpoints, preventing active
-  employees without application roles from accessing protected definitions.
+- Restore active employee consumption on form-builder and calendar personal endpoints (plain
+  employees can list published forms, submit request forms, read own entries, and manage personal
+  reminders; designer endpoints and holiday management remain manager-gated, and document forms
+  rely on native ERPNext DocType permissions).
 - Persist new `ASOUD Form`, `ASOUD Calendar Scope`, and `ASOUD Calendar Holiday` records via `insert`
   to support deterministic identifiers before insert.
 
