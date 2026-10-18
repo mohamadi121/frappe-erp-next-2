@@ -10,11 +10,15 @@ import re
 from pathlib import Path
 
 import frappe
-from frappe.utils import getdate, nowdate, now_datetime, get_fullname
+from frappe.utils import get_fullname, getdate, now_datetime, nowdate
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.directive_access import (
-    COMMUNICATION, ADAPTER_PREFIX, active_user, can_read, service_write,
+    ADAPTER_PREFIX,
+    COMMUNICATION,
+    active_user,
+    can_read,
+    service_write,
 )
 from asoud_erp.services.request_access import require_company
 
@@ -133,7 +137,6 @@ def _state(doc):
 
 def _view(doc):
     issuer = doc.sender == frappe.session.user
-    own = _own(doc)
     used = {r.user for r in doc.recipients} | {doc.sender}
     actions = _actions(doc)
     manager = frappe.db.get_value("Employee", {"company": doc.company,
@@ -263,7 +266,7 @@ def _bind(doc, ids, task=None):
 def options(company):
     _employee(company)
     people = _people(company)
-    return success(dict(people=people, priorities=[dict(value=v, label=l) for v,l in
+    return success(dict(people=people, priorities=[dict(value=value, label=label) for value,label in
         [("Medium","عادی"),("High","مهم"),("Urgent","فوری")]],
         allowed_actions=["save_draft","issue"] if people else [], today=nowdate(), file_policy=_policy()))
 
