@@ -78,3 +78,35 @@ def test_unbounded_section_id_and_formula_shape_are_rejected(schema):
     payload["sections"][0]["fields"][1]["formula"] = "amount + amount"
     with pytest.raises(ValueError, match="فرمول"):
         schema.validate_schema(payload)
+
+
+def test_form_formula_vectors(schema):
+    import json
+    from pathlib import Path
+
+    fixture_path = Path(__file__).parent / "fixtures" / "form_formula_vectors.json"
+    with open(fixture_path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    for item in data["cases"]:
+        name = item.get("name", "")
+        if "schema" in item:
+            with pytest.raises(ValueError):
+                schema.validate_schema(item["schema"])
+            envelope = {
+                "kind": "Request",
+                "title": "فرم آزمایشی",
+                "sections": [
+                    {"id": f"sec_{idx}", "title": "بخش", "fields": section.get("fields", [])}
+                    for idx, section in enumerate(item["schema"].get("sections", []))
+                ],
+                "rules": item["schema"].get("rules", []),
+            }
+            with pytest.raises(ValueError):
+                schema.validate_schema(envelope)
+        elif "error" in item:
+            with pytest.raises(ValueError):
+                schema.calculate(item["formula"], item["values"])
+        else:
+            result = schema.calculate(item["formula"], item["values"])
+            assert result == item["expected"], f"{name}: expected {item['expected']}, got {result}"

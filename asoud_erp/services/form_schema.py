@@ -61,8 +61,13 @@ def fields(schema):
     return [f for section in schema.get("sections", []) for f in section.get("fields", [])]
 
 
+_DIGIT_TRANSLATION = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٫", "01234567890123456789.")
+
+
 def number(value):
     try:
+        if isinstance(value, str):
+            value = value.strip().translate(_DIGIT_TRANSLATION).replace("٬", "")
         value = Decimal(str(value if value not in (None, "") else 0))
         if not value.is_finite() or abs(value) > Decimal("1e18"):
             raise ValueError()
