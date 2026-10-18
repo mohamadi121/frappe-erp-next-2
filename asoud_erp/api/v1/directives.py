@@ -5,12 +5,13 @@ adapter-owned tasks; it is deliberately not published as a generic workflow.
 """
 import base64
 import hashlib
+import html
 import json
 import re
 from pathlib import Path
 
 import frappe
-from frappe.utils import get_fullname, getdate, now_datetime, nowdate
+from frappe.utils import get_datetime, get_fullname, getdate, now_datetime, nowdate, strip_html
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.directive_access import (
@@ -96,15 +97,17 @@ def _actions(doc):
         return []
     result = []
     own = _own(doc)
-    if own and own.directive_state in ("Pending", "Returned"):
-        result.append("report")
+    if own and own.directive_state in ("Pending", "Returned", "In Progress"):
+        result.extend(["report", "progress"])
+        if own.directive_state == "Pending":
+            result.append("start")
         if doc.allow_transfer:
             result.append("transfer")
     if issuer and _active(doc) and all(r.directive_state == "Approved" for r in _active(doc)):
         if not frappe.db.exists("ASOUD Workflow Task", {"workflow_instance": doc.workflow_instance,
             "status": "Open", "directive_kind": ["!=", "Close"]}):
             result.append("close")
-    if issuer and any(r.directive_state in ("Pending", "Returned") for r in _active(doc)):
+    if issuer and any(r.directive_state in ("Pending", "Returned", "In Progress") for r in _active(doc)):
         result.append("transfer")
     return result
 
@@ -132,7 +135,7 @@ def _state(doc):
         return "Awaiting Review"
     if "Returned" in states:
         return "Returned"
-    return "In Progress"
+    return "Issued" if states and all(s == "Pending" for s in states) else "In Progress"
 
 
 def _view(doc):
@@ -149,6 +152,7 @@ def _view(doc):
         is_draft=doc.status == "Draft", issuer=_person(doc.sender), current_user_id=frappe.session.user,
         today=nowdate(), issue_date=str(doc.issued_on or "")[:10] or None,
         due_date=str(doc.due_date or "") or None, allow_transfer=bool(doc.allow_transfer),
+        reminder_at=str(doc.reminder_at) if doc.reminder_at else None,
         allowed_actions=actions, all_reports_approved=bool(_active(doc)) and all(r.directive_state == "Approved" for r in _active(doc)),
         transfer_choices=[r for r in people if r['id'] not in used] if "transfer" in actions else [],
         executors=[dict(person=_person(r.user), status=r.directive_state or "Pending",
@@ -158,9 +162,10 @@ def _view(doc):
             for r in doc.recipients if issuer or r.user == frappe.session.user],
         attachments=_files(COMMUNICATION, doc.name, "directive"), file_policy=_policy(),
         workflow_instance=doc.workflow_instance or "", incoming=doc.status!='Draft' and any(r.user==frappe.session.user for r in doc.recipients),
-        sent=issuer, archived=doc.status == "Archived", open=doc.status == "Sent",
+        sent=issuer or any(r.user==frappe.session.user and r.directive_state=='Transferred' for r in doc.recipients), archived=doc.status == "Archived", open=doc.status == "Sent",
         overdue=bool(doc.status=='Sent' and doc.due_date and getdate(doc.due_date)<getdate(nowdate()) and any(r.directive_state!='Approved' for r in _active(doc))),
-        needs_action=any(t.assigned_to == frappe.session.user and t.status == "Open" for t in _tasks(doc)),
+        needs_action=bool(doc.workflow_instance and frappe.db.exists('ASOUD Workflow Task',
+            {'workflow_instance':doc.workflow_instance,'assigned_to':frappe.session.user,'status':'Open'})),
         creation=str(doc.creation), sender=get_fullname(doc.sender))
 
 
@@ -193,7 +198,7 @@ def _audit(doc, action, comment="", task=None):
             workflow_task=task, actor=frappe.session.user, action=action, comment=comment,
             created_on=now_datetime())).insert(ignore_permissions=True)
     else:
-        doc.add_comment("Info", text=action)
+        doc.add_comment("Info", text=html.escape(action + (": " + comment if comment else "")))
 
 
 def _notify(doc, user, title):
@@ -209,10 +214,14 @@ def _stage(doc, kind):
 
 
 def _new_task(doc, user, kind, subject_task=None):
+    title = {'Report':'گزارش دستور','Review':'بررسی گزارش','Close':'تأیید نهایی دستور'}[kind]
+    if kind == 'Report' and any(r.user==user and r.directive_state=='Returned' for r in doc.recipients):
+        title = 'درخواست اصلاح گزارش دستور'
     task = frappe.get_doc(dict(doctype="ASOUD Workflow Task", workflow_instance=doc.workflow_instance,
-        workflow_stage=_stage(doc, kind), task_title=f"{ {'Report':'گزارش دستور','Review':'بررسی گزارش','Close':'تأیید نهایی دستور'}[kind]}: {doc.subject}"[:140],
+        workflow_stage=_stage(doc, kind), task_title=f"{title}: {doc.subject}"[:140],
         assigned_to=user, status="Open", assigned_on=now_datetime(),
         due_on=f"{doc.due_date} 23:59:59" if doc.due_date else None,
+        reminder_on=doc.reminder_at if kind=='Report' and doc.reminder_at and get_datetime(doc.reminder_at)>now_datetime() else None,
         directive_kind=kind, directive_subject_task=subject_task)).insert(ignore_permissions=True)
     _notify(doc, user, task.task_title)
     _audit(doc, 'تخصیص وظیفه', task=task.name)
@@ -292,6 +301,8 @@ def save_draft(company, payload, request_key):
     def run():
         _employee(company)
         doc = _get(data['id'], company, True) if data.get('id') else frappe.new_doc(COMMUNICATION)
+        is_new = doc.is_new()
+        old_primary = doc.primary_executor
         if not doc.is_new() and (doc.sender != frappe.session.user or doc.status != "Draft"):
             frappe.throw("ویرایش دستور صادرشده مجاز نیست.", frappe.PermissionError)
         if not doc.is_new() and int(data.get('version', -1)) != doc.directive_version:
@@ -312,13 +323,18 @@ def save_draft(company, payload, request_key):
         doc.subject, doc.content = subject, str(data.get('body') or '').strip()
         doc.priority, doc.status = data.get('priority','Medium'), 'Draft'
         doc.due_date = getdate(data['due_date']) if data.get('due_date') else None
+        doc.reminder_at = get_datetime(data['reminder_at']) if data.get('reminder_at') else None
+        if doc.reminder_at and doc.due_date and doc.reminder_at>get_datetime(f'{doc.due_date} 23:59:59'):
+            frappe.throw('زمان یادآوری باید پیش از پایان مهلت باشد.')
         doc.primary_executor, doc.allow_transfer = primary, bool(data.get('allow_transfer'))
         doc.directive_version = (doc.directive_version or 0)+1
         doc.set('recipients', [dict(user=u,recipient_type='To',directive_state='Pending') for u in users])
         doc.flags.ignore_mandatory = True  # Only drafts may be incomplete.
         doc.save(ignore_permissions=True)
         _bind(doc, data.get('attachment_ids',[]))
-        _audit(doc,'ذخیره پیش‌نویس')
+        _audit(doc,'ایجاد پیش‌نویس' if is_new else 'ذخیره پیش‌نویس')
+        if old_primary != primary:
+            _audit(doc, 'تغییر مسئول اصلی', f'{get_fullname(old_primary) if old_primary else "—"} → {get_fullname(primary) if primary else "—"}')
         return dict(id=doc.name,version=doc.directive_version), doc
     return _mutation('save_draft',dict(company=company,payload=data),request_key,run)
 
@@ -336,6 +352,9 @@ def issue(company, directive, request_key):
             frappe.throw("مجریان دیگر در دامنه مجاز نیستند.",frappe.PermissionError)
         if not doc.due_date or getdate(doc.due_date)<getdate(nowdate()):
             frappe.throw("مهلت معتبر و غیرگذشته لازم است.")
+        if doc.reminder_at and (get_datetime(doc.reminder_at)<=now_datetime() or
+                get_datetime(doc.reminder_at)>get_datetime(f'{doc.due_date} 23:59:59')):
+            frappe.throw('روز و ساعت یادآوری باید در آینده و پیش از پایان مهلت باشد.')
         # One immutable adapter definition per directive; no published-definition mutation.
         definition = frappe.get_doc(dict(doctype='ASOUD Workflow Definition',
             workflow_code=ADAPTER_PREFIX+doc.name, workflow_title='دستور سازمانی',
@@ -362,8 +381,25 @@ def issue(company, directive, request_key):
 
 
 @frappe.whitelist(methods=["POST"])
+def start(company,directive,request_key):
+    def run():
+        doc=_get(directive,company,True)
+        if 'start' not in _actions(doc):
+            frappe.throw('شروع کار در این وضعیت مجاز نیست.',frappe.PermissionError)
+        task=_open_task(doc,frappe.session.user,'Report')
+        _own(doc).directive_state='In Progress'
+        doc.save(ignore_permissions=True)
+        _audit(doc,'شروع کار',task=task.name)
+        return dict(id=doc.name),doc
+    return _mutation('start',dict(company=company,directive=directive),request_key,run)
+
+
+@frappe.whitelist(methods=["POST"])
 def report(company,directive,payload,request_key):
     data=_data(payload)
+    report_type=data.get('report_type','final')
+    if report_type not in ('final','progress'):
+        frappe.throw('نوع گزارش معتبر نیست.')
     def run():
         doc=_get(directive,company,True)
         if 'report' not in _actions(doc):
@@ -373,13 +409,31 @@ def report(company,directive,payload,request_key):
         if not body or not done or done<getdate(doc.issued_on) or done>getdate(nowdate()):
             frappe.throw('شرح و تاریخ انجام بین تاریخ صدور و امروز لازم است.')
         task=_open_task(doc,frappe.session.user,'Report')
+        if report_type=='progress':
+            # Keep the blocking execution task open; progress is an immutable
+            # completed report record, never a request for final approval.
+            progress=frappe.get_doc(dict(doctype='ASOUD Workflow Task',
+                workflow_instance=doc.workflow_instance,workflow_stage=task.workflow_stage,
+                task_title=f'گزارش پیشرفت: {doc.subject}'[:140],
+                assigned_to=frappe.session.user,assigned_on=now_datetime(),
+                status='Completed',directive_kind='Report',action='Progress',
+                completed_on=now_datetime(),response_json=json.dumps(dict(
+                    body=body,done_date=str(done),report_type='progress'),ensure_ascii=False)
+                )).insert(ignore_permissions=True)
+            _bind(doc,data.get('attachment_ids',[]),progress)
+            if _own(doc).directive_state=='Pending':
+                _own(doc).directive_state='In Progress'
+                doc.save(ignore_permissions=True)
+            _audit(doc,'ارسال گزارش پیشرفت',task=progress.name)
+            _notify(doc,doc.sender,'گزارش پیشرفت دستور: '+doc.subject)
+            return dict(id=doc.name),doc
         version=1+sum(t.directive_kind=='Report' and t.assigned_to==frappe.session.user and t.action=='Report' for t in _tasks(doc))
         _bind(doc,data.get('attachment_ids',[]),task)
         _finish(task,'Report',dict(body=body,done_date=str(done),version=version))
         _own(doc).directive_state='Awaiting Review'
         doc.save(ignore_permissions=True)
         _new_task(doc,doc.sender,'Review',task.name)
-        _audit(doc,'ارسال گزارش',task=task.name)
+        _audit(doc,'ارسال گزارش اصلاحی' if version > 1 else 'ارسال گزارش',task=task.name)
         return dict(id=doc.name),doc
     return _mutation('report',dict(company=company,directive=directive,payload=data),request_key,run)
 
@@ -407,7 +461,8 @@ def review(company,directive,report_id,approve,reason,request_key):
             _new_task(doc,row.user,'Report')
         elif all(r.directive_state=='Approved' for r in _active(doc)):
             _new_task(doc,doc.sender,'Close')
-        _notify(doc,row.user,'تأیید گزارش' if approved else 'درخواست اصلاح گزارش')
+        if approved:
+            _notify(doc,row.user,'تأیید گزارش')
         _audit(doc,'تأیید گزارش' if approved else 'درخواست اصلاح',str(reason or ''),report_id)
         return dict(id=doc.name),doc
     return _mutation('review',dict(company=company,directive=directive,report_id=report_id,approve=approved,reason=reason),request_key,run)
@@ -420,7 +475,7 @@ def transfer(company,directive,recipient_id,reason,request_key,executor_id=None)
         source=executor_id if doc.sender==frappe.session.user else frappe.session.user
         row=next((r for r in _active(doc) if r.user==source),None)
         available={p['id'] for p in _people(doc.company,_employee(doc.company,doc.sender).name)}
-        if 'transfer' not in _actions(doc) or not row or row.directive_state not in ('Pending','Returned') or not str(reason or '').strip():
+        if 'transfer' not in _actions(doc) or not row or row.directive_state not in ('Pending','Returned','In Progress') or not str(reason or '').strip():
             frappe.throw('ارجاع در این وضعیت مجاز نیست یا دلیل وارد نشده است.',frappe.PermissionError)
         if recipient_id not in available or recipient_id in {r.user for r in doc.recipients}|{doc.sender,frappe.session.user}:
             frappe.throw('گیرنده غیرمجاز یا تکراری است؛ چرخه ارجاع مجاز نیست.')
@@ -430,8 +485,11 @@ def transfer(company,directive,recipient_id,reason,request_key,executor_id=None)
         doc.append('recipients',dict(user=recipient_id,recipient_type='To',directive_state='Pending',assigned_on=now_datetime()))
         if doc.primary_executor==source:
             doc.primary_executor=recipient_id
+            _audit(doc,'تغییر مسئول اصلی',f'{get_fullname(source)} → {get_fullname(recipient_id)}',task.name)
         doc.save(ignore_permissions=True)
         _new_task(doc,recipient_id,'Report')
+        if source != frappe.session.user:
+            _notify(doc,source,'مسئولیت دستور شما منتقل شد: '+doc.subject)
         _audit(doc,'انتقال مسئولیت',f'{source} → {recipient_id}: {reason}',task.name)
         return dict(id=doc.name),doc
     return _mutation('transfer',dict(company=company,directive=directive,recipient_id=recipient_id,reason=reason,executor_id=executor_id),request_key,run)
@@ -458,43 +516,62 @@ def close(company,directive,request_key):
 
 
 @frappe.whitelist()
-def reports(company,directive,start=0):
+def reports(company,directive,start=0,author=None):
     doc=_get(directive,company)
-    tasks=_tasks(doc)
+    filters={'workflow_instance':doc.workflow_instance or '', 'directive_kind':'Report', 'action':['in',['Report','Progress']]}
+    if doc.sender != frappe.session.user:
+        if author and author != frappe.session.user:
+            frappe.throw('اجازه مشاهده گزارش این مجری را ندارید.', frappe.PermissionError)
+        filters['assigned_to']=frappe.session.user
+    elif author:
+        filters['assigned_to']=author
+    offset=max(0,int(start))
+    tasks=frappe.get_all('ASOUD Workflow Task',filters=filters,
+        fields=['name','assigned_to','response_json','completed_on','action'],
+        order_by='creation desc, name desc',limit_start=offset,limit_page_length=51)
     rows=[]
-    for task in tasks:
-        if task.directive_kind!='Report' or task.action!='Report' or (doc.sender!=frappe.session.user and task.assigned_to!=frappe.session.user):
-            continue
-        review_task=next((t for t in tasks if t.directive_kind=='Review' and t.directive_subject_task==task.name),None)
+    for task in tasks[:50]:
+        review_task=frappe.db.get_value('ASOUD Workflow Task',
+            {'workflow_instance':doc.workflow_instance,'directive_kind':'Review','directive_subject_task':task.name},
+            ['status','action','comment','completed_on','assigned_to'],as_dict=True)
         data=json.loads(task.response_json or '{}')
         rows.append(dict(id=task.name,author=_person(task.assigned_to),body=data.get('body',''),
             done_date=data.get('done_date'),created_at=str(task.completed_on),version=data.get('version',1),
-            status='Awaiting Review' if not review_task or review_task.status=='Open' else ('Approved' if review_task.action=='Approve' else 'Returned'),
+            status='Progress' if task.action=='Progress' else ('Awaiting Review' if not review_task or review_task.status=='Open' else ('Approved' if review_task.action=='Approve' else 'Returned')),
             review_note=review_task.comment if review_task else '',
+            reviewed_at=str(review_task.completed_on) if review_task and review_task.completed_on else None,
+            reviewer=_person(review_task.assigned_to) if review_task and review_task.completed_on else None,
             allowed_actions=['approve','request_changes'] if review_task and review_task.status=='Open' and doc.status=='Sent' and doc.sender==frappe.session.user and task.assigned_to!=doc.sender else [],
             attachments=_files('ASOUD Workflow Task',task.name)))
-    offset=max(0,int(start))
-    return success(dict(items=rows[offset:offset+50],next_cursor=str(offset+50) if len(rows)>offset+50 else None))
+    return success(dict(items=rows,next_cursor=str(offset+50) if len(tasks)>50 else None))
 
 
 @frappe.whitelist()
 def history(company,directive,start=0):
     doc=_get(directive,company)
-    filters={'workflow_instance':doc.workflow_instance or ''}
-    related=[]
-    if doc.sender!=frappe.session.user:
-        own_tasks=[t.name for t in _tasks(doc) if t.assigned_to==frappe.session.user]
-        related=[['actor','=',frappe.session.user],['workflow_task','in',own_tasks or ['']]]
     offset=max(0,int(start))
-    rows=frappe.get_all('ASOUD Workflow Activity',filters=filters,or_filters=related or None,
-        fields=['name','action','actor','created_on','comment','workflow_task'],order_by='created_on desc, name desc',limit_page_length=0)
-    entries=[dict(action=r.action,actor=get_fullname(r.actor),created_at=str(r.created_on),description=r.comment or '',reference=r.workflow_task or '',sort_id=r.name) for r in rows]
-    if doc.sender==frappe.session.user:
-        comments=frappe.get_all('Comment',filters={'reference_doctype':COMMUNICATION,'reference_name':doc.name,'comment_type':'Info'},
-            fields=['name','owner','creation','content'],limit_page_length=0)
-        entries += [dict(action='ذخیره پیش‌نویس',actor=get_fullname(r.owner),created_at=str(r.creation),description='',reference=doc.name,sort_id=r.name) for r in comments]
-    entries.sort(key=lambda r:(r['created_at'],r['sort_id']),reverse=True)
-    return success(dict(items=entries[offset:offset+50],next_cursor=str(offset+50) if len(entries)>offset+50 else None))
+    # Apply access scope before LIMIT. Merge native comments and workflow events
+    # in the database, without loading the entire lifetime of the directive.
+    rows=frappe.db.sql('''
+        SELECT * FROM (
+          SELECT a.name AS sort_id, a.action, a.actor, a.created_on AS created_at,
+                 a.comment AS description, a.workflow_task AS reference
+          FROM `tabASOUD Workflow Activity` a
+          WHERE a.workflow_instance=%(instance)s AND
+            (%(issuer)s=1 OR a.actor=%(user)s OR a.action IN ('ابلاغ دستور','مختومه کردن دستور') OR EXISTS (
+              SELECT 1 FROM `tabASOUD Workflow Task` t
+              WHERE t.name=a.workflow_task AND t.assigned_to=%(user)s))
+          UNION ALL
+          SELECT c.name, 'پیش‌نویس', c.owner, c.creation, c.content, c.reference_name
+          FROM `tabComment` c
+          WHERE %(issuer)s=1 AND c.reference_doctype=%(doctype)s
+            AND c.reference_name=%(name)s AND c.comment_type='Info'
+        ) events ORDER BY created_at DESC, sort_id DESC LIMIT 51 OFFSET %(offset)s
+    ''',dict(instance=doc.workflow_instance or '',issuer=int(doc.sender==frappe.session.user),
+        user=frappe.session.user,doctype=COMMUNICATION,name=doc.name,offset=offset),as_dict=True)
+    entries=[dict(action=r.action,actor=get_fullname(r.actor),created_at=str(r.created_at),
+        description=html.unescape(strip_html(r.description or '')),reference=r.reference or '') for r in rows[:50]]
+    return success(dict(items=entries,next_cursor=str(offset+50) if len(rows)>50 else None))
 
 
 @frappe.whitelist(methods=["POST"])
@@ -543,7 +620,37 @@ def notify_overdue(task):
     task=frappe.get_doc('ASOUD Workflow Task',task.name,for_update=True)
     if doc.status!='Sent' or task.status!='Open' or task.escalated_on:
         return
+    if not can_read(doc,task.assigned_to):
+        return
     with service_write():
         _notify(doc,task.assigned_to,'مهلت اقدام دستور گذشته است')
         task.escalated_on=now_datetime()
         task.save(ignore_permissions=True)
+
+
+def notify_reminder(task):
+    """Use the issuer-selected site-local datetime; serialize against actions."""
+    instance=frappe.get_doc('ASOUD Workflow Instance',task.workflow_instance)
+    doc=frappe.get_doc(COMMUNICATION,instance.reference_name,for_update=True)
+    task=frappe.get_doc('ASOUD Workflow Task',task.name,for_update=True)
+    current=now_datetime()
+    if (doc.status!='Sent' or task.status!='Open' or task.reminder_sent_on
+            or not task.reminder_on or get_datetime(task.reminder_on)>current
+            or not task.due_on or get_datetime(task.due_on)<=current):
+        return
+    if not can_read(doc,task.assigned_to):
+        return
+    with service_write():
+        _notify(doc,task.assigned_to,'یادآوری انجام دستور: '+doc.subject)
+        task.reminder_sent_on=current
+        task.save(ignore_permissions=True)
+
+
+def dispatch_reminders():
+    """Minute scheduler; no dependency on the general hourly workflow tick."""
+    current=now_datetime()
+    names=frappe.get_all('ASOUD Workflow Task',filters={
+        'directive_kind':'Report','status':'Open','reminder_on':['<=',current],
+        'due_on':['>',current],'reminder_sent_on':['is','not set']},pluck='name',limit_page_length=0)
+    for name in names:
+        notify_reminder(frappe.get_doc('ASOUD Workflow Task',name))

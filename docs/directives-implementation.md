@@ -66,13 +66,38 @@ issuer, two executors and an unrelated employee: issue, file visibility,
 independent reports, return/resubmit, transfer, duplicate request replay,
 concurrent decisions, revoked company access and final closing.
 
-Reports/history expose pagination but currently collect a directive's records
-before slicing. Notifications use Notification Log; push/SMS are not activated.
+Reports/history are paginated in the database (50 entries), with access scoping
+before pagination. Reports can be filtered by executor; an executor cannot query
+another executor's reports. Review identity and time accompany each decision.
+History includes native draft comments, primary-executor changes, revised report
+submissions and lifecycle events. Notifications use Notification Log; push/SMS
+are not activated.
 Overdue notifications use the existing hourly scheduler and per-task marker.
-No arbitrary advance-warning interval is introduced. Due dates use the site's
-date and end-of-day convention; configure the site's timezone correctly.
+The issuer can optionally choose a reminder date and time before issuing. It is
+stored in `reminder_at`, interpreted in the site's timezone, and copied to Report
+tasks' standard `reminder_on`. The minute scheduler sends it once per eligible
+open task; document/task locks and `reminder_sent_on` also prevent duplicate sends
+if the hourly scheduler overlaps. Past reminders are rejected at issue time.
+No mandatory due-time field or default reminder interval is introduced. Configure
+the site's timezone and scheduler correctly; cron frequency is not a delivery SLA.
 
 The cartable combines directives and existing workflow instances. Other HR
 correspondence is still served by its existing module. Generic workflow lists
-remain capped at 200 per query; the client marks incomplete totals explicitly.
+offer opt-in `paged=true` / `start` with `{items,next_cursor}`. Legacy callers retain
+their list response. The updated client fetches every page and requires the new
+backend contract; deploy the backend before the client. Responses are limited to
+200 per page, not 200 for the whole cartable.
 Archive membership is never inferred from a closed/completed status.
+
+## Start and progress reports
+
+The explicit `start` action moves the assigned recipient from Pending to In
+Progress without completing their Report task. `report` accepts a validated
+`report_type` (`final`, the compatible default, or `progress`). Progress records
+reuse completed Workflow Tasks and private report files; they leave the blocking
+execution task open, notify the issuer and never create an approval task. Final
+report versions exclude progress entries. Returned work remains Returned until a
+new final report is submitted. All mutations use the same locks, receipts and
+server authorization. Transferred recipients also see the directive in Sent.
+Deploy with migrate before the new client (recipient state adds In Progress).
+No automated tests or live-site migration were run for this change.

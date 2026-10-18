@@ -662,7 +662,7 @@ def start_workflow_instance(
 
 
 @frappe.whitelist()
-def list_my_workflow_tasks(status: str = "Open") -> dict:
+def list_my_workflow_tasks(status: str = "Open", start=0, paged=False) -> dict:
     if status not in {"Open", "Completed", "Rejected", "Cancelled"}:
         frappe.throw(_("Invalid task status"))
     rows = frappe.get_all(
@@ -673,17 +673,21 @@ def list_my_workflow_tasks(status: str = "Open") -> dict:
             "assigned_on", "completed_on",
             "due_on", "reminder_sent_on", "escalated_on",
         ],
-        order_by="assigned_on desc",
+        order_by="assigned_on desc, name desc",
+        limit_start=max(0,int(start)),
         limit_page_length=200,
     )
+    next_cursor=str(max(0,int(start))+len(rows)) if len(rows)==200 else None
     from asoud_erp.services.directive_access import directive_for, workflow_permission
     rows = [row for row in rows if not directive_for(frappe.get_doc("ASOUD Workflow Task",row.name))
         or workflow_permission(frappe.get_doc("ASOUD Workflow Task",row.name),permission_type="read")]
+    if str(paged).lower() in ('1','true'):
+        return success(dict(items=rows,next_cursor=next_cursor))
     return success(rows, meta={"total": len(rows)})
 
 
 @frappe.whitelist()
-def list_my_workflow_instances(status: str | None = None) -> dict:
+def list_my_workflow_instances(status: str | None = None, start=0, paged=False) -> dict:
     allowed = {"Running", "Completed", "Rejected", "Cancelled", "Failed"}
     if status and status not in allowed:
         frappe.throw(_("Invalid workflow instance status"))
@@ -694,9 +698,11 @@ def list_my_workflow_instances(status: str | None = None) -> dict:
         "ASOUD Workflow Instance",
         filters=filters,
         pluck="name",
-        order_by="started_on desc",
+        order_by="started_on desc, name desc",
+        limit_start=max(0,int(start)),
         limit_page_length=200,
     )
+    next_cursor=str(max(0,int(start))+len(names)) if len(names)==200 else None
     from asoud_erp.services.directive_access import directive_for, workflow_permission
     names = [name for name in names if not directive_for(frappe.get_doc("ASOUD Workflow Instance", name))
         or workflow_permission(frappe.get_doc("ASOUD Workflow Instance", name),permission_type="read")]
@@ -704,6 +710,8 @@ def list_my_workflow_instances(status: str | None = None) -> dict:
         _instance_summary(frappe.get_doc("ASOUD Workflow Instance", name))
         for name in names
     ]
+    if str(paged).lower() in ('1','true'):
+        return success(dict(items=rows,next_cursor=next_cursor))
     return success(rows, meta={"total": len(rows)})
 
 
@@ -1099,6 +1107,10 @@ def process_workflow_deadlines() -> None:
     )
     for name in reminders:
         task = frappe.get_doc("ASOUD Workflow Task", name)
+        if task.get('directive_kind'):
+            from asoud_erp.api.v1.directives import notify_reminder
+            notify_reminder(task)
+            continue
         instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)
         _notify_user(
             task.assigned_to,

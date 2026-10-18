@@ -5,7 +5,7 @@
     {"fieldname":"user","label":"User","fieldtype":"Link","options":"User","reqd":1,"in_list_view":1},
     {"fieldname":"recipient_type","label":"Recipient Type","fieldtype":"Select","options":"To\nCC","default":"To"},
     {"fieldname":"read_at","label":"Read At","fieldtype":"Datetime","read_only":1},
-    {"fieldname":"directive_state","label":"Directive State","fieldtype":"Select","options":"\nPending\nAwaiting Review\nReturned\nApproved\nTransferred","read_only":1},
+    {"fieldname":"directive_state","label":"Directive State","fieldtype":"Select","options":"\nPending\nIn Progress\nAwaiting Review\nReturned\nApproved\nTransferred","read_only":1},
     {"fieldname":"assigned_on","label":"Assigned On","fieldtype":"Datetime","read_only":1},
     {"fieldname":"transferred_to","label":"Transferred To","fieldtype":"Link","options":"User","read_only":1}
   ],"permissions":[]
