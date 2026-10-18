@@ -5,8 +5,10 @@
   "autoname": "format:WFT-{YYYY}-{#####}",
   "title_field": "task_title",
   "track_changes": 1,
-  "field_order": ["workflow_instance", "workflow_stage", "task_title", "assigned_to", "status", "draft_json", "response_json", "action", "comment", "assigned_on", "due_on", "reminder_on", "reminder_sent_on", "escalated_on", "completed_on"],
+  "field_order": ["workflow_instance", "workflow_stage", "task_title", "assigned_to", "status", "directive_kind", "directive_subject_task", "draft_json", "response_json", "action", "comment", "assigned_on", "due_on", "reminder_on", "reminder_sent_on", "escalated_on", "completed_on"],
   "fields": [
+    {"fieldname": "directive_kind", "label": "Directive Task Kind", "fieldtype": "Select", "options": "\nReport\nReview\nClose", "read_only": 1},
+    {"fieldname": "directive_subject_task", "label": "Directive Report", "fieldtype": "Link", "options": "ASOUD Workflow Task", "read_only": 1},
     {"fieldname": "workflow_instance", "label": "Workflow Instance", "fieldtype": "Link", "options": "ASOUD Workflow Instance", "reqd": 1, "in_list_view": 1},
     {"fieldname": "workflow_stage", "label": "Workflow Stage", "fieldtype": "Link", "options": "ASOUD Workflow Stage", "reqd": 1},
     {"fieldname": "task_title", "label": "Task Title", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},

@@ -1,0 +1,11 @@
+{
+  "doctype": "DocType", "name": "ASOUD Directive Receipt", "module": "ASOUD ERP",
+  "autoname": "field:request_key", "field_order": ["request_key", "actor", "directive", "payload_hash", "result_json"],
+  "fields": [
+    {"fieldname": "request_key", "label": "Request Key", "fieldtype": "Data", "unique": 1, "reqd": 1},
+    {"fieldname": "actor", "label": "Actor", "fieldtype": "Link", "options": "User", "reqd": 1},
+    {"fieldname": "directive", "label": "Directive", "fieldtype": "Link", "options": "ASOUD Internal Communication", "reqd": 1},
+    {"fieldname": "payload_hash", "label": "Payload Hash", "fieldtype": "Data", "reqd": 1},
+    {"fieldname": "result_json", "label": "Result", "fieldtype": "Long Text", "reqd": 1}
+  ], "permissions": []
+}

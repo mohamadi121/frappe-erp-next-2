@@ -676,6 +676,9 @@ def list_my_workflow_tasks(status: str = "Open") -> dict:
         order_by="assigned_on desc",
         limit_page_length=200,
     )
+    from asoud_erp.services.directive_access import directive_for, workflow_permission
+    rows = [row for row in rows if not directive_for(frappe.get_doc("ASOUD Workflow Task",row.name))
+        or workflow_permission(frappe.get_doc("ASOUD Workflow Task",row.name),permission_type="read")]
     return success(rows, meta={"total": len(rows)})
 
 
@@ -694,6 +697,9 @@ def list_my_workflow_instances(status: str | None = None) -> dict:
         order_by="started_on desc",
         limit_page_length=200,
     )
+    from asoud_erp.services.directive_access import directive_for, workflow_permission
+    names = [name for name in names if not directive_for(frappe.get_doc("ASOUD Workflow Instance", name))
+        or workflow_permission(frappe.get_doc("ASOUD Workflow Instance", name),permission_type="read")]
     rows = [
         _instance_summary(frappe.get_doc("ASOUD Workflow Instance", name))
         for name in names
@@ -705,6 +711,9 @@ def list_my_workflow_instances(status: str | None = None) -> dict:
 def get_workflow_instance(instance: str) -> dict:
     doc = frappe.get_doc("ASOUD Workflow Instance", instance)
     _assert_instance_access(doc)
+    from asoud_erp.services.directive_access import directive_for
+    if directive_for(doc):
+        return success({**_instance_summary(doc), "activities": []})
     activities = frappe.get_all(
         "ASOUD Workflow Activity",
         filters={"workflow_instance": doc.name},
@@ -775,6 +784,13 @@ def mark_workflow_notification_read(notification: str) -> dict:
 def get_workflow_task(task: str) -> dict:
     doc = frappe.get_doc("ASOUD Workflow Task", task)
     _assert_task_owner(doc)
+    from asoud_erp.services.directive_access import directive_for
+    directive = directive_for(doc)
+    if directive:
+        return success(dict(name=doc.name,workflow_instance=doc.workflow_instance,
+            workflow_stage=doc.workflow_stage,task_title=doc.task_title,status=doc.status,
+            config={"activity_type":"Directive"},document={"doctype":directive.doctype,
+                "name":directive.name,"values":[]},history=[],draft={},response={}))
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
     config = json.loads(stage.config_json or "{}")
     instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
@@ -846,6 +862,8 @@ def get_workflow_task(task: str) -> dict:
 @frappe.whitelist(methods=["POST"])
 def save_workflow_task_draft(task: str, response: str | dict) -> dict:
     doc = frappe.get_doc("ASOUD Workflow Task", task)
+    from asoud_erp.services.directive_access import reject_generic
+    reject_generic(doc)
     _assert_task_owner(doc)
     if doc.status != "Open":
         frappe.throw(_("Only an open workflow task can be edited"))
@@ -869,6 +887,8 @@ def save_workflow_task_draft(task: str, response: str | dict) -> dict:
 @frappe.whitelist(methods=["POST"])
 def upload_workflow_attachment(task: str, filename: str, content_base64: str) -> dict:
     doc = frappe.get_doc("ASOUD Workflow Task", task)
+    from asoud_erp.services.directive_access import reject_generic
+    reject_generic(doc)
     _assert_task_owner(doc)
     if doc.status != "Open":
         frappe.throw(_("Only an open workflow task can receive attachments"))
@@ -914,6 +934,8 @@ def complete_workflow_task(
     comment: str | None = None,
     response: str | dict | None = None,
 ) -> dict:
+    from asoud_erp.services.directive_access import reject_generic
+    reject_generic(frappe.get_doc("ASOUD Workflow Task", task))
     if action not in {"Complete", "Approve", "Reject", "Return"}:
         frappe.throw(_("Invalid workflow task action"))
     frappe.db.sql("select name from `tabASOUD Workflow Task` where name = %s for update", task)
@@ -1099,6 +1121,10 @@ def process_workflow_deadlines() -> None:
     )
     for name in overdue:
         task = frappe.get_doc("ASOUD Workflow Task", name)
+        if task.get("directive_kind"):
+            from asoud_erp.api.v1.directives import notify_overdue
+            notify_overdue(task)
+            continue
         stage = frappe.get_doc("ASOUD Workflow Stage", task.workflow_stage)
         config = json.loads(stage.config_json or "{}")
         instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)

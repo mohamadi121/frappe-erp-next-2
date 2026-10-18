@@ -8,6 +8,10 @@ app_license = "MIT"
 required_apps = ["erpnext", "hrms"]
 
 doc_events = {
+    "*": {
+        "validate": "asoud_erp.services.directive_access.guard_write",
+        "on_trash": "asoud_erp.services.directive_access.guard_write",
+    },
     "Employee": {"on_update": "asoud_erp.services.personnel_employee.refresh_profile_cache"},
     "User": {"validate": [
         "asoud_erp.services.role_assignment.validate_role_profile_assignment",
@@ -36,6 +40,7 @@ scheduler_events = {
 }
 
 has_permission = {
+    "ASOUD Internal Communication": "asoud_erp.services.directive_access.communication_permission",
     "ASOUD Action Execution": "asoud_erp.services.automatic_action_metadata.execution_permission",
     "ASOUD Workflow Request": "asoud_erp.services.request_access.request_permission",
     "File": "asoud_erp.services.request_access.file_permission",
@@ -44,6 +49,7 @@ has_permission = {
     "ASOUD Workflow Activity": "asoud_erp.services.request_access.workflow_record_permission",
 }
 permission_query_conditions = {
+    "ASOUD Internal Communication": "asoud_erp.services.directive_access.communication_query",
     "ASOUD Action Execution": "asoud_erp.services.automatic_action_metadata.execution_query",
     "ASOUD Workflow Request": "asoud_erp.services.request_access.request_query",
     "File": "asoud_erp.services.request_access.file_query",

@@ -155,7 +155,9 @@ def list_communications(box: str = "inbox", limit_start: int = 0, limit_page_len
     else:
         parents = frappe.get_all("ASOUD Communication Recipient", filters={"user": user}, pluck="parent", limit_page_length=500)
         filters = {"name": ["in", parents or [""]]}
-    return success(frappe.get_all("ASOUD Internal Communication", filters=filters, fields=["name", "subject", "sender", "communication_type", "priority", "confidential", "due_date", "status", "modified"], order_by="modified desc", limit_start=int(limit_start), limit_page_length=min(int(limit_page_length), 100)))
+    from asoud_erp.services.directive_access import can_read
+    rows = frappe.get_all("ASOUD Internal Communication", filters=filters, fields=["name", "subject", "sender", "communication_type", "priority", "confidential", "due_date", "status", "modified"], order_by="modified desc", limit_start=int(limit_start), limit_page_length=min(int(limit_page_length), 100))
+    return success([r for r in rows if r.communication_type != "Directive" or can_read(frappe.get_doc("ASOUD Internal Communication",r.name))])
 
 
 @frappe.whitelist(methods=["POST"])

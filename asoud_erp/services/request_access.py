@@ -60,6 +60,10 @@ def request_query(user=None):
 
 
 def file_permission(doc, user=None, permission_type=None):
+    from asoud_erp.services.directive_access import file_permission as directive_file_permission
+    result = directive_file_permission(doc, user, permission_type)
+    if result is not None:
+        return result
     if doc.attached_to_doctype == "ASOUD Workflow Task" and doc.attached_to_name:
         return workflow_record_permission(frappe.get_doc("ASOUD Workflow Task", doc.attached_to_name),
                                           user=user, permission_type=permission_type)
@@ -73,13 +77,18 @@ def file_permission(doc, user=None, permission_type=None):
 
 
 def file_query(user=None):
+    from asoud_erp.services.directive_access import file_clause
     return ("(COALESCE(`tabFile`.`attached_to_doctype`, '') != 'ASOUD Workflow Request'"
             " OR `tabFile`.`attached_to_name` IN (SELECT `name` FROM `tabASOUD Workflow Request` WHERE "
-            + request_query(user) + "))")
+            + request_query(user) + ")) AND (" + file_clause(user) + ")")
 
 
 
 def workflow_record_permission(doc, user=None, permission_type=None):
+    from asoud_erp.services.directive_access import workflow_permission
+    result = workflow_permission(doc, user, permission_type)
+    if result is not None:
+        return result
     instance = doc if doc.doctype == "ASOUD Workflow Instance" else frappe.get_doc(
         "ASOUD Workflow Instance", doc.workflow_instance)
     if instance.reference_doctype != "ASOUD Workflow Request":
@@ -89,14 +98,20 @@ def workflow_record_permission(doc, user=None, permission_type=None):
 
 
 def instance_query(user=None):
+    from asoud_erp.services.directive_access import instance_clause
     return ("(COALESCE(`tabASOUD Workflow Instance`.`reference_doctype`, '') != 'ASOUD Workflow Request'"
         " OR `tabASOUD Workflow Instance`.`reference_name` IN (SELECT `name` FROM `tabASOUD Workflow Request` WHERE "
-        + request_query(user) + "))")
+        + request_query(user) + ")) AND (" + instance_clause(user) + ")")
 
 
 def task_query(user=None):
-    return "`tabASOUD Workflow Task`.`workflow_instance` IN (SELECT `name` FROM `tabASOUD Workflow Instance` WHERE " + instance_query(user) + ")"
+    from asoud_erp.services.directive_access import task_clause
+    return "`tabASOUD Workflow Task`.`workflow_instance` IN (SELECT `name` FROM `tabASOUD Workflow Instance` WHERE " + instance_query(user) + ") AND (" + task_clause(user) + ")"
 
 
 def activity_query(user=None):
-    return "`tabASOUD Workflow Activity`.`workflow_instance` IN (SELECT `name` FROM `tabASOUD Workflow Instance` WHERE " + instance_query(user) + ")"
+    user = user or frappe.session.user
+    return ("`tabASOUD Workflow Activity`.`workflow_instance` IN (SELECT `name` FROM `tabASOUD Workflow Instance` WHERE " + instance_query(user) + ") AND ("
+        "`tabASOUD Workflow Activity`.workflow_instance NOT IN (SELECT workflow_instance FROM `tabASOUD Internal Communication` WHERE communication_type='Directive' AND workflow_instance IS NOT NULL) OR "
+        "`tabASOUD Workflow Activity`.actor=" + frappe.db.escape(user) + " OR "
+        "`tabASOUD Workflow Activity`.workflow_instance IN (SELECT workflow_instance FROM `tabASOUD Internal Communication` WHERE sender=" + frappe.db.escape(user) + "))")
