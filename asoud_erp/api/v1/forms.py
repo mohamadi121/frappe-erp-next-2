@@ -21,7 +21,6 @@ from asoud_erp.services.form_schema import (
 from asoud_erp.services.request_access import require_company
 
 DESIGNERS = ('System Manager', 'HR Manager', 'Accounts Manager', 'Purchase Manager')
-FORM_USERS = DESIGNERS + ('Accounts User', 'HR User', 'Purchase User', 'Sales User', 'Stock User')
 NATIVE = {'Journal Entry': {'voucher_type', 'posting_date', 'user_remark', 'accounts'},
           'Material Request': {'material_request_type', 'schedule_date', 'items'}}
 CHILDREN = {'accounts': {'account', 'party_type', 'party', 'cost_center', 'project', 'debit_in_account_currency', 'credit_in_account_currency'},
@@ -30,10 +29,6 @@ CHILDREN = {'accounts': {'account', 'party_type', 'party', 'cost_center', 'proje
 
 def designer():
     return frappe.session.user == 'Administrator' or bool(set(frappe.get_roles()) & set(DESIGNERS))
-
-
-def require_form_user():
-    require_roles(FORM_USERS)
 
 
 def store(doc):
@@ -83,7 +78,6 @@ def row(doc, schema=False):
 
 @frappe.whitelist()
 def list_forms(company, kind='Request', manage=0):
-    require_form_user()
     require_company(company)
     manage = bool(int(manage))
     if manage:
@@ -103,7 +97,6 @@ def list_forms(company, kind='Request', manage=0):
 
 @frappe.whitelist()
 def get_form(name, manage=0, revision_name=None):
-    require_form_user()
     doc = load(name, edit=bool(int(manage)))
     if int(manage) and not revision_name:
         return success(row(doc, schema=True))
@@ -307,7 +300,6 @@ def get_options(company):
 
 @frappe.whitelist()
 def get_link_options(company, source, query='', form=None, filter_field=None, filter_value=None):
-    require_form_user()
     require_company(company)
     if source not in SOURCES:
         fail('منبع اطلاعات مجاز نیست.')
@@ -335,7 +327,6 @@ def get_link_options(company, source, query='', form=None, filter_field=None, fi
 
 @frappe.whitelist(methods=['POST'])
 def upload_file(form, filename, content):
-    require_form_user()
     from frappe.utils.file_manager import save_file
     doc = load(form)
     if doc.disabled or not allowed(json.loads(revision(doc).schema_json), doc.company):
@@ -358,7 +349,6 @@ def upload_file(form, filename, content):
 
 @frappe.whitelist(methods=['POST'])
 def submit_form(name, revision_name, subject, values, request_key):
-    require_form_user()
     doc = load(name, lock=True)
     if not 8 <= len(request_key) <= 100 or not 3 <= len(subject.strip()) <= 140:
         fail('عنوان یا شناسه ثبت معتبر نیست.')
@@ -417,14 +407,12 @@ def submit_form(name, revision_name, subject, values, request_key):
 
 @frappe.whitelist()
 def list_my_entries(company):
-    require_form_user()
     require_company(company)
     return success(frappe.get_all('ASOUD Form Entry', filters={'company': company, 'owner': frappe.session.user}, fields=['name', 'form', 'revision', 'subject', 'creation', 'reference_doctype', 'reference_name'], order_by='creation desc', limit_page_length=200))
 
 
 @frappe.whitelist()
 def get_entry(name):
-    require_form_user()
     entry = frappe.get_doc('ASOUD Form Entry', name)
     require_company(entry.company)
     if entry.owner != frappe.session.user and frappe.session.user != 'Administrator' and 'System Manager' not in frappe.get_roles():

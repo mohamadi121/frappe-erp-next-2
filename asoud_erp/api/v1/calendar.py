@@ -15,8 +15,6 @@ from asoud_erp.services.request_access import company_access, require_company
 
 SCOPE = 'ASOUD Calendar Scope'
 HOLIDAY = 'ASOUD Calendar Holiday'
-CALENDAR_USERS = ('System Manager', 'HR Manager', 'Accounts Manager', 'Purchase Manager',
-                  'Accounts User', 'HR User', 'Purchase User', 'Sales User', 'Stock User')
 
 
 def fail(message):
@@ -54,10 +52,6 @@ def manager():
     return frappe.session.user == 'Administrator' or bool({'System Manager', 'HR Manager'} & set(frappe.get_roles()))
 
 
-def require_calendar_user():
-    require_roles(CALENDAR_USERS)
-
-
 def store(doc):
     doc.flags.calendar_service = True
     is_new = doc.is_new() or not doc.name or not frappe.db.exists(doc.doctype, doc.name)
@@ -79,7 +73,6 @@ def personal_row(scope, event):
 
 @frappe.whitelist()
 def get_calendar(company, start, end):
-    require_calendar_user()
     require_company(company)
     start, end = day(start), day(end)
     if end < start or (end - start).days > 62:
@@ -121,7 +114,6 @@ def get_calendar(company, start, end):
 
 @frappe.whitelist(methods=['POST'])
 def read_alert(company, name):
-    require_calendar_user()
     require_company(company)
     doc = frappe.get_doc('Notification Log', name)
     if doc.for_user != frappe.session.user or doc.document_type != 'Event' or not frappe.db.exists(
@@ -133,7 +125,6 @@ def read_alert(company, name):
 
 @frappe.whitelist(methods=['POST'])
 def save_personal(company, payload):
-    require_calendar_user()
     require_company(company)
     data = parse_payload(payload)
     client_id = str(data.get('id', ''))
@@ -190,7 +181,6 @@ def save_personal(company, payload):
 
 @frappe.whitelist(methods=['POST'])
 def save_holiday(company, payload):
-    require_calendar_user()
     require_company(company)
     if not manager():
         frappe.throw('مجوز مدیریت تعطیلی لازم است.', frappe.PermissionError)
