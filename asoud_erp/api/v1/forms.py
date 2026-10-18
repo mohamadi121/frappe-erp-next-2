@@ -122,6 +122,7 @@ def save_form(company, schema, name=None, expected_version=0, client_id=None):
     require_roles(DESIGNERS)
     require_company(company)
     schema = validate_schema(schema)
+    schema['schema_version'] = 2
     # Stable client ID makes retrying a timed-out create idempotent.
     if not name:
         if not client_id or not 8 <= len(client_id) <= 100:

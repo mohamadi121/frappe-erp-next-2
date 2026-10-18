@@ -35,6 +35,29 @@ def test_valid_schema_uses_stable_option_ids(schema):
     assert [option["id"] for option in result["sections"][0]["fields"][2]["options"]] == ["normal", "urgent"]
 
 
+def test_schema_versions_accepted_and_rejected(schema):
+    payload = valid_schema()
+    # Omitting schema_version defaults to 1 and is accepted
+    res = schema.validate_schema(payload)
+    assert res["title"] == "درخواست آزمایشی"
+
+    # Version 1 is accepted
+    payload["schema_version"] = 1
+    res1 = schema.validate_schema(payload)
+    assert res1["schema_version"] == 1
+
+    # Version 2 is accepted
+    payload["schema_version"] = 2
+    res2 = schema.validate_schema(payload)
+    assert res2["schema_version"] == 2
+
+    # Unknown or invalid versions are rejected
+    for invalid in (0, 3, -1, "2", True, False):
+        payload["schema_version"] = invalid
+        with pytest.raises(ValueError, match="نسخه ساختار فرم معتبر نیست"):
+            schema.validate_schema(payload)
+
+
 def test_duplicate_field_ids_are_rejected(schema):
     payload = valid_schema()
     payload["sections"][0]["fields"][1]["key"] = "amount"

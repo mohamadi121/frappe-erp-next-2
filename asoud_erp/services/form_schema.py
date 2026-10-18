@@ -78,6 +78,11 @@ def number(value):
 
 def validate_schema(raw):
     schema = parse(raw)
+    version = schema.get("schema_version", 1)
+    if version is None:
+        version = 1
+    if version not in (1, 2) or isinstance(version, bool):
+        fail("نسخه ساختار فرم معتبر نیست.")
     if (schema.get("kind") not in {"Request", "Document"}
             or not 1 <= len(str(schema.get("title", "")).strip()) <= 140):
         fail("عنوان و نوع فرم را مشخص کنید.")
