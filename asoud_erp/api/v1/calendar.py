@@ -10,6 +10,7 @@ import frappe
 from frappe.utils import get_datetime, get_system_timezone, now_datetime
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_access import company_access, require_company
 
 SCOPE = 'ASOUD Calendar Scope'
@@ -53,7 +54,8 @@ def manager():
 
 def store(doc):
     doc.flags.calendar_service = True
-    return doc.insert(ignore_permissions=True, set_name=doc.name) if doc.is_new() else doc.save(ignore_permissions=True)
+    is_new = doc.is_new() or not doc.name or not frappe.db.exists(doc.doctype, doc.name)
+    return doc.insert(ignore_permissions=True, set_name=doc.name) if is_new else doc.save(ignore_permissions=True)
 
 
 def guard(doc):
@@ -206,6 +208,7 @@ def save_holiday(company, payload):
 @frappe.whitelist(methods=['POST'])
 def import_official(payload):
     """Explicit reviewed batch import; never scrape or guess lunar holidays."""
+    require_roles(('System Manager',))
     if 'System Manager' not in frappe.get_roles():
         frappe.throw('مجوز مدیر سیستم لازم است.', frappe.PermissionError)
     data = parse_payload(payload)

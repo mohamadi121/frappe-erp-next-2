@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+Added:
+
+- Multi-step `chain` formula operator in form schema validation and Decimal evaluation matching Flutter engine parity, with left-to-right calculation, precision rounding, divide-by-zero protection, and dependency cycle validation.
+- Shared formula evaluation vectors test suite ensuring backend/Flutter engine parity across operations, precision, rounding, and Persian numerals.
+- Versioned form schema validation supporting `schema_version` 1 and 2, enforcing version 2 on `save_form`, and rejecting unsupported versions.
+- Pure `migrate_schema` and `migrate_record` functions upgrading legacy v1 schemas to v2 with deterministic option IDs and value/rule mapping on read across `get_form`, `list_forms`, and `get_entry` while preserving immutable database revisions.
+- Fixture test pair `form_schema_legacy_v1.json` and `form_schema_legacy_v2.json` for cross-engine migration parity.
+- Versioned form-builder API coverage and documentation, including stable schema IDs,
+  immutable published revisions, entry revision checks, and company-scoped calendar coverage.
+- Integration tests for directives lifecycle (`test_directives.py`: draft, issue, transfer,
+  report submission, change request, review approval, close, and cross-company tenant isolation).
+- Dedicated integration tests for calendar scope and organization holidays (`test_calendar.py`).
+
+Fixed:
+
+- Restore active employee consumption on form-builder and calendar personal endpoints (plain
+  employees can list published forms, submit request forms, read own entries, and manage personal
+  reminders; designer endpoints and holiday management remain manager-gated, and document forms
+  rely on native ERPNext DocType permissions).
+- Persist new `ASOUD Form`, `ASOUD Calendar Scope`, and `ASOUD Calendar Holiday` records via `insert`
+  to support deterministic identifiers before insert.
+
 ## 0.15.3 - 2026-10-11
 
 Deployment: the release contains a patch (`v0_15_3.normalize_persian_digits`): run `bench --site <site> migrate`. No new DocTypes.

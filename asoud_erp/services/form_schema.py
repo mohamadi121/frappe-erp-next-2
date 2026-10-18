@@ -14,7 +14,8 @@ SOURCES = {"Employee", "Customer", "Supplier", "Item", "Warehouse", "Account", "
            "Project", "Department"}
 NUMBERS = {"Integer", "Decimal", "Money", "Rating", "Formula"}
 OPERATORS = {"eq", "ne", "gt", "lt", "ge", "le", "empty", "not_empty", "contains"}
-FORMULAS = {"add", "subtract", "multiply", "divide", "percent", "sum", "sum_product", "average", "count"}
+FORMULAS = {"add", "subtract", "multiply", "divide", "percent", "sum", "sum_product", "average", "count", "chain"}
+CHAIN_OPS = {"add", "subtract", "multiply", "divide"}
 LINK_FILTERS = {'Employee': {'department'}, 'Item': {'item_group'}, 'Customer': {'customer_group'},
                 'Supplier': {'supplier_group'}, 'Account': {'account_type'}, 'Warehouse': {'parent_warehouse'},
                 'Cost Center': {'parent_cost_center'}, 'Project': {'status'}, 'Department': {'parent_department'}}
@@ -61,8 +62,13 @@ def fields(schema):
     return [f for section in schema.get("sections", []) for f in section.get("fields", [])]
 
 
+_DIGIT_TRANSLATION = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٫", "01234567890123456789.")
+
+
 def number(value):
     try:
+        if isinstance(value, str):
+            value = value.strip().translate(_DIGIT_TRANSLATION).replace("٬", "")
         value = Decimal(str(value if value not in (None, "") else 0))
         if not value.is_finite() or abs(value) > Decimal("1e18"):
             raise ValueError()
@@ -73,13 +79,22 @@ def number(value):
 
 def validate_schema(raw):
     schema = parse(raw)
-    if schema.get("kind") not in {"Request", "Document"} or not str(schema.get("title", "")).strip():
+    version = schema.get("schema_version", 1)
+    if version is None:
+        version = 1
+    if version not in (1, 2) or isinstance(version, bool):
+        fail("نسخه ساختار فرم معتبر نیست.")
+    if (schema.get("kind") not in {"Request", "Document"}
+            or not 1 <= len(str(schema.get("title", "")).strip()) <= 140):
         fail("عنوان و نوع فرم را مشخص کنید.")
     sections = schema.get("sections")
     if not isinstance(sections, list) or not 1 <= len(sections) <= 30:
         fail("فرم باید بین یک تا سی بخش داشته باشد.")
-    if any(not isinstance(s, dict) or not s.get("id") or not s.get("title") or not isinstance(s.get("fields"), list) for s in sections):
-        fail("بخش‌های فرم معتبر نیستند.")
+    if any(not isinstance(s, dict) or not isinstance(s.get("id"), str)
+           or not re.fullmatch(r"[a-z][a-z0-9_]{0,59}", s["id"])
+           or not 1 <= len(str(s.get("title", "")).strip()) <= 140
+           or not isinstance(s.get("fields"), list) for s in sections):
+        fail("بخش‌ها یا شناسه بخش فرم معتبر نیست.")
     if len({s['id'] for s in sections}) != len(sections):
         fail("شناسه بخش‌ها تکراری است.")
     all_fields = fields(schema)
@@ -96,7 +111,7 @@ def validate_schema(raw):
                 fail("شناسه فیلد نامعتبر یا تکراری است.")
             keys.add(key)
             kind = field.get("type")
-            if not field.get("label") or kind not in TYPES:
+            if not 1 <= len(str(field.get("label", "")).strip()) <= 140 or kind not in TYPES:
                 fail("عنوان یا نوع فیلد نامعتبر است.")
             if kind == "Link" and field.get("source") not in SOURCES:
                 fail("منبع اطلاعات سیستم معتبر نیست.")
@@ -109,7 +124,13 @@ def validate_schema(raw):
                     fail('فیلتر اطلاعات سیستم مجاز نیست.')
             if kind in {"Select", "MultiSelect"}:
                 choices = field.get("options", [])
-                if not isinstance(choices, list) or not choices or len(choices) > 100 or any(not isinstance(v, str) or not v.strip() for v in choices) or len(set(choices)) != len(choices):
+                if (not isinstance(choices, list) or not choices or len(choices) > 100
+                        or any(not isinstance(v, dict)
+                               or not isinstance(v.get("id"), str)
+                               or not re.fullmatch(r"[a-z][a-z0-9_]{0,59}", v["id"])
+                               or not 1 <= len(str(v.get("label", "")).strip()) <= 140
+                               for v in choices)
+                        or len({v["id"] for v in choices}) != len(choices)):
                     fail("گزینه‌های انتخابی معتبر نیستند.")
             for low, high in (("min", "max"), ("min_length", "max_length"), ("min_rows", "max_rows")):
                 if field.get(low) is not None and field.get(high) is not None and number(field[low]) > number(field[high]):
@@ -128,7 +149,8 @@ def validate_schema(raw):
                 check_fields(columns, True)
             if kind == "Formula":
                 formula = field.get("formula", {})
-                if formula.get("op") not in FORMULAS or not 0 <= int(formula.get("precision", 2)) <= 8:
+                if (not isinstance(formula, dict) or formula.get("op") not in FORMULAS
+                        or not 0 <= int(formula.get("precision", 2)) <= 8):
                     fail("فرمول معتبر نیست.")
                 if not isinstance(formula.get('inputs', []), list) or len(formula.get('inputs', [])) > 100:
                     fail('ورودی فرمول معتبر نیست.')
@@ -136,6 +158,13 @@ def validate_schema(raw):
                     fail('این فرمول به دو ورودی نیاز دارد.')
                 if formula['op'] == 'add' and not formula.get('inputs'):
                     fail('ورودی جمع را انتخاب کنید.')
+                if formula['op'] == 'chain':
+                    ops = formula.get('ops')
+                    inputs = formula.get('inputs', [])
+                    if not isinstance(ops, list) or len(inputs) < 2 or len(ops) != len(inputs) - 1:
+                        fail('تعداد عملگرهای فرمول معتبر نیست.')
+                    if any(not isinstance(o, str) or o not in CHAIN_OPS for o in ops):
+                        fail('عملگر فرمول معتبر نیست.')
                 if formula['op'] in {'sum', 'sum_product', 'average', 'count'} and (nested or not formula.get('table')):
                     fail('جدول محاسبه را انتخاب کنید؛ محاسبه تجمیعی داخل ستون مجاز نیست.')
                 count = len(formula.get('columns', []))
@@ -296,6 +325,28 @@ def calculate(formula, values):
         value = sum(nums, Decimal(0)) / (len(nums) if op == 'average' and nums else 1)
     elif op == "add":
         value = sum(args, Decimal(0))
+    elif op == "chain" or (isinstance(formula.get("ops"), list) and formula.get("ops")):
+        if not args:
+            fail("این محاسبه به ورودی نیاز دارد.")
+        ops = formula.get("ops")
+        if not isinstance(ops, list) or len(args) != len(ops) + 1:
+            fail("این محاسبه به دو ورودی نیاز دارد.")
+        value = args[0]
+        for operation, next_val in zip(ops, args[1:]):
+            if operation == "add":
+                value = value + next_val
+            elif operation == "subtract":
+                value = value - next_val
+            elif operation == "multiply":
+                value = value * next_val
+            elif operation == "divide":
+                if next_val == Decimal(0):
+                    fail("تقسیم بر صفر در فرمول مجاز نیست.")
+                value = value / next_val
+            elif operation == "percent":
+                value = (value * next_val) / Decimal(100)
+            else:
+                fail("محاسبه پشتیبانی نمی‌شود.")
     elif len(args) != 2:
         fail("این محاسبه به دو ورودی نیاز دارد.")
     elif op == "subtract":
@@ -380,7 +431,8 @@ def validate_values(schema, raw, company, _file_budget=None):
             fail(f"{label}: نوع مقدار معتبر نیست.")
         if kind in {'Select', 'MultiSelect'}:
             chosen = value if kind == 'MultiSelect' else [value]
-            if not isinstance(chosen, list) or any(v not in field['options'] for v in chosen):
+            option_ids = {option['id'] for option in field['options']}
+            if not isinstance(chosen, list) or any(v not in option_ids for v in chosen):
                 fail(f"{label}: انتخاب معتبر نیست.")
         if kind in {'Date', 'Time', 'DateTime'}:
             try:
@@ -450,3 +502,87 @@ def validate_values(schema, raw, company, _file_budget=None):
     for field in definitions:
         compute(field)
     return values
+
+
+def migrate_schema(source, values=None):
+    schema = copy.deepcopy(source) if isinstance(source, dict) else parse(source)
+    labels_by_field = {}
+
+    def migrate_fields(fields_list, path, current_values):
+        for index, field in enumerate(fields_list):
+            if not isinstance(field, dict):
+                continue
+            field_path = [*path, index]
+            field_type = field.get("type")
+            if field_type in ("Select", "MultiSelect"):
+                old_options = field.get("options") or []
+                if not isinstance(old_options, list):
+                    old_options = []
+                labels = {}
+                options = []
+                for option_index, old in enumerate(old_options):
+                    if isinstance(old, dict):
+                        option = copy.deepcopy(old)
+                    else:
+                        option = {"label": str(old)}
+                    if "id" not in option:
+                        option["id"] = f"option_{'_'.join(str(p) for p in [*field_path, option_index])}"
+                    if option.get("id") is not None and option.get("label") is not None:
+                        options.append(option)
+                        labels[str(option["label"])] = str(option["id"])
+                field["options"] = options
+                field_key = str(field.get("key", ""))
+                labels_by_field[field_key] = labels
+                if current_values is not None and field_key in current_values:
+                    val = current_values[field_key]
+                    if isinstance(val, list):
+                        current_values[field_key] = [labels.get(str(item), item) for item in val]
+                    elif val is not None:
+                        current_values[field_key] = labels.get(str(val), val)
+            elif field_type == "Table":
+                columns = field.get("columns") or []
+                if isinstance(columns, list):
+                    rows = current_values.get(field.get("key")) if current_values else None
+                    if isinstance(rows, list):
+                        for row in rows:
+                            if isinstance(row, dict):
+                                migrate_fields(columns, field_path, row)
+                    else:
+                        migrate_fields(columns, field_path, None)
+
+    sections = schema.get("sections") or []
+    for section_index, section in enumerate(sections):
+        if not isinstance(section, dict):
+            continue
+        sec_fields = section.get("fields") or []
+        if isinstance(sec_fields, list):
+            migrate_fields(sec_fields, [section_index], values)
+
+    rules = schema.get("rules") or []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        conditions = rule.get("conditions") or []
+        for condition in conditions:
+            if not isinstance(condition, dict):
+                continue
+            cond_field = str(condition.get("field", ""))
+            option_ids = labels_by_field.get(cond_field)
+            if option_ids:
+                val = condition.get("value")
+                if isinstance(val, list):
+                    condition["value"] = [option_ids.get(str(item), item) for item in val]
+                elif val is not None:
+                    condition["value"] = option_ids.get(str(val), val)
+
+    schema["schema_version"] = 2
+    return schema
+
+
+def migrate_record(record):
+    migrated = copy.deepcopy(record)
+    values = migrated.get("values") if isinstance(migrated.get("values"), dict) else None
+    migrated["schema"] = migrate_schema(migrated.get("schema", {}), values=values)
+    if values is not None:
+        migrated["values"] = values
+    return migrated
