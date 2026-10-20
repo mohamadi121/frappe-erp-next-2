@@ -13,6 +13,11 @@ doc_events = {
         "on_trash": "asoud_erp.services.directive_access.guard_write",
     },
     "Employee": {"on_update": "asoud_erp.services.personnel_employee.refresh_profile_cache"},
+    "Department": {
+        "validate": "asoud_erp.services.organization_units.guard_department",
+        "on_trash": "asoud_erp.services.organization_units.guard_department",
+        "before_rename": "asoud_erp.services.organization_units.guard_rename",
+    },
     "User": {"validate": [
         "asoud_erp.services.role_assignment.validate_role_profile_assignment",
         "asoud_erp.api.v1.user_access.attach_roles",

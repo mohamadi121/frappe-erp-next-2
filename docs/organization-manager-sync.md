@@ -1,5 +1,11 @@
 # Organization chart and native Employee managers
 
+> Superseded on 2026-10-20: the user approved explicit native
+> `Employee.reports_to` ownership. Chart saves, moves and assignment termination
+> no longer change direct managers. Existing native manager links are preserved.
+> The old synchronizer was removed after confirming it had no remaining callers.
+> The bullets below document the prior behavior, not the current manager policy.
+
 - Assignments now use explicit `employee:<Employee.name>` identifiers. The list
   endpoint returns active Employees visible to the user in the requested company.
 - Legacy Party Profile identifiers resolve only through their existing Employee
