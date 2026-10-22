@@ -8,6 +8,27 @@ from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER, APITestCase
 
 
 class TestOrganization(APITestCase):
+    def test_native_root_is_preserved_on_title_edit(self):
+        name = organization.save_unit(self.company, dict(
+            title="Root preservation " + frappe.generate_hash(length=8), is_group=True))["data"]["name"]
+        doc = frappe.get_doc("Department", name)
+        parent = doc.parent_department
+        organization.save_unit(self.company, dict(name=name, modified=str(doc.modified),
+            title=doc.department_name + " edited", parent=parent, is_group=True))
+        self.assertEqual(frappe.db.get_value("Department", name, "parent_department"), parent)
+
+    def test_delete_preview_is_read_only_and_reports_children(self):
+        name = organization.save_unit(self.company, dict(
+            title="Delete preview " + frappe.generate_hash(length=8), is_group=True))["data"]["name"]
+        child = organization.save_unit(self.company, dict(
+            title="Child " + frappe.generate_hash(length=8), parent=name, is_group=True))["data"]["name"]
+        modified = str(frappe.db.get_value("Department", name, "modified"))
+        preview = organization.preview_delete_unit(self.company, name, modified)["data"]
+        self.assertFalse(preview["can_delete"])
+        self.assertTrue(preview["blockers"])
+        self.assertTrue(frappe.db.exists("Department", child))
+        self.assertTrue(frappe.db.exists("Department", name))
+
     def test_assignment_history_preserves_explicit_native_manager(self):
         original_manager = frappe.db.get_value("Employee", self.records["employee"], "reports_to")
         current = organization.get_chart(self.company)["data"]

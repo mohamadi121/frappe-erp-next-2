@@ -125,7 +125,7 @@ def save_unit(company, payload):
         frappe.throw("عنوان واحد الزامی است.")
     parent = str(data.get("parent") or "").strip()
     validate_parent(name, parent, company)
-    if parent and not unit(parent, company).is_group:
+    if parent and not frappe.get_doc("Department", parent).is_group:
         frappe.throw("ابتدا گزینه پذیرش زیرواحد را در واحد بالادستی فعال کنید.")
     doc.company, doc.department_name = company, title
     doc.parent_department = parent or None
@@ -143,6 +143,9 @@ def delete_unit(company, name, modified):
     doc = unit(name, company, "delete")
     if str(doc.modified) != str(modified):
         frappe.throw("اطلاعات واحد تغییر کرده؛ دوباره بارگذاری کنید.", frappe.TimestampMismatchError)
+    blockers = _unit_delete_blockers(doc, company)
+    if blockers:
+        frappe.throw("\n".join(blockers))
     if references(name, company):
         frappe.throw("واحد دارای جایگاه سازمانی است؛ حذف مجاز نیست.")
     if frappe.db.exists("Department", {"parent_department": name}):
@@ -150,6 +153,36 @@ def delete_unit(company, name, modified):
     # Native static/dynamic links, including historical records, block deletion.
     frappe.delete_doc("Department", name)
     return success({"deleted": name})
+
+
+def _unit_delete_blockers(doc, company):
+    from frappe.model.delete_doc import check_if_doc_is_dynamically_linked, check_if_doc_is_linked
+
+    blockers = []
+    positions = len(references(doc.name, company))
+    children = frappe.db.count("Department", {"parent_department": doc.name})
+    if positions:
+        blockers.append(f"این واحد دارای {positions} جایگاه یا سابقه مرتبط است.")
+    if children:
+        blockers.append(f"این واحد دارای {children} زیرواحد است.")
+    for check in (check_if_doc_is_linked, check_if_doc_is_dynamically_linked):
+        try:
+            check(doc)
+        except frappe.LinkExistsError:
+            frappe.clear_last_message()
+            # Do not reveal linked documents outside the caller's permissions.
+            blockers.append("واحد به اطلاعات یا سوابق دیگری در سیستم متصل است؛ حذف مجاز نیست.")
+    return list(dict.fromkeys(blockers))
+
+
+@frappe.whitelist()
+def preview_delete_unit(company, name, modified):
+    _access(company, write=True)
+    doc = unit(name, company, "delete")
+    if str(doc.modified) != str(modified):
+        frappe.throw("اطلاعات واحد تغییر کرده؛ دوباره بارگذاری کنید.", frappe.TimestampMismatchError)
+    blockers = _unit_delete_blockers(doc, company)
+    return success({"can_delete": not blockers, "blockers": blockers, "modified": str(doc.modified)})
 
 
 @frappe.whitelist()
