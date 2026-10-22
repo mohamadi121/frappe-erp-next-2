@@ -9,6 +9,7 @@ from frappe.utils import add_to_date, get_fullname, getdate, now_datetime, nowda
 
 from asoud_erp.api.v1 import document_templates
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.directive_paging import next_cursor
 from asoud_erp.services.document_templates import render_placeholders
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_link_values import validate_link_values, workflow_company
@@ -663,6 +664,13 @@ def start_workflow_instance(
 
 @frappe.whitelist()
 def list_my_workflow_tasks(status: str = "Open", start=0, paged=False) -> dict:
+    """Open/closed workflow tasks assigned to the current user.
+
+    `paged=1` returns `{items, next_cursor}`; without it the legacy list with `meta.total`.
+    Rows are read in pages of 200 and access-filtered afterwards, so `items` can hold
+    fewer than 200 rows, or none, while `next_cursor` is still set. Clients must keep
+    requesting while `next_cursor` is not null and must not stop on an empty page.
+    """
     if status not in {"Open", "Completed", "Rejected", "Cancelled"}:
         frappe.throw(_("Invalid task status"))
     rows = frappe.get_all(
@@ -677,17 +685,21 @@ def list_my_workflow_tasks(status: str = "Open", start=0, paged=False) -> dict:
         limit_start=max(0,int(start)),
         limit_page_length=200,
     )
-    next_cursor=str(max(0,int(start))+len(rows)) if len(rows)==200 else None
+    cursor=next_cursor(start,len(rows),200)
     from asoud_erp.services.directive_access import directive_for, workflow_permission
     rows = [row for row in rows if not directive_for(frappe.get_doc("ASOUD Workflow Task",row.name))
         or workflow_permission(frappe.get_doc("ASOUD Workflow Task",row.name),permission_type="read")]
     if str(paged).lower() in ('1','true'):
-        return success(dict(items=rows,next_cursor=next_cursor))
+        return success(dict(items=rows,next_cursor=cursor))
     return success(rows, meta={"total": len(rows)})
 
 
 @frappe.whitelist()
 def list_my_workflow_instances(status: str | None = None, start=0, paged=False) -> dict:
+    """Workflow instances started by the current user, with the same paging contract as
+    `list_my_workflow_tasks`: `paged=1` returns `{items, next_cursor}` where the cursor comes
+    from the raw page of 200 names, before access filtering, so a page may be short or empty.
+    """
     allowed = {"Running", "Completed", "Rejected", "Cancelled", "Failed"}
     if status and status not in allowed:
         frappe.throw(_("Invalid workflow instance status"))
@@ -702,7 +714,7 @@ def list_my_workflow_instances(status: str | None = None, start=0, paged=False) 
         limit_start=max(0,int(start)),
         limit_page_length=200,
     )
-    next_cursor=str(max(0,int(start))+len(names)) if len(names)==200 else None
+    cursor=next_cursor(start,len(names),200)
     from asoud_erp.services.directive_access import directive_for, workflow_permission
     names = [name for name in names if not directive_for(frappe.get_doc("ASOUD Workflow Instance", name))
         or workflow_permission(frappe.get_doc("ASOUD Workflow Instance", name),permission_type="read")]
@@ -711,7 +723,7 @@ def list_my_workflow_instances(status: str | None = None, start=0, paged=False) 
         for name in names
     ]
     if str(paged).lower() in ('1','true'):
-        return success(dict(items=rows,next_cursor=next_cursor))
+        return success(dict(items=rows,next_cursor=cursor))
     return success(rows, meta={"total": len(rows)})
 
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Workflow Activity.workflow_instance`; no data change).
+
+Changed:
+
+- `directives.reports` reads the review tasks of a page in one query instead of one lookup per report. Response shape and statuses are unchanged; when a report has more than one review row, the earliest one is used.
+- `directives.history` applies access scope and the page limit inside each UNION branch, and orders each branch by the indexed `created_on`, so the query reads at most one page per branch.
+- `list_my_workflow_tasks` and `list_my_workflow_instances` with `paged=1` document that a page can be short or empty while `next_cursor` is set. The cursor is computed from the raw database page, so clients keep paging until `next_cursor` is null (see `docs/workflow-runtime-v1.md`).
+
 ## 0.16.0 - 2026-10-18
 
 Deployment: run `bench --site <site> migrate` (new DocTypes: `ASOUD Form`, `ASOUD Form Revision`, `ASOUD Form Entry`, `ASOUD Calendar Scope`, `ASOUD Calendar Holiday`; directive receipts). Pairs with app 0.28.0.

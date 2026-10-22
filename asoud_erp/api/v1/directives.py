@@ -21,6 +21,7 @@ from asoud_erp.services.directive_access import (
     can_read,
     service_write,
 )
+from asoud_erp.services.directive_paging import HISTORY_SQL, history_limits, review_index
 from asoud_erp.services.request_access import require_company
 
 
@@ -529,11 +530,18 @@ def reports(company,directive,start=0,author=None):
     tasks=frappe.get_all('ASOUD Workflow Task',filters=filters,
         fields=['name','assigned_to','response_json','completed_on','action'],
         order_by='creation desc, name desc',limit_start=offset,limit_page_length=51)
+    page=tasks[:50]
+    # One batch read for the page's review tasks instead of one get_value per report.
+    reviews={}
+    if page:
+        reviews=review_index(frappe.get_all('ASOUD Workflow Task',
+            filters={'workflow_instance':doc.workflow_instance,'directive_kind':'Review',
+                'directive_subject_task':['in',[task.name for task in page]]},
+            fields=['directive_subject_task','status','action','comment','completed_on','assigned_to'],
+            order_by='creation asc, name asc',limit_page_length=0))
     rows=[]
-    for task in tasks[:50]:
-        review_task=frappe.db.get_value('ASOUD Workflow Task',
-            {'workflow_instance':doc.workflow_instance,'directive_kind':'Review','directive_subject_task':task.name},
-            ['status','action','comment','completed_on','assigned_to'],as_dict=True)
+    for task in page:
+        review_task=reviews.get(task.name)
         data=json.loads(task.response_json or '{}')
         rows.append(dict(id=task.name,author=_person(task.assigned_to),body=data.get('body',''),
             done_date=data.get('done_date'),created_at=str(task.completed_on),version=data.get('version',1),
@@ -550,25 +558,10 @@ def reports(company,directive,start=0,author=None):
 def history(company,directive,start=0):
     doc=_get(directive,company)
     offset=max(0,int(start))
-    # Apply access scope before LIMIT. Merge native comments and workflow events
-    # in the database, without loading the entire lifetime of the directive.
-    rows=frappe.db.sql('''
-        SELECT * FROM (
-          SELECT a.name AS sort_id, a.action, a.actor, a.created_on AS created_at,
-                 a.comment AS description, a.workflow_task AS reference
-          FROM `tabASOUD Workflow Activity` a
-          WHERE a.workflow_instance=%(instance)s AND
-            (%(issuer)s=1 OR a.actor=%(user)s OR a.action IN ('ابلاغ دستور','مختومه کردن دستور') OR EXISTS (
-              SELECT 1 FROM `tabASOUD Workflow Task` t
-              WHERE t.name=a.workflow_task AND t.assigned_to=%(user)s))
-          UNION ALL
-          SELECT c.name, 'پیش‌نویس', c.owner, c.creation, c.content, c.reference_name
-          FROM `tabComment` c
-          WHERE %(issuer)s=1 AND c.reference_doctype=%(doctype)s
-            AND c.reference_name=%(name)s AND c.comment_type='Info'
-        ) events ORDER BY created_at DESC, sort_id DESC LIMIT 51 OFFSET %(offset)s
-    ''',dict(instance=doc.workflow_instance or '',issuer=int(doc.sender==frappe.session.user),
-        user=frappe.session.user,doctype=COMMUNICATION,name=doc.name,offset=offset),as_dict=True)
+    # Access scope is applied inside each UNION branch, before its LIMIT. Every value
+    # is a bound parameter; see HISTORY_SQL for the index-friendly ORDER BY.
+    rows=frappe.db.sql(HISTORY_SQL,dict(instance=doc.workflow_instance or '',issuer=int(doc.sender==frappe.session.user),
+        user=frappe.session.user,doctype=COMMUNICATION,name=doc.name,**history_limits(offset)),as_dict=True)
     entries=[dict(action=r.action,actor=get_fullname(r.actor),created_at=str(r.created_at),
         description=html.unescape(strip_html(r.description or '')),reference=r.reference or '') for r in rows[:50]]
     return success(dict(items=entries,next_cursor=str(offset+50) if len(rows)>50 else None))

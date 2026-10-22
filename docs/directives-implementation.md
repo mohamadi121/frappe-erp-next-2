@@ -86,7 +86,9 @@ correspondence is still served by its existing module. Generic workflow lists
 offer opt-in `paged=true` / `start` with `{items,next_cursor}`. Legacy callers retain
 their list response. The updated client fetches every page and requires the new
 backend contract; deploy the backend before the client. Responses are limited to
-200 per page, not 200 for the whole cartable.
+200 per page, not 200 for the whole cartable. A page can be short or empty while
+`next_cursor` is set; the client must keep paging until `next_cursor` is null (see
+[workflow-runtime-v1.md](workflow-runtime-v1.md#paged-workflow-lists-app-contract)).
 Archive membership is never inferred from a closed/completed status.
 
 ## Start and progress reports
