@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+Deployment: no DocType change; no migration required.
+
+Changed:
+
+- One Employee may occupy at most one position across the whole organization chart, including v2 `occupants` rows. Chart saves and import previews/applies that would place the same Employee in two positions are refused with a Persian message naming the Employee. Charts that already contain such duplicates must be corrected before they can be saved again.
+
+Fixed:
+
+- Plain Department saves no longer take a company-wide lock. Deleting, disabling, moving a unit with positions, or deleting a unit that positions reference still locks the company and is refused.
+- Renaming a unit's title is refused while legacy chart positions (no `department_id`) reference it by title, so those positions are not orphaned. Link them to the unit in the chart first.
+
+Tests and documentation:
+
+- Pure tests for the Department guard and cross-position occupant rule; integration tests for the cross-position refusal and title rename behaviour; `test_organization` added to the integration module loop.
+- API reference for organization units and import in `docs/api/organization.md`.
+
 ## 0.16.0 - 2026-10-18
 
 Deployment: run `bench --site <site> migrate` (new DocTypes: `ASOUD Form`, `ASOUD Form Revision`, `ASOUD Form Entry`, `ASOUD Calendar Scope`, `ASOUD Calendar Holiday`; directive receipts). Pairs with app 0.28.0.
