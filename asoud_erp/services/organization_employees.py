@@ -51,6 +51,9 @@ def normalize_assignments(rows, company):
                 key = "employee:" + employee.name
                 if key in normalized:
                     frappe.throw("انتساب تکراری یک پرسنل به همان جایگاه مجاز نیست.")
+                if employee.name in used:
+                    frappe.throw("پرسنل " + employee.name + " در بیش از یک جایگاه منتصب شده است.")
+                used.add(employee.name)
                 normalized.append(key)
             row["occupants"] = normalized
             continue
