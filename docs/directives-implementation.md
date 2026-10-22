@@ -100,4 +100,13 @@ report versions exclude progress entries. Returned work remains Returned until a
 new final report is submitted. All mutations use the same locks, receipts and
 server authorization. Transferred recipients also see the directive in Sent.
 Deploy with migrate before the new client (recipient state adds In Progress).
-No automated tests or live-site migration were run for this change.
+
+Endpoint parameters added with this change: `start(company, directive,
+request_key)`; `report(..., payload)` with `payload.report_type` of `final` or
+`progress`; `reports(company, directive, start, author)`; `history(company,
+directive, start)`; and `list_my_workflow_tasks` / `list_my_workflow_instances`
+with `start` and `paged=1`. Paged responses return `{items, next_cursor}`.
+
+Integration tests for start, progress, report type validation, reminders and
+pagination are in `asoud_erp/integration_tests/test_directives.py`. They have
+not been run on a bench for this change, and no live-site migration was run.

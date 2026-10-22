@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+Deployment: run `bench --site <site> migrate` (new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
+
+Added:
+
+- Directive `start` action: the assigned recipient moves from Pending to In Progress without completing the execution task. Only the recipient can start, and only once.
+- Directive progress reports: `report` accepts `report_type` (`final`, the default, or `progress`). A progress report is stored as a completed Workflow Task, keeps the execution task open, notifies the issuer and never requests approval.
+- Directive reminders: the issuer can set `reminder_at` on a draft. At issue time it must be in the future and before the due date. A minute scheduler job (`dispatch_reminders`) notifies the assignee once per open report task.
+- Paginated directive `reports` and `history` (50 rows per page, `next_cursor`), with access scoping applied in the database before pagination. `reports` accepts an `author` filter: the issuer may filter by any executor, an executor only by self.
+- Workflow task and instance list endpoints accept `start` and `paged=1` and return `{items, next_cursor}`. The default list response is unchanged.
+- Integration tests for start, progress reports, report type validation, reminders, and pagination (`integration_tests/test_directives.py`), plus a pure test for the directive status summary (`tests/test_directive_state.py`).
+
+Changed:
+
+- A directive whose executors are all Pending reads as `Issued`; it previously read as `In Progress`.
+
 ## 0.16.0 - 2026-10-18
 
 Deployment: run `bench --site <site> migrate` (new DocTypes: `ASOUD Form`, `ASOUD Form Revision`, `ASOUD Form Entry`, `ASOUD Calendar Scope`, `ASOUD Calendar Holiday`; directive receipts). Pairs with app 0.28.0.
