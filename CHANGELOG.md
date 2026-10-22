@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Deployment: run `bench --site <site> migrate` (new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
+Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Workflow Activity.workflow_instance`; new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
 
 Added:
 
@@ -30,6 +30,12 @@ Tests and documentation:
 
 - Pure tests for the Department guard and cross-position occupant rule; integration tests for the cross-position refusal and title rename behaviour; `test_organization` added to the integration module loop.
 - API reference for organization units and import in `docs/api/organization.md`.
+
+Performance and contract:
+
+- `directives.reports` reads the review tasks of a page in one query instead of one lookup per report. Response shape and statuses are unchanged; when a report has more than one review row, the earliest one is used.
+- `directives.history` applies access scope and the page limit inside each UNION branch, and orders each branch by the indexed `created_on`, so the query reads at most one page per branch.
+- `list_my_workflow_tasks` and `list_my_workflow_instances` with `paged=1` document that a page can be short or empty while `next_cursor` is set. The cursor is computed from the raw database page, so clients keep paging until `next_cursor` is null (see `docs/workflow-runtime-v1.md`).
 
 ## 0.16.0 - 2026-10-18
 
