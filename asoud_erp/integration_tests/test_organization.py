@@ -71,6 +71,14 @@ class TestOrganization(APITestCase):
                 rows=[*current["rows"], *rows]))
         self.assertEqual(organization.get_chart(self.company)["data"]["revision"], current["revision"])
 
+    def _delete_unit_if_present(self, name, titles):
+        """Delete the unit by its real name; ERPNext may have renamed it after a title change."""
+        units = organization.list_units(self.company)["data"]["units"]
+        unit = next((u for u in units if u["name"] == name), None) or next(
+            (u for u in units if u["department_name"] in titles), None)
+        if unit:
+            organization.delete_unit(self.company, unit["name"], str(unit["modified"]))
+
     def test_title_rename_refused_while_legacy_rows_depend_on_it(self):
         title = "Legacy title " + frappe.generate_hash(length=8)
         name = organization.save_unit(self.company, dict(title=title, is_group=True))["data"]["name"]
@@ -82,11 +90,11 @@ class TestOrganization(APITestCase):
         def cleanup():
             chart = organization.get_chart(self.company)["data"]
             organization.save_chart(dict(company=self.company, revision=chart["revision"], rows=base["rows"]))
-            unit = next(u for u in organization.list_units(self.company)["data"]["units"] if u["name"] == name)
-            organization.delete_unit(self.company, name, str(unit["modified"]))
+            self._delete_unit_if_present(name, titles)
 
         self.addCleanup(cleanup)
         unit = next(u for u in organization.list_units(self.company)["data"]["units"] if u["name"] == name)
+        titles = [title]
         with self.assertRaises(frappe.ValidationError):
             organization.save_unit(self.company, dict(name=name, modified=str(unit["modified"]),
                 title="Renamed " + frappe.generate_hash(length=8), is_group=True))
@@ -100,15 +108,17 @@ class TestOrganization(APITestCase):
             department_id=name, capacity=1, occupants=[])
         organization.save_chart(dict(company=self.company, revision=base["revision"], rows=[*base["rows"], position]))
 
+        titles = []
+
         def cleanup():
             chart = organization.get_chart(self.company)["data"]
             organization.save_chart(dict(company=self.company, revision=chart["revision"], rows=base["rows"]))
-            unit = next(u for u in organization.list_units(self.company)["data"]["units"] if u["name"] == name)
-            organization.delete_unit(self.company, name, str(unit["modified"]))
+            self._delete_unit_if_present(name, titles)
 
         self.addCleanup(cleanup)
         unit = next(u for u in organization.list_units(self.company)["data"]["units"] if u["name"] == name)
         new_title = "Renamed " + frappe.generate_hash(length=8)
+        titles.append(new_title)
         organization.save_unit(self.company, dict(name=name, modified=str(unit["modified"]),
             title=new_title, is_group=True))
         chart = organization.get_chart(self.company)["data"]
