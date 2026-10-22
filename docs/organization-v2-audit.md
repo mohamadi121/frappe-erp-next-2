@@ -90,15 +90,20 @@ Implemented:
 - Native Department list/create/edit/move/delete endpoints with company/role
   and native document permissions, version checks, company locks, cycle
   validation and native dependency checks. Referenced departments cannot be
-  deleted, disabled, moved across companies or renamed at the ID level.
-  Display titles remain editable. Legacy title-only references conservatively
-  block deletion; they are never silently converted to IDs.
+  deleted, disabled or moved across companies, and cannot be renamed at the ID
+  level. Display titles remain editable for positions linked by `department_id`.
+  Legacy title-only references conservatively block deletion and block a title
+  change until those positions are linked to the unit; they are never silently
+  converted to IDs or orphaned. Only restricting Department changes take the
+  company lock; plain saves do not.
 - Extended existing position rows, rather than introducing a second chart:
   `department_id`, `occupants`, positive integer `capacity`, `duties` and
   server-owned `assignment_history`. History records native Employee IDs,
   server timestamps and actors; clients cannot rewrite it. Legacy unknown
   assignment start dates remain null. Position deletion with history and
-  old-client field stripping are rejected. Old charts remain readable.
+  old-client field stripping are rejected. Old charts remain readable. An
+  Employee may occupy at most one position across the chart; a capacity above
+  one only allows several different Employees in the same position.
 - No separate person records or personnel numbers are created. Personnel
   lookup returns Employee.employee_number (fallback: native name).
 - Permission-checked private Employee image thumbnails; no arbitrary remote

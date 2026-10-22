@@ -54,12 +54,20 @@ def guard_department(doc, method=None):
     company = old.company if old else doc.company
     if not company:
         return
+    renamed = bool(old and old.department_name != doc.department_name)
+    moved_or_disabled = bool(old and (old.company != doc.company or doc.disabled))
+    # Plain saves that keep the protected fields take no company lock.
+    if method != "on_trash" and not (moved_or_disabled or renamed):
+        return
     lock_company(company)
     linked = references(doc.name, company)
     if method == "on_trash" and linked:
         frappe.throw("واحد دارای جایگاه سازمانی است؛ حذف مجاز نیست.")
-    if linked and old and (old.company != doc.company or doc.disabled):
+    if linked and moved_or_disabled:
         frappe.throw("واحد دارای جایگاه را نمی‌توان غیرفعال یا به شرکت دیگر منتقل کرد.")
+    # Legacy rows match by display title only; renaming would orphan them silently.
+    if renamed and any(not r.get("department_id") for r in linked):
+        frappe.throw("واحد با جایگاه‌های قدیمی بدون شناسه مرتبط است؛ ابتدا جایگاه‌ها را در نمودار سازمانی به این واحد وصل کنید.")
 
 
 def guard_rename(doc, method=None, *args, **kwargs):
