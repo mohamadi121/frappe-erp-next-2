@@ -193,6 +193,76 @@ Asset movement Select option ids use the form schema's lowercase names `issue`
 and `receipt`. The executor maps them to native `Issue` and `Receipt`; existing
 server callers using the native names remain compatible.
 
+## Follow-up tasks and receipt confirmation (N6, `asset_movement` Issue)
+
+Product decision N6: after an equipment **delivery** (Asset Movement purpose Issue) is created as a draft,
+the requester gets one task «تأیید دریافت تجهیز». Confirming submits the movement (ERPNext then sets the
+Asset custodian and location); rejecting needs a reason and leaves the movement a draft. Return
+(Receipt) movements create no task.
+
+### Generic hook: `NativeResult.followup`
+
+`services.request_templates.base.NativeResult` gets an optional last field `followup: dict | None = None`.
+An executor may return `followup={"kind": "confirm_receipt", "doctype": "Asset Movement", "name": "<draft>",
+"subject": "<asset name>", "assignee": "<request.owner>"}`. The approval dispatcher
+(`request_native_documents.dispatch`) calls `services/request_followup.create(request, followup)` inside the
+same savepoint as the native document, so a failure to create the task rolls the document back and the
+request is `Failed` and can be retried (all or nothing). `kind` must be a key of
+`request_followup.KINDS` (today only `confirm_receipt`); `assignee` must be the request owner.
+Calling it twice for the same document creates one task.
+
+### Task storage (no new DocType, no migration)
+
+The task is an ordinary `ASOUD Workflow Task` of the request's own `ASOUD Workflow Instance`, assigned to
+the requester, `status=Open`, title «تأیید دریافت تجهیز: <نام تجهیز>», stage = the definition's `End`
+stage (last stage if none). The marker is `draft_json = {"followup": {kind, doctype, name, subject}}`;
+it is written only by the server. Consequences:
+
+- `list_my_workflow_tasks` lists it in «کارتابل من» without change.
+- `get_workflow_task` returns for it `stage_type = "User Task"`, `config = {"activity_type":
+  "ConfirmReceipt", "allow_reject": true, "allow_return": false, "comment_required": false, "form_fields": []}`,
+  `document = {"doctype": "Asset Movement", "name": "<movement>", "values": [{key, label, value}...]}` with the keys
+  `asset` (تجهیز), `transaction_date` (تاریخ تحویل), `target_location` (مکان تحویل) and `movement_status`
+  (وضعیت: «پیش‌نویس», «تأییدشده», «لغوشده»), and `draft = {}`.
+- `complete_workflow_task`, `save_workflow_task_draft` and `upload_workflow_attachment` refuse it with
+  «این وظیفه فقط با تأیید یا عدم دریافت تجهیز قابل اقدام است.» (PermissionError); only the endpoints below act on it.
+- Cancelling (or deleting) the Asset Movement marks the open task `Cancelled` (doc event `on_cancel`/`on_trash`).
+
+### `asoud_erp.api.v1.request_followup.confirm_receipt` (POST)
+
+Arguments: `task` (task name). Roles: none beyond being the requester: the signed-in user must be the task
+assignee **and** the owner of the request, with an active Employee in the request company
+(Administrator, managers and users without an Employee cannot confirm). Locks the task row and the
+movement row (`FOR UPDATE`), re-checks status, then submits the movement as the system (ERPNext validation
+runs in full). Response `data`: `{"task": "<name>", "status": "Completed", "movement": {"doctype":
+"Asset Movement", "name": "<name>", "docstatus": 1}}`.
+
+### `asoud_erp.api.v1.request_followup.reject_receipt` (POST)
+
+Arguments: `task`, `reason` (required, trimmed, at most 500 characters). Same gates. The movement stays a
+draft and gets a Comment with the reason; the task becomes `Rejected` (`comment` = reason); an in-app
+notification goes to the HR Manager and Stock Manager users who have access to the request company
+(requester excluded). Response `data`: `{"task", "status": "Rejected", "movement": {..., "docstatus": 0}}`.
+HR then decides: void and reissue (N6) or fix the equipment.
+
+### Errors (Persian, `frappe.throw`)
+
+| Case | Message | Type |
+|---|---|---|
+| unknown / empty task | «وظیفه تأیید دریافت یافت نشد.» | 417 |
+| task is not a receipt task | «این وظیفه تأیید دریافت تجهیز نیست.» | 417 |
+| other user, other company, no Employee, Administrator | «فقط درخواست‌دهنده می‌تواند دریافت تجهیز را تأیید کند.» | 403 |
+| task already `Completed` | «دریافت این تجهیز قبلاً تأیید شده است.» | 417 |
+| task already `Rejected` | «عدم دریافت این تجهیز قبلاً ثبت شده است.» | 417 |
+| task `Cancelled` or movement docstatus 2 / deleted | «جابه‌جایی این تجهیز لغو شده است و دریافت آن قابل تأیید نیست.» | 417 |
+| movement already submitted (task still open) | «این جابه‌جایی قبلاً تأیید شده است.» | 417 |
+| movement is not of this request | «جابه‌جایی تجهیز به این درخواست مربوط نیست.» | 417 |
+| empty reason | «علت عدم دریافت را بنویسید.» | 417 |
+| reason longer than 500 | «علت عدم دریافت نباید بیشتر از ۵۰۰ نویسه باشد.» | 417 |
+| ERPNext refuses the submit (custodian or date changed meanwhile) | «تأیید دریافت انجام نشد؛ وضعیت تجهیز پس از ثبت درخواست تغییر کرده است. موضوع را به منابع انسانی اطلاع دهید.» | 417 |
+
+Deployment: no DocType change, so no `bench migrate`; the new hook entries are read from `hooks.py` on restart.
+
 ## Shift request (`shift_request`)
 
 Internal executor, through the existing approval dispatcher and retry endpoint; no new
