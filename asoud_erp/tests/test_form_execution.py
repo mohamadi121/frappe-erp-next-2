@@ -167,3 +167,24 @@ def test_registered_executor_parameter_types_are_form_schema_types():
         for key, parameter in executor.PARAMETERS.items():
             assert parameter['types'], (kind, key)
             assert set(parameter['types']) <= TYPES, (kind, key, parameter['types'])
+
+
+def test_confidential_text_parameter_is_replaced_by_a_pointer_and_the_rest_is_kept():
+    fields = [{'key': 'why', 'type': 'LongText', 'execution_key': 'purpose', 'sensitive': True},
+              {'key': 'sum', 'type': 'Money', 'execution_key': 'amount', 'sensitive': True},
+              {'key': 'day', 'type': 'Date', 'execution_key': 'posting_date'}]
+    values = {'why': 'درمان بیماری', 'sum': 70, 'day': '2026-01-01'}
+    params = collect_parameters(fields, values, [], request_name='REQ-9', text_keys={'purpose'})
+    assert params == {'purpose': 'محرمانه؛ جزئیات در درخواست REQ-9 است.', 'amount': 70,
+                      'posting_date': '2026-01-01'}
+    assert collect_parameters(fields, values, []) ['purpose'] == 'درمان بیماری'
+
+
+def test_confidential_text_in_an_empty_or_later_plain_step_follows_the_winning_source():
+    fields = [{'key': 'why', 'type': 'LongText', 'execution_key': 'purpose', 'sensitive': True}]
+    task = {'name': 't', 'status': 'Completed', 'completed_on': '2026-01-02 10:00:00',
+            'fields': [{'key': 'why2', 'type': 'LongText', 'execution_key': 'purpose'}],
+            'values': {'why2': 'متن عادی'}}
+    params = collect_parameters(fields, {'why': ''}, [task], request_name='REQ-9', text_keys={'purpose'})
+    assert params == {'purpose': 'متن عادی'}
+    assert collect_parameters(fields, {'why': ''}, [], request_name='REQ-9', text_keys={'purpose'}) == {'purpose': ''}
