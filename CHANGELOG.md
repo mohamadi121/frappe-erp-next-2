@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Approved form results requiring HR action now persist terminal `Needs Review`, show «نیازمند بررسی» with the reason restricted to privileged viewers, and notify the requester and HR/System Managers once. Asset direction Select ids `issue`/`receipt` map to native purposes. Run `bench migrate` to add the status option and normalize previously stored `needs_review` values; no new site configuration.
 - Fix employee advance execution to resolve the requester from the workflow request owner, retaining active employee and company checks. No migration or site configuration is required.
 - Create draft HRMS employee advances from approved form parameters with company currency, validated receivable account and Persian prerequisite errors. No migration or site configuration is required.
 
