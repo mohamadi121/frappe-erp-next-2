@@ -11,6 +11,7 @@ Fixed:
 
 Added:
 
+- Attendance correction form executor: missing entry/exit creates one native Employee Checkin; existing-time corrections and other cases return `needs_review` with a Persian explanation. Existing Checkins are preserved. No migration; requires the form execution framework to dispatch approved forms. HR review notifications await a shared helper.
 - Request-bound workflow step validation for approved amounts and per-row quantities, enforced during task completion. No migration. See `docs/api/forms.md`.
 - `get_request` returns `viewer` (is the caller the requester, and their own open task with the stage's decision flags) for an in-page decision card.
 - `get_request` returns `stages` (real workflow steps with status, assignees and times) and instance activity rows carry `actor_name` (`services/request_timeline.py`, `integration_tests/test_request_stages.py`).
