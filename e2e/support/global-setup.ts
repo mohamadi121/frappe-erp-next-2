@@ -22,6 +22,7 @@ import { PYTHON, BENCH, USERS, PREFIX, type SiteState } from './config';
 const STATE_FILE = `${__dirname}/../test-results/site-state.json`;
 const REQUEST_TYPE_TITLE = `${PREFIX} درخواست تستی گردش کار`;
 const AUTO_REQUEST_TYPE_TITLE = `${PREFIX} گردش کار اقدام خودکار تستی`;
+const RETURN_REQUEST_TYPE_TITLE = `${PREFIX} گردش کار بازگشت برای اصلاح تستی`;
 const DOC_REQUEST_TYPE_TITLE = `${PREFIX} گردش کار صدور سند تستی`;
 
 const FORM_FIELDS = [
@@ -108,6 +109,7 @@ async function designRequestType(
   admin: ApiSession,
   company: string,
   title: string = REQUEST_TYPE_TITLE,
+  allowReturn = false,
 ): Promise<string> {
   const draft = await admin.mutate<{ name: string }>(METHOD.createWorkflowDraft, {
     workflow_title: title,
@@ -159,7 +161,7 @@ async function designRequestType(
       assignment_type: 'Direct Manager',
       approval_mode: 'Any',
       allow_reject: true,
-      allow_return: false,
+      allow_return: allowReturn,
       reject_comment_required: true,
     }),
   });
@@ -207,6 +209,7 @@ export default async function globalSetup(): Promise<void> {
     async function ensureDefinition(
       title: string,
       repairSystemAction = false,
+      allowReturn = false,
     ): Promise<{ name: string; systemStage: string; stages: Record<string, string> }> {
       let def = state.definitions.find((row) => row.workflow_title === title);
       // A definition left half-designed by an earlier interrupted run is dropped,
@@ -217,7 +220,7 @@ export default async function globalSetup(): Promise<void> {
       }
       if (!def) {
         def = {
-          name: await designRequestType(admin, state.company, title),
+          name: await designRequestType(admin, state.company, title, allowReturn),
           workflow_title: title,
           status: 'Inactive',
           readiness_status: 'Pending',
@@ -269,6 +272,7 @@ export default async function globalSetup(): Promise<void> {
     const mainDef = await ensureDefinition(REQUEST_TYPE_TITLE, true);
     const docDef = await ensureDefinition(DOC_REQUEST_TYPE_TITLE);
     const autoDef = await ensureDefinition(AUTO_REQUEST_TYPE_TITLE, true);
+    const returnDef = await ensureDefinition(RETURN_REQUEST_TYPE_TITLE, true, true);
 
     mkdirSync(`${__dirname}/../test-results`, { recursive: true });
     writeFileSync(
@@ -279,6 +283,7 @@ export default async function globalSetup(): Promise<void> {
           request_type: mainDef.name,
           doc_request_type: docDef.name,
           doc_stage: docDef.systemStage,
+          return_request_type: returnDef.name,
           auto_request_type: autoDef.name,
           auto_stages: autoDef.stages,
         },

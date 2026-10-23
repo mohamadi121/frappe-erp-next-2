@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A request returned for correction can be edited once by its owner: `get_request` returns `return_reason`, `can_edit` is true while it is returned, and `update_request` records a `Resubmitted` activity with the changed fields and restarts the review from the first stage after the form. No migration is required.
+
 - Workflow decisions now always require a Persian reason for rejection or return, block self-approval, and mask form fields marked `sensitive` outside the owner, workflow participants, and System/HR managers. No migration is required.
 
 Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Workflow Activity.workflow_instance`; new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
@@ -13,6 +15,7 @@ Fixed:
 
 Added:
 
+- `get_request` returns `execution` (state, Persian label, privileged-only error, reference) kept apart from `status_key`, computed in `services/request_execution.py`; workflow activity rows carry optional `before`/`after`. Needs `bench migrate` (new `ASOUD Workflow Activity.change_json`). See `docs/api/request_templates.md`.
 - Request-bound workflow step validation for approved amounts and per-row quantities, enforced during task completion. No migration. See `docs/api/forms.md`.
 - `get_request` returns `viewer` (is the caller the requester, and their own open task with the stage's decision flags) for an in-page decision card.
 - `get_request` returns `stages` (real workflow steps with status, assignees and times) and instance activity rows carry `actor_name` (`services/request_timeline.py`, `integration_tests/test_request_stages.py`).

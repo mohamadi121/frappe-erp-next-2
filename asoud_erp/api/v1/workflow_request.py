@@ -9,7 +9,14 @@ from frappe.utils import get_fullname, getdate, now_datetime, nowdate
 from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.workflow_runtime import _next_stage, start_workflow_instance
 from asoud_erp.services import request_attachments as files
-from asoud_erp.services import request_comments, request_lookup, request_serializer, request_timeline
+from asoud_erp.services import (
+    request_comments,
+    request_execution,
+    request_lookup,
+    request_resubmit,
+    request_serializer,
+    request_timeline,
+)
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_access import request_permission, require_company
 from asoud_erp.services.request_link_values import validate_link_values
@@ -310,6 +317,13 @@ def _rejection_reason(instance_name) -> str:
                                "comment", order_by="completed_on desc") or ""
 
 
+def _return_reason(instance_name) -> str:
+    if not instance_name:
+        return ""
+    return frappe.db.get_value("ASOUD Workflow Task", {"workflow_instance": instance_name, "action": "Return"},
+                               "comment", order_by="completed_on desc") or ""
+
+
 def _requester_name(owner: str) -> str:
     return frappe.db.get_value("Employee", {"user_id": owner}, "employee_name") or get_fullname(owner)
 
@@ -361,7 +375,9 @@ def _detail(doc) -> dict:
     owner = doc.owner == frappe.session.user
     running = instance_status == "Running"
     form_stage = form_stage_name(doc.workflow_definition) if instance else None
-    can_edit = owner and running and not _has_acted(instance.name, form_stage)
+    status = _status_fields(doc, instance_status)
+    returned = running and status["status_key"] == "returned"
+    can_edit = owner and running and (returned or not _has_acted(instance.name, form_stage))
     privileged = bool(MANAGER_ROLES & set(frappe.get_roles()))
     participant = bool(doc.workflow_instance and frappe.db.exists(
         "ASOUD Workflow Task", {"workflow_instance": doc.workflow_instance,
@@ -378,8 +394,9 @@ def _detail(doc) -> dict:
         "required_by": str(doc.required_by or ""), "project": doc.project or "", "department": doc.department or "",
         "owner": doc.owner, "requester_name": _requester_name(doc.owner),
         "requester_employee": doc.requester_employee or "", "creation": str(doc.creation or ""),
-        "workflow_instance": doc.workflow_instance or "", **_status_fields(doc, instance_status),
+        "workflow_instance": doc.workflow_instance or "", **status,
         "request_id": doc.request_id, "rejection_reason": _rejection_reason(doc.workflow_instance),
+        "return_reason": _return_reason(doc.workflow_instance) if returned else "",
         "can_edit": bool(can_edit), "can_cancel": bool(owner and running),
         "viewer": build_viewer(owner, _own_open_tasks(doc.workflow_instance) if running else []),
         "item_count": request_serializer.item_count(visible_values), "attachment_count": len(entries),
@@ -388,7 +405,19 @@ def _detail(doc) -> dict:
         "attachments": entries, "fields": fields, "stages": _stage_rows(doc.workflow_definition, doc.workflow_instance),
         "native": {"doctype": doc.native_doctype or "", "name": doc.native_name or "",
                    "status": doc.native_status or "", "error": (doc.native_error or "") if privileged else ""},
+        "execution": _execution(doc, instance_status, privileged),
     }
+
+
+def _execution(doc, instance_status, privileged) -> dict:
+    created = doc.native_status == "Created" and doc.native_doctype and doc.native_name
+    row = frappe.db.get_value(doc.native_doctype, doc.native_name, ["creation", "owner"],
+                              as_dict=True) if created else None
+    return request_execution.build_execution(
+        instance_status, doc.native_status, has_execution=bool(templates.get(doc.template_key)),
+        error=doc.native_error, privileged=privileged, reference=doc.native_name,
+        executed_on=str(row.creation) if row else "",
+        executed_by_name=get_fullname(row.owner) if row and row.owner != "Administrator" else "")
 
 
 def _readable_request(name):
@@ -616,12 +645,17 @@ def _own_running_request(name, not_editable_code: bool = False):
     return doc, instance
 
 
-def _activity(instance, action: str, comment: str = "") -> None:
-    frappe.get_doc({
+def _activity(instance, action: str, comment: str = "", before: dict | None = None,
+              after: dict | None = None, labels: dict | None = None) -> None:
+    row = {
         "doctype": "ASOUD Workflow Activity", "workflow_instance": instance.name,
         "workflow_stage": instance.current_stage, "actor": frappe.session.user,
         "action": action, "comment": comment[:1000], "created_on": now_datetime(),
-    }).insert(ignore_permissions=True)
+    }
+    if before or after:
+        row["change_json"] = json.dumps({"before": before or {}, "after": after or {}, "labels": labels or {}},
+                                        ensure_ascii=False)
+    frappe.get_doc(row).insert(ignore_permissions=True)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -661,7 +695,15 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
     doc, instance = _own_running_request(name, not_editable_code=True)
     definition = frappe.get_doc("ASOUD Workflow Definition", doc.workflow_definition)
     form_stage = _form_stage(definition)
-    if _has_acted(instance.name, form_stage.name):
+    resubmit = doc.status_key == "returned"
+    if resubmit:
+        # A returned request is edited once: the owner's re-opened form task is what lets them in.
+        form_task = frappe.db.get_value("ASOUD Workflow Task", {
+            "workflow_instance": instance.name, "workflow_stage": form_stage.name, "status": "Open",
+            "assigned_to": frappe.session.user}, "name")
+        if not form_task:
+            templates.throw_error("REQUEST_NOT_EDITABLE")
+    elif _has_acted(instance.name, form_stage.name):
         templates.throw_error("REQUEST_NOT_EDITABLE")
     spec = _spec_for(definition)
     raw = _parse_json(values, "Invalid request values")
@@ -735,12 +777,20 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
     instance.save(ignore_permissions=True)
     task = frappe.db.get_value("ASOUD Workflow Task", {
         "workflow_instance": instance.name, "workflow_stage": form_stage.name,
-        "status": "Completed"}, "name")
-    if task:
+        "status": "Completed"}, "name", order_by="completed_on desc")
+    if task and not resubmit:
         frappe.db.set_value("ASOUD Workflow Task", task, "response_json",
                             json.dumps(final, ensure_ascii=False))
     files.delete_files([file_name for file_name in remove if file_name in by_name])
-    _activity(instance, "Edited")
+    if resubmit:
+        changes = request_resubmit.diff_values(previous, final, fields)
+        _activity(instance, "Resubmitted", before={row["key"]: row["before"] for row in changes},
+                  after={row["key"]: row["after"] for row in changes},
+                  labels={row["key"]: row["label"] for row in changes})
+        # The flow restarts at the first stage after the form; earlier decisions stay in the history.
+        _submit_form_task(definition, instance.name, final, doc.name)
+    else:
+        _activity(instance, "Edited")
     doc.reload()
     return success(_detail(doc))
 
