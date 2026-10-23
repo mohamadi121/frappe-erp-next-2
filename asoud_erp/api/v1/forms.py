@@ -9,13 +9,18 @@ from frappe.utils import now_datetime
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.form_schema import (
+    FETCH_ATTRIBUTES,
     LINK_FILTERS,
+    SCOPED_SOURCES,
     SOURCES,
+    current_employee,
     default_value,
     fail,
+    fetch_value,
     fields,
     migrate_schema,
     parse,
+    scope_filters,
     validate_schema,
     validate_values,
 )
@@ -307,7 +312,7 @@ def get_options(company):
 
 
 @frappe.whitelist()
-def get_link_options(company, source, query='', form=None, filter_field=None, filter_value=None):
+def get_link_options(company, source, query='', form=None, filter_field=None, filter_value=None, exclude_self=0):
     require_company(company)
     if source not in SOURCES:
         fail('منبع اطلاعات مجاز نیست.')
@@ -318,7 +323,14 @@ def get_link_options(company, source, query='', form=None, filter_field=None, fi
         if doc.company != company or doc.disabled or not allowed(schema, company) or source not in sources:
             frappe.throw('دسترسی مجاز نیست.', frappe.PermissionError)
     meta = frappe.get_meta(source)
-    filters = {'company': company} if meta.has_field('company') else {}
+    employee = current_employee(company)
+    scoped = source in SCOPED_SOURCES
+    if scoped:
+        if source in {'Attendance', 'Asset'} and not employee:
+            return success([], {'reason': 'no_employee'})
+        filters = scope_filters(source, company, employee)
+    else:
+        filters = {'company': company} if meta.has_field('company') else {}
     if filter_field:
         if filter_field not in LINK_FILTERS.get(source, set()):
             fail('فیلتر منبع اطلاعات مجاز نیست.')
@@ -329,8 +341,28 @@ def get_link_options(company, source, query='', form=None, filter_field=None, fi
         filters['disabled'] = 0
     if meta.has_field('is_group'):
         filters['is_group'] = 0
+    if source == 'Employee' and int(exclude_self) and employee:
+        filters['name'] = ['!=', employee]
     title = meta.title_field or 'name'
-    return success(frappe.get_list(source, filters=filters, or_filters={title: ['like', f'%{query[:100]}%'], 'name': ['like', f'%{query[:100]}%']}, fields=['name', f'{title} as label'], limit_page_length=30))
+    attributes = list(FETCH_ATTRIBUTES.get(source, ()))
+    query = query[:100]
+    getter = frappe.get_all if scoped else frappe.get_list
+    rows = getter(source, filters=filters, or_filters={title: ['like', f'%{query}%'], 'name': ['like', f'%{query}%']},
+                  fields=['name', f'{title} as label', *attributes], limit_page_length=30)
+    if not attributes:
+        return success(rows)
+    for row in rows:
+        extra = {key: fetch_value(row.pop(key, None)) for key in attributes}
+        if source == 'Attendance':
+            row['label'] = ' '.join(str(v) for v in (extra['attendance_date'], extra['status'], extra['in_time'], extra['out_time']) if v)
+        elif source == 'Shift Type':
+            row['label'] = f"{row['name']} {extra['start_time']}–{extra['end_time']}"
+        elif source == 'Training Event':
+            row['label'] = f"{row['label']} {(extra['start_time'] or '')[:10]}".strip()
+        elif source == 'Asset':
+            row['label'] = f"{row['label']} {row['name']}"
+        row['extra'] = extra
+    return success(rows)
 
 
 @frappe.whitelist(methods=['POST'])

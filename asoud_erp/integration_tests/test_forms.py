@@ -366,3 +366,147 @@ class TestCalendarCompanyScope(APITestCase):
                          [("1" * 24, "پیگیری آزمایشی")])
         with self.assertRaises(frappe.PermissionError):
             calendar.get_calendar(company=self.second, start="2026-10-20", end="2026-10-20")
+
+
+def _scope_user(email, first_name):
+    from asoud_erp.integration_tests.fixtures import _employee, _user
+    _user(email, ["Employee"])
+    return _employee(email, first_name)
+
+
+class TestFormRecordSources(APITestCase):
+    """Record sources are scoped to the signed-in Employee (contract C8-C14)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        setup_tenancy()
+
+    def setUp(self):
+        super().setUp()
+        self.me_user = "asoud.src-me@example.com"
+        self.other_user = "asoud.src-other@example.com"
+        self.me = _scope_user(self.me_user, "Src Me")
+        self.other = _scope_user(self.other_user, "Src Other")
+
+    def attendance(self, employee, day, **extra):
+        doc = frappe.get_doc({"doctype": "Attendance", "employee": employee, "status": "Present",
+                              "attendance_date": day, "company": self.company, **extra})
+        doc.flags.ignore_validate = True
+        doc.insert(ignore_permissions=True, ignore_mandatory=True)
+        frappe.db.set_value("Attendance", doc.name, "docstatus", 1)
+        return doc.name
+
+    def asset(self, custodian, label):
+        item = frappe.get_all("Item", pluck="name", limit=1)[0]
+        location = frappe.db.exists("Location", "ASOUD Src Location") or frappe.get_doc(
+            {"doctype": "Location", "location_name": "ASOUD Src Location"}).insert(ignore_permissions=True).name
+        doc = frappe.get_doc({"doctype": "Asset", "asset_name": label, "item_code": item, "company": self.company,
+                              "location": location, "custodian": custodian, "purchase_date": "2026-01-01",
+                              "available_for_use_date": "2026-01-01", "gross_purchase_amount": 100})
+        doc.flags.ignore_validate = True
+        doc.insert(ignore_permissions=True, ignore_mandatory=True)
+        frappe.db.set_value("Asset", doc.name, "docstatus", 1)
+        return doc.name
+
+    def publish(self, fields):
+        frappe.set_user("Administrator")
+        created = forms.save_form(company=self.company, client_id="s" * 24, schema={
+            "kind": "Request", "title": "منابع رکورد", "schema_version": 2,
+            "sections": [{"id": "main", "title": "اصلی", "fields": fields}]})["data"]
+        published = forms.transition(name=created["name"], action="publish", expected_version=1)["data"]
+        return created["name"], published["active_revision"]
+
+    def submit(self, name, revision, values, key):
+        return forms.submit_form(name=name, revision_name=revision, subject="ثبت منبع", values=values, request_key=key)
+
+    def link(self, key, source, **extra):
+        return {"key": key, "label": key, "type": "Link", "source": source, **extra}
+
+    def test_attendance_scope_extra_and_submit_rejection(self):
+        mine = self.attendance(self.me, "2026-09-01", in_time="2026-09-01 08:15:00")
+        theirs = self.attendance(self.other, "2026-09-02")
+        name, rev = self.publish([self.link("att", "Attendance"),
+            {"key": "in_t", "label": "ورود", "type": "Time", "readonly": True, "fetch_from": "att.in_time"}])
+        frappe.set_user(self.me_user)
+        rows = forms.get_link_options(company=self.company, source="Attendance", form=name)["data"]
+        self.assertEqual([r["name"] for r in rows], [mine])
+        self.assertEqual(rows[0]["extra"]["status"], "Present")
+        self.assertEqual(rows[0]["extra"]["in_time"], "2026-09-01T08:15:00")
+        self.assertEqual(rows[0]["extra"]["attendance_date"], "2026-09-01")
+        with self.assertRaisesRegex(frappe.ValidationError, "محدوده مجاز شما نیست"):
+            self.submit(name, rev, {"att": theirs}, "a" * 24)
+        entry = self.submit(name, rev, {"att": mine, "in_t": "23:00:00"}, "b" * 24)["data"]["name"]
+        # the client-supplied derived value is replaced by the database value
+        self.assertEqual(forms.get_entry(entry)["data"]["values"]["in_t"], "08:15:00")
+
+    def test_no_employee_user_gets_empty_list_with_reason(self):
+        name, rev = self.publish([self.link("att", "Attendance"), self.link("ast", "Asset")])
+        # Administrator has no Employee record, like many managers
+        frappe.set_user("Administrator")
+        self.assertFalse(frappe.db.exists("Employee", {"user_id": "Administrator", "company": self.company}))
+        att = forms.get_link_options(company=self.company, source="Attendance", form=name)
+        self.assertEqual((att["data"], att["meta"]["reason"]), ([], "no_employee"))
+        result = forms.get_link_options(company=self.company, source="Asset", form=name)
+        self.assertEqual(result["data"], [])
+        self.assertEqual(result["meta"]["reason"], "no_employee")
+
+    def test_asset_custodian_scope(self):
+        mine = self.asset(self.me, "لپ‌تاپ من")
+        theirs = self.asset(self.other, "لپ‌تاپ دیگری")
+        name, rev = self.publish([self.link("ast", "Asset"),
+            {"key": "loc", "label": "مکان", "type": "Text", "readonly": True, "fetch_from": "ast.asset_name"}])
+        frappe.set_user(self.me_user)
+        rows = forms.get_link_options(company=self.company, source="Asset", form=name)["data"]
+        self.assertEqual([r["name"] for r in rows], [mine])
+        self.assertEqual(rows[0]["extra"]["asset_name"], "لپ‌تاپ من")
+        with self.assertRaisesRegex(frappe.ValidationError, "محدوده مجاز شما نیست"):
+            self.submit(name, rev, {"ast": theirs}, "c" * 24)
+        entry = self.submit(name, rev, {"ast": mine}, "d" * 24)["data"]["name"]
+        self.assertEqual(forms.get_entry(entry)["data"]["values"]["loc"], "لپ‌تاپ من")
+
+    def test_training_event_future_scheduled_only_and_shift_type(self):
+        def event(title, status, days):
+            start = frappe.utils.add_days(frappe.utils.now_datetime(), days)
+            doc = frappe.get_doc({"doctype": "Training Event", "event_name": title, "event_status": status,
+                "type": "Seminar", "location": "تهران", "introduction": "x", "company": self.company,
+                "start_time": start, "end_time": frappe.utils.add_days(start, 1),
+                "employees": [{"employee": self.me}]})
+            doc.flags.ignore_validate = True
+            return doc.insert(ignore_permissions=True, ignore_mandatory=True).name
+        future = event("دوره آینده", "Scheduled", 5)
+        past = event("دوره گذشته", "Scheduled", -5)
+        done = event("دوره تمام‌شده", "Completed", 5)
+        shift = frappe.get_doc({"doctype": "Shift Type", "name": "ASOUD Src Shift", "start_time": "08:00:00",
+                                "end_time": "16:30:00"}).insert(ignore_permissions=True).name
+        name, rev = self.publish([self.link("ev", "Training Event"), self.link("sh", "Shift Type")])
+        frappe.set_user(self.me_user)
+        names = [r["name"] for r in forms.get_link_options(company=self.company, source="Training Event", form=name)["data"]]
+        self.assertIn(future, names)
+        self.assertNotIn(past, names)
+        self.assertNotIn(done, names)
+        with self.assertRaisesRegex(frappe.ValidationError, "محدوده مجاز شما نیست"):
+            self.submit(name, rev, {"ev": past}, "e" * 24)
+        shifts = {r["name"]: r for r in forms.get_link_options(company=self.company, source="Shift Type", form=name)["data"]}
+        self.assertEqual(shifts[shift]["extra"], {"start_time": "08:00:00", "end_time": "16:30:00"})
+
+    def test_exclude_self_not_equal_and_unique(self):
+        name, rev = self.publish([
+            self.link("boss", "Employee", exclude_self=True),
+            {"key": "old", "label": "قدیم", "type": "Text"},
+            {"key": "new", "label": "جدید", "type": "Text", "not_equal": "old"},
+            {"key": "num", "label": "پرسنلی", "type": "Text", "readonly": True, "default_source": "employee_number"},
+            {"key": "rows", "label": "ردیف", "type": "Table", "columns": [{"key": "n", "label": "نام", "type": "Text", "unique": True}]}])
+        frappe.set_user(self.me_user)
+        options = [r["name"] for r in forms.get_link_options(company=self.company, source="Employee", form=name, exclude_self=1)["data"]]
+        self.assertNotIn(self.me, options)
+        self.assertIn(self.other, options)
+        with self.assertRaisesRegex(frappe.ValidationError, "نمی‌توانید خودتان را انتخاب کنید"):
+            self.submit(name, rev, {"boss": self.me}, "f" * 24)
+        with self.assertRaisesRegex(frappe.ValidationError, "مقدار جدید نباید با مقدار فعلی یکسان باشد"):
+            self.submit(name, rev, {"old": "x", "new": "x"}, "g" * 24)
+        with self.assertRaisesRegex(frappe.ValidationError, "ردیف تکراری: نام"):
+            self.submit(name, rev, {"rows": [{"n": "a"}, {"n": "a"}]}, "h" * 24)
+        entry = self.submit(name, rev, {"boss": self.other, "old": "x", "new": "y", "rows": [{"n": "a"}, {"n": "b"}]}, "i" * 24)["data"]["name"]
+        self.assertEqual(forms.get_entry(entry)["data"]["values"]["boss"], self.other)
+        self.assertTrue(forms.get_entry(entry)["data"]["values"]["num"])
