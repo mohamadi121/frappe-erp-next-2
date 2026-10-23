@@ -512,6 +512,23 @@ def upload_file(form, filename, content):
     return success({'name': file.name, 'label': file.file_name})
 
 
+def _validate_execution_submit(schema, values, company):
+    """Let the executor refuse a request before it is stored (optional validate_submit hook)."""
+    from asoud_erp.services.form_execution import EXECUTORS
+    from asoud_erp.services.form_execution.parameters import collect_parameters
+
+    kind = (schema.get('execution') or {}).get('kind')
+    hook = getattr(EXECUTORS.get(kind), 'validate_submit', None)
+    if not hook:
+        return
+    params = collect_parameters(fields(schema), values, [])
+    try:
+        hook(params, {'company': company, 'employee': current_employee(company),
+                      'user': frappe.session.user})
+    except ValueError as error:
+        fail(str(error))
+
+
 @frappe.whitelist(methods=['POST'])
 def submit_form(name, revision_name, subject, values, request_key):
     doc = load(name, lock=True)
@@ -534,6 +551,7 @@ def submit_form(name, revision_name, subject, values, request_key):
         frappe.throw('ثبت این فرم مجاز نیست.', frappe.PermissionError)
     checked = validate_values(schema, raw, doc.company)
     _validate_shift_request(schema, checked, doc.company)
+    _validate_execution_submit(schema, checked, doc.company)
     reference_type = reference_name = ''
     if schema['kind'] == 'Request' and schema.get('workflow'):
         from asoud_erp.api.v1.workflow_request import create_request

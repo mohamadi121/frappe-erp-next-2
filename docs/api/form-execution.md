@@ -239,3 +239,29 @@ reason identifying the missing prerequisite. No migration or configuration is ad
 | همکار ناموجود، غیرفعال یا شرکت دیگر | همکار انتخاب‌شده باید فعال و متعلق به شرکت درخواست باشد. |
 | شیفت ناموجود | شیفت انتخاب‌شده وجود ندارد. |
 | تأییدکننده غایب/غیرفعال | تأییدکننده فعال شیفت برای کارکنان تنظیم نشده است. |
+
+## Registry hook `validate_submit` (E2 note)
+
+An executor module may define `validate_submit(params, ctx)`. `forms.submit_form` calls it
+after value validation and before the request is stored, with `params` collected from the
+`execution_key` mappings and `ctx = {company, employee, user}`. It raises `ValueError` with a
+Persian reason, which the endpoint returns as a validation error. Executors without the hook
+are unaffected; the framework never keys on a form name.
+
+## Settlement (`exit`)
+
+Internal executor through the approval dispatcher and retry endpoint; no new endpoint.
+Parameters: `last_working_day` (Date, required), `reason` (Select/Text/LongText, optional),
+`notes` (Text/LongText, optional). The reason is validated but never copied to a native field
+(it stays in the masked request). Notes become a Comment on the Exit Interview.
+
+After approval one savepoint sets `Employee.relieving_date` to the last working day and inserts
+an `Exit Interview` (status Pending) and a `Full and Final Statement` (draft; HRMS fills payables,
+receivables and assets itself). HR completes and submits them. If any write fails nothing remains
+and the result is Failed with «ثبت تسویه حساب انجام نشد؛ تاریخ پایان همکاری و اطلاعات پرونده کارمند را بررسی کنید.».
+
+Duplicate prevention (on submit via `validate_submit`, and again in `apply`, under an Employee row
+lock): another request of the same employee whose form executes as `exit` and is not Rejected or
+Cancelled, or a Full and Final Statement of the employee that is not cancelled, gives
+«برای این کارمند یک تسویه حساب باز یا ثبت‌شده وجود دارد؛ ابتدا آن را رد یا ابطال کنید.».
+No migration or configuration.

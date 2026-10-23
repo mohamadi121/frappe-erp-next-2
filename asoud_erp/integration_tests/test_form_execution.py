@@ -32,7 +32,7 @@ class TestFormExecution(APITestCase):
                         'roles': [{'role': 'Accounts Manager'}]}).insert()
         self.assertFalse(frappe.db.exists('Employee', {'user_id': user}))
         self.assertEqual({row['kind'] for row in forms.execution_kinds()['data']},
-                         {'employee_advance', 'attendance_correction', 'asset_movement', 'shift_request'})
+                         {'employee_advance', 'attendance_correction', 'asset_movement', 'shift_request', 'exit'})
         with patch.dict(EXECUTORS, {'test_only': ExampleExecutor()}, clear=True):
             frappe.set_user(user)
             self.assertEqual(forms.execution_kinds()['data'], [{
@@ -349,3 +349,19 @@ class TestRegisteredFormExecution(APITestCase):
         doc = frappe.get_doc(request['native']['doctype'], request['native']['name'])
         self.assertEqual((doc.employee, doc.shift_type, doc.docstatus, doc.status),
                          (self.employee, shift.name, 0, 'Draft'))
+
+    def test_exit_creates_settlement_drafts_and_blocks_second_submit(self):
+        from asoud_erp.services.form_execution.exit import DUPLICATE_ERROR
+
+        fields = [{'key': 'last', 'label': 'آخرین روز', 'type': 'Date', 'execution_key': 'last_working_day'},
+                  {'key': 'why', 'label': 'علت', 'type': 'Text', 'execution_key': 'reason'}]
+        values = {'last': '2030-02-01', 'why': 'استعفا'}
+        request = self.approve_form('exit', fields, values)
+        self.assertEqual(request['native']['status'], 'Created', request['native']['error'])
+        self.assertEqual((request['native']['doctype'], frappe.db.get_value(
+            'Exit Interview', request['native']['name'], 'docstatus')), ('Exit Interview', 0))
+        statement = frappe.get_doc('Full and Final Statement', {'employee': self.employee})
+        self.assertEqual((statement.docstatus, str(statement.relieving_date)), (0, '2030-02-01'))
+        self.assertEqual(str(frappe.db.get_value('Employee', self.employee, 'relieving_date')), '2030-02-01')
+        with self.assertRaisesRegex(frappe.ValidationError, DUPLICATE_ERROR):
+            self.approve_form('exit', fields, values)

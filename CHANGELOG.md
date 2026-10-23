@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- اجرای تسویه حساب (`exit`): پس از تأیید، پیش‌نویس Exit Interview و Full and Final Statement و تاریخ پایان همکاری کارمند به‌صورت اتمی ثبت می‌شود؛ ثبت تسویه دوم برای همان کارمند هنگام ارسال و اجرا رد می‌شود (هوک اختیاری `validate_submit` در رجیستری). بدون نیاز به مهاجرت یا تنظیم جدید.
+
 - اجرای تغییر شیفت: ساخت اتمی پیش‌نویس‌های بومی تغییر و جابه‌جایی شیفت با اعتبارسنجی HRMS؛ بدون نیاز به مهاجرت یا تنظیم جدید.
 - Approved form results requiring HR action now persist terminal `Needs Review`, show «نیازمند بررسی» with the reason restricted to privileged viewers, and notify the requester and HR/System Managers once. Asset direction Select ids `issue`/`receipt` map to native purposes. Run `bench migrate` to add the status option and normalize previously stored `needs_review` values; no new site configuration.
 - Fix employee advance execution to resolve the requester from the workflow request owner, retaining active employee and company checks. No migration or site configuration is required.
