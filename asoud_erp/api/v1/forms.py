@@ -350,14 +350,24 @@ def get_link_options(company, source, query='', form=None, filter_field=None, fi
         filters['name'] = ['!=', employee]
     title = meta.title_field or 'name'
     attributes = list(FETCH_ATTRIBUTES.get(source, ()))
+    database_attributes = [key for key in attributes if key != 'employee_count']
     query = query[:100]
     getter = frappe.get_all if scoped else frappe.get_list
     rows = getter(source, filters=filters, or_filters={title: ['like', f'%{query}%'], 'name': ['like', f'%{query}%']},
-                  fields=['name', f'{title} as label', *attributes], limit_page_length=30)
+                  fields=['name', f'{title} as label', *database_attributes], limit_page_length=30)
     if not attributes:
         return success(rows)
+    employee_counts = {}
+    if source == 'Training Event' and rows:
+        counts = frappe.get_all(
+            'Training Event Employee', filters={'parent': ['in', [row['name'] for row in rows]],
+                                                'parenttype': 'Training Event'},
+            fields=['parent', 'count(name) as count'], group_by='parent')
+        employee_counts = {row.parent: row.count for row in counts}
     for row in rows:
-        extra = {key: fetch_value(row.pop(key, None)) for key in attributes}
+        extra = {key: fetch_value(row.pop(key, None)) for key in database_attributes}
+        if source == 'Training Event' and 'employee_count' in attributes:
+            extra['employee_count'] = employee_counts.get(row['name'], 0)
         row['label'] = LABELS[source](row | extra) if source in LABELS else row['label']
         row['extra'] = extra
     return success(rows)

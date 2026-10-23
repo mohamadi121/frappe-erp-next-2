@@ -473,6 +473,7 @@ class TestFormRecordSources(APITestCase):
             start = frappe.utils.add_days(frappe.utils.now_datetime(), days)
             doc = frappe.get_doc({"doctype": "Training Event", "event_name": title, "event_status": status,
                 "type": "Seminar", "location": "تهران", "introduction": "x", "company": self.company,
+                "course": "ایمنی کار", "trainer_name": "مدرس آزمون",
                 "start_time": start, "end_time": frappe.utils.add_days(start, 1),
                 "employees": [{"employee": self.me}]})
             doc.flags.ignore_validate = True
@@ -484,10 +485,14 @@ class TestFormRecordSources(APITestCase):
                                 "end_time": "16:30:00"}).insert(ignore_permissions=True).name
         name, rev = self.publish([self.link("ev", "Training Event"), self.link("sh", "Shift Type")])
         frappe.set_user(self.me_user)
-        names = [r["name"] for r in forms.get_link_options(company=self.company, source="Training Event", form=name)["data"]]
+        event_rows = forms.get_link_options(company=self.company, source="Training Event", form=name)["data"]
+        names = [r["name"] for r in event_rows]
         self.assertIn(future, names)
-        labels = {r["name"]: r["label"] for r in forms.get_link_options(company=self.company, source="Training Event", form=name)["data"]}
+        labels = {r["name"]: r["label"] for r in event_rows}
         self.assertRegex(labels[future], r"^دوره آینده · [۰-۹]{4}/[۰-۹]{2}/[۰-۹]{2}$")
+        extra = next(row["extra"] for row in event_rows if row["name"] == future)
+        self.assertEqual((extra["course"], extra["trainer_name"], extra["location"], extra["employee_count"]),
+                         ("ایمنی کار", "مدرس آزمون", "تهران", 1))
         self.assertNotIn(past, names)
         self.assertNotIn(done, names)
         with self.assertRaisesRegex(frappe.ValidationError, "محدوده مجاز شما نیست"):

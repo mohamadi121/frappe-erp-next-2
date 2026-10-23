@@ -627,6 +627,63 @@ def test_new_default_sources(schema):
     assert schema.default_value({"default_source": "employee_number"}, "ACME") == "HR-EMP-1"
 
 
+def test_contract_start_uses_current_contract_then_joining_date(schema):
+    schema.frappe.db.get_value = lambda doctype, filters, field=None, **kwargs: (
+        date(2025, 3, 20) if doctype == "Contract" else
+        ("EMP-1" if field == "name" else date(2020, 1, 2))
+    )
+    assert schema.default_value({"default_source": "contract_start"}, "ACME") == "2025-03-20"
+    schema.frappe.db.get_value = lambda doctype, filters, field=None, **kwargs: (
+        None if doctype == "Contract" else
+        ("EMP-1" if field == "name" else date(2020, 1, 2))
+    )
+    assert schema.default_value({"default_source": "contract_start"}, "ACME") == "2020-01-02"
+
+
+def test_compare_and_next_day_schema_contract(schema):
+    fields = [
+        {"key": "attendance_date", "label": "تاریخ", "type": "Date"},
+        {"key": "current", "label": "ثبت‌شده", "type": "Time"},
+        {"key": "proposed", "label": "پیشنهادی", "type": "Time", "next_day_allowed": True},
+        {"key": "comparison", "label": "مقایسه", "type": "Display", "readonly": True,
+         "compare": {"current": "current", "proposed": "proposed"}},
+    ]
+    validated = schema.validate_schema(source_schema(fields))
+    values = schema.validate_values(validated, {
+        "attendance_date": "2026-10-23", "current": "23:30", "proposed": "01:00",
+        "proposed__next_day": True,
+    }, "ACME")
+    assert values["proposed__next_day"] is True
+    assert "comparison" not in values
+    fields[2]["not_equal"] = "current"
+    validated = schema.validate_schema(source_schema(fields))
+    values = schema.validate_values(validated, {
+        "attendance_date": "2026-10-23", "current": "01:00", "proposed": "01:00",
+        "proposed__next_day": True,
+    }, "ACME")
+    assert values["proposed"] == "01:00"
+    fields[2].pop("not_equal")
+    for bad_compare in ({"current": "missing", "proposed": "proposed"},
+                        {"current": "current", "proposed": "attendance_date"}):
+        fields[3]["compare"] = bad_compare
+        with pytest.raises(ValueError, match="مقایسه"):
+            schema.validate_schema(source_schema(fields))
+    fields[3]["compare"] = {"current": "current", "proposed": "proposed"}
+    fields[2]["next_day_allowed"] = "yes"
+    with pytest.raises(ValueError, match="روز بعد"):
+        schema.validate_schema(source_schema(fields))
+
+
+def test_next_day_companion_is_rejected_without_enabled_time(schema):
+    sch = schema.validate_schema(source_schema([
+        {"key": "attendance_date", "label": "تاریخ", "type": "Date"},
+        {"key": "proposed", "label": "پیشنهادی", "type": "Time"},
+    ]))
+    with pytest.raises(ValueError, match="فیلد ناشناخته"):
+        schema.validate_values(sch, {"attendance_date": "2026-10-23", "proposed": "01:00",
+                                     "proposed__next_day": True}, "ACME")
+
+
 def test_fetch_value_normalises_types(schema):
     from datetime import datetime, timedelta
     moment = datetime(2026, 10, 23, 8, 30, 15, 99)

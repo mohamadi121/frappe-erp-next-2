@@ -81,7 +81,7 @@ Attendance `«۱۴۰۵/۰۷/۲۸ · حاضر · ورود ۰۸:۰۱ · خروج �
 
 Sources with fetchable attributes return `extra` on every row: Attendance `in_time, out_time,
 attendance_date, status, shift`; Shift Type `start_time, end_time`; Training Event `start_time,
-end_time, type, level, training_program, course, location, trainer, employee_count`; Asset `asset_name, item_code, location`; Employee
+end_time, type, level, training_program, course, location, trainer_name, employee_count`; Asset `asset_name, item_code, location`; Employee
 `department, designation, employee_number`. The `extra` values stay raw ISO (the app formats them): datetimes `YYYY-MM-DDTHH:MM:SS`, times `HH:MM:SS`.
 
 Field keys (all validated by `save_form`):
