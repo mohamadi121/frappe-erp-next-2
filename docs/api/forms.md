@@ -54,6 +54,13 @@ missing required row or too-short table is rejected as `حداقل N ردیف ل
 the form company: designation is the Employee designation and joining date is returned
 as ISO (`YYYY-MM-DD`). Missing Employee data produces no default value.
 
+Every field and table column may include the optional boolean key `sensitive`. For
+request details and workflow-task previews, a sensitive value is returned only to the
+request owner, System Manager or HR Manager, and users who have or previously had a task
+on that workflow instance. Other permitted viewers receive `محرمانه` instead of the
+stored value. Stored request and task responses remain unchanged. Omitting the key means
+`false`, so this addition keeps `schema_version` at 2 and preserves old forms.
+
 ## Record sources and derived fields
 
 `get_link_options(company, source, query, form, filter_field, filter_value, exclude_self=0)`
@@ -139,6 +146,95 @@ The server validates that referenced fields exist and have the required types. T
 runtime reloads the schedule when the employee or either date changes, shows the current
 shift for one day and a per-day list for a range, and does not persist client-supplied
 schedule data.
+
+## Workflow step validation against request values
+
+Fields in a `User Task` or `Approval` stage form may validate the handler's response
+against the original request values. These keys are optional and do not change
+`schema_version: 2`:
+
+| Key | Allowed on | Meaning |
+|---|---|---|
+| `max_from_request` | `Integer`, `Decimal`, `Money` | Request field key whose numeric value is the inclusive upper bound. |
+| `min_value_exclusive` | `Integer`, `Decimal`, `Money` | Numeric exclusive lower bound. For example, `0` requires a positive value. |
+| `reason_required_if_less_than` | `Integer`, `Decimal`, `Money` | Request field key used as the comparison value. When the response is lower, the field named by `reason_field` must contain non-whitespace text. |
+| `reason_field` | A field using `reason_required_if_less_than` | Key of a `Text` or `LongText` field in the same step form. |
+| `rows_from_request` | top-level `Table` | Request table key. The runtime projects those request rows into this step table and keeps request columns read-only. |
+| `max_from_row` | numeric column inside a table using `rows_from_request` | Column key in the corresponding request row whose numeric value is the inclusive upper bound. |
+
+Request references must name fields in the request form schema. A
+`rows_from_request` reference must name a request `Table`; its request columns must be
+present in the step table with the same keys and compatible types. The step may add
+editable response columns. Request-derived rows cannot be added, removed, reordered,
+or have their request columns changed. A response row therefore corresponds to the
+request row at the same index; the server compares the complete row count and every
+projected request value when the task is completed.
+
+The client applies these rules for immediate feedback, but the server repeats every
+check in `complete_workflow_task`. Missing or non-numeric referenced values, modified
+request rows, a value at or below an exclusive minimum, a value above its request
+limit, and a missing reduction reason reject task completion with a Persian validation
+message. The stored task response remains independent from the request values and from
+responses of other workflow stages.
+
+### Salary advance step example (T2)
+
+The raw request preset contains only request data. A workflow designer may attach this
+stage form to the authorized approval stage:
+
+```json
+{
+  "form_fields": [
+    {
+      "key": "approved_amount",
+      "label": "مبلغ مورد تأیید",
+      "type": "Money",
+      "required": true,
+      "max_from_request": "requested_amount",
+      "min_value_exclusive": 0,
+      "reason_required_if_less_than": "requested_amount",
+      "reason_field": "reduction_reason"
+    },
+    {
+      "key": "reduction_reason",
+      "label": "علت کاهش مبلغ",
+      "type": "LongText"
+    }
+  ]
+}
+```
+
+This records a stage decision only; it does not create a payment, payroll deduction,
+or final approval outside the configured workflow.
+
+### Equipment row approval step example (T7)
+
+For a request table `equipment_items` with `item`, `quantity`, and `item_notes`, a
+workflow stage can show the submitted rows and collect an approved quantity:
+
+```json
+{
+  "form_fields": [
+    {
+      "key": "approved_items",
+      "label": "بررسی اقلام تجهیزات",
+      "type": "Table",
+      "rows_from_request": "equipment_items",
+      "columns": [
+        {"key": "item", "label": "کالا یا تجهیز", "type": "Short Text", "readonly": true},
+        {"key": "quantity", "label": "تعداد درخواستی", "type": "Integer", "readonly": true},
+        {"key": "item_notes", "label": "مشخصات تکمیلی", "type": "LongText", "readonly": true},
+        {"key": "approved_quantity", "label": "تعداد مورد تأیید", "type": "Integer", "required": true, "min": 0, "max_from_row": "quantity"}
+      ]
+    }
+  ]
+}
+```
+
+This example constrains each approved quantity to its submitted row. Whether all-zero
+approval is allowed and whether a per-row reduction reason is mandatory are workflow
+policies and must be configured separately when that policy capability is available;
+the example does not perform stock delivery, return, or inventory movement.
 
 ## Consumption
 

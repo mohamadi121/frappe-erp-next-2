@@ -192,6 +192,8 @@ def validate_schema(raw):
                 fail('منبع مقدار پیش‌فرض معتبر نیست.')
             if 'help' in field and (not isinstance(field['help'], str) or len(field['help']) > 1000):
                 fail('راهنمای فیلد معتبر نیست.')
+            if 'sensitive' in field and not isinstance(field['sensitive'], bool):
+                fail('تنظیم اطلاعات حساس باید درست یا نادرست باشد.')
             if 'exclude_self' in field and (field['exclude_self'] is not True and field['exclude_self'] is not False
                                             or (field['exclude_self'] and (kind != 'Link' or field.get('source') != 'Employee'))):
                 fail('گزینه حذف خود فقط برای فیلد پیوند به کارمند مجاز است.')

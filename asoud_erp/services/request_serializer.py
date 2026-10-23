@@ -8,6 +8,38 @@ from typing import Any
 from asoud_erp.services.request_status import priority_label
 
 SEARCH_TEXT_LIMIT = 4000
+SENSITIVE_MASK = "محرمانه"
+
+
+def mask_sensitive_values(values: dict, fields: list[dict], can_view: bool) -> dict:
+    """Copy request values and mask schema-marked values for non-participants."""
+    result = copy.deepcopy(values or {})
+    if can_view:
+        return result
+    for field in fields or []:
+        if not isinstance(field, dict):
+            continue
+        key = field.get("key")
+        if key not in result:
+            continue
+        if field.get("sensitive") is True:
+            result[key] = SENSITIVE_MASK
+            continue
+        if field.get("type") == "Table" and isinstance(result[key], list):
+            result[key] = [mask_sensitive_values(row, field.get("columns") or [], False)
+                           if isinstance(row, dict) else row for row in result[key]]
+    return result
+
+
+def hidden_file_urls(values: dict, fields: list[dict], can_view: bool) -> set[str]:
+    """File urls that only sensitive fields point to, which a non-participant must not receive."""
+    if can_view:
+        return set()
+    from asoud_erp.services.workflow_response import attachment_references
+
+    masked = mask_sensitive_values(values, fields, False)
+    return ({ref for _scope, ref in attachment_references(fields, values or {})}
+            - {ref for _scope, ref in attachment_references(fields, masked)})
 
 
 def item_rows_of(values: dict | None) -> list[dict]:

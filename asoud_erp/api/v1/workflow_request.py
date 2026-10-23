@@ -9,7 +9,7 @@ from frappe.utils import get_fullname, getdate, now_datetime, nowdate
 from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.workflow_runtime import _next_stage, start_workflow_instance
 from asoud_erp.services import request_attachments as files
-from asoud_erp.services import request_comments, request_lookup, request_serializer
+from asoud_erp.services import request_comments, request_lookup, request_serializer, request_timeline
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_access import request_permission, require_company
 from asoud_erp.services.request_link_values import validate_link_values
@@ -25,6 +25,7 @@ from asoud_erp.services.request_status import (
     status_group as group_of_status,
 )
 from asoud_erp.services.request_templates import base as templates
+from asoud_erp.services.request_viewer import build_viewer
 from asoud_erp.services.workflow_history import merge_completed_responses
 from asoud_erp.services.workflow_response import (
     attachment_references,
@@ -213,7 +214,9 @@ def _pending_url(key: str) -> str:
     return PENDING_PREFIX + key
 
 
-def _search_text(name, subject, requester_name, department, project, values) -> str:
+def _search_text(name, subject, requester_name, department, project, values, fields=()) -> str:
+    """Sensitive values never enter the searchable text: a search must not reveal them."""
+    values = request_serializer.mask_sensitive_values(values, list(fields), False)
     department_name = (frappe.db.get_value("Department", department, "department_name")
                        if department else "") or department or ""
     return request_serializer.build_search_text(
@@ -311,6 +314,38 @@ def _requester_name(owner: str) -> str:
     return frappe.db.get_value("Employee", {"user_id": owner}, "employee_name") or get_fullname(owner)
 
 
+def _own_open_tasks(instance_name) -> list[dict]:
+    """Open tasks of this instance assigned to the signed-in user only, with their stage rows."""
+    if not instance_name:
+        return []
+    tasks = frappe.get_all("ASOUD Workflow Task", fields=["name", "workflow_stage"], order_by="creation asc",
+                           filters={"workflow_instance": instance_name, "status": "Open",
+                                    "assigned_to": frappe.session.user})
+    if not tasks:
+        return []
+    stages = {row.name: row for row in frappe.get_all(
+        "ASOUD Workflow Stage", fields=["name", "stage_title", "stage_type", "config_json"],
+        filters={"name": ["in", [task.workflow_stage for task in tasks]]})}
+    return [{"name": task.name, "stage_title": stages[task.workflow_stage].stage_title,
+             "stage_type": stages[task.workflow_stage].stage_type,
+             "config_json": stages[task.workflow_stage].config_json}
+            for task in tasks if task.workflow_stage in stages]
+
+
+def _stage_rows(definition, instance_name) -> list:
+    if not instance_name or not definition:
+        return []
+    stages = frappe.get_all("ASOUD Workflow Stage", filters={"workflow_definition": definition},
+                            fields=["name", "stage_type", "stage_title", "sequence_no"], limit_page_length=0)
+    tasks = frappe.get_all("ASOUD Workflow Task", filters={"workflow_instance": instance_name},
+                           fields=["workflow_stage", "assigned_to", "status", "action", "comment", "assigned_on",
+                                   "completed_on"], limit_page_length=0)
+    users = list({task.assigned_to for task in tasks if task.assigned_to})
+    names = {row.name: row.full_name for row in frappe.get_all(
+        "User", filters={"name": ["in", users]}, fields=["name", "full_name"])} if users else {}
+    return request_timeline.build_stages(stages, tasks, names)
+
+
 def _detail(doc) -> dict:
     instance = _instance_row(doc.workflow_instance)
     instance_status = instance.status if instance else None
@@ -328,6 +363,14 @@ def _detail(doc) -> dict:
     form_stage = form_stage_name(doc.workflow_definition) if instance else None
     can_edit = owner and running and not _has_acted(instance.name, form_stage)
     privileged = bool(MANAGER_ROLES & set(frappe.get_roles()))
+    participant = bool(doc.workflow_instance and frappe.db.exists(
+        "ASOUD Workflow Task", {"workflow_instance": doc.workflow_instance,
+                                "assigned_to": frappe.session.user}))
+    visible_values = request_serializer.mask_sensitive_values(
+        values, fields, owner or privileged or participant)
+    hidden = request_serializer.hidden_file_urls(values, fields, owner or privileged or participant)
+    entries = [entry for entry in entries if entry["file_url"] not in hidden]
+    by_url = {entry["file_url"]: entry for entry in entries}
     return {
         "name": doc.name, "number": doc.name, "company": doc.company, "template_key": doc.template_key or "",
         "template_version": doc.template_version or 0, "workflow_definition": doc.workflow_definition,
@@ -338,10 +381,11 @@ def _detail(doc) -> dict:
         "workflow_instance": doc.workflow_instance or "", **_status_fields(doc, instance_status),
         "request_id": doc.request_id, "rejection_reason": _rejection_reason(doc.workflow_instance),
         "can_edit": bool(can_edit), "can_cancel": bool(owner and running),
-        "item_count": request_serializer.item_count(values), "attachment_count": len(entries),
+        "viewer": build_viewer(owner, _own_open_tasks(doc.workflow_instance) if running else []),
+        "item_count": request_serializer.item_count(visible_values), "attachment_count": len(entries),
         "comment_count": request_comments.count_comments(doc.name),
-        "values": request_serializer.with_attachment_refs(values, by_url),
-        "attachments": entries, "fields": fields,
+        "values": request_serializer.with_attachment_refs(visible_values, by_url),
+        "attachments": entries, "fields": fields, "stages": _stage_rows(doc.workflow_definition, doc.workflow_instance),
         "native": {"doctype": doc.native_doctype or "", "name": doc.native_name or "",
                    "status": doc.native_status or "", "error": (doc.native_error or "") if privileged else ""},
     }
@@ -542,7 +586,7 @@ def create_request(company: str, workflow_definition: str | None = None, subject
         files.entry(item["name"], item["filename"], item["file_url"], item["size"],
                     scopes.get(item["file_url"], "general")) for item in entries], ensure_ascii=False)
     doc.search_text = _search_text(doc.name, doc.subject, employee.employee_name if employee else
-                                   get_fullname(frappe.session.user), doc.department, doc.project, final)
+                                   get_fullname(frappe.session.user), doc.department, doc.project, final, fields)
     doc.save(ignore_permissions=True)
     result = start_workflow_instance(definition=definition.name, subject=doc.subject,
                                      reference_doctype=doc.doctype, reference_name=doc.name)
@@ -685,7 +729,7 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
     doc.attachments_json = json.dumps(_entries_with_scopes(
         [{**item, "size": item.get("size") or 0} for item in kept] + added, fields, final), ensure_ascii=False)
     doc.search_text = _search_text(doc.name, doc.subject, _requester_name(doc.owner), doc.department,
-                                   doc.project, final)
+                                   doc.project, final, fields)
     doc.save(ignore_permissions=True)
     instance.subject = doc.subject
     instance.save(ignore_permissions=True)
