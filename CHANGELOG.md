@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Fix employee advance execution to resolve the requester from the workflow request owner, retaining active employee and company checks. No migration or site configuration is required.
+- Create draft HRMS employee advances from approved form parameters with company currency, validated receivable account and Persian prerequisite errors. No migration or site configuration is required.
+
 
 - A request returned for correction can be edited once by its owner: `get_request` returns `return_reason`, `can_edit` is true while it is returned, and `update_request` records a `Resubmitted` activity with the changed fields and restarts the review from the first stage after the form. No migration is required.
 
