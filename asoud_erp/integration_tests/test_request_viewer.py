@@ -146,3 +146,42 @@ class TestSensitiveValues(APITestCase):
         definition, _stages = make_definition(self.company, approvals=1)
         plain = create(self.company, definition=definition, values={"items": [{"item_code": ITEM, "qty": 1}]})
         self.assertIn(ITEM, frappe.db.get_value("ASOUD Workflow Request", plain["name"], "search_text"))
+
+
+class TestSelfApprovalRouting(APITestCase):
+    def _request(self, approvers, escalation_roles=None):
+        definition, _stages = make_definition(self.company, approvals=1)
+        stage = frappe.get_doc("ASOUD Workflow Stage", {"workflow_definition": definition, "stage_type": "Approval"})
+        config = frappe.parse_json(stage.config_json)
+        config.update(assignment_type="Employee", approver_employees=[
+            frappe.db.get_value("Employee", {"user_id": user}) for user in approvers])
+        if escalation_roles:
+            config["escalation_roles"] = escalation_roles
+        stage.config_json = frappe.as_json(config)
+        stage.save(ignore_permissions=True)
+        return create(self.company, definition=definition, values={"reason": "دلیل"})
+
+    def _assignees(self, request):
+        return frappe.get_all("ASOUD Workflow Task", filters={
+            "workflow_instance": request["workflow_instance"], "status": "Open"}, pluck="assigned_to")
+
+    def test_the_owner_gets_no_task_when_other_approvers_exist(self):
+        request = self._request([EMPLOYEE_USER, APPROVER_USER])
+        self.assertEqual(self._assignees(request), [APPROVER_USER])
+
+    def test_the_owner_alone_escalates_to_the_fallback_role(self):
+        request = self._request([EMPLOYEE_USER], ["Accounts User"])
+        assignees = self._assignees(request)
+        self.assertIn(ACCOUNTANT_USER, assignees)
+        self.assertNotIn(EMPLOYEE_USER, assignees)
+
+    def test_the_owner_alone_without_a_fallback_keeps_the_task_and_leaves_a_note(self):
+        request = self._request([EMPLOYEE_USER])
+        self.assertEqual(self._assignees(request), [EMPLOYEE_USER])
+        notes = frappe.get_all("ASOUD Workflow Activity", filters={
+            "workflow_instance": request["workflow_instance"], "action": "Note"}, pluck="comment")
+        self.assertEqual(notes, ["تأییدکننده‌ای غیر از درخواست‌دهنده برای این مرحله تعریف نشده است."])
+        task = open_task(request["workflow_instance"], EMPLOYEE_USER)
+        frappe.set_user(EMPLOYEE_USER)
+        with self.assertRaisesRegex(frappe.PermissionError, "تأیید درخواست خودتان مجاز نیست"):
+            workflow_runtime.complete_workflow_task(task.name, "Approve")
