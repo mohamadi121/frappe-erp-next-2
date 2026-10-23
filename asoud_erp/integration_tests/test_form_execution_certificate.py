@@ -247,6 +247,39 @@ class TestCertificateDownload(CertificateCase):
             self.assertRegex(data['number'], r'CERT-\d{4}-\d{5}')
             self.assertTrue(data['content_base64'].startswith('JVBERi'))
 
+    def manager_without_employee(self, role, company):
+        """A manager account with no Employee record, limited to one company like a real multi-company site."""
+        email = f'{role.split()[0].lower()}-noemp-{frappe.generate_hash(length=8)}@example.test'
+        user = frappe.get_doc({'doctype': 'User', 'email': email, 'first_name': 'مدیر بدون پرونده',
+                               'send_welcome_email': 0, 'roles': [{'role': role}]}).insert().name
+        # The Employee role gives Company read (as on a real site); the site drops it from User.roles on save.
+        frappe.get_doc({'doctype': 'Has Role', 'parent': user, 'parenttype': 'User', 'parentfield': 'roles',
+                        'role': 'Employee'}).insert(ignore_permissions=True)
+        frappe.permissions.add_user_permission('Company', company, user, ignore_permissions=True)
+        frappe.clear_cache(user=user)
+        self.assertFalse(frappe.db.exists('Employee', {'user_id': user}))
+        return user
+
+    def test_hr_manager_without_employee_record_downloads_only_for_their_company(self):
+        foreign = frappe.get_doc({'doctype': 'Company', 'company_name': 'C' + frappe.generate_hash(length=6),
+                                  'abbr': frappe.generate_hash(length=5).upper(), 'default_currency': 'USD',
+                                  'country': 'United States'}).insert().name
+        own_hr = self.manager_without_employee('HR Manager', self.company)
+        foreign_hr = self.manager_without_employee('HR Manager', foreign)
+        data = self.as_user(own_hr, workflow_request.get_certificate, self.name)['data']
+        self.assertTrue(data['content_base64'].startswith('JVBERi'))
+        self.assertTrue(frappe.has_permission('File', 'read', doc=self.file, user=own_hr))
+        self.assertIsNotNone(self.as_user(own_hr, workflow_request.get_request, self.name)['data']['certificate'])
+        for call in (workflow_request.get_certificate, workflow_request.get_attachment):
+            with self.assertRaises(frappe.PermissionError):
+                self.as_user(foreign_hr, call, self.name if call is workflow_request.get_certificate else self.file)
+        self.assertFalse(frappe.has_permission('File', 'read', doc=self.file, user=foreign_hr))
+
+    def test_system_manager_without_employee_record_downloads_in_their_company(self):
+        manager = self.manager_without_employee('System Manager', self.company)
+        data = self.as_user(manager, workflow_request.get_certificate, self.name)['data']
+        self.assertRegex(data['number'], r'CERT-\d{4}-\d{5}')
+
     def test_other_users_get_a_persian_permission_error(self):
         for user in (self.other, self.stranger, self.approver):
             with self.assertRaises(frappe.PermissionError):

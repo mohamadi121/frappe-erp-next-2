@@ -8,6 +8,8 @@ const PASSWORD = 'E2e-Pw-Cert-2026';
 const FOREIGN_EMPLOYEE = 'e2e.cert.foreign@example.com';
 const FOREIGN_HR = 'e2e.cert.foreignhr@example.com';
 const NO_EMPLOYEE = 'e2e.cert.noemployee@example.com';
+const HR_NO_RECORD = 'e2e.cert.hrnorecord@example.com';
+const FOREIGN_HR_NO_RECORD = 'e2e.cert.foreignhrnorecord@example.com';
 
 function fixture<T>(action: string, options = {}): T {
   const output = execFileSync(PYTHON, [`${__dirname}/certificate_fixture.py`, action, JSON.stringify(options)], {
@@ -82,7 +84,7 @@ for (const user of ['outsider', 'approver', 'accountant'] as const) {
 }
 
 test('other company users and a user without Employee are refused', async ({ baseURL }) => {
-  for (const email of [FOREIGN_EMPLOYEE, FOREIGN_HR, NO_EMPLOYEE]) {
+  for (const email of [FOREIGN_EMPLOYEE, FOREIGN_HR, NO_EMPLOYEE, FOREIGN_HR_NO_RECORD]) {
     const context = await request.newContext({ baseURL });
     try {
       const session = await ApiSession.login(context, email, PASSWORD);
@@ -102,4 +104,18 @@ test('anonymous session is refused and a request without certificate says so', a
   const employee = await api.login('employee');
   const missing = await employee.get(requests + 'get_certificate', { name: `${requestName}-none` });
   expect(missing.status).toBeGreaterThanOrEqual(400);
+});
+
+test('an HR Manager without an Employee record downloads for their own company', async ({ baseURL }) => {
+  const context = await request.newContext({ baseURL });
+  try {
+    const session = await ApiSession.login(context, HR_NO_RECORD, PASSWORD);
+    const data = await session.read<Certificate>(requests + 'get_certificate', { name: requestName });
+    expect(data.number).toMatch(/^CERT-\d{4}-\d{5}$/);
+    expect(Buffer.from(data.content_base64, 'base64').subarray(0, 5).toString()).toBe('%PDF-');
+    const detail = await session.read<{ certificate: { number: string } | null }>(requests + 'get_request', { name: requestName });
+    expect(detail.certificate?.number).toBe(data.number);
+  } finally {
+    await context.dispose();
+  }
 });

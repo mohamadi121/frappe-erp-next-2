@@ -9,9 +9,11 @@ PASSWORD = 'E2e-Pw-Cert-2026'
 FOREIGN_EMPLOYEE = 'e2e.cert.foreign@example.com'
 FOREIGN_HR = 'e2e.cert.foreignhr@example.com'
 NO_EMPLOYEE = 'e2e.cert.noemployee@example.com'
+HR_NO_RECORD = 'e2e.cert.hrnorecord@example.com'
+FOREIGN_HR_NO_RECORD = 'e2e.cert.foreignhrnorecord@example.com'
 
 
-def make_user(email, roles, company=None):
+def make_user(email, roles, company=None, employee=True):
     import frappe
     from frappe.utils.password import update_password
 
@@ -19,11 +21,16 @@ def make_user(email, roles, company=None):
         frappe.get_doc({'doctype': 'User', 'email': email, 'first_name': 'E2E Cert', 'send_welcome_email': 0,
                         'roles': [{'role': role} for role in roles]}).insert(ignore_permissions=True)
     update_password(email, PASSWORD)
-    if company:
+    if not employee:
+        # HR manager account with no Employee record; the Employee role gives Company read.
+        frappe.get_doc({'doctype': 'Has Role', 'parent': email, 'parenttype': 'User', 'parentfield': 'roles',
+                        'role': 'Employee'}).insert(ignore_permissions=True)
+    if company and employee:
         frappe.get_doc({'doctype': 'Employee', 'first_name': 'E2E Cert', 'gender': 'Male',
                         'date_of_birth': '1990-01-01', 'date_of_joining': '2020-01-01', 'company': company,
                         'status': 'Active', 'user_id': email, 'create_user_permission': 0}).insert(
             ignore_permissions=True)
+    if company:
         frappe.get_doc({'doctype': 'User Permission', 'user': email, 'allow': 'Company', 'for_value': company,
                         'apply_to_all_doctypes': 1}).insert(ignore_permissions=True)
     frappe.clear_cache(user=email)
@@ -48,6 +55,8 @@ def prepare():
     make_user(FOREIGN_HR, ['HR Manager'], second)
     frappe.get_doc('User', FOREIGN_HR).add_roles('Employee')
     make_user(NO_EMPLOYEE, ['Employee'])
+    make_user(HR_NO_RECORD, ['HR Manager'], own, employee=False)
+    make_user(FOREIGN_HR_NO_RECORD, ['HR Manager'], second, employee=False)
     definition, _ = make_definition(own, token='E2E-cert-' + uuid4().hex[:8], fields=[])
     schema = {'kind': 'Request', 'title': 'E2E گواهی اشتغال', 'workflow': definition,
               'execution': {'kind': 'certificate_issue'}, 'sections': [{'id': 'main', 'title': 'اصلی', 'fields': [
@@ -86,7 +95,7 @@ def cleanup(form, definition, head, previous_head, company):
     frappe.db.delete('ASOUD Workflow Definition', {'name': definition})
     frappe.db.set_value('Company', company, 'default_letter_head', previous_head)
     frappe.db.delete('Letter Head', {'name': head})
-    for email in (FOREIGN_EMPLOYEE, FOREIGN_HR, NO_EMPLOYEE):
+    for email in (FOREIGN_EMPLOYEE, FOREIGN_HR, NO_EMPLOYEE, HR_NO_RECORD, FOREIGN_HR_NO_RECORD):
         frappe.db.delete('User Permission', {'user': email})
         frappe.db.delete('Employee', {'user_id': email})
         frappe.db.delete('Has Role', {'parent': email})
