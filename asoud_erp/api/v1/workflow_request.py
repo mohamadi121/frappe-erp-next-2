@@ -434,14 +434,23 @@ def _detail(doc) -> dict:
 
 
 def _execution(doc, instance_status, privileged) -> dict:
+    from asoud_erp.services import request_void as void_rules
+    from asoud_erp.services import request_void_actions as void_actions
+
     created = doc.native_status == "Created" and doc.native_doctype and doc.native_name
     row = frappe.db.get_value(doc.native_doctype, doc.native_name, ["creation", "owner"],
                               as_dict=True) if created else None
-    return request_execution.build_execution(
+    block = request_execution.build_execution(
         instance_status, doc.native_status, has_execution=bool(templates.get(doc.template_key)),
         error=doc.native_error, privileged=privileged, reference=doc.native_name,
         executed_on=str(row.creation) if row else "",
         executed_by_name=get_fullname(row.owner) if row and row.owner != "Administrator" else "")
+    hr = "HR Manager" in frappe.get_roles()
+    block["can_void"] = hr and void_rules.can_void(instance_status, doc.native_status, doc.native_name)
+    block["can_reissue"] = hr and void_rules.can_reissue(doc.native_status, doc.template_key)
+    if doc.native_status == void_rules.VOIDED:
+        block["void"] = void_actions.last_void(doc.workflow_instance, privileged)
+    return block
 
 
 def _readable_request(name):
@@ -990,5 +999,31 @@ def create_native_document(name: str):
     if status != "Completed" or doc.native_status != "Failed":
         templates.throw_error("NATIVE_NOT_RETRYABLE")
     dispatch(doc)
+    doc.reload()
+    return success(_detail(doc))
+
+
+@frappe.whitelist(methods=["POST"])
+def void_native_document(name: str, reason: str = ""):
+    """HR Manager voids the executed native document (cancel, never delete) with a reason."""
+    from asoud_erp.services import request_void_actions as void_actions
+
+    require_roles(("HR Manager",))
+    doc = frappe.get_doc(REQUEST_DOCTYPE, name, for_update=True)
+    require_company(doc.company)
+    void_actions.void(doc, reason)
+    doc.reload()
+    return success(_detail(doc))
+
+
+@frappe.whitelist(methods=["POST"])
+def reissue_native_document(name: str):
+    """HR Manager runs the executor again after a void; a repeat creates nothing."""
+    from asoud_erp.services import request_void_actions as void_actions
+
+    require_roles(("HR Manager",))
+    doc = frappe.get_doc(REQUEST_DOCTYPE, name, for_update=True)
+    require_company(doc.company)
+    void_actions.reissue(doc)
     doc.reload()
     return success(_detail(doc))

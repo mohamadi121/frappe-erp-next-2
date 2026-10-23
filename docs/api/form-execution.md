@@ -322,7 +322,7 @@ shows «سند ابطال شد». Side effects of the executor outside the docum
 Errors (Persian, HTTP 417 unless stated): «دلیل ابطال سند را بنویسید.» (`VOID_REASON_REQUIRED`),
 «دلیل ابطال حداکثر ۵۰۰ نویسه است.», «برای این درخواست سند اجراشده‌ای وجود ندارد که ابطال شود.»
 (`NATIVE_NOT_VOIDABLE`; includes an already voided request), «ابطال این نوع سند از این مسیر ممکن نیست.»,
-«ابطال سند انجام نشد؛ اسناد وابسته به آن را بررسی کنید.» (ERPNext refused the cancel, nothing changed).
+«ابطال سند انجام نشد؛ اسناد وابسته به آن را بررسی کنید.» (`NATIVE_VOID_FAILED`; ERPNext refused the cancel, nothing changed).
 
 ### `reissue_native_document(name)`
 
@@ -334,5 +334,9 @@ runs the same dispatcher as the approval, so the executor creates a **fresh** do
 Idempotent: a repeat when the latest of Voided/Reissued is `Reissued` and the status is `Created`
 returns the current detail and creates nothing. Other states give «صدور مجدد فقط پس از ابطال سند ممکن است.»
 (`NATIVE_NOT_REISSUABLE`); a template request gives «صدور مجدد برای این نوع درخواست ممکن نیست.».
-If the old document is a draft that HR left in place, executors with their own duplicate rule
-(`exit`: an open settlement exists) fail with that rule's Persian reason until HR handles the draft.
+If the old document is still there (a draft, a checkin or a training participant row, which are never
+deleted), executors whose native validation sees it fail with that rule's Persian reason until HR
+handles the old document: `exit` (open settlement), `attendance_correction` (the same punch exists),
+`shift_request` (overlap), `training_enrollment` (already a participant). `employee_advance` and
+`asset_movement` (and any kind whose old document was cancelled) create a fresh document.
+The failed result keeps the old link in the history and is retryable with `create_native_document`.

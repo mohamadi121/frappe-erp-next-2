@@ -38,6 +38,10 @@ ERROR_MESSAGES = {
     "ATTACHMENT_INVALID": "پیوست نامعتبر است.",
     "EMPTY_COMMENT": "متن نظر نمی‌تواند خالی باشد.",
     "NATIVE_NOT_RETRYABLE": "ایجاد سند برای این درخواست قابل تکرار نیست.",
+    "VOID_REASON_REQUIRED": "دلیل ابطال سند را بنویسید.",
+    "NATIVE_NOT_VOIDABLE": "برای این درخواست سند اجراشده‌ای وجود ندارد که ابطال شود.",
+    "NATIVE_VOID_FAILED": "ابطال سند انجام نشد؛ اسناد وابسته به آن را بررسی کنید.",
+    "NATIVE_NOT_REISSUABLE": "صدور مجدد فقط پس از ابطال سند ممکن است.",
     "DEFAULT_WAREHOUSE_REQUIRED": "برای درخواست خرید کالای انباری، انبار پیش‌فرض شرکت باید در تنظیمات انبار تعیین شود.",
 }
 # The leave rule codes have one text, the one `preview_leave_request` and `create_request` show

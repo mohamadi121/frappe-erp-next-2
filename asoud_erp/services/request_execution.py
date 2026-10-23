@@ -18,9 +18,10 @@ LABELS = {
     "failed": "اجرا ناموفق بود؛ درخواست تأیید شده است",
     "needs_review": "نیازمند بررسی",
     "not_connected": "اجرای خودکار برای این نوع درخواست متصل نیست",
+    "voided": "سند ابطال شد",
 }
 _NATIVE_STATES = {"Pending": "pending", "Created": "succeeded", "Failed": "failed", "Skipped": "not_connected",
-                  "Needs Review": "needs_review"}
+                  "Needs Review": "needs_review", "Voided": "voided"}
 _CLOSED_WITHOUT_APPROVAL = ("Rejected", "Cancelled")
 
 

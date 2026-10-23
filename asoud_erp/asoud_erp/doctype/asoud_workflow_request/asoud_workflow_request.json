@@ -175,7 +175,7 @@
       "fieldname": "native_status",
       "label": "Native Document Status",
       "fieldtype": "Select",
-      "options": "\nPending\nCreated\nSkipped\nFailed\nNeeds Review",
+      "options": "\nPending\nCreated\nSkipped\nFailed\nNeeds Review\nVoided",
       "read_only": 1
     },
     {
