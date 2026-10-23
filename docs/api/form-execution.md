@@ -363,6 +363,112 @@ event in which the requester is already a participant. Validation errors raised 
 the event (for example an invalid period) give «ثبت‌نام در دوره آموزشی انجام نشد؛ اطلاعات دوره را بررسی کنید.».
 No migration or configuration.
 
+## Leave, mission and overtime (`leave_application`, `mission`, `overtime`)
+
+Owner decisions of 1405/08/01 (`lmo-spec.md` section 8) are binding: leave and mission are
+**submitted automatically** after final approval (all or nothing, one savepoint owned by the
+dispatcher), daily and half-day only, overtime ends as **Needs Review**, leave descriptions and
+mission notes are confidential (owner and HR), nobody files for somebody else. The three
+executors are internal (no endpoint); they appear in `forms.execution_kinds`. The presets of the
+app carry **no** `execution`/`execution_key`; the administrator maps them in the editor. For every
+kind the requester is the active Employee of `request.owner` in `request.company`; with none the
+result is Failed «پرونده پرسنلی درخواست‌دهنده ثبت نشده است.» and with an inactive one «پرونده پرسنلی درخواست‌دهنده فعال نیست.».
+The Employee row is locked (`for update`) so two approvals for one person serialise.
+
+Confidential text parameters (`description`, `notes`) are replaced by the pointer
+«محرمانه؛ جزئیات در درخواست <شماره> است.» by the framework before they reach a native document.
+
+### Companion keys of Time fields
+
+A Time field with `next_day_allowed` stores `<key>__next_day` next to its value. `collect_parameters`
+now also hands it to the executor as `<execution_key>__next_day` (the executor reads
+`start_time__next_day` / `end_time__next_day`; `attendance_correction` reads `in_time__next_day` /
+`out_time__next_day`). Before this change the companion was dropped and a next-day punch landed on the wrong day.
+
+### Leave (`leave_application`, «درخواست مرخصی»)
+
+| Parameter | Allowed field types | Required | Native mapping |
+| --- | --- | --- | --- |
+| `leave_type` | Link (source `Leave Type`) | yes | `Leave Application.leave_type` |
+| `from_date`, `to_date` | Date | yes | `from_date`, `to_date`; end >= start |
+| `half_day` | Boolean, Checkbox | no | `half_day`; empty is 0 |
+| `half_day_date` | Date | when `half_day` and the range has more than one day | `half_day_date`; one-day range uses that day; full day is `None` |
+| `description` | Text, LongText | no | `description`, at most 2000 characters |
+
+Native values: `employee`/`company` from the request, `posting_date` = today, `leave_approver` =
+HRMS `get_leave_approver(employee)` (Employee.leave_approver, else the first Department
+leave approver), `status = Approved`, then insert and **submit** as Administrator (HRMS
+`validate` and `on_submit` run in full: overlap, block days, maximum days, attendance, ledger).
+The submit makes the Leave Ledger Entry and the `On Leave`/`Half Day` Attendance rows. The
+approval user is never invented: when HR Settings makes the approver mandatory and none exists the
+result is Failed «تأییدکننده مرخصی برای این پرسنل تنظیم نشده است.».
+
+Balance: before writing, `hrms...leave_application.get_leave_details(employee, from_date)` is read
+(as Administrator) and `leave_allocation[leave_type].remaining_leaves` is compared with
+`get_number_of_leave_days(...)`. Leave Types that are LWP or `allow_negative` skip the comparison
+(HRMS decides). HRMS validation runs again at insert, so a balance that fell between request and
+approval fails the execution. The user supplied duration is never used.
+
+Failed results (Persian, the approval is kept, retry through `create_native_document`):
+
+| Cause | Message |
+| --- | --- |
+| end before start | «تاریخ پایان نباید پیش از تاریخ شروع باشد.» |
+| half day outside the range / missing | «تاریخ نیم‌روز باید در بازه درخواست باشد.» / «تاریخ نیم‌روز را مشخص کنید.» |
+| unknown Leave Type | «نوع مرخصی انتخاب‌شده وجود ندارد.» |
+| no allocation on the start date | «برای این نوع مرخصی در تاریخ شروع تخصیص معتبر ثبت نشده است.» |
+| remaining balance below the days | «مانده قابل مصرف برای این مرخصی کافی نیست.» (also for HRMS `InsufficientLeaveBalanceError`) |
+| only holidays requested | «روزهای درخواستی تعطیل است و نیازی به مرخصی نیست.» |
+| overlapping leave | «برای این بازه مرخصی هم‌پوشان ثبت شده است.» |
+| attendance already present, block date, maximum days, salary processed, any other HRMS refusal | «ثبت مرخصی انجام نشد؛ حضور ثبت‌شده، روزهای مسدود و محدودیت‌های مرخصی را بررسی کنید.» |
+
+Nothing remains after a failure (the dispatcher rolls back the savepoint, so no Leave Application,
+Ledger Entry or Attendance is left). No `asoud_request` is stored on the document, so a voided
+leave can be re-issued (that field is unique); the dispatcher never repeats a `Created` result.
+A Comment with the request number is added to the Leave Application.
+
+### Mission (`mission`, «درخواست مأموریت»)
+
+| Parameter | Allowed field types | Required | Native mapping |
+| --- | --- | --- | --- |
+| `from_date`, `to_date` | Date | yes | `Attendance Request.from_date/to_date` |
+| `half_day` | Boolean, Checkbox | no | `half_day`; empty is 0 |
+| `half_day_date` | Date | when `half_day` over more than one day | `half_day_date`; one day uses the start |
+| `shift` | Link (source `Shift Type`) | no | `shift` |
+| `destination` | Text | yes | `explanation` line «مقصد: …» (max 250) |
+| `purpose` | Text, LongText | yes | `explanation` line «هدف: …» (max 2000) |
+| `notes` | Text, LongText | no | `explanation` line «توضیحات: …» (max 2000) |
+
+`reason = On Duty` and `include_holidays = 0` are fixed by the server (decision 3: holidays are not
+selectable). Attendance Request has no destination field, so the three texts form the
+`explanation`. `shift`, when given, must be an active Shift Assignment of the person that covers
+the whole range (open ended assignments count) or the Employee default shift: «شیفت انتخاب‌شده برای این پرسنل در بازه مأموریت مجاز نیست.».
+
+Before any write the range is checked. The request is created with `include_holidays = 0`, so a
+holiday inside the range is simply skipped by HRMS (a week over a weekend gets Attendance on the
+working days only). The result is **Needs Review** (nothing written; the requester and HR are
+notified) only when the first or last day is itself a holiday of the employee, or a **working** day
+already has a non-cancelled Attendance or a leave (Open or Approved), or the range overlaps another
+Attendance Request (HRMS refuses that): «نیاز به اقدام HR؛ بازه مأموریت با تعطیلی، مرخصی یا حضور ثبت‌شده تعارض دارد (<تاریخ‌های شمسی>).».
+An existing Attendance is never overwritten. Otherwise the Attendance Request is inserted and
+**submitted** (HRMS creates one `Present`/`Half Day` Attendance per day, linked by
+`attendance_request`); if the number of created Attendance rows differs from the number of working days the
+execution fails and rolls back («ثبت حضور مأموریت کامل نشد؛ بازه و شیفت را بررسی کنید.»), so a partial
+result is never kept. Other HRMS refusals (for example several shifts without a choice) give
+«ثبت مأموریت انجام نشد؛ بازه، شیفت و حضور ثبت‌شده را بررسی کنید.». Messages for input errors:
+«مقصد و هدف مأموریت را وارد کنید.», «تاریخ پایان نباید پیش از تاریخ شروع باشد.», «تاریخ نیم‌روز باید در بازه درخواست باشد.».
+No Expense Claim, payment or Checkin is created.
+
+### Overtime (`overtime`, «درخواست اضافه‌کار»)
+
+HRMS v15 has no overtime document, so nothing native is created. Parameters: `work_date` (Date,
+required), `start_time` and `end_time` (Time, required; `__next_day` companions), `purpose` (Text,
+LongText, required, never copied), `notes` (optional, never copied). The result is always
+**Needs Review** (requester and HR notified): «نیاز به اقدام HR؛ اضافه‌کار تأییدشده در تاریخ <شمسی> از ساعت <شروع> تا ساعت <پایان> [روز بعد] به مدت <h> ساعت و <m> دقیقه است؛ ثبت کارکرد و محاسبه مالی باید توسط منابع انسانی انجام شود.».
+The date/time values are the ones a stage form last wrote (the approved ones), so HR sees the
+approved period. Errors: «ساعت پایان باید پس از ساعت شروع باشد.», «مدت اضافه‌کار باید بیش از صفر و حداکثر ۲۴ ساعت باشد.», «تاریخ اضافه‌کار معتبر نیست.».
+No ceiling, step, rate or overlap policy exists in this phase (decision 5); HR handles them manually.
+
 ## Void and reissue (decision N6)
 
 Both endpoints are in `api/v1/workflow_request.py` (thin; the rules are in `services/request_void.py`),

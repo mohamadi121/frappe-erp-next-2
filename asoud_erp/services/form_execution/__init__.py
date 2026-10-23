@@ -33,13 +33,16 @@ from . import (  # noqa: E402
     attendance_correction,
     certificate_issue,
     employee_advance,
+    leave_application,
+    mission,
+    overtime,
     shift_request,
     training_enrollment,
 )
 from . import exit as exit_settlement  # noqa: E402
 
 for _module in (employee_advance, attendance_correction, asset_movement, shift_request, exit_settlement,
-                training_enrollment, certificate_issue):
+                training_enrollment, certificate_issue, leave_application, mission, overtime):
     EXECUTORS[_module.KIND] = _module
 
 __all__ = ['EXECUTORS', 'Executor', 'Result']

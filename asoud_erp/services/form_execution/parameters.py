@@ -17,6 +17,11 @@ def _mapped(fields: list[dict], values: dict, request_name=None, text_keys=None)
                 and isinstance(value, str) and value.strip()):
             value = CONFIDENTIAL_POINTER.format(request=request_name or '')
         result[key] = value
+        if field.get('type') == 'Time':
+            # A new time always replaces its day marker too; a field without the toggle means same day.
+            companion = f"{field['key']}__next_day"
+            result[f'{key}__next_day'] = (
+                values[companion] if field.get('next_day_allowed') is True and companion in values else False)
     return result
 
 

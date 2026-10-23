@@ -11,8 +11,8 @@ TYPES = {"Text", "LongText", "Integer", "Decimal", "Money", "Date", "Time", "Dat
          "Select", "MultiSelect", "Boolean", "Checkbox", "Link", "Table", "Formula", "Display", "Rating",
          "File", "Image", "Signature", "Barcode", "Schedule"}
 SOURCES = {"Employee", "Customer", "Supplier", "Item", "Warehouse", "Account", "Cost Center",
-           "Project", "Department", "Attendance", "Shift Type", "Training Event", "Asset"}
-SCOPED_SOURCES = {"Attendance", "Shift Type", "Training Event", "Asset"}
+           "Project", "Department", "Attendance", "Shift Type", "Leave Type", "Training Event", "Asset"}
+SCOPED_SOURCES = {"Attendance", "Shift Type", "Leave Type", "Training Event", "Asset"}
 FETCH_ATTRIBUTES = {
     "Attendance": ("in_time", "out_time", "attendance_date", "status", "shift"),
     "Shift Type": ("start_time", "end_time"),
@@ -45,6 +45,9 @@ def scope_filters(source, company, employee):
         return {'company': company, 'employee': employee, 'docstatus': 1}
     if source == 'Shift Type':
         return {}
+    if source == 'Leave Type':
+        # Optional-holiday leave needs the optional holiday list; it is not requested through a form.
+        return {'is_optional_leave': 0}
     if source == 'Training Event':
         from frappe.utils import now_datetime
         return {'company': company, 'event_status': 'Scheduled', 'docstatus': ['<', 2],
@@ -268,6 +271,20 @@ def validate_schema(raw):
                                                       or not 1 <= len(field['after_or_equal_message']) <= 500
                                                       or not field.get('after_or_equal')):
                 fail('پیام وابستگی تاریخ معتبر نیست.')
+            if 'before_or_equal' in field and (kind != 'Date' or not isinstance(field['before_or_equal'], str)
+                                               or not field['before_or_equal']):
+                fail('وابستگی تاریخ معتبر نیست.')
+            if 'before_or_equal_message' in field and (not isinstance(field['before_or_equal_message'], str)
+                                                       or not 1 <= len(field['before_or_equal_message']) <= 500
+                                                       or not field.get('before_or_equal')):
+                fail('پیام وابستگی تاریخ معتبر نیست.')
+            if 'time_after' in field and (kind != 'Time' or not isinstance(field['time_after'], str)
+                                          or not field['time_after']):
+                fail('وابستگی ساعت معتبر نیست.')
+            if 'time_after_message' in field and (not isinstance(field['time_after_message'], str)
+                                                  or not 1 <= len(field['time_after_message']) <= 500
+                                                  or not field.get('time_after')):
+                fail('پیام وابستگی ساعت معتبر نیست.')
             for low, high in (("min", "max"), ("min_length", "max_length"), ("min_rows", "max_rows")):
                 if field.get(low) is not None and field.get(high) is not None and number(field[low]) > number(field[high]):
                     fail("حداقل نباید از حداکثر بیشتر باشد.")
@@ -360,10 +377,16 @@ def validate_schema(raw):
                 fail("فیلد تاریخ برنامه شیفت معتبر نیست.")
     graph = {key: set() for key in keys}
     for field in all_fields:
-        if field.get('after_or_equal'):
-            dependency = field['after_or_equal']
-            if dependency == field['key'] or by_key.get(dependency, {}).get('type') != 'Date':
-                fail('فیلد تاریخ وابسته معتبر نیست.')
+        for bound in ('after_or_equal', 'before_or_equal'):
+            if field.get(bound):
+                dependency = field[bound]
+                if dependency == field['key'] or by_key.get(dependency, {}).get('type') != 'Date':
+                    fail('فیلد تاریخ وابسته معتبر نیست.')
+                graph[field['key']].add(dependency)
+        if field.get('time_after'):
+            dependency = field['time_after']
+            if dependency == field['key'] or by_key.get(dependency, {}).get('type') != 'Time':
+                fail('فیلد ساعت وابسته معتبر نیست.')
             graph[field['key']].add(dependency)
         if field.get('link_filter'):
             dependency = field['link_filter'].get('value_field')
@@ -962,11 +985,26 @@ def validate_values(schema, raw, company, _file_budget=None):
         if equal:
             fail(field.get('not_equal_message') or 'مقدار جدید نباید با مقدار فعلی یکسان باشد.')
     for field in definitions:
+        dependency = field.get('time_after')
+        if not dependency or not values.get(field['key']) or not values.get(dependency):
+            continue
+        # (next day, time) pairs: no datetime is built from a date the form may not have.
+        mine = (int(bool(values.get(f"{field['key']}__next_day"))), time.fromisoformat(values[field['key']]))
+        theirs = (int(bool(values.get(f'{dependency}__next_day'))), time.fromisoformat(values[dependency]))
+        if mine <= theirs:
+            fail(field.get('time_after_message') or 'ساعت باید پس از ساعت مرجع باشد.')
+    for field in definitions:
         dependency = field.get('after_or_equal')
-        if not dependency or field['key'] not in values or dependency not in values:
+        if not dependency or not values.get(field['key']) or not values.get(dependency):
             continue
         if date.fromisoformat(values[field['key']]) < date.fromisoformat(values[dependency]):
             fail(field.get('after_or_equal_message') or 'تاریخ پایان نباید قبل از تاریخ شروع باشد.')
+    for field in definitions:
+        dependency = field.get('before_or_equal')
+        if not dependency or not values.get(field['key']) or not values.get(dependency):
+            continue
+        if date.fromisoformat(values[field['key']]) > date.fromisoformat(values[dependency]):
+            fail(field.get('before_or_equal_message') or 'تاریخ نباید بعد از تاریخ پایان باشد.')
     for field in definitions:
         if field.get('compare'):
             values.pop(field['key'], None)

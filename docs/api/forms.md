@@ -46,6 +46,20 @@ cycle. When both visible values are supplied, submission rejects an end date bef
 referenced date with `after_or_equal_message`, or the default message
 `تاریخ پایان نباید قبل از تاریخ شروع باشد.`.
 
+A `Date` field may also set `before_or_equal` (key of another Date field, same rules as
+`after_or_equal`; it joins the same acyclic dependency graph) with an optional
+`before_or_equal_message`. When both visible values are supplied, submission rejects a date
+after the referenced one with that message, or the default `تاریخ نباید بعد از تاریخ پایان باشد.`.
+Together the two keys express «inside the range» (for example the half-day date of a leave).
+A missing (`null` or empty) value on either side is never compared.
+
+A `Time` field may set `time_after` to the key of another Time field (not itself, no cycle) with an
+optional `time_after_message`. When both visible values are supplied, submission requires the
+field to be strictly later than the referenced one. The comparison uses the pairs
+`(<key>__next_day, time)`, so `22:00` followed by `01:00` with `end_time__next_day = true` is valid
+and `17:00` followed by `08:00` without the marker is rejected with the message, or the default
+`ساعت باید پس از ساعت مرجع باشد.`. A missing value on either side is not compared.
+
 Visible `Table` fields enforce both `required` and `min_rows` during submission. A
 missing required row or too-short table is rejected as `حداقل N ردیف لازم است.`.
 
@@ -89,7 +103,7 @@ dates and links are still passed so the document stays valid. Mark only free tex
 ## Record sources and derived fields
 
 `get_link_options(company, source, query, form, filter_field, filter_value, exclude_self=0)`
-returns `{name, label}` rows. Sources `Attendance`, `Shift Type`, `Training Event` and `Asset`
+returns `{name, label}` rows. Sources `Attendance`, `Shift Type`, `Leave Type`, `Training Event` and `Asset`
 are scoped to the signed-in user and enforced again by `submit_form`
 (`«رکورد انتخاب‌شده در محدوده مجاز شما نیست.»`):
 
@@ -97,11 +111,12 @@ are scoped to the signed-in user and enforced again by `submit_form`
 |---|---|
 | `Attendance` | submitted records of the user's active Employee in the company; `link_filter {field: 'attendance_date', value_field}` allowed |
 | `Shift Type` | all Shift Types (v15 has no `disabled` field) |
+| `Leave Type` | Leave Types that are not optional-holiday leave (`is_optional_leave = 0`); HRMS Leave Type has no company and no `disabled` field. Whether the person has a usable allocation is decided by the leave execution, not by the list |
 | `Training Event` | company events with `event_status = Scheduled`, `start_time >= now`, not cancelled |
 | `Asset` | submitted company Assets whose `custodian` is the user's Employee |
 
 Without an active Employee, `Attendance` and `Asset` return `[]` with `meta.reason = 'no_employee'`
-(submission fails with `«پرونده پرسنلی شما ثبت نشده است.»`). These four sources are read with the
+(submission fails with `«پرونده پرسنلی شما ثبت نشده است.»`). These five sources are read with the
 scope filter as the only authorization (Employees have no native read permission on Training Event
 and Asset). Labels are Persian with Jalali dates and Persian digits:
 Attendance `«۱۴۰۵/۰۷/۲۸ · حاضر · ورود ۰۸:۰۱ · خروج ۱۶:۳۰»` (statuses حاضر, غایب, مرخصی, نیم‌روز,
