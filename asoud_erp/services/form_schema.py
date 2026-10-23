@@ -437,6 +437,12 @@ def validate_schema(raw):
         fail('حداقل یک نقش یا واحد متناسب با روش دسترسی انتخاب کنید.')
     if mode == 'or' and not access.get('roles') and not access.get('departments'):
         fail('حداقل یک نقش یا واحد انتخاب کنید.')
+    from asoud_erp.services.form_execution.schema import validate_execution
+
+    try:
+        validate_execution(schema)
+    except ValueError as error:
+        fail(str(error))
     return schema
 
 

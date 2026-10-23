@@ -785,3 +785,9 @@ def test_not_equal_time_compares_next_day_without_attendance_date(schema):
     assert values["proposed"] == "08:00"
     with pytest.raises(ValueError, match="یکسان"):
         schema.validate_values(validated, {"current": "08:00", "proposed": "08:00"}, "ACME")
+
+def test_execution_unknown_kind_is_rejected_by_form_validation(schema):
+    payload = valid_schema()
+    payload['execution'] = {'kind': 'unregistered'}
+    with pytest.raises(ValueError, match='نوع اجرا'):
+        schema.validate_schema(payload)
