@@ -374,8 +374,9 @@ def employee_schedule(company, from_date, to_date, employee=None):
     target = employee or own_employee
     if not target:
         fail('پرونده پرسنلی شما ثبت نشده است.')
-    employee_doc = frappe.get_doc('Employee', target)
-    if employee_doc.company != company or employee_doc.status != 'Active':
+    employee_doc = frappe.db.get_value('Employee', target, ['company', 'status', 'default_shift', 'holiday_list'],
+                                       as_dict=True)
+    if not employee_doc or employee_doc.company != company or employee_doc.status != 'Active':
         fail('پرسنل انتخاب‌شده در این دفتر فعال نیست.')
     try:
         start, end, days = parse_range(from_date, to_date)
@@ -383,7 +384,8 @@ def employee_schedule(company, from_date, to_date, employee=None):
         fail(str(error))
     rows = frappe.get_all(
         'Shift Assignment',
-        filters={'employee': target, 'docstatus': 1, 'start_date': ['<=', end], 'end_date': ['>=', start]},
+        filters={'employee': target, 'docstatus': 1, 'status': 'Active', 'start_date': ['<=', end]},
+        or_filters=[['end_date', '>=', start], ['end_date', 'is', 'not set']],
         fields=['name', 'shift_type', 'start_date', 'end_date'],
         order_by='start_date asc, creation asc',
         limit_page_length=200,
@@ -406,6 +408,7 @@ def employee_schedule(company, from_date, to_date, employee=None):
 
 def _validate_shift_request(schema, values, company):
     """Recheck day-by-day shift proposals immediately before request creation."""
+    from asoud_erp.services.employee_schedule import covers
     schedule_fields = [field for field in fields(schema) if field['type'] == 'Schedule']
     if not schedule_fields:
         return
@@ -421,7 +424,9 @@ def _validate_shift_request(schema, values, company):
     proposed = []
     for table, date_column, shift_column in tables:
         for row in values.get(table['key'], []):
-            proposed.append((row[date_column['key']], row[shift_column['key']]))
+            day_value, shift_value = row.get(date_column['key']), row.get(shift_column['key'])
+            if day_value and shift_value:
+                proposed.append((day_value, shift_value))
     if not proposed:
         return
     employee = current_employee(company)
@@ -430,15 +435,15 @@ def _validate_shift_request(schema, values, company):
     dates = [date.fromisoformat(value[0]) for value in proposed]
     rows = frappe.get_all(
         'Shift Assignment',
-        filters={'employee': employee, 'docstatus': 1,
-                 'start_date': ['<=', max(dates)], 'end_date': ['>=', min(dates)]},
+        filters={'employee': employee, 'docstatus': 1, 'status': 'Active', 'start_date': ['<=', max(dates)]},
+        or_filters=[['end_date', '>=', min(dates)], ['end_date', 'is', 'not set']],
         fields=['shift_type', 'start_date', 'end_date'],
         limit_page_length=200,
     )
     default_shift = frappe.db.get_value('Employee', employee, 'default_shift')
     for day_text, requested_shift in proposed:
         day = date.fromisoformat(day_text)
-        covering = [row for row in rows if row.start_date <= day <= row.end_date]
+        covering = [row for row in rows if covers(row, day)]
         if len(covering) > 1:
             fail('برای این روز بیش از یک تخصیص شیفت ثبت‌شده وجود دارد؛ ابتدا تداخل برنامه را برطرف کنید.')
         current = covering[0].shift_type if covering else default_shift

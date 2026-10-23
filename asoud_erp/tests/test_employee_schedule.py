@@ -26,3 +26,12 @@ def test_schedule_marks_holiday_and_none_without_default():
 def test_schedule_range_is_bounded():
     with pytest.raises(ValueError, match="۶۲"):
         parse_range("2026-01-01", "2026-03-04")
+
+
+def test_open_ended_assignment_covers_every_later_day():
+    rows = build_schedule(
+        date(2026, 10, 23), date(2026, 12, 1),
+        [{"shift_type": "شب", "start_date": date(2026, 10, 20), "end_date": None}],
+        "صبح", set(), {})
+    assert {row["source"] for row in rows} == {"assignment"}
+    assert rows[-1]["shift_type"] == "شب"

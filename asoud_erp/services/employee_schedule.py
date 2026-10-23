@@ -32,12 +32,17 @@ def date_label(value):
     return to_persian_digits(f"{year:04d}/{month:02d}/{day:02d}")
 
 
+def covers(row, day):
+    """An assignment without end_date is open-ended."""
+    return row["start_date"] <= day and (row.get("end_date") is None or day <= row["end_date"])
+
+
 def build_schedule(start, end, assignments, default_shift, holidays, shifts):
     """Return one effective row per day without database access."""
     result = []
     current = start
     while current <= end:
-        covering = [row for row in assignments if row["start_date"] <= current <= row["end_date"]]
+        covering = [row for row in assignments if covers(row, current)]
         assignment = covering[-1] if covering else None
         if assignment:
             shift_type, source = assignment["shift_type"], "assignment"
