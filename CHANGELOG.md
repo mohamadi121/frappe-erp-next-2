@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased
+
+Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Workflow Activity.workflow_instance`; new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
+
+Added:
+
+- Directive `start` action: the assigned recipient moves from Pending to In Progress without completing the execution task. Only the recipient can start, and only once.
+- Directive progress reports: `report` accepts `report_type` (`final`, the default, or `progress`). A progress report is stored as a completed Workflow Task, keeps the execution task open, notifies the issuer and never requests approval.
+- Directive reminders: the issuer can set `reminder_at` on a draft. At issue time it must be in the future and before the due date. A minute scheduler job (`dispatch_reminders`) notifies the assignee once per open report task.
+- Paginated directive `reports` and `history` (50 rows per page, `next_cursor`), with access scoping applied in the database before pagination. `reports` accepts an `author` filter: the issuer may filter by any executor, an executor only by self.
+- Workflow task and instance list endpoints accept `start` and `paged=1` and return `{items, next_cursor}`. The default list response is unchanged.
+- Integration tests for start, progress reports, report type validation, reminders, and pagination (`integration_tests/test_directives.py`), plus a pure test for the directive status summary (`tests/test_directive_state.py`).
+
+Changed:
+
+- A directive whose executors are all Pending reads as `Issued`; it previously read as `In Progress`.
+
+Changed:
+
+- One Employee may occupy at most one position across the whole organization chart, including v2 `occupants` rows. Chart saves and import previews/applies that would place the same Employee in two positions are refused with a Persian message naming the Employee. Charts that already contain such duplicates must be corrected before they can be saved again.
+
+Fixed:
+
+- Plain Department saves no longer take a company-wide lock. Deleting, disabling, moving a unit with positions, or deleting a unit that positions reference still locks the company and is refused.
+- Renaming a unit's title is refused while legacy chart positions (no `department_id`) reference it by title, so those positions are not orphaned. Link them to the unit in the chart first.
+
+Tests and documentation:
+
+- Pure tests for the Department guard and cross-position occupant rule; integration tests for the cross-position refusal and title rename behaviour; `test_organization` added to the integration module loop.
+- API reference for organization units and import in `docs/api/organization.md`.
+
+Performance and contract:
+
+- `directives.reports` reads the review tasks of a page in one query instead of one lookup per report. Response shape and statuses are unchanged; when a report has more than one review row, the earliest one is used.
+- `directives.history` applies access scope and the page limit inside each UNION branch, and orders each branch by the indexed `created_on`, so the query reads at most one page per branch.
+- `list_my_workflow_tasks` and `list_my_workflow_instances` with `paged=1` document that a page can be short or empty while `next_cursor` is set. The cursor is computed from the raw database page, so clients keep paging until `next_cursor` is null (see `docs/workflow-runtime-v1.md`).
+
 ## 0.16.0 - 2026-10-18
 
 Deployment: run `bench --site <site> migrate` (new DocTypes: `ASOUD Form`, `ASOUD Form Revision`, `ASOUD Form Entry`, `ASOUD Calendar Scope`, `ASOUD Calendar Holiday`; directive receipts). Pairs with app 0.28.0.
