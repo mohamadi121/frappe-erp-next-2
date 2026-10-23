@@ -215,9 +215,27 @@ records Failed, preserving approval and allowing retry.
 Active requester/colleague must belong to the request company and differ. Dates
 must be ISO and ordered. Shift Types must exist; installed HRMS has no disabled
 field (enable_auto_attendance controls attendance processing, not shift eligibility).
-Each employee needs an enabled native shift_request_approver user. HRMS validates
+Each employee needs an enabled native shift_request_approver user, falling back
+to an enabled department shift approver in row order. HRMS validates
 request overlap/default shift; a transient Shift Assignment validates active submitted
 assignment overlap without inserting it. Native validation failures become
 «ثبت درخواست شیفت انجام نشد؛ هم‌پوشانی برنامه، شیفت پیش‌فرض و تأییدکننده را بررسی کنید.».
 Missing dates, shift, colleague, company, employee or approver fail with a Persian
 reason identifying the missing prerequisite. No migration or configuration is added.
+
+| خطای ورودی/پیش‌نیاز | پیام |
+|---|---|
+| ورودی نامعتبر | اطلاعات تغییر شیفت معتبر نیست. |
+| شرکت خالی | شرکت درخواست مشخص نشده است. |
+| کارمند غایب | پرونده پرسنلی درخواست‌دهنده ثبت نشده است. |
+| نوع ناشناخته | نوع تغییر شیفت معتبر نیست. |
+| تاریخ نامعتبر | تاریخ تغییر شیفت معتبر نیست. |
+| بازه معکوس | تاریخ پایان نمی‌تواند پیش از شروع باشد. |
+| دلیل غیرمتنی | دلیل تغییر شیفت باید متن باشد. |
+| شیفت خالی | شیفت پیشنهادی را انتخاب کنید. |
+| همکار خالی | همکار جایگزین را انتخاب کنید. |
+| همکار خود شخص | همکار جایگزین باید با درخواست‌دهنده متفاوت باشد. |
+| شیفت همکار خالی | شیفت پیشنهادی همکار را انتخاب کنید. |
+| همکار ناموجود، غیرفعال یا شرکت دیگر | همکار انتخاب‌شده باید فعال و متعلق به شرکت درخواست باشد. |
+| شیفت ناموجود | شیفت انتخاب‌شده وجود ندارد. |
+| تأییدکننده غایب/غیرفعال | تأییدکننده فعال شیفت برای کارکنان تنظیم نشده است. |

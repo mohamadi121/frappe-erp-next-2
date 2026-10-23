@@ -25,9 +25,9 @@ class Executor(Protocol):
 EXECUTORS: dict[str, Executor] = {}
 
 # Executor modules register here; each one imports only its own dependencies lazily.
-from . import asset_movement, attendance_correction, employee_advance  # noqa: E402
+from . import asset_movement, attendance_correction, employee_advance, shift_request  # noqa: E402
 
-for _module in (employee_advance, attendance_correction, asset_movement):
+for _module in (employee_advance, attendance_correction, asset_movement, shift_request):
     EXECUTORS[_module.KIND] = _module
 
 __all__ = ['EXECUTORS', 'Executor', 'Result']

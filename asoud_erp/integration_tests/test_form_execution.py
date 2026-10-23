@@ -32,7 +32,7 @@ class TestFormExecution(APITestCase):
                         'roles': [{'role': 'Accounts Manager'}]}).insert()
         self.assertFalse(frappe.db.exists('Employee', {'user_id': user}))
         self.assertEqual({row['kind'] for row in forms.execution_kinds()['data']},
-                         {'employee_advance', 'attendance_correction', 'asset_movement'})
+                         {'employee_advance', 'attendance_correction', 'asset_movement', 'shift_request'})
         with patch.dict(EXECUTORS, {'test_only': ExampleExecutor()}, clear=True):
             frappe.set_user(user)
             self.assertEqual(forms.execution_kinds()['data'], [{
@@ -333,3 +333,19 @@ class TestRegisteredFormExecution(APITestCase):
         self.assertEqual((doc.reference_doctype, doc.reference_name), ('ASOUD Workflow Request', request['name']))
         self.assertEqual((doc.assets[0].asset, doc.assets[0].to_employee, doc.assets[0].target_location),
                          (asset.name, self.employee, location))
+
+    def test_shift_request_creates_native_draft(self):
+        frappe.db.set_value('Employee', self.employee, 'shift_request_approver', 'Administrator')
+        shift = frappe.get_doc({'doctype': 'Shift Type', 'name': self.token,
+                               'start_time': '08:00:00', 'end_time': '16:00:00'}).insert()
+        request = self.approve_form('shift_request', [
+            {'key': 'mode', 'label': 'نوع', 'type': 'Select', 'execution_key': 'kind',
+             'options': [{'id': 'self_change', 'label': 'تغییر شیفت خودم'}]},
+            {'key': 'day', 'label': 'شروع', 'type': 'Date', 'execution_key': 'from_date'},
+            {'key': 'proposed', 'label': 'شیفت', 'type': 'Link', 'source': 'Shift Type',
+             'execution_key': 'shift_type'},
+        ], {'mode': 'self_change', 'day': '2030-01-01', 'proposed': shift.name})
+        self.assertEqual(request['native']['status'], 'Created', request['native']['error'])
+        doc = frappe.get_doc(request['native']['doctype'], request['native']['name'])
+        self.assertEqual((doc.employee, doc.shift_type, doc.docstatus, doc.status),
+                         (self.employee, shift.name, 0, 'Draft'))
