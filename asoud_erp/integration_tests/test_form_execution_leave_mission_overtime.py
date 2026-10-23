@@ -449,3 +449,25 @@ class TestDateUpperBound(Base):
                                   frappe.generate_hash(length=24))
         frappe.set_user('Administrator')
         self.assertTrue(entry['data']['reference_name'])
+
+
+class TestTimeOrder(Base):
+    def test_submit_rejects_an_end_not_after_the_start_unless_it_is_the_next_day(self):
+        definition, _ = make_definition(self.company, fields=[])
+        fields = [
+            {'key': 'from', 'label': 'شروع', 'type': 'Time', 'required': True},
+            {'key': 'to', 'label': 'پایان', 'type': 'Time', 'required': True, 'next_day_allowed': True,
+             'time_after': 'from', 'time_after_message': 'ساعت پایان باید پس از ساعت شروع باشد.'}]
+        schema = {'kind': 'Request', 'title': 'ساعت', 'workflow': definition,
+                  'sections': [{'id': 'main', 'title': 'اصلی', 'fields': fields}]}
+        saved = forms.save_form(self.company, schema, client_id=frappe.generate_hash(length=24))['data']
+        revision = forms.transition(saved['name'], 'publish', saved['draft_version'])['data']['active_revision']
+        frappe.set_user(self.user)
+        with self.assertRaisesRegex(frappe.ValidationError, 'ساعت پایان باید پس از ساعت شروع باشد.'):
+            forms.submit_form(saved['name'], revision, 'ساعت', {'from': '22:00', 'to': '01:00'},
+                              frappe.generate_hash(length=24))
+        entry = forms.submit_form(saved['name'], revision, 'ساعت',
+                                  {'from': '22:00', 'to': '01:00', 'to__next_day': True},
+                                  frappe.generate_hash(length=24))
+        frappe.set_user('Administrator')
+        self.assertTrue(entry['data']['reference_name'])

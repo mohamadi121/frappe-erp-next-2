@@ -278,6 +278,13 @@ def validate_schema(raw):
                                                        or not 1 <= len(field['before_or_equal_message']) <= 500
                                                        or not field.get('before_or_equal')):
                 fail('پیام وابستگی تاریخ معتبر نیست.')
+            if 'time_after' in field and (kind != 'Time' or not isinstance(field['time_after'], str)
+                                          or not field['time_after']):
+                fail('وابستگی ساعت معتبر نیست.')
+            if 'time_after_message' in field and (not isinstance(field['time_after_message'], str)
+                                                  or not 1 <= len(field['time_after_message']) <= 500
+                                                  or not field.get('time_after')):
+                fail('پیام وابستگی ساعت معتبر نیست.')
             for low, high in (("min", "max"), ("min_length", "max_length"), ("min_rows", "max_rows")):
                 if field.get(low) is not None and field.get(high) is not None and number(field[low]) > number(field[high]):
                     fail("حداقل نباید از حداکثر بیشتر باشد.")
@@ -376,6 +383,11 @@ def validate_schema(raw):
                 if dependency == field['key'] or by_key.get(dependency, {}).get('type') != 'Date':
                     fail('فیلد تاریخ وابسته معتبر نیست.')
                 graph[field['key']].add(dependency)
+        if field.get('time_after'):
+            dependency = field['time_after']
+            if dependency == field['key'] or by_key.get(dependency, {}).get('type') != 'Time':
+                fail('فیلد ساعت وابسته معتبر نیست.')
+            graph[field['key']].add(dependency)
         if field.get('link_filter'):
             dependency = field['link_filter'].get('value_field')
             if dependency not in keys:
@@ -972,6 +984,15 @@ def validate_values(schema, raw, company, _file_budget=None):
                          and by_key[other]['type'] in NUMBERS else str(values[field['key']]) == str(values[other]))
         if equal:
             fail(field.get('not_equal_message') or 'مقدار جدید نباید با مقدار فعلی یکسان باشد.')
+    for field in definitions:
+        dependency = field.get('time_after')
+        if not dependency or not values.get(field['key']) or not values.get(dependency):
+            continue
+        # (next day, time) pairs: no datetime is built from a date the form may not have.
+        mine = (int(bool(values.get(f"{field['key']}__next_day"))), time.fromisoformat(values[field['key']]))
+        theirs = (int(bool(values.get(f'{dependency}__next_day'))), time.fromisoformat(values[dependency]))
+        if mine <= theirs:
+            fail(field.get('time_after_message') or 'ساعت باید پس از ساعت مرجع باشد.')
     for field in definitions:
         dependency = field.get('after_or_equal')
         if not dependency or not values.get(field['key']) or not values.get(dependency):

@@ -181,6 +181,45 @@ def test_date_before_or_equal_bounds_a_date_from_above_with_its_own_message(sche
         schema.validate_schema(payload)
 
 
+def test_time_after_orders_two_times_with_the_next_day_marker(schema):
+    payload = {
+        "kind": "Request", "title": "اضافه‌کار", "sections": [{"id": "main", "title": "اصلی", "fields": [
+            {"key": "start_time", "label": "ساعت شروع", "type": "Time"},
+            {"key": "end_time", "label": "ساعت پایان", "type": "Time", "next_day_allowed": True,
+             "time_after": "start_time", "time_after_message": "ساعت پایان باید پس از ساعت شروع باشد."},
+        ]}],
+    }
+    validated = schema.validate_schema(payload)
+    message = "ساعت پایان باید پس از ساعت شروع باشد."
+    for start, end, next_day in (("17:00", "17:00", False), ("17:00", "08:00", False), ("17:00:00", "16:59", False),
+                                 ("17:00", "08:00", None)):
+        values = {"start_time": start, "end_time": end}
+        if next_day is not None:
+            values["end_time__next_day"] = next_day
+        with pytest.raises(ValueError, match=message):
+            schema.validate_values(validated, values, "ACME")
+    ok = schema.validate_values(validated, {"start_time": "17:00", "end_time": "17:01"}, "ACME")
+    assert ok["end_time"] == "17:01"
+    assert schema.validate_values(validated, {"start_time": "22:00", "end_time": "01:00", "end_time__next_day": True}, "ACME")
+    assert schema.validate_values(validated, {"start_time": "22:00"}, "ACME")  # nothing to compare
+    del payload["sections"][0]["fields"][1]["time_after_message"]
+    with pytest.raises(ValueError, match="ساعت باید پس از ساعت مرجع باشد"):
+        schema.validate_values(schema.validate_schema(payload), {"start_time": "17:00", "end_time": "09:00"}, "ACME")
+
+    for bad in ("end_time", "missing", 3):
+        payload["sections"][0]["fields"][1]["time_after"] = bad
+        with pytest.raises(ValueError, match="ساعت"):
+            schema.validate_schema(payload)
+    payload["sections"][0]["fields"][1]["time_after"] = "start_time"
+    payload["sections"][0]["fields"][0]["type"] = "Date"
+    with pytest.raises(ValueError, match="ساعت"):
+        schema.validate_schema(payload)
+    payload["sections"][0]["fields"][0]["type"] = "Time"
+    payload["sections"][0]["fields"][0]["time_after"] = "end_time"
+    with pytest.raises(ValueError, match="چرخه"):
+        schema.validate_schema(payload)
+
+
 def test_hidden_date_and_required_table_do_not_bypass_their_validation(schema):
     payload = {
         "kind": "Request", "title": "کنترل جدول", "sections": [{"id": "main", "title": "اصلی", "fields": [

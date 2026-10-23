@@ -53,6 +53,13 @@ after the referenced one with that message, or the default `تاریخ نبای�
 Together the two keys express «inside the range» (for example the half-day date of a leave).
 A missing (`null` or empty) value on either side is never compared.
 
+A `Time` field may set `time_after` to the key of another Time field (not itself, no cycle) with an
+optional `time_after_message`. When both visible values are supplied, submission requires the
+field to be strictly later than the referenced one. The comparison uses the pairs
+`(<key>__next_day, time)`, so `22:00` followed by `01:00` with `end_time__next_day = true` is valid
+and `17:00` followed by `08:00` without the marker is rejected with the message, or the default
+`ساعت باید پس از ساعت مرجع باشد.`. A missing value on either side is not compared.
+
 Visible `Table` fields enforce both `required` and `min_rows` during submission. A
 missing required row or too-short table is rejected as `حداقل N ردیف لازم است.`.
 
