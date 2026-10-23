@@ -4,6 +4,11 @@
 
 Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Workflow Activity.workflow_instance`; new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
 
+Fixed:
+
+- Paged workflow task/instance lists filter directive access in SQL (no per-row `get_doc`), keep `meta.total`, and compute the cursor after filtering.
+- `dispatch_reminders` isolates each task; `reminder_at` with an offset or `Z` is converted to the site timezone. Reminders need the scheduler enabled (see `docs/directives-implementation.md`).
+
 Added:
 
 - Form builder record sources: Link sources `Attendance`, `Shift Type`, `Training Event`, `Asset` scoped to the signed-in Employee on both `get_link_options` and submission (`meta.reason = 'no_employee'`), row `extra` attributes, `exclude_self`, `fetch_from` (recomputed server side), `not_equal`, unique table columns, and `default_source` `employee_number` / `default_shift`. No migration. See `docs/api/forms.md`.

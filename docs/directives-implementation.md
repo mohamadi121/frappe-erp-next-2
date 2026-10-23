@@ -78,6 +78,19 @@ stored in `reminder_at`, interpreted in the site's timezone, and copied to Repor
 tasks' standard `reminder_on`. The minute scheduler sends it once per eligible
 open task; document/task locks and `reminder_sent_on` also prevent duplicate sends
 if the hourly scheduler overlaps. Past reminders are rejected at issue time.
+
+`reminder_at` accepts an ISO string. With an offset or `Z` it is an absolute
+instant and is converted to the site timezone; without one it is site time. An
+invalid value fails with a Persian message. **Reminders and overdue notices need
+the Frappe scheduler to be enabled** (`bench --site <site> enable-scheduler`); with
+it off nothing is sent, and a reminder whose task is already past `due_on` is
+skipped for good. `dispatch_reminders` isolates each task (savepoint, error log),
+so one bad task cannot block the others.
+
+Workflow list endpoints: `list_my_workflow_tasks` / `list_my_workflow_instances`
+with `paged=1` return `{items, next_cursor}` and `meta.total`; directive access is
+applied in SQL before the page limit (200 rows), so `next_cursor` is null exactly
+on the last visible page. Without `paged` the legacy list is returned.
 No mandatory due-time field or default reminder interval is introduced. Configure
 the site's timezone and scheduler correctly; cron frequency is not a delivery SLA.
 
