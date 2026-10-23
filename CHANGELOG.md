@@ -4,6 +4,11 @@
 
 Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Workflow Activity.workflow_instance`; new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
 
+Fixed:
+
+- Paged workflow task/instance lists filter directive access in SQL (no per-row `get_doc`), keep `meta.total`, and compute the cursor after filtering.
+- `dispatch_reminders` isolates each task; `reminder_at` with an offset or `Z` is converted to the site timezone. Reminders need the scheduler enabled (see `docs/directives-implementation.md`).
+
 Added:
 
 - Request-bound workflow step validation for approved amounts and per-row quantities, enforced during task completion. No migration. See `docs/api/forms.md`.
