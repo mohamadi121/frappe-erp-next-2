@@ -218,7 +218,9 @@ the requester, `status=Open`, title «تأیید دریافت تجهیز: <نا�
 stage (last stage if none). The marker is `draft_json = {"followup": {kind, doctype, name, subject}}`;
 it is written only by the server. Consequences:
 
-- `list_my_workflow_tasks` lists it in «کارتابل من» without change.
+- `list_my_workflow_tasks` lists it in «کارتابل من»; every row gets the additive key `followup`: the kind
+  (`"confirm_receipt"`) for a follow-up task and `null` for every other task. The app shows such a task by its
+  `task_title` (which carries the asset name) instead of the request subject.
 - `get_workflow_task` returns for it `stage_type = "User Task"`, `config = {"activity_type":
   "ConfirmReceipt", "allow_reject": true, "allow_return": false, "comment_required": false, "form_fields": []}`,
   `document = {"doctype": "Asset Movement", "name": "<movement>", "values": [{key, label, value}...]}` with the keys
