@@ -17,6 +17,8 @@ def build(params: dict, ctx: dict) -> dict:
     if not isinstance(asset, str) or not asset.strip():
         raise ValueError("تجهیز را انتخاب کنید.")
     direction = params.get("direction")
+    if isinstance(direction, str):
+        direction = {"issue": "Issue", "receipt": "Receipt"}.get(direction, direction)
     if direction not in ("Issue", "Receipt"):
         raise ValueError("جهت جابه‌جایی باید تحویل یا بازگشت باشد.")
     value = params.get("date")

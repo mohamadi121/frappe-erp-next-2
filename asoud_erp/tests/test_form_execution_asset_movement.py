@@ -97,3 +97,9 @@ def test_registry_and_field_types():
         'date': dict(label='تاریخ جابه‌جایی', types=['Date'], required=False),
         'note': dict(label='توضیحات', types=['Text', 'LongText'], required=False),
     }
+
+
+@pytest.mark.parametrize('direction,purpose', [('issue', 'Issue'), ('receipt', 'Receipt')])
+def test_form_select_ids_map_to_native_purpose(ctx, direction, purpose):
+    ctx['asset_custodian'] = 'EMP'
+    assert build({'asset': 'ASSET', 'direction': direction}, ctx)['purpose'] == purpose
