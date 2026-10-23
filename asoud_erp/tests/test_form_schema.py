@@ -649,6 +649,59 @@ def test_schedule_value_is_never_persisted(schema):
     ])
     assert schema.validate_values(raw, {"day": "2026-10-23", "schedule": "ساختگی"}, "ACME") == {"day": "2026-10-23"}
 
+def test_contract_start_uses_current_contract_then_joining_date(schema):
+    schema.frappe.get_all = lambda doctype, **kwargs: [
+        {"start_date": date(2025, 3, 20), "end_date": date(2999, 1, 1)}]
+    schema.frappe.db.get_value = lambda doctype, filters, field=None, **kwargs: (
+        "EMP-1" if field == "name" else date(2020, 1, 2))
+    assert schema.default_value({"default_source": "contract_start"}, "ACME") == "2025-03-20"
+    schema.frappe.get_all = lambda doctype, **kwargs: []
+    assert schema.default_value({"default_source": "contract_start"}, "ACME") == "2020-01-02"
+
+
+def test_compare_and_next_day_schema_contract(schema):
+    fields = [
+        {"key": "attendance_date", "label": "تاریخ", "type": "Date"},
+        {"key": "current", "label": "ثبت‌شده", "type": "Time"},
+        {"key": "proposed", "label": "پیشنهادی", "type": "Time", "next_day_allowed": True},
+        {"key": "comparison", "label": "مقایسه", "type": "Display", "readonly": True,
+         "compare": {"current": "current", "proposed": "proposed"}},
+    ]
+    validated = schema.validate_schema(source_schema(fields))
+    values = schema.validate_values(validated, {
+        "attendance_date": "2026-10-23", "current": "23:30", "proposed": "01:00",
+        "proposed__next_day": True,
+    }, "ACME")
+    assert values["proposed__next_day"] is True
+    assert "comparison" not in values
+    fields[2]["not_equal"] = "current"
+    validated = schema.validate_schema(source_schema(fields))
+    values = schema.validate_values(validated, {
+        "attendance_date": "2026-10-23", "current": "01:00", "proposed": "01:00",
+        "proposed__next_day": True,
+    }, "ACME")
+    assert values["proposed"] == "01:00"
+    fields[2].pop("not_equal")
+    for bad_compare in ({"current": "missing", "proposed": "proposed"},
+                        {"current": "current", "proposed": "attendance_date"}):
+        fields[3]["compare"] = bad_compare
+        with pytest.raises(ValueError, match="مقایسه"):
+            schema.validate_schema(source_schema(fields))
+    fields[3]["compare"] = {"current": "current", "proposed": "proposed"}
+    fields[2]["next_day_allowed"] = "yes"
+    with pytest.raises(ValueError, match="روز بعد"):
+        schema.validate_schema(source_schema(fields))
+
+
+def test_next_day_companion_is_rejected_without_enabled_time(schema):
+    sch = schema.validate_schema(source_schema([
+        {"key": "attendance_date", "label": "تاریخ", "type": "Date"},
+        {"key": "proposed", "label": "پیشنهادی", "type": "Time"},
+    ]))
+    with pytest.raises(ValueError, match="فیلد ناشناخته"):
+        schema.validate_values(sch, {"attendance_date": "2026-10-23", "proposed": "01:00",
+                                     "proposed__next_day": True}, "ACME")
+
 
 def test_fetch_value_normalises_types(schema):
     from datetime import datetime, timedelta
@@ -718,3 +771,17 @@ def test_validate_values_fetch_from_ignores_client_value(schema):
         {"key": "in_t", "label": "ورود", "type": "Time", "readonly": True, "fetch_from": "att.in_time"}]))
     assert schema.validate_values(sch, {"att": "ATT-1", "in_t": "23:59:00"}, "ACME")["in_t"] == "08:15:00"
     assert schema.validate_values(sch, {"att": "ATT-1"}, "ACME")["in_t"] == "08:15:00"
+
+
+def test_not_equal_time_compares_next_day_without_attendance_date(schema):
+    fields = [
+        {"key": "current", "label": "ثبت‌شده", "type": "Time"},
+        {"key": "proposed", "label": "پیشنهادی", "type": "Time", "next_day_allowed": True,
+         "not_equal": "current"},
+    ]
+    validated = schema.validate_schema(source_schema(fields))
+    values = schema.validate_values(validated, {"current": "08:00", "proposed": "08:00",
+                                                "proposed__next_day": True}, "ACME")
+    assert values["proposed"] == "08:00"
+    with pytest.raises(ValueError, match="یکسان"):
+        schema.validate_values(validated, {"current": "08:00", "proposed": "08:00"}, "ACME")
