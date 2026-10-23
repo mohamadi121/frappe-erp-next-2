@@ -24,6 +24,7 @@ from asoud_erp.services.form_schema import (
     validate_schema,
     validate_values,
 )
+from asoud_erp.services.record_labels import LABELS
 from asoud_erp.services.request_access import require_company
 
 DESIGNERS = ('System Manager', 'HR Manager', 'Accounts Manager', 'Purchase Manager')
@@ -357,14 +358,7 @@ def get_link_options(company, source, query='', form=None, filter_field=None, fi
         return success(rows)
     for row in rows:
         extra = {key: fetch_value(row.pop(key, None)) for key in attributes}
-        if source == 'Attendance':
-            row['label'] = ' '.join(str(v) for v in (extra['attendance_date'], extra['status'], extra['in_time'], extra['out_time']) if v)
-        elif source == 'Shift Type':
-            row['label'] = f"{row['name']} {extra['start_time']}–{extra['end_time']}"
-        elif source == 'Training Event':
-            row['label'] = f"{row['label']} {(extra['start_time'] or '')[:10]}".strip()
-        elif source == 'Asset':
-            row['label'] = f"{row['label']} {row['name']}"
+        row['label'] = LABELS[source](row | extra) if source in LABELS else row['label']
         row['extra'] = extra
     return success(rows)
 

@@ -71,12 +71,15 @@ are scoped to the signed-in user and enforced again by `submit_form`
 Without an active Employee, `Attendance` and `Asset` return `[]` with `meta.reason = 'no_employee'`
 (submission fails with `«پرونده پرسنلی شما ثبت نشده است.»`). These four sources are read with the
 scope filter as the only authorization (Employees have no native read permission on Training Event
-and Asset). Labels use ISO dates; the app formats Jalali dates from `extra`.
+and Asset). Labels are Persian with Jalali dates and Persian digits:
+Attendance `«۱۴۰۵/۰۷/۲۸ · حاضر · ورود ۰۸:۰۱ · خروج ۱۶:۳۰»` (statuses حاضر, غایب, مرخصی, نیم‌روز,
+دورکاری; missing parts are omitted), Shift Type `«<name> · ۰۸:۰۰ تا ۱۶:۰۰»`, Training Event
+`«<event_name> · <Jalali start date>»`, Asset `«<asset_name> (<name>)»`.
 
 Sources with fetchable attributes return `extra` on every row: Attendance `in_time, out_time,
 attendance_date, status, shift`; Shift Type `start_time, end_time`; Training Event `start_time,
 end_time, type, level, training_program`; Asset `asset_name, item_code, location`; Employee
-`department, designation, employee_number`. Datetimes are `YYYY-MM-DDTHH:MM:SS`, times `HH:MM:SS`.
+`department, designation, employee_number`. The `extra` values stay raw ISO (the app formats them): datetimes `YYYY-MM-DDTHH:MM:SS`, times `HH:MM:SS`.
 
 Field keys (all validated by `save_form`):
 

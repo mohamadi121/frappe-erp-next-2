@@ -432,6 +432,7 @@ class TestFormRecordSources(APITestCase):
         frappe.set_user(self.me_user)
         rows = forms.get_link_options(company=self.company, source="Attendance", form=name)["data"]
         self.assertEqual([r["name"] for r in rows], [mine])
+        self.assertEqual(rows[0]["label"], "۱۴۰۵/۰۶/۱۰ · حاضر · ورود ۰۸:۱۵")
         self.assertEqual(rows[0]["extra"]["status"], "Present")
         self.assertEqual(rows[0]["extra"]["in_time"], "2026-09-01T08:15:00")
         self.assertEqual(rows[0]["extra"]["attendance_date"], "2026-09-01")
@@ -460,6 +461,7 @@ class TestFormRecordSources(APITestCase):
         frappe.set_user(self.me_user)
         rows = forms.get_link_options(company=self.company, source="Asset", form=name)["data"]
         self.assertEqual([r["name"] for r in rows], [mine])
+        self.assertEqual(rows[0]["label"], f"لپ‌تاپ من ({mine})")
         self.assertEqual(rows[0]["extra"]["asset_name"], "لپ‌تاپ من")
         with self.assertRaisesRegex(frappe.ValidationError, "محدوده مجاز شما نیست"):
             self.submit(name, rev, {"ast": theirs}, "c" * 24)
@@ -484,11 +486,14 @@ class TestFormRecordSources(APITestCase):
         frappe.set_user(self.me_user)
         names = [r["name"] for r in forms.get_link_options(company=self.company, source="Training Event", form=name)["data"]]
         self.assertIn(future, names)
+        labels = {r["name"]: r["label"] for r in forms.get_link_options(company=self.company, source="Training Event", form=name)["data"]}
+        self.assertRegex(labels[future], r"^دوره آینده · [۰-۹]{4}/[۰-۹]{2}/[۰-۹]{2}$")
         self.assertNotIn(past, names)
         self.assertNotIn(done, names)
         with self.assertRaisesRegex(frappe.ValidationError, "محدوده مجاز شما نیست"):
             self.submit(name, rev, {"ev": past}, "e" * 24)
         shifts = {r["name"]: r for r in forms.get_link_options(company=self.company, source="Shift Type", form=name)["data"]}
+        self.assertEqual(shifts[shift]["label"], f"{shift} · ۰۸:۰۰ تا ۱۶:۳۰")
         self.assertEqual(shifts[shift]["extra"], {"start_time": "08:00:00", "end_time": "16:30:00"})
 
     def test_exclude_self_not_equal_and_unique(self):
