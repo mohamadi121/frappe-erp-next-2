@@ -524,3 +524,30 @@ class TestFormRecordSources(APITestCase):
         entry = self.submit(name, rev, {"boss": self.other, "old": "x", "new": "y", "rows": [{"n": "a"}, {"n": "b"}]}, "i" * 24)["data"]["name"]
         self.assertEqual(forms.get_entry(entry)["data"]["values"]["boss"], self.other)
         self.assertTrue(forms.get_entry(entry)["data"]["values"]["num"])
+
+
+class TestContractStartDefault(APITestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        setup_tenancy()
+
+    def contract(self, employee, start, end):
+        frappe.set_user("Administrator")
+        return frappe.get_doc({"doctype": "Contract", "party_type": "Employee", "party_name": employee,
+                               "start_date": start, "end_date": end, "contract_terms": "t"}).insert().name
+
+    def test_current_contract_start_then_joining_date_fallback(self):
+        from asoud_erp.services.form_schema import default_value
+        user = "asoud.cstart@example.com"
+        employee = _scope_user(user, "Cstart")
+        frappe.db.set_value("Employee", employee, "date_of_joining", "2019-02-03")
+        field = {"default_source": "contract_start"}
+        frappe.set_user(user)
+        self.assertEqual(default_value(field, self.company), "2019-02-03")
+        self.contract(employee, "2020-01-01", "2020-12-31")
+        frappe.set_user(user)
+        self.assertEqual(default_value(field, self.company), "2019-02-03")
+        self.contract(employee, "2024-05-01", "2999-01-01")
+        frappe.set_user(user)
+        self.assertEqual(default_value(field, self.company), "2024-05-01")

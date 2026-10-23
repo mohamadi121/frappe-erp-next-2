@@ -628,15 +628,12 @@ def test_new_default_sources(schema):
 
 
 def test_contract_start_uses_current_contract_then_joining_date(schema):
+    schema.frappe.get_all = lambda doctype, **kwargs: [
+        {"start_date": date(2025, 3, 20), "end_date": date(2999, 1, 1)}]
     schema.frappe.db.get_value = lambda doctype, filters, field=None, **kwargs: (
-        date(2025, 3, 20) if doctype == "Contract" else
-        ("EMP-1" if field == "name" else date(2020, 1, 2))
-    )
+        "EMP-1" if field == "name" else date(2020, 1, 2))
     assert schema.default_value({"default_source": "contract_start"}, "ACME") == "2025-03-20"
-    schema.frappe.db.get_value = lambda doctype, filters, field=None, **kwargs: (
-        None if doctype == "Contract" else
-        ("EMP-1" if field == "name" else date(2020, 1, 2))
-    )
+    schema.frappe.get_all = lambda doctype, **kwargs: []
     assert schema.default_value({"default_source": "contract_start"}, "ACME") == "2020-01-02"
 
 
@@ -752,3 +749,17 @@ def test_validate_values_fetch_from_ignores_client_value(schema):
         {"key": "in_t", "label": "ورود", "type": "Time", "readonly": True, "fetch_from": "att.in_time"}]))
     assert schema.validate_values(sch, {"att": "ATT-1", "in_t": "23:59:00"}, "ACME")["in_t"] == "08:15:00"
     assert schema.validate_values(sch, {"att": "ATT-1"}, "ACME")["in_t"] == "08:15:00"
+
+
+def test_not_equal_time_compares_next_day_without_attendance_date(schema):
+    fields = [
+        {"key": "current", "label": "ثبت‌شده", "type": "Time"},
+        {"key": "proposed", "label": "پیشنهادی", "type": "Time", "next_day_allowed": True,
+         "not_equal": "current"},
+    ]
+    validated = schema.validate_schema(source_schema(fields))
+    values = schema.validate_values(validated, {"current": "08:00", "proposed": "08:00",
+                                                "proposed__next_day": True}, "ACME")
+    assert values["proposed"] == "08:00"
+    with pytest.raises(ValueError, match="یکسان"):
+        schema.validate_values(validated, {"current": "08:00", "proposed": "08:00"}, "ACME")

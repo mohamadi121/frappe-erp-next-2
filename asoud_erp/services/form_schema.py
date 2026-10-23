@@ -85,11 +85,13 @@ def default_value(field, company):
         if not employee:
             return None
         today = date.today().isoformat()
-        value = frappe.db.get_value(
+        rows = frappe.get_all(
             'Contract',
-            {'party_type': 'Employee', 'party_name': employee, 'docstatus': ['<', 2],
-             'start_date': ['<=', today], 'end_date': ['in', ['', None, ['>=', today]]]},
-            'start_date', order_by='start_date desc, creation desc')
+            filters={'party_type': 'Employee', 'party_name': employee, 'docstatus': ['<', 2],
+                     'start_date': ['<=', today]},
+            fields=['start_date', 'end_date'], order_by='start_date desc, creation desc')
+        value = next((row['start_date'] for row in rows
+                      if not row.get('end_date') or str(row['end_date']) >= today), None)
         if not value:
             value = frappe.db.get_value('Employee', employee, 'date_of_joining')
         return value.isoformat() if value else None
@@ -925,13 +927,9 @@ def validate_values(schema, raw, company, _file_budget=None):
         other = field.get('not_equal')
         equal = False
         if other and values.get(field['key']) not in (None, '') and values.get(other) not in (None, ''):
-            if field['type'] == 'Time' and by_key[other]['type'] == 'Time' and values.get('attendance_date'):
-                base = date.fromisoformat(values['attendance_date'])
-                mine = datetime.combine(base + timedelta(days=int(values.get(f"{field['key']}__next_day", False))),
-                                        time.fromisoformat(values[field['key']]))
-                theirs = datetime.combine(base + timedelta(days=int(values.get(f'{other}__next_day', False))),
-                                          time.fromisoformat(values[other]))
-                equal = mine == theirs
+            if field['type'] == 'Time' and by_key[other]['type'] == 'Time':
+                equal = ((int(bool(values.get(f"{field['key']}__next_day"))), time.fromisoformat(values[field['key']]))
+                         == (int(bool(values.get(f'{other}__next_day'))), time.fromisoformat(values[other])))
             else:
                 equal = (number(values[field['key']]) == number(values[other]) if field['type'] in NUMBERS
                          and by_key[other]['type'] in NUMBERS else str(values[field['key']]) == str(values[other]))
