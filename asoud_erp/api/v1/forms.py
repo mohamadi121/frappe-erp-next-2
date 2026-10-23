@@ -364,9 +364,26 @@ def get_link_options(company, source, query='', form=None, filter_field=None, fi
     return success(rows)
 
 
+def _may_read_schedule(company, form, field):
+    """Colleague schedules: HR/System managers, or a form the caller fills with an exclude_self Employee link."""
+    if frappe.session.user == 'Administrator' or {'System Manager', 'HR Manager'} & set(frappe.get_roles()):
+        return True
+    if not form:
+        return False
+    doc = load(form)
+    if doc.company != company or doc.disabled or not doc.active_revision:
+        return False
+    schema = json.loads(revision(doc).schema_json)
+    if not allowed(schema, company):
+        return False
+    return any(
+        item.get('source') == 'Employee' and item.get('exclude_self') is True and (not field or item.get('key') == field)
+        for top in fields(schema) for item in [top, *top.get('columns', [])] if item.get('type') == 'Link')
+
+
 @frappe.whitelist()
-def employee_schedule(company, from_date, to_date, employee=None):
-    """Effective HRMS schedule for the caller or a readable colleague."""
+def employee_schedule(company, from_date, to_date, employee=None, form=None, field=None):
+    """Effective HRMS schedule for the caller, an in-scope colleague or any employee for HR managers."""
     from asoud_erp.services.employee_schedule import MAX_DAYS, build_schedule, parse_range
 
     require_company(company)
@@ -374,6 +391,8 @@ def employee_schedule(company, from_date, to_date, employee=None):
     target = employee or own_employee
     if not target:
         fail('پرونده پرسنلی شما ثبت نشده است.')
+    if target != own_employee and not _may_read_schedule(company, form, field):
+        frappe.throw('دسترسی به برنامه شیفت این همکار مجاز نیست.', frappe.PermissionError)
     employee_doc = frappe.db.get_value('Employee', target, ['company', 'status', 'default_shift', 'holiday_list'],
                                        as_dict=True)
     if not employee_doc or employee_doc.company != company or employee_doc.status != 'Active':

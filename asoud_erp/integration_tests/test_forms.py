@@ -7,7 +7,7 @@ from frappe.utils import now_datetime
 
 from asoud_erp.api.v1 import calendar, forms
 from asoud_erp.integration_tests.fixtures import APITestCase
-from asoud_erp.integration_tests.tenancy import MANAGER_USER, setup_tenancy
+from asoud_erp.integration_tests.tenancy import HR_MANAGER_USER, MANAGER_USER, setup_tenancy
 
 
 def schema(title="فرم آزمایشی"):
@@ -380,7 +380,7 @@ class TestFormRecordSources(APITestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        setup_tenancy()
+        cls.second = setup_tenancy()["second"]
 
     def setUp(self):
         super().setUp()
@@ -437,10 +437,28 @@ class TestFormRecordSources(APITestCase):
         self.assertEqual(own["data"][0]["shift_type"], shift_name)
         self.assertEqual(own["data"][0]["source"], "default")
         self.assertRegex(own["data"][0]["date_label"], r"^[۰-۹]{4}/[۰-۹]{2}/[۰-۹]{2}$")
-        colleague = forms.employee_schedule(company=self.company, employee=self.other,
-                                            from_date="2026-10-23", to_date="2026-10-23")
+        self.assertEqual(own["meta"]["max_days"], 62)
+        day = {"from_date": "2026-10-23", "to_date": "2026-10-23"}
+
+        with self.assertRaisesRegex(frappe.PermissionError, "دسترسی به برنامه شیفت"):
+            forms.employee_schedule(company=self.company, employee=self.other, **day)
+        plain, _ = self.publish([self.link("pick", "Employee")])
+        frappe.set_user(self.me_user)
+        with self.assertRaisesRegex(frappe.PermissionError, "دسترسی به برنامه شیفت"):
+            forms.employee_schedule(company=self.company, employee=self.other, form=plain, **day)
+        scoped, _ = self.publish([self.link("boss", "Employee", exclude_self=True)])
+        frappe.set_user(self.me_user)
+        colleague = forms.employee_schedule(company=self.company, employee=self.other, form=scoped, field="boss", **day)
         self.assertEqual(colleague["data"][0]["shift_type"], shift_name)
-        self.assertEqual(colleague["meta"]["max_days"], 62)
+        with self.assertRaisesRegex(frappe.PermissionError, "دسترسی به برنامه شیفت"):
+            forms.employee_schedule(company=self.company, employee=self.other, form=scoped, field="other", **day)
+        with self.assertRaises(frappe.PermissionError):
+            forms.employee_schedule(company=self.second, employee=self.other, form=scoped, **day)
+
+        frappe.set_user(HR_MANAGER_USER)
+        manager = forms.employee_schedule(company=self.company, employee=self.other, **day)
+        self.assertEqual(manager["data"][0]["shift_type"], shift_name)
+        frappe.set_user(self.me_user)
 
         with self.assertRaisesRegex(frappe.ValidationError, "۶۲ روز"):
             forms.employee_schedule(company=self.company, from_date="2026-01-01", to_date="2026-03-04")
@@ -488,9 +506,11 @@ class TestFormRecordSources(APITestCase):
         frappe.set_user(self.me_user)
         day = forms.employee_schedule(company=self.company, from_date="2026-10-23", to_date="2026-10-23")
         self.assertEqual((day["data"][0]["source"], day["data"][0]["shift_type"]), ("default", morning))
+        frappe.set_user(HR_MANAGER_USER)
         with self.assertRaisesRegex(frappe.ValidationError, "فعال نیست"):
             forms.employee_schedule(company=self.company, employee="NO-SUCH-EMP",
                                     from_date="2026-10-23", to_date="2026-10-23")
+        frappe.set_user(self.me_user)
 
         frappe.set_user("Administrator")
         assign(night, "Active")

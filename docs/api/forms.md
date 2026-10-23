@@ -96,12 +96,14 @@ Field keys (all validated by `save_form`):
 
 ### Employee schedule and `Schedule` fields
 
-`employee_schedule(company, from_date, to_date, employee=None)` returns the effective
+`employee_schedule(company, from_date, to_date, employee=None, form=None, field=None)` returns the effective
 work schedule for one inclusive date page. `from_date` and `to_date` are ISO dates and
 the page may contain at most 62 days. Omitting `employee` selects the signed-in active
-Employee. Supplying another active Employee in the same company is allowed for the
-colleague picker use case; this narrow exception exposes schedule rows only and does
-not grant access to any other Employee data.
+Employee. Another Employee's schedule is readable only when (a) the caller has the HR Manager or
+System Manager role, or (b) `form` names a published, enabled form of the same company that
+the caller may fill and that contains an Employee `Link` with `exclude_self: true` (when
+`field` is sent it must be that field's key). Everyone else gets 403 with a Persian
+`PermissionError`. Schedule rows only; no other Employee data is exposed.
 
 The response `data` is a list with one row for every date in the requested page:
 
