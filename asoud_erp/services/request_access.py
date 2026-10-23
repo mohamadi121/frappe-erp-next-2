@@ -1,5 +1,7 @@
 import frappe
 
+from asoud_erp.services import certificate_access
+
 
 def company_access(company, user=None):
     user = user or frappe.session.user
@@ -70,17 +72,35 @@ def file_permission(doc, user=None, permission_type=None):
     if doc.attached_to_doctype == "ASOUD Workflow Request":
         if not doc.is_private or not doc.attached_to_name:
             return False
-        return request_permission(frappe.get_doc(doc.attached_to_doctype, doc.attached_to_name),
-                                  user=user, permission_type=permission_type)
+        request = frappe.get_doc(doc.attached_to_doctype, doc.attached_to_name)
+        allowed = request_permission(request, user=user, permission_type=permission_type)
+        if allowed and doc.get("attached_to_field") == certificate_access.FIELD:
+            return certificate_permission(request, user)
+        return allowed
     return None
+
+
+def certificate_permission(request, user=None) -> bool:
+    """The issued employment certificate: the requester, HR Managers and System Managers only."""
+    user = user or frappe.session.user
+    return certificate_access.can_download(
+        user=user, roles=frappe.get_roles(user), owner=request.owner,
+        company_ok=company_access(request.company, user))
 
 
 
 def file_query(user=None):
     from asoud_erp.services.directive_access import file_clause
+    user = user or frappe.session.user
+    manager = bool(certificate_access.MANAGER_ROLES & set(frappe.get_roles(user)))
+    certificate = "" if manager else (
+        " AND (COALESCE(`tabFile`.`attached_to_doctype`, '') != 'ASOUD Workflow Request'"
+        " OR COALESCE(`tabFile`.`attached_to_field`, '') != '" + certificate_access.FIELD + "'"
+        " OR `tabFile`.`attached_to_name` IN (SELECT `name` FROM `tabASOUD Workflow Request` WHERE `owner` = "
+        + frappe.db.escape(user) + "))")
     return ("(COALESCE(`tabFile`.`attached_to_doctype`, '') != 'ASOUD Workflow Request'"
             " OR `tabFile`.`attached_to_name` IN (SELECT `name` FROM `tabASOUD Workflow Request` WHERE "
-            + request_query(user) + ")) AND (" + file_clause(user) + ")")
+            + request_query(user) + ")) AND (" + file_clause(user) + ")" + certificate)
 
 
 

@@ -22,8 +22,12 @@ def execute(request):
     executor = EXECUTORS.get(execution.get('kind'))
     if not executor:
         raise ValueError('نوع اجرای این فرم در دسترس نیست.')
-    employee = frappe.db.get_value('Employee', {
-        'user_id': request.owner, 'company': request.company, 'status': 'Active'}, 'name')
+    filters = {'user_id': request.owner, 'company': request.company}
+    employee = frappe.db.get_value('Employee', {**filters, 'status': 'Active'}, 'name')
+    if not employee and getattr(executor, 'ALLOW_INACTIVE', False):
+        # The executor decides what a non-active employee means (for example needs_review).
+        employee = next(iter(frappe.get_all('Employee', filters=filters, pluck='name', order_by='modified desc',
+                                            limit_page_length=1)), None)
     if not employee:
         raise ValueError('پرونده پرسنلی درخواست‌دهنده ثبت نشده است.')
     request.requester_employee = employee
