@@ -308,7 +308,7 @@ no letterhead or PDF output, so there is nothing else to reuse.
 | `purpose` | Select, Text | yes | `bank`, `embassy`, `organization` or `other` |
 | `purpose_details` | Text, LongText | when `purpose = other` | printed only for `other`; ignored for the others |
 | `language` | Select, Text | no (default `persian`) | `persian` or `english` |
-| `include_compensation` | Select, Check | no (default no) | `yes`/`no` (or a boolean); salary is printed only when it is yes |
+| `include_compensation` | Select, Boolean, Checkbox | no (default no) | `yes`/`no` (or a boolean); salary is printed only when it is yes |
 
 Content comes from real rows only: Employee (`employee_name`, `designation`, `date_of_joining`,
 `status`, `relieving_date`), Company (`company_name`, `default_letter_head`) and, when salary was
