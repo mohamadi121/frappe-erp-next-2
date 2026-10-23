@@ -24,6 +24,9 @@ test.afterAll(() => { if (prepared) fixture('cleanup', { form: prepared.form, de
 test('catalog uses real HTTP role gates and is available to a designer without Employee', async ({ api }) => {
   const admin = await api.login('admin');
   const catalog = await admin.read<Array<{kind: string; label: string; parameters: object}>>(forms + 'execution_kinds');
+  expect(catalog.map(item => item.kind)).toEqual(expect.arrayContaining([
+    'employee_advance', 'attendance_correction', 'asset_movement',
+  ]));
   expect(catalog).toContainEqual({kind: 'e2e_form_execution', label: 'اجرای آزمون گردش‌کار', parameters: {
     amount: {label: 'مبلغ', types: ['Money'], required: true},
     fail_first: {label: 'آزمون تلاش مجدد', types: ['Check'], required: false},

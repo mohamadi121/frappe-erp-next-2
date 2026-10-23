@@ -150,3 +150,20 @@ def test_form_entry_reference_lookup_is_indexed():
     fields = {field['fieldname']: field for field in json.loads(path.read_text())['fields']}
     assert fields['reference_name'].get('search_index') == 1
     assert fields['reference_doctype'].get('search_index') == 1
+
+
+def test_registered_executor_parameter_types_are_form_schema_types():
+    import ast
+    from pathlib import Path
+
+    # Read the constant without loading the site-dependent schema module.
+    module = ast.parse((Path(__file__).parents[1] / 'services/form_schema.py').read_text())
+    TYPES = next(ast.literal_eval(node.value) for node in module.body
+                 if isinstance(node, ast.Assign)
+                 and any(isinstance(target, ast.Name) and target.id == 'TYPES' for target in node.targets))
+
+    assert {'employee_advance', 'attendance_correction', 'asset_movement'} <= set(EXECUTORS)
+    for kind, executor in EXECUTORS.items():
+        for key, parameter in executor.PARAMETERS.items():
+            assert parameter['types'], (kind, key)
+            assert set(parameter['types']) <= TYPES, (kind, key, parameter['types'])

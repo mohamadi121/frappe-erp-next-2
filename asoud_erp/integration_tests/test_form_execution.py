@@ -31,6 +31,8 @@ class TestFormExecution(APITestCase):
                         'send_welcome_email': 0, 'user_type': 'System User',
                         'roles': [{'role': 'Accounts Manager'}]}).insert()
         self.assertFalse(frappe.db.exists('Employee', {'user_id': user}))
+        self.assertEqual({row['kind'] for row in forms.execution_kinds()['data']},
+                         {'employee_advance', 'attendance_correction', 'asset_movement'})
         with patch.dict(EXECUTORS, {'test_only': ExampleExecutor()}, clear=True):
             frappe.set_user(user)
             self.assertEqual(forms.execution_kinds()['data'], [{
@@ -182,3 +184,152 @@ class TestFormExecutionRuntime(APITestCase):
             workflow.save_stage_settings(request['workflow_definition'], stage.name, config)
             stored = json.loads(frappe.db.get_value('ASOUD Workflow Stage', stage.name, 'config_json'))
             self.assertEqual(stored['form_fields'][0]['execution_key'], 'amount')
+
+
+class TestRegisteredFormExecution(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.token = frappe.generate_hash(length=10)
+        self.user = frappe.get_doc({
+            'doctype': 'User', 'email': self.token + '@example.test', 'first_name': 'درخواست‌کننده',
+            'send_welcome_email': 0, 'roles': [{'role': 'Employee'}],
+        }).insert().name
+        self.employee = frappe.get_doc({
+            'doctype': 'Employee', 'first_name': 'درخواست‌کننده', 'company': self.company,
+            'user_id': self.user, 'gender': 'Male', 'date_of_birth': '1990-01-01',
+            'date_of_joining': '2020-01-01', 'status': 'Active', 'create_user_permission': 0,
+            'reports_to': self.records['approver'],
+        }).insert().name
+
+    def approve_form(self, kind, fields, values):
+        definition, _ = make_definition(self.company, fields=[])
+        schema = {'kind': 'Request', 'title': 'درخواست اجرای نهایی', 'workflow': definition,
+                  'execution': {'kind': kind}, 'sections': [
+                      {'id': 'main', 'title': 'اصلی', 'fields': fields}]}
+        saved = forms.save_form(self.company, schema, client_id=frappe.generate_hash(length=24))['data']
+        revision = forms.transition(saved['name'], 'publish', saved['draft_version'])['data']['active_revision']
+        frappe.set_user(self.user)
+        entry = forms.submit_form(saved['name'], revision, 'اجرای نهایی', values,
+                                  frappe.generate_hash(length=24))['data']
+        request = workflow_request.get_request(entry['reference_name'])['data']
+        self.assertNotEqual(request['native']['status'], 'Created')
+        task = open_task(request['workflow_instance'])
+        frappe.set_user(task.assigned_to)
+        workflow_runtime.complete_workflow_task(task.name, 'Approve')
+        frappe.set_user('Administrator')
+        approved = workflow_request.get_request(request['name'])['data']
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', request['workflow_instance'], 'status'),
+                         'Completed')
+        return approved
+
+    def attendance(self, kind):
+        from frappe.utils import nowdate
+
+        return self.approve_form('attendance_correction', [
+            {'key': 'day', 'label': 'تاریخ', 'type': 'Date', 'execution_key': 'date'},
+            {'key': 'correction', 'label': 'نوع اصلاح', 'type': 'Select', 'execution_key': 'kind',
+             'options': [{'id': kind, 'label': 'اصلاح تردد'}]},
+            {'key': 'clock', 'label': 'ورود', 'type': 'Time', 'execution_key': 'in_time'},
+        ], {'day': nowdate(), 'correction': kind, 'clock': '08:12:34'})
+
+    def test_attendance_other_notifies_and_is_terminal(self):
+        from asoud_erp.services.form_execution.attendance_correction import REVIEW_REASONS
+        from asoud_erp.services.request_native_documents import dispatch
+
+        hr = frappe.get_doc({
+            'doctype': 'User', 'email': 'hr-' + self.token + '@example.test', 'first_name': 'منابع انسانی',
+            'send_welcome_email': 0, 'roles': [{'role': 'HR Manager'}],
+        }).insert().name
+        before = frappe.db.count('Employee Checkin', {'employee': self.employee})
+        request = self.attendance('other')
+        reason = REVIEW_REASONS['other']
+        self.assertEqual(request['native']['status'], 'Needs Review')
+        self.assertEqual(request['native']['error'], reason)
+        self.assertEqual(request['execution']['state'], 'needs_review')
+        self.assertEqual(request['execution']['label'], 'نیازمند بررسی')
+        self.assertEqual(request['execution']['error'], reason)
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Request', request['name'], 'native_error'), reason)
+        filters = {'document_type': 'ASOUD Workflow Instance', 'document_name': request['workflow_instance'],
+                   'email_content': reason}
+        logs = frappe.get_all('Notification Log', filters=filters, fields=['for_user', 'email_content'])
+        for user in (self.user, hr):
+            self.assertEqual([row.email_content for row in logs if row.for_user == user], [reason])
+        self.assertEqual(frappe.db.count('Employee Checkin', {'employee': self.employee}), before)
+        # Previously stored review results are normalized without changing their reason.
+        from asoud_erp.patches.v0_15_3.normalize_native_review_status import execute
+
+        frappe.db.set_value('ASOUD Workflow Request', request['name'], 'native_status', 'needs_review')
+        execute()
+        execute()
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Request', request['name'],
+                                           ['native_status', 'native_error']), ('Needs Review', reason))
+        with patch.object(EXECUTORS['attendance_correction'], 'apply',
+                          side_effect=AssertionError('اجرای تکراری')) as apply:
+            dispatch(frappe.get_doc('ASOUD Workflow Request', request['name']))
+            apply.assert_not_called()
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Request', request['name'], 'native_status'),
+                         'Needs Review')
+        self.assertEqual(frappe.db.count('Notification Log', filters), len(logs))
+        self.assertEqual(frappe.db.count('Employee Checkin', {'employee': self.employee}), before)
+        frappe.set_user(self.user)
+        masked = workflow_request.get_request(request['name'])['data']
+        self.assertEqual(masked['execution']['state'], 'needs_review')
+        self.assertEqual(masked['execution']['error'], '')
+        self.assertEqual(masked['native']['error'], '')
+
+    def test_attendance_missing_entry_creates_native_checkin(self):
+        from frappe.utils import nowdate
+
+        frappe.db.set_single_value('HR Settings', 'allow_geolocation_tracking', 0)
+        request = self.attendance('missing_entry')
+        self.assertEqual(request['native']['status'], 'Created', request['native']['error'])
+        doc = frappe.get_doc(request['native']['doctype'], request['native']['name'])
+        self.assertEqual((doc.doctype, doc.employee, doc.log_type, str(doc.time), doc.docstatus),
+                         ('Employee Checkin', self.employee, 'IN', nowdate() + ' 08:12:34', 0))
+
+    def test_employee_advance_creates_native_draft(self):
+        from frappe.utils import nowdate
+
+        account = frappe.db.get_value('Company', self.company, 'default_employee_advance_account')
+        request = self.approve_form('employee_advance', [
+            {'key': 'asked', 'label': 'مبلغ', 'type': 'Money', 'execution_key': 'amount'},
+            {'key': 'why', 'label': 'شرح', 'type': 'LongText', 'execution_key': 'purpose'},
+            {'key': 'repay', 'label': 'بازپرداخت', 'type': 'Checkbox', 'execution_key': 'repay_from_salary'},
+        ], {'asked': 1250, 'why': 'هزینه ضروری', 'repay': True})
+        self.assertEqual(request['native']['status'], 'Created', request['native']['error'])
+        doc = frappe.get_doc(request['native']['doctype'], request['native']['name'])
+        self.assertEqual((doc.doctype, doc.employee, doc.company, doc.docstatus, doc.advance_amount),
+                         ('Employee Advance', self.employee, self.company, 0, 1250))
+        self.assertEqual((doc.purpose, str(doc.posting_date), doc.advance_account,
+                          doc.repay_unclaimed_amount_from_salary), ('هزینه ضروری', nowdate(), account, 1))
+
+    def test_asset_issue_creates_native_draft(self):
+        from frappe.utils import add_days, nowdate
+
+        location = frappe.get_doc({'doctype': 'Location', 'location_name': self.token}).insert().name
+        account = frappe.db.get_value('Account', {'company': self.company, 'is_group': 0,
+                                                   'account_type': 'Fixed Asset'}, 'name')
+        category = frappe.get_doc({'doctype': 'Asset Category', 'asset_category_name': self.token,
+                                   'accounts': [{'company_name': self.company,
+                                                 'fixed_asset_account': account}]}).insert().name
+        item = frappe.get_doc({'doctype': 'Item', 'item_code': self.token, 'is_fixed_asset': 1,
+                               'is_stock_item': 0, 'stock_uom': 'Nos', 'asset_category': category,
+                               'item_group': frappe.db.get_value('Item Group', {'is_group': 0}, 'name')}).insert()
+        asset = frappe.get_doc({'doctype': 'Asset', 'asset_name': self.token, 'item_code': item.name,
+                                'company': self.company, 'location': location, 'is_existing_asset': 1,
+                                'custodian': self.employee, 'purchase_date': add_days(nowdate(), -30),
+                                'available_for_use_date': add_days(nowdate(), -30),
+                                'gross_purchase_amount': 100, 'asset_quantity': 1}).insert()
+        asset.submit()
+        request = self.approve_form('asset_movement', [
+            {'key': 'equipment', 'label': 'تجهیز', 'type': 'Link', 'source': 'Asset', 'execution_key': 'asset'},
+            {'key': 'way', 'label': 'جهت', 'type': 'Select', 'execution_key': 'direction',
+             'options': [{'id': 'issue', 'label': 'تحویل'}]},
+        ], {'equipment': asset.name, 'way': 'issue'})
+        self.assertEqual(request['native']['status'], 'Created', request['native']['error'])
+        doc = frappe.get_doc(request['native']['doctype'], request['native']['name'])
+        self.assertEqual((doc.doctype, doc.company, doc.docstatus, doc.purpose),
+                         ('Asset Movement', self.company, 0, 'Issue'))
+        self.assertEqual((doc.reference_doctype, doc.reference_name), ('ASOUD Workflow Request', request['name']))
+        self.assertEqual((doc.assets[0].asset, doc.assets[0].to_employee, doc.assets[0].target_location),
+                         (asset.name, self.employee, location))
