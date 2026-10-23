@@ -201,3 +201,64 @@ redirected to a draft or foreign revision.
 Document forms create an ERPNext draft with native permissions and controllers; employees without
 native permission on the target document type are refused by ERPNext. Request forms use the
 selected active ASOUD workflow. Neither path auto-submits a native document.
+
+## Execution after approval — contract
+
+## E1 Schema keys (form level and field level, additive, schema_version stays 2)
+- Form level, `kind == 'Request'` only: `execution: {"kind": "<executor kind>"}`.
+- Field level, both on request-form fields and on workflow step-form fields (`form_fields` in
+  stage config): `execution_key: "<parameter name>"`.
+- The validator (`save_form` / stage settings) rejects an unknown kind, an `execution_key` that is not a
+  parameter of that kind, a required parameter of that kind that no field maps, and two fields with the
+  same `execution_key` in the same form.
+
+## E2 Registry (backend)
+- Package `asoud_erp/services/form_execution/`.
+- `__init__.py` holds `EXECUTORS: dict[str, Executor]`.
+- Each executor lives in its own module `form_execution/<kind>.py`, which defines:
+  - `KIND = "<kind>"`;
+  - `LABEL = "<Persian label for the editor>"`;
+  - `PARAMETERS = {"<name>": {"label": "<Persian>", "types": [<allowed field types>], "required": bool}}`;
+  - `build(params: dict, ctx: dict) -> dict`: **pure**, no frappe import. It returns the `frappe.get_doc` dict, or raises `ValueError("<Persian reason>")`;
+  - `apply(request, params: dict) -> Result`: does the lookups (accounts, approver, defaults), inserts the document, and returns `Result(doctype, name, status, reason)`, the same shape the existing template specs return.
+- `ctx` = `{company, employee, user, request_name, today}`. The requester's active Employee in the company is resolved by the framework. If there is none, the result is `Failed` with «پرونده پرسنلی درخواست‌دهنده ثبت نشده است.».
+- Registration is one line per executor in `__init__.py` (merge conflicts there are trivial).
+
+## E3 Parameter values
+`params` = the request-form values by `execution_key`. They are then overlaid by the values of every
+**completed** step task whose stage form has fields with an `execution_key`, in completion order. The
+last decision wins (for example, the amount the manager or HR approved overrides the requested amount).
+Sensitive masking does not apply here (server side).
+
+## E4 When and how it runs
+- The same hook as today: `lifecycle.on_instance_update` → `request_native_documents.dispatch(request)`
+  when the instance becomes Completed (approved). For a request without `template_key`, dispatch finds the
+  form entry that references the request (`reference_type = 'ASOUD Workflow Request'`,
+  `reference_name = request.name`), reads its revision schema, and runs `EXECUTORS[execution.kind]`.
+- Same rules as the existing dispatcher:
+  - a savepoint;
+  - on failure, roll back only the native document and set `native_status = Failed` with a Persian `native_error`; the approval is never undone;
+  - `Created`/`Skipped` are never redone;
+  - the retry endpoint `workflow_request.create_native_document` works for these requests too.
+- Documents are inserted as **drafts (docstatus 0)** unless the HRMS flow requires a submitted document
+  to have any effect, and the executor documents why. A rejected or cancelled request never runs.
+- `ignore_permissions` only inside `as_administrator` for the insert. The requester's permission is
+  already proven by the approved request.
+
+
+### Editor catalog contract
+
+`asoud_erp.api.v1.forms.execution_kinds()` is a read-only designer endpoint.
+It uses the same designer roles as `save_form`; no Employee record is required.
+Its response is `success([{kind, label, parameters}], meta)`, where `parameters`
+is an object keyed by parameter name and each value has `label`, `types`, and
+`required`. An empty registry returns `data: []`. Unauthorized callers receive
+403. Catalog labels and validation errors are Persian.
+
+Execution metadata is optional and additive; existing forms retain their behavior.
+Invalid mapping errors identify an unknown execution kind, an unknown or duplicate
+parameter, a missing required parameter, or an incompatible field type.
+
+Implementation note: the existing Form Entry field is named `reference_doctype`,
+whereas E4 calls it `reference_type`. E4's exact storage-field requirement must
+be resolved before implementing the lookup; existing entry data must be preserved.
