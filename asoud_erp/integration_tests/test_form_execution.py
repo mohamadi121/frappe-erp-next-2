@@ -33,7 +33,7 @@ class TestFormExecution(APITestCase):
         self.assertFalse(frappe.db.exists('Employee', {'user_id': user}))
         self.assertEqual({row['kind'] for row in forms.execution_kinds()['data']},
                          {'employee_advance', 'attendance_correction', 'asset_movement', 'shift_request', 'exit',
-                          'training_enrollment'})
+                          'training_enrollment', 'leave_application', 'mission', 'overtime'})
         with patch.dict(EXECUTORS, {'test_only': ExampleExecutor()}, clear=True):
             frappe.set_user(user)
             self.assertEqual(forms.execution_kinds()['data'], [{
