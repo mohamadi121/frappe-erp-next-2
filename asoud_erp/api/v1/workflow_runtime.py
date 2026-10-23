@@ -855,6 +855,27 @@ def mark_workflow_notification_read(notification: str) -> dict:
     return success({"name": doc.name, "read": True})
 
 
+def _followup_task(doc, followup: dict, activity_type: str) -> dict:
+    """``get_workflow_task`` body of a follow-up task (docs/api/form-execution.md, N6)."""
+    from asoud_erp.services.request_followup_runtime import detail_document
+
+    request_row = frappe.db.get_value("ASOUD Workflow Request", {"workflow_instance": doc.workflow_instance},
+                                      ["name", "company"], as_dict=True) or {}
+    history = frappe.get_all("ASOUD Workflow Activity", filters={"workflow_instance": doc.workflow_instance},
+        fields=["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
+        order_by="created_on asc", limit_page_length=0)
+    return {
+        "name": doc.name, "workflow_instance": doc.workflow_instance, "workflow_stage": doc.workflow_stage,
+        "request_name": request_row.get("name", ""), "request_company": request_row.get("company", ""),
+        "task_title": doc.task_title, "status": doc.status, "assigned_on": doc.assigned_on, "due_on": doc.due_on,
+        "reminder_sent_on": doc.reminder_sent_on, "escalated_on": doc.escalated_on, "stage_type": "User Task",
+        "config": {"activity_type": activity_type, "allow_reject": True, "allow_return": False,
+                   "comment_required": False, "form_fields": []},
+        "draft": {}, "response": json.loads(doc.response_json or "{}"), "history": history, "previous_data": [],
+        "document": detail_document(followup), "request_values": {},
+    }
+
+
 @frappe.whitelist()
 def get_workflow_task(task: str) -> dict:
     doc = frappe.get_doc("ASOUD Workflow Task", task)
@@ -866,6 +887,11 @@ def get_workflow_task(task: str) -> dict:
             workflow_stage=doc.workflow_stage,task_title=doc.task_title,status=doc.status,
             config={"activity_type":"Directive"},document={"doctype":directive.doctype,
                 "name":directive.name,"values":[]},history=[],draft={},response={}))
+    from asoud_erp.services.request_followup import ACTIVITY_TYPE, followup_of
+
+    followup = followup_of(doc.draft_json)
+    if followup:
+        return success(_followup_task(doc, followup, ACTIVITY_TYPE[followup["kind"]]))
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
     config = json.loads(stage.config_json or "{}")
     instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)

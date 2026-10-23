@@ -73,6 +73,11 @@ def dispatch(request) -> None:
             return
         if form_request and result.status == "Failed":
             raise ValueError(result.reason or "ایجاد سند انجام نشد؛ تنظیمات فرم را بررسی کنید.")
+        if result.followup:
+            # Same savepoint as the document: if the task cannot be made, the document is rolled back too.
+            from asoud_erp.services.request_followup_runtime import create_followup
+
+            create_followup(request, result.followup)
     except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):
         raise  # the transaction is already gone; the approval is retried as a whole
     except Exception as error:  # noqa: BLE001 - nothing here may undo the approval (CONTRACT 4.12)

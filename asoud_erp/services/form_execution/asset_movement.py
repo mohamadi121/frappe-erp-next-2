@@ -90,4 +90,9 @@ def apply(request, params: dict):
             from html import escape
 
             doc.add_comment("Comment", escape(note))
-    return NativeResult(status="Created", doctype=doc.doctype, name=doc.name)
+    followup = None
+    if payload["purpose"] == "Issue":
+        followup = {"kind": "confirm_receipt", "doctype": doc.doctype, "name": doc.name,
+                    "subject": frappe.db.get_value("Asset", asset_name.strip(), "asset_name") or asset_name.strip(),
+                    "assignee": request.owner}
+    return NativeResult(status="Created", doctype=doc.doctype, name=doc.name, followup=followup)

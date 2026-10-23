@@ -78,6 +78,8 @@ class NativeResult:
     doctype: str | None = None
     name: str | None = None
     reason: str = ""
+    # Optional task the requester must act on after the document exists (docs/api/form-execution.md, N6).
+    followup: dict | None = None
 
 
 @dataclass
