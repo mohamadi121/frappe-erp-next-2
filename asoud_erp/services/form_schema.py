@@ -29,8 +29,17 @@ def default_value(field, company):
         return company
     if source == 'today':
         return date.today().isoformat()
-    if source in {'employee', 'department'}:
-        return frappe.db.get_value('Employee', {'company': company, 'user_id': frappe.session.user, 'status': 'Active'}, 'name' if source == 'employee' else 'department')
+    if source in {'employee', 'department', 'designation', 'joining_date'}:
+        employee_field = {
+            'employee': 'name', 'department': 'department', 'designation': 'designation',
+            'joining_date': 'date_of_joining',
+        }[source]
+        value = frappe.db.get_value(
+            'Employee',
+            {'company': company, 'user_id': frappe.session.user, 'status': 'Active'},
+            employee_field,
+        )
+        return value.isoformat() if source == 'joining_date' and value else value
     return field.get('default')
 
 
@@ -97,6 +106,13 @@ def validate_schema(raw):
         fail("بخش‌ها یا شناسه بخش فرم معتبر نیست.")
     if len({s['id'] for s in sections}) != len(sections):
         fail("شناسه بخش‌ها تکراری است.")
+    for section in sections:
+        for key in ('description', 'icon', 'color', 'background_color'):
+            if key in section and (not isinstance(section[key], str) or len(section[key]) > 500):
+                fail('مشخصات نمایشی بخش معتبر نیست.')
+        for key in ('collapsible', 'collapsed'):
+            if key in section and not isinstance(section[key], bool):
+                fail('تنظیمات بخش معتبر نیست.')
     all_fields = fields(schema)
     if not 1 <= len(all_fields) <= 100:
         fail("تعداد فیلدها باید بین یک و صد باشد.")
@@ -116,8 +132,10 @@ def validate_schema(raw):
             if kind == "Link" and field.get("source") not in SOURCES:
                 fail("منبع اطلاعات سیستم معتبر نیست.")
             default_source = field.get('default_source')
-            if default_source and default_source not in {'user', 'company', 'today', 'employee', 'department'}:
+            if default_source and default_source not in {'user', 'company', 'today', 'employee', 'department', 'designation', 'joining_date'}:
                 fail('منبع مقدار پیش‌فرض معتبر نیست.')
+            if 'help' in field and (not isinstance(field['help'], str) or len(field['help']) > 1000):
+                fail('راهنمای فیلد معتبر نیست.')
             if field.get('link_filter'):
                 rule = field['link_filter']
                 if not isinstance(rule, dict) or rule.get('field') not in LINK_FILTERS.get(field.get('source'), set()):
@@ -132,6 +150,15 @@ def validate_schema(raw):
                                for v in choices)
                         or len({v["id"] for v in choices}) != len(choices)):
                     fail("گزینه‌های انتخابی معتبر نیستند.")
+            if 'style' in field and (kind != 'Select' or field['style'] not in {'dropdown', 'radio'}):
+                fail('شیوه نمایش فهرست انتخابی معتبر نیست.')
+            if 'after_or_equal' in field and (kind != 'Date' or not isinstance(field['after_or_equal'], str)
+                                              or not field['after_or_equal']):
+                fail('وابستگی تاریخ معتبر نیست.')
+            if 'after_or_equal_message' in field and (not isinstance(field['after_or_equal_message'], str)
+                                                      or not 1 <= len(field['after_or_equal_message']) <= 500
+                                                      or not field.get('after_or_equal')):
+                fail('پیام وابستگی تاریخ معتبر نیست.')
             for low, high in (("min", "max"), ("min_length", "max_length"), ("min_rows", "max_rows")):
                 if field.get(low) is not None and field.get(high) is not None and number(field[low]) > number(field[high]):
                     fail("حداقل نباید از حداکثر بیشتر باشد.")
@@ -211,6 +238,11 @@ def validate_schema(raw):
     by_key = {f["key"]: f for f in all_fields}
     graph = {key: set() for key in keys}
     for field in all_fields:
+        if field.get('after_or_equal'):
+            dependency = field['after_or_equal']
+            if dependency == field['key'] or by_key.get(dependency, {}).get('type') != 'Date':
+                fail('فیلد تاریخ وابسته معتبر نیست.')
+            graph[field['key']].add(dependency)
         if field.get('link_filter'):
             dependency = field['link_filter'].get('value_field')
             if dependency not in keys:
@@ -710,8 +742,11 @@ def validate_values(schema, raw, company, _file_budget=None):
             if suffix not in extensions or (kind in {'Image', 'Signature'} and suffix not in {'jpg', 'jpeg', 'png'}):
                 fail(f"{label}: نوع فایل مجاز نیست.")
         if kind == 'Table':
-            if not isinstance(value, list) or not max(int(field.get('min_rows', 0)), 1 if required else 0) <= len(value) <= int(field.get('max_rows', 100)):
+            minimum = max(int(field.get('min_rows', 0)), 1 if required else 0)
+            if not isinstance(value, list) or len(value) > int(field.get('max_rows', 100)):
                 fail(f"{label}: تعداد ردیف‌ها مجاز نیست.")
+            if len(value) < minimum:
+                fail(f"{label}: حداقل {minimum} ردیف لازم است.")
             result = []
             for row in value:
                 columns = field['columns']
@@ -734,6 +769,12 @@ def validate_values(schema, raw, company, _file_budget=None):
 
     for field in definitions:
         compute(field)
+    for field in definitions:
+        dependency = field.get('after_or_equal')
+        if not dependency or field['key'] not in values or dependency not in values:
+            continue
+        if date.fromisoformat(values[field['key']]) < date.fromisoformat(values[dependency]):
+            fail(field.get('after_or_equal_message') or 'تاریخ پایان نباید قبل از تاریخ شروع باشد.')
     return values
 
 

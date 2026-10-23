@@ -6,6 +6,9 @@ Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Wor
 
 Added:
 
+- Form schema support for Select display styles, section presentation/collapse metadata,
+  field help text, Date `after_or_equal` validation, and Employee designation and joining-date defaults.
+- Submission enforcement for visible required repeatable tables and their minimum row count.
 - Directive `start` action: the assigned recipient moves from Pending to In Progress without completing the execution task. Only the recipient can start, and only once.
 - Directive progress reports: `report` accepts `report_type` (`final`, the default, or `progress`). A progress report is stored as a completed Workflow Task, keeps the execution task open, notifies the issuer and never requests approval.
 - Directive reminders: the issuer can set `reminder_at` on a draft. At issue time it must be in the future and before the due date. A minute scheduler job (`dispatch_reminders`) notifies the assignee once per open report task.

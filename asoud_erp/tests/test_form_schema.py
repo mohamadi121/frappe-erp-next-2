@@ -1,6 +1,7 @@
 import importlib
 import sys
 import types
+from datetime import date
 
 import pytest
 
@@ -90,6 +91,88 @@ def test_duplicate_or_label_only_option_ids_are_rejected(schema):
     payload["sections"][0]["fields"][2]["options"] = ["عادی"]
     with pytest.raises(ValueError, match="گزینه"):
         schema.validate_schema(payload)
+
+
+def test_form_builder_presentation_extensions_are_validated(schema):
+    payload = valid_schema()
+    section = payload["sections"][0]
+    section.update({
+        "description": "راهنمای بخش",
+        "icon": "event",
+        "color": "blue",
+        "background_color": "#e3f2fd",
+        "collapsible": True,
+        "collapsed": False,
+    })
+    select = section["fields"][2]
+    select["style"] = "radio"
+    select["help"] = "یک گزینه را انتخاب کنید."
+    result = schema.validate_schema(payload)
+    assert result["sections"][0]["collapsible"] is True
+    assert result["sections"][0]["fields"][2]["style"] == "radio"
+
+    select["style"] = "buttons"
+    with pytest.raises(ValueError, match="شیوه نمایش"):
+        schema.validate_schema(payload)
+    select.pop("style")
+    section["collapsible"] = "yes"
+    with pytest.raises(ValueError, match="بخش"):
+        schema.validate_schema(payload)
+
+
+def test_date_after_or_equal_requires_another_date_and_rejects_earlier_visible_value(schema):
+    payload = {
+        "kind": "Request", "title": "بازه زمانی", "sections": [{"id": "main", "title": "اصلی", "fields": [
+            {"key": "start_date", "label": "تاریخ شروع", "type": "Date"},
+            {"key": "end_date", "label": "تاریخ پایان", "type": "Date", "after_or_equal": "start_date"},
+        ]}],
+    }
+    validated = schema.validate_schema(payload)
+    with pytest.raises(ValueError, match="تاریخ پایان نباید قبل از تاریخ شروع باشد"):
+        schema.validate_values(validated, {"start_date": "2026-10-23", "end_date": "2026-10-22"}, "ACME")
+    assert schema.validate_values(validated, {"start_date": "2026-10-23", "end_date": "2026-10-23"}, "ACME")["end_date"] == "2026-10-23"
+
+    payload["sections"][0]["fields"][1]["after_or_equal"] = "end_date"
+    with pytest.raises(ValueError, match="تاریخ"):
+        schema.validate_schema(payload)
+    payload["sections"][0]["fields"][1]["after_or_equal"] = "missing_date"
+    with pytest.raises(ValueError, match="تاریخ"):
+        schema.validate_schema(payload)
+    payload["sections"][0]["fields"].append(
+        {"key": "other_date", "label": "تاریخ دیگر", "type": "Date", "after_or_equal": "end_date"}
+    )
+    payload["sections"][0]["fields"][1]["after_or_equal"] = "other_date"
+    with pytest.raises(ValueError, match="چرخه"):
+        schema.validate_schema(payload)
+
+
+def test_hidden_date_and_required_table_do_not_bypass_their_validation(schema):
+    payload = {
+        "kind": "Request", "title": "کنترل جدول", "sections": [{"id": "main", "title": "اصلی", "fields": [
+            {"key": "show_end", "label": "نمایش پایان", "type": "Boolean"},
+            {"key": "start_date", "label": "تاریخ شروع", "type": "Date"},
+            {"key": "end_date", "label": "تاریخ پایان", "type": "Date", "after_or_equal": "start_date"},
+            {"key": "items", "label": "اقلام", "type": "Table", "required": True, "min_rows": 2,
+             "columns": [{"key": "name", "label": "نام", "type": "Text"}]},
+        ]}],
+        "rules": [{"target": "end_date", "action": "visible", "join": "and",
+                   "conditions": [{"field": "show_end", "op": "eq", "value": True}]}],
+    }
+    validated = schema.validate_schema(payload)
+    with pytest.raises(ValueError, match="حداقل 2 ردیف لازم است"):
+        schema.validate_values(validated, {"show_end": False, "start_date": "2026-10-23", "end_date": "2026-10-01", "items": [{"name": "الف"}]}, "ACME")
+
+
+def test_employee_designation_and_joining_date_defaults(schema):
+    schema.frappe.db.get_value = lambda doctype, filters, field: {
+        "designation": "کارشناس منابع انسانی",
+        "date_of_joining": date(2020, 1, 2),
+    }.get(field)
+    assert schema.default_value({"default_source": "designation"}, "ACME") == "کارشناس منابع انسانی"
+    assert schema.default_value({"default_source": "joining_date"}, "ACME") == "2020-01-02"
+    schema.frappe.db.get_value = lambda *args: None
+    assert schema.default_value({"default_source": "designation"}, "ACME") is None
+    assert schema.default_value({"default_source": "joining_date"}, "ACME") is None
 
 
 def test_unbounded_section_id_and_formula_shape_are_rejected(schema):
