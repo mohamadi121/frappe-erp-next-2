@@ -101,6 +101,52 @@ Field keys (all validated by `save_form`):
 - Table column `unique: true` — duplicate non-empty values are rejected: `ردیف تکراری: <label>`.
 - `default_source` also accepts `employee_number` (falls back to the Employee name) and `default_shift`.
 
+### Employee schedule and `Schedule` fields
+
+`employee_schedule(company, from_date, to_date, employee=None, form=None, field=None)` returns the effective
+work schedule for one inclusive date page. `from_date` and `to_date` are ISO dates and
+the page may contain at most 62 days. Omitting `employee` selects the signed-in active
+Employee. Another Employee's schedule is readable only when (a) the caller has the HR Manager or
+System Manager role, or (b) `form` names a published, enabled form of the same company that
+the caller may fill and that contains an Employee `Link` with `exclude_self: true` (when
+`field` is sent it must be that field's key). Everyone else gets 403 with a Persian
+`PermissionError`. Schedule rows only; no other Employee data is exposed.
+
+The response `data` is a list with one row for every date in the requested page:
+
+```json
+{
+  "date": "2026-10-23",
+  "date_label": "۱۴۰۵/۰۸/۰۱",
+  "shift_type": "شیفت صبح",
+  "start_time": "08:00:00",
+  "end_time": "16:00:00",
+  "source": "assignment",
+  "source_label": "تخصیص شیفت"
+}
+```
+
+`source` is one of `assignment`, `default`, `holiday`, or `none`. The corresponding
+Persian labels are `تخصیص شیفت`, `شیفت پیش‌فرض`, `تعطیل`, and `بدون برنامه`.
+`shift_type`, `start_time`, and `end_time` are `null` for a holiday or a day without a
+schedule. Shift Assignment wins over a Holiday List date, and a holiday wins over
+Employee `default_shift`. Time values
+remain raw `HH:MM:SS`; all display labels use the shared Jalali and Persian-digit
+services. `meta` contains `from_date`, `to_date`, `days`, and `max_days: 62`.
+
+The additive read-only field type `Schedule` renders these rows and is never submitted
+as an entry value. It requires:
+
+- `schedule_of`: `self`, or the key of an Employee `Link` field in the same schema.
+- `from_field`: the key of a `Date` field in the same schema.
+- `to_field`: the key of a `Date` field in the same schema; it may equal `from_field`
+  for a single-day schedule.
+
+The server validates that referenced fields exist and have the required types. The
+runtime reloads the schedule when the employee or either date changes, shows the current
+shift for one day and a per-day list for a range, and does not persist client-supplied
+schedule data.
+
 ## Workflow step validation against request values
 
 Fields in a `User Task` or `Approval` stage form may validate the handler's response

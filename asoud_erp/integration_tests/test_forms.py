@@ -7,7 +7,7 @@ from frappe.utils import now_datetime
 
 from asoud_erp.api.v1 import calendar, forms
 from asoud_erp.integration_tests.fixtures import APITestCase
-from asoud_erp.integration_tests.tenancy import MANAGER_USER, setup_tenancy
+from asoud_erp.integration_tests.tenancy import HR_MANAGER_USER, MANAGER_USER, setup_tenancy
 
 
 def schema(title="فرم آزمایشی"):
@@ -380,7 +380,7 @@ class TestFormRecordSources(APITestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        setup_tenancy()
+        cls.second = setup_tenancy()["second"]
 
     def setUp(self):
         super().setUp()
@@ -423,6 +423,114 @@ class TestFormRecordSources(APITestCase):
 
     def link(self, key, source, **extra):
         return {"key": key, "label": key, "type": "Link", "source": source, **extra}
+
+    def test_employee_schedule_uses_default_and_allows_colleague_schedule_only(self):
+        shift_name = "ASOUD Schedule Morning"
+        if not frappe.db.exists("Shift Type", shift_name):
+            frappe.get_doc({"doctype": "Shift Type", "name": shift_name,
+                            "start_time": "08:00:00", "end_time": "16:00:00"}).insert(ignore_permissions=True)
+        frappe.db.set_value("Employee", self.me, "default_shift", shift_name)
+        frappe.db.set_value("Employee", self.other, "default_shift", shift_name)
+        frappe.set_user(self.me_user)
+
+        own = forms.employee_schedule(company=self.company, from_date="2026-10-23", to_date="2026-10-23")
+        self.assertEqual(own["data"][0]["shift_type"], shift_name)
+        self.assertEqual(own["data"][0]["source"], "default")
+        self.assertRegex(own["data"][0]["date_label"], r"^[۰-۹]{4}/[۰-۹]{2}/[۰-۹]{2}$")
+        self.assertEqual(own["meta"]["max_days"], 62)
+        day = {"from_date": "2026-10-23", "to_date": "2026-10-23"}
+
+        with self.assertRaisesRegex(frappe.PermissionError, "دسترسی به برنامه شیفت"):
+            forms.employee_schedule(company=self.company, employee=self.other, **day)
+        plain, _ = self.publish([self.link("pick", "Employee")])
+        frappe.set_user(self.me_user)
+        with self.assertRaisesRegex(frappe.PermissionError, "دسترسی به برنامه شیفت"):
+            forms.employee_schedule(company=self.company, employee=self.other, form=plain, **day)
+        scoped, _ = self.publish([self.link("boss", "Employee", exclude_self=True)])
+        frappe.set_user(self.me_user)
+        colleague = forms.employee_schedule(company=self.company, employee=self.other, form=scoped, field="boss", **day)
+        self.assertEqual(colleague["data"][0]["shift_type"], shift_name)
+        with self.assertRaisesRegex(frappe.PermissionError, "دسترسی به برنامه شیفت"):
+            forms.employee_schedule(company=self.company, employee=self.other, form=scoped, field="other", **day)
+        with self.assertRaises(frappe.PermissionError):
+            forms.employee_schedule(company=self.second, employee=self.other, form=scoped, **day)
+
+        frappe.set_user(HR_MANAGER_USER)
+        manager = forms.employee_schedule(company=self.company, employee=self.other, **day)
+        self.assertEqual(manager["data"][0]["shift_type"], shift_name)
+        frappe.set_user(self.me_user)
+
+        with self.assertRaisesRegex(frappe.ValidationError, "۶۲ روز"):
+            forms.employee_schedule(company=self.company, from_date="2026-01-01", to_date="2026-03-04")
+
+    def test_shift_proposal_rejects_same_shift_and_overlapping_assignments(self):
+        current, other_shift = "ASOUD Schedule Morning", "ASOUD Schedule Night"
+        for shift, start, end in ((current, "08:00:00", "16:00:00"), (other_shift, "20:00:00", "23:00:00")):
+            if not frappe.db.exists("Shift Type", shift):
+                frappe.get_doc({"doctype": "Shift Type", "name": shift,
+                                "start_time": start, "end_time": end}).insert(ignore_permissions=True)
+        frappe.db.set_value("Employee", self.me, "default_shift", current)
+        table = {"key": "rows", "label": "شیفت‌ها", "type": "Table", "columns": [
+            {"key": "d", "label": "تاریخ", "type": "Date"},
+            {"key": "s", "label": "شیفت", "type": "Link", "source": "Shift Type"}]}
+        sched = {"key": "sch", "label": "برنامه", "type": "Schedule", "schedule_of": "self",
+                 "from_field": "from", "to_field": "to", "readonly": True}
+        name, rev = self.publish([{"key": "from", "label": "از", "type": "Date"},
+                                  {"key": "to", "label": "تا", "type": "Date"}, sched, table])
+        frappe.set_user(self.me_user)
+        base = {"from": "2026-10-23", "to": "2026-10-23"}
+        with self.assertRaisesRegex(frappe.ValidationError, "یکسان است"):
+            self.submit(name, rev, {**base, "rows": [{"d": "2026-10-23", "s": current}]}, "e" * 24)
+        for start, end in (("2026-10-20", "2026-10-25"), ("2026-10-22", "2026-10-24")):
+            frappe.get_doc({"doctype": "Shift Assignment", "employee": self.me, "company": self.company,
+                            "shift_type": other_shift, "start_date": start, "end_date": end,
+                            "status": "Active", "docstatus": 1}).db_insert()
+        with self.assertRaisesRegex(frappe.ValidationError, "تداخل"):
+            self.submit(name, rev, {**base, "rows": [{"d": "2026-10-23", "s": current}]}, "f" * 24)
+
+    def test_open_ended_assignment_counts_and_inactive_is_ignored(self):
+        night = "ASOUD Schedule Night"
+        morning = "ASOUD Schedule Morning"
+        for shift, start, end in ((morning, "08:00:00", "16:00:00"), (night, "20:00:00", "23:00:00")):
+            if not frappe.db.exists("Shift Type", shift):
+                frappe.get_doc({"doctype": "Shift Type", "name": shift,
+                                "start_time": start, "end_time": end}).insert(ignore_permissions=True)
+        frappe.db.set_value("Employee", self.me, "default_shift", morning)
+
+        def assign(shift, status, end_date=None):
+            frappe.get_doc({"doctype": "Shift Assignment", "employee": self.me, "company": self.company,
+                            "shift_type": shift, "start_date": "2026-10-01", "end_date": end_date,
+                            "status": status, "docstatus": 1}).db_insert()
+
+        assign(night, "Inactive")
+        frappe.set_user(self.me_user)
+        day = forms.employee_schedule(company=self.company, from_date="2026-10-23", to_date="2026-10-23")
+        self.assertEqual((day["data"][0]["source"], day["data"][0]["shift_type"]), ("default", morning))
+        frappe.set_user(HR_MANAGER_USER)
+        with self.assertRaisesRegex(frappe.ValidationError, "فعال نیست"):
+            forms.employee_schedule(company=self.company, employee="NO-SUCH-EMP",
+                                    from_date="2026-10-23", to_date="2026-10-23")
+        frappe.set_user(self.me_user)
+
+        frappe.set_user("Administrator")
+        assign(night, "Active")
+        frappe.set_user(self.me_user)
+        day = forms.employee_schedule(company=self.company, from_date="2026-10-23", to_date="2026-10-23")
+        self.assertEqual((day["data"][0]["source"], day["data"][0]["shift_type"]), ("assignment", night))
+
+        table = {"key": "rows", "label": "شیفت‌ها", "type": "Table", "columns": [
+            {"key": "d", "label": "تاریخ", "type": "Date"},
+            {"key": "s", "label": "شیفت", "type": "Link", "source": "Shift Type"}]}
+        sched = {"key": "sch", "label": "برنامه", "type": "Schedule", "schedule_of": "self",
+                 "from_field": "from", "to_field": "to", "readonly": True}
+        name, rev = self.publish([{"key": "from", "label": "از", "type": "Date"},
+                                  {"key": "to", "label": "تا", "type": "Date"}, sched, table])
+        frappe.set_user(self.me_user)
+        base = {"from": "2026-10-23", "to": "2026-10-23"}
+        with self.assertRaisesRegex(frappe.ValidationError, "یکسان است"):
+            self.submit(name, rev, {**base, "rows": [{"d": "2026-10-23", "s": night}]}, "g" * 24)
+        # an incomplete optional row is skipped instead of crashing
+        self.submit(name, rev, {**base, "rows": [{"d": "2026-10-23"}, {"s": night}]}, "h" * 24)
 
     def test_attendance_scope_extra_and_submit_rejection(self):
         mine = self.attendance(self.me, "2026-09-01", in_time="2026-09-01 08:15:00")

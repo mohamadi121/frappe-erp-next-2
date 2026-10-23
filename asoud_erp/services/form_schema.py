@@ -9,7 +9,7 @@ import frappe
 
 TYPES = {"Text", "LongText", "Integer", "Decimal", "Money", "Date", "Time", "DateTime",
          "Select", "MultiSelect", "Boolean", "Checkbox", "Link", "Table", "Formula", "Display", "Rating",
-         "File", "Image", "Signature", "Barcode"}
+         "File", "Image", "Signature", "Barcode", "Schedule"}
 SOURCES = {"Employee", "Customer", "Supplier", "Item", "Warehouse", "Account", "Cost Center",
            "Project", "Department", "Attendance", "Shift Type", "Training Event", "Asset"}
 SCOPED_SOURCES = {"Attendance", "Shift Type", "Training Event", "Asset"}
@@ -185,6 +185,8 @@ def validate_schema(raw):
                 fail("عنوان یا نوع فیلد نامعتبر است.")
             if kind == "Link" and field.get("source") not in SOURCES:
                 fail("منبع اطلاعات سیستم معتبر نیست.")
+            if kind == "Schedule" and nested:
+                fail("برنامه شیفت داخل جدول مجاز نیست.")
             default_source = field.get('default_source')
             if default_source and default_source not in DEFAULT_SOURCES:
                 fail('منبع مقدار پیش‌فرض معتبر نیست.')
@@ -315,6 +317,17 @@ def validate_schema(raw):
 
     keys = check_fields(all_fields)
     by_key = {f["key"]: f for f in all_fields}
+    for field in all_fields:
+        if field["type"] != "Schedule":
+            continue
+        schedule_of = field.get("schedule_of")
+        employee_field = by_key.get(schedule_of, {})
+        if schedule_of != "self" and (employee_field.get("type") != "Link"
+                                      or employee_field.get("source") != "Employee"):
+            fail("کارمند برنامه شیفت معتبر نیست.")
+        for setting in ("from_field", "to_field"):
+            if by_key.get(field.get(setting), {}).get("type") != "Date":
+                fail("فیلد تاریخ برنامه شیفت معتبر نیست.")
     graph = {key: set() for key in keys}
     for field in all_fields:
         if field.get('after_or_equal'):
@@ -744,6 +757,11 @@ def validate_values(schema, raw, company, _file_budget=None):
             if formula.get('table'):
                 compute(by_key[formula['table']])
         state = flags(field, schema, values)
+        if field['type'] == 'Schedule':
+            values.pop(field['key'], None)
+            evaluating.remove(field['key'])
+            calculated.add(field['key'])
+            return
         if not state['visible']:
             values.pop(field['key'], None)
         elif field.get('fetch_from'):

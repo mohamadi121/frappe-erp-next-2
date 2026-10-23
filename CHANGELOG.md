@@ -16,6 +16,12 @@ Fixed:
 Added:
 
 - `get_request` returns `execution` (state, Persian label, privileged-only error, reference) kept apart from `status_key`, computed in `services/request_execution.py`; workflow activity rows carry optional `before`/`after`. Needs `bench migrate` (new `ASOUD Workflow Activity.change_json`). See `docs/api/request_templates.md`.
+- Employee schedule form capability: `forms.employee_schedule` reads HRMS Shift Assignment,
+  Employee default shift and Holiday List for a bounded 62-day range; schema version 2 gains
+  the additive read-only `Schedule` field, and shift-change tables are revalidated on submit.
+  No migration is required.
+  A colleague's schedule is readable only through a form with an `exclude_self` Employee link
+  (`form`/`field` arguments) or by HR / System managers; others get a Persian permission error.
 - Request-bound workflow step validation for approved amounts and per-row quantities, enforced during task completion. No migration. See `docs/api/forms.md`.
 - `get_request` returns `viewer` (is the caller the requester, and their own open task with the stage's decision flags) for an in-page decision card.
 - `get_request` returns `stages` (real workflow steps with status, assignees and times) and instance activity rows carry `actor_name` (`services/request_timeline.py`, `integration_tests/test_request_stages.py`).
