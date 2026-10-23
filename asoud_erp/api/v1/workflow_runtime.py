@@ -759,6 +759,11 @@ def get_workflow_instance(instance: str) -> dict:
             if activity.workflow_stage
             else ""
         ) or ""
+    actors = list({activity.actor for activity in activities if activity.actor})
+    names = {row.name: row.full_name for row in frappe.get_all(
+        "User", filters={"name": ["in", actors]}, fields=["name", "full_name"])} if actors else {}
+    for activity in activities:
+        activity["actor_name"] = names.get(activity.actor) or activity.actor or ""
     return success({**_instance_summary(doc), "activities": activities})
 
 

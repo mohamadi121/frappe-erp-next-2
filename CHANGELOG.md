@@ -6,6 +6,7 @@ Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Wor
 
 Added:
 
+- `get_request` returns `stages` (real workflow steps with status, assignees and times) and instance activity rows carry `actor_name` (`services/request_timeline.py`, `integration_tests/test_request_stages.py`).
 - Form schema support for Select display styles, section presentation/collapse metadata,
   field help text, Date `after_or_equal` validation, and Employee designation and joining-date defaults.
 - Submission enforcement for visible required repeatable tables and their minimum row count.

@@ -107,6 +107,10 @@ Each list row also carries `summary` (template specific, with `rejection_reason`
 `item_count`, `attachment_count` and `native_status`; `values` and `attachments` come from
 `get_request`.
 
+`get_request` also returns `stages`: one row per real human stage (User Task, Approval) in sequence order with
+`name, title, status (pending|active|done|rejected|returned), assignee_names, assigned_on, completed_on, result, comment`.
+A stage with no task yet is `pending`. `workflow_runtime.get_workflow_instance` activity rows carry `actor_name` (full name).
+
 ## Numbering
 
 `PREFIX-<Jalali year>-<4 digits>` from `tabSeries` (keys `PR-1405-`, `SP-1405-`, `LV-1405-`),
