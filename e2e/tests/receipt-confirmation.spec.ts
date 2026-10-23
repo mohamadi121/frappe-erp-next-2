@@ -32,9 +32,10 @@ test.afterAll(() => { if (prepared) fixture('cleanup', prepared); });
 
 test('the requester sees the receipt task in the cartable with the asset and the two choices', async ({ api }) => {
   const employee = await api.login('employee');
-  const tasks = await employee.read<Array<{ name: string; task_title: string }>>(runtime + 'list_my_workflow_tasks', {});
+  const tasks = await employee.read<Array<{ name: string; task_title: string; followup: string | null }>>(runtime + 'list_my_workflow_tasks', {});
   const listed = tasks.find(item => item.name === prepared.cases.confirm.task);
   expect(listed?.task_title).toContain('تأیید دریافت تجهیز: ');
+  expect(listed?.followup).toBe('confirm_receipt');
   const detail = await employee.read<{ config: { activity_type: string; allow_reject: boolean }; stage_type: string;
     document: { name: string; values: Array<{ key: string; value: string }> } }>(
     runtime + 'get_workflow_task', { task: prepared.cases.confirm.task });

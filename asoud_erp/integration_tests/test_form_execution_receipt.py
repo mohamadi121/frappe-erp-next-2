@@ -134,6 +134,13 @@ class TestReceiptConfirmation(FrappeTestCase):
         task, movement = self.open_one()
         listed = self.as_user(self.user, workflow_runtime.list_my_workflow_tasks)['data']
         self.assertIn(task, [row['name'] for row in listed])
+        self.assertEqual({row['name']: row['followup'] for row in listed}[task], 'confirm_receipt')
+        plain = frappe.get_doc(dict(doctype='ASOUD Workflow Task', workflow_instance=self.instance.name,
+            workflow_stage=frappe.db.get_value('ASOUD Workflow Task', task, 'workflow_stage'),
+            task_title='عادی', assigned_to=self.user, status='Open',
+            draft_json=json.dumps({'followup': 'x'}))).insert()
+        listed = self.as_user(self.user, workflow_runtime.list_my_workflow_tasks)['data']
+        self.assertIsNone({row['name']: row['followup'] for row in listed}[plain.name])
         self.assertNotIn(task, [row['name'] for row in
                                 self.as_user(self.colleague, workflow_runtime.list_my_workflow_tasks)['data']])
         detail = self.as_user(self.user, workflow_runtime.get_workflow_task, task)['data']

@@ -722,6 +722,21 @@ def _instance_summaries(names) -> list[dict]:
     return summaries
 
 
+def _mark_followups(items: list) -> None:
+    """Adds ``followup`` (the kind, or None) to each task row; only candidate drafts are read."""
+    from asoud_erp.services.request_followup import followup_of
+
+    candidates = [row["name"] for row in items if row.pop("is_followup", 0)]
+    kinds = {}
+    if candidates:
+        for row in frappe.get_all("ASOUD Workflow Task", filters={"name": ["in", candidates]},
+                                  fields=["name", "draft_json"], limit_page_length=0):
+            marker = followup_of(row.draft_json)
+            kinds[row.name] = marker["kind"] if marker else None
+    for row in items:
+        row["followup"] = kinds.get(row["name"])
+
+
 @frappe.whitelist()
 def list_my_workflow_tasks(status: str = "Open", start=0, paged=False) -> dict:
     """Open/closed workflow tasks assigned to the current user.
@@ -740,10 +755,12 @@ def list_my_workflow_tasks(status: str = "Open", start=0, paged=False) -> dict:
     start = max(0, int(start))
     rows = frappe.db.sql(
         "SELECT name, workflow_instance, workflow_stage, task_title, status, assigned_on, completed_on, "
-        "due_on, reminder_sent_on, escalated_on FROM `tabASOUD Workflow Task` WHERE " + where +
+        "due_on, reminder_sent_on, escalated_on, draft_json LIKE '{\"followup\":%%' AS is_followup "
+        "FROM `tabASOUD Workflow Task` WHERE " + where +
         " ORDER BY assigned_on DESC, name DESC LIMIT %(start)s, %(limit)s",
         {**params, "start": start, "limit": TASK_PAGE + 1}, as_dict=True)
     items, cursor = lookahead_page(start, rows, TASK_PAGE)
+    _mark_followups(items)
     if _is_paged(paged):
         total = frappe.db.sql("SELECT COUNT(*) FROM `tabASOUD Workflow Task` WHERE " + where, params)[0][0]
         return success(dict(items=items, next_cursor=cursor), meta={"total": total})
