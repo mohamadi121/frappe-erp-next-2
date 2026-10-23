@@ -188,3 +188,7 @@ Persian validation messages:
 - «مکان تجهیز ثبت نشده یا معتبر نیست.»
 - «تجهیز در اختیار درخواست‌دهنده نیست و قابل بازگشت نیست.»
 - «تاریخ جابه‌جایی نمی‌تواند پیش از آخرین جابه‌جایی تجهیز باشد.»
+
+Asset movement Select option ids use the form schema's lowercase names `issue`
+and `receipt`. The executor maps them to native `Issue` and `Receipt`; existing
+server callers using the native names remain compatible.
