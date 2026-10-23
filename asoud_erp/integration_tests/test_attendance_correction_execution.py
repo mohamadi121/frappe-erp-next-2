@@ -27,13 +27,34 @@ class TestAttendanceCorrectionExecution(FrappeTestCase):
             "date_of_joining": add_days(nowdate(), -365), "user_id": self.user,
             "create_user_permission": 0,
         }).insert().name
-        self.request = frappe._dict(name=f"ATT-{token}", company=self.company, owner=self.user)
+        self.definition = frappe.get_doc({
+            "doctype": "ASOUD Workflow Definition", "workflow_code": f"ATT-{token}",
+            "workflow_title": "اصلاح تردد", "module_key": "HR", "company": self.company,
+            "target_doctype": "ASOUD Workflow Request", "status": "Inactive",
+        }).insert().name
+        self.request = self.create_request()
         self.day = str(add_days(nowdate(), -1))
         # Checkin does not require a shift, holiday list or account. Keep those fields empty.
         self.assertIsNone(frappe.db.get_value("Employee", self.employee, "holiday_list"))
         settings = frappe.get_single("HR Settings")
         settings.allow_geolocation_tracking = 0
         settings.save()
+
+    def create_request(self, **overrides):
+        request = frappe.get_doc({
+            "doctype": "ASOUD Workflow Request", "company": self.company,
+            "owner": self.user, "requester_employee": self.employee,
+            "workflow_definition": self.definition, "request_type": "اصلاح تردد",
+            "subject": "اصلاح تردد", "status": "Completed", **overrides,
+        }).insert()
+        # Frappe stamps owner from the inserting session, even when supplied in the payload.
+        request.db_set("owner", overrides.get("owner", self.user))
+        request.reload()
+        self.assertEqual(frappe.db.get_value("ASOUD Workflow Request", request.name,
+                                            ["owner", "company", "requester_employee"]),
+                         (overrides.get("owner", self.user), overrides.get("company", self.company),
+                          overrides.get("requester_employee", self.employee)))
+        return request
 
     def punch(self, kind="missing_entry", **extra):
         return {"date": self.day, "kind": kind, "in_time": "08:05", "out_time": "01:20",
@@ -56,6 +77,8 @@ class TestAttendanceCorrectionExecution(FrappeTestCase):
         self.assert_punch(result, "IN", f"{self.day} 08:05:00")
 
     def test_missing_exit_next_day(self):
+        self.request.db_set("requester_employee", None)
+        self.request.reload()
         result = execution.apply(self.request, self.punch("missing_exit", out_time__next_day=True))
         self.assert_punch(result, "OUT", f"{add_days(self.day, 1)} 01:20:00")
 
@@ -114,7 +137,7 @@ class TestAttendanceCorrectionExecution(FrappeTestCase):
             "chart_of_accounts": "Standard", "enable_perpetual_inventory": 0,
         }).insert().name
         for override in [{"owner": "Administrator"}, {"company": other_company}]:
-            request = frappe._dict({**self.request, **override})
+            request = self.create_request(**override)
             with self.subTest(override=override), self.assertRaisesRegex(
                 frappe.ValidationError, "پرونده پرسنلی درخواست‌دهنده ثبت نشده است.",
             ):
