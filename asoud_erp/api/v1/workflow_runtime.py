@@ -418,8 +418,19 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
     }
     draft_values = {key: value for key, value in previous_values.items() if key in form_keys}
     due_on, reminder_on = _task_deadlines(config)
-    for user in _users_for_stage(stage, instance):
-        frappe.get_doc(
+    users = _users_for_stage(stage, instance)
+    owner_only = False
+    if stage.stage_type == "Approval" and instance.started_by in users:
+        others = [user for user in users if user != instance.started_by]
+        if not others:
+            others = [user for user in _users_for_roles(config.get("escalation_roles") or [])
+                      if user != instance.started_by]
+        if others:
+            users = others
+        else:
+            owner_only = True
+    for user in users:
+        task = frappe.get_doc(
             {
                 "doctype": "ASOUD Workflow Task",
                 "workflow_instance": instance.name,
@@ -441,6 +452,8 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
             instance,
             message=instance.subject,
         )
+    if owner_only:
+        _record_activity(task, "Note", _("تأییدکننده‌ای غیر از درخواست‌دهنده برای این مرحله تعریف نشده است."))
 
 
 def _action_context(instance) -> dict:
@@ -1023,16 +1036,17 @@ def complete_workflow_task(
     )
     if action not in allowed_actions:
         frappe.throw(_("Action is not valid for this workflow stage"))
+    instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
+    if stage.stage_type == "Approval" and instance.started_by == frappe.session.user:
+        frappe.throw(_("تأیید درخواست خودتان مجاز نیست."), frappe.PermissionError)
     if config.get("comment_required") and not (comment or "").strip():
         frappe.throw(_("A decision comment is required"))
-    if action == "Reject" and config.get("reject_comment_required") and not (comment or "").strip():
-        frappe.throw(_("A rejection reason is required"))
+    if action in {"Reject", "Return"} and not (comment or "").strip():
+        frappe.throw(_("ثبت دلیل رد یا بازگشت الزامی است."))
     if action == "Reject" and not config.get("allow_reject", False):
         frappe.throw(_("Reject is not allowed for this stage"))
     if action == "Return" and not config.get("allow_return", False):
         frappe.throw(_("Return is not allowed for this stage"))
-    if action == "Return" and not (comment or "").strip():
-        frappe.throw(_("A return reason is required"))
     normalized_response = {}
     if action in {"Complete", "Approve"}:
         raw_response = response if response is not None else json.loads(doc.draft_json or "{}")
@@ -1087,7 +1101,6 @@ def complete_workflow_task(
     doc.completed_on = now_datetime()
     doc.save(ignore_permissions=True)
     _record_activity(doc, action, doc.comment)
-    instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
     action_labels = {
         "Complete": _("Workflow stage completed"),
         "Approve": _("Workflow request approved"),

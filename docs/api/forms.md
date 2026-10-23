@@ -54,6 +54,13 @@ missing required row or too-short table is rejected as `حداقل N ردیف ل
 the form company: designation is the Employee designation and joining date is returned
 as ISO (`YYYY-MM-DD`). Missing Employee data produces no default value.
 
+Every field and table column may include the optional boolean key `sensitive`. For
+request details and workflow-task previews, a sensitive value is returned only to the
+request owner, System Manager or HR Manager, and users who have or previously had a task
+on that workflow instance. Other permitted viewers receive `محرمانه` instead of the
+stored value. Stored request and task responses remain unchanged. Omitting the key means
+`false`, so this addition keeps `schema_version` at 2 and preserves old forms.
+
 ## Record sources and derived fields
 
 `get_link_options(company, source, query, form, filter_field, filter_value, exclude_self=0)`

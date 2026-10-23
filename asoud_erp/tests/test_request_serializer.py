@@ -4,6 +4,7 @@ from asoud_erp.services.request_serializer import (
     first_per_key,
     item_count,
     item_rows_of,
+    mask_sensitive_values,
     with_attachment_refs,
 )
 
@@ -57,3 +58,18 @@ def test_default_summary_uses_values_then_the_row():
 def test_first_per_key_keeps_the_newest_row():
     rows = [{"i": "a", "c": "new"}, {"i": "b", "c": "x"}, {"i": "a", "c": "old"}]
     assert first_per_key(rows, "i") == {"a": {"i": "a", "c": "new"}, "b": {"i": "b", "c": "x"}}
+
+
+def test_sensitive_values_are_masked_recursively_without_mutating_storage():
+    values = {"reason": "درمان", "items": [{"name": "دارو", "cost": 500}], "public": "نمایان"}
+    fields = [
+        {"key": "reason", "type": "Text", "sensitive": True},
+        {"key": "items", "type": "Table", "columns": [
+            {"key": "name", "type": "Text"}, {"key": "cost", "type": "Money", "sensitive": True},
+        ]},
+        {"key": "public", "type": "Text"},
+    ]
+    assert mask_sensitive_values(values, fields, False) == {
+        "reason": "محرمانه", "items": [{"name": "دارو", "cost": "محرمانه"}], "public": "نمایان"}
+    assert mask_sensitive_values(values, fields, True) == values
+    assert values["reason"] == "درمان" and values["items"][0]["cost"] == 500

@@ -117,6 +117,10 @@ def _normalize_form_fields(values: Any) -> list[dict[str, Any]]:
 def _field_extensions(item: dict[str, Any], field_type: str, options: list[str]) -> dict[str, Any]:
     """Optional presentation and validation attributes; only the ones that are set are kept."""
     result: dict[str, Any] = {}
+    if "sensitive" in item:
+        if not isinstance(item["sensitive"], bool):
+            raise ValueError("Sensitive field setting must be boolean")
+        result["sensitive"] = item["sensitive"]
     numeric = field_type in {"Number", "Currency"}
     for key in ("max_from_request", "reason_required_if_less_than", "reason_field"):
         if item.get(key) not in (None, ""):

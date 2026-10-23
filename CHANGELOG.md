@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Workflow decisions now always require a Persian reason for rejection or return, block self-approval, and mask form fields marked `sensitive` outside the owner, workflow participants, and System/HR managers. No migration is required.
+
 Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Workflow Activity.workflow_instance`; new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
 
 Fixed:

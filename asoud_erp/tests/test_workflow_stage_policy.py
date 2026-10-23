@@ -198,6 +198,15 @@ def test_form_field_keeps_default_help_and_list_flag() -> None:
         normalize_stage_config("User Task", raw)
 
 
+def test_form_field_keeps_only_a_boolean_sensitive_flag() -> None:
+    field = normalize_stage_config(
+        "User Task", _task_with({"type": "Short Text", "sensitive": True})
+    )["form_fields"][0]
+    assert field["sensitive"] is True
+    with pytest.raises(ValueError, match="boolean"):
+        normalize_stage_config("User Task", _task_with({"type": "Short Text", "sensitive": "yes"}))
+
+
 def _task_with(field: dict) -> dict:
     return {
         "title": "تکمیل فرم درخواست",
