@@ -192,3 +192,32 @@ Persian validation messages:
 Asset movement Select option ids use the form schema's lowercase names `issue`
 and `receipt`. The executor maps them to native `Issue` and `Receipt`; existing
 server callers using the native names remain compatible.
+
+## Shift request (`shift_request`)
+
+Internal executor, through the existing approval dispatcher and retry endpoint; no new
+HTTP endpoint or role gate. Parameters: `kind` (Select, required: `self_change` or
+`swap_with_colleague`), `from_date` (Date, required), `to_date` (Date, optional,
+empty means open end as HRMS permits), `shift_type` (Link, required: proposed shift
+for requester), `colleague` (Employee Link, required for swap),
+`colleague_shift_type` (Shift Type Link, required for swap: proposed shift for colleague),
+`reason` (Text/LongText, optional). Parameter mapping uses execution_key, never preset keys.
+T4 uses change_type, change_date/start_date, end_date, exchange_colleague; its two
+proposed shifts must be explicitly mapped by the designer.
+
+Pure build returns the first Shift Request payload plus `additional_requests` for
+the colleague. Both are Draft/docstatus 0. No assignment is submitted or schedule
+changed. apply returns Created/Shift Request/first name; the second draft is linked
+by a Persian Comment on the first. Reason is preserved as a Comment (no native field).
+Both drafts are atomic, including comments; failure rolls back both and dispatcher
+records Failed, preserving approval and allowing retry.
+
+Active requester/colleague must belong to the request company and differ. Dates
+must be ISO and ordered. Shift Types must exist; installed HRMS has no disabled
+field (enable_auto_attendance controls attendance processing, not shift eligibility).
+Each employee needs an enabled native shift_request_approver user. HRMS validates
+request overlap/default shift; a transient Shift Assignment validates active submitted
+assignment overlap without inserting it. Native validation failures become
+«ثبت درخواست شیفت انجام نشد؛ هم‌پوشانی برنامه، شیفت پیش‌فرض و تأییدکننده را بررسی کنید.».
+Missing dates, shift, colleague, company, employee or approver fail with a Persian
+reason identifying the missing prerequisite. No migration or configuration is added.
