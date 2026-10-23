@@ -11,8 +11,8 @@ TYPES = {"Text", "LongText", "Integer", "Decimal", "Money", "Date", "Time", "Dat
          "Select", "MultiSelect", "Boolean", "Checkbox", "Link", "Table", "Formula", "Display", "Rating",
          "File", "Image", "Signature", "Barcode", "Schedule"}
 SOURCES = {"Employee", "Customer", "Supplier", "Item", "Warehouse", "Account", "Cost Center",
-           "Project", "Department", "Attendance", "Shift Type", "Training Event", "Asset"}
-SCOPED_SOURCES = {"Attendance", "Shift Type", "Training Event", "Asset"}
+           "Project", "Department", "Attendance", "Shift Type", "Leave Type", "Training Event", "Asset"}
+SCOPED_SOURCES = {"Attendance", "Shift Type", "Leave Type", "Training Event", "Asset"}
 FETCH_ATTRIBUTES = {
     "Attendance": ("in_time", "out_time", "attendance_date", "status", "shift"),
     "Shift Type": ("start_time", "end_time"),
@@ -45,6 +45,9 @@ def scope_filters(source, company, employee):
         return {'company': company, 'employee': employee, 'docstatus': 1}
     if source == 'Shift Type':
         return {}
+    if source == 'Leave Type':
+        # Optional-holiday leave needs the optional holiday list; it is not requested through a form.
+        return {'is_optional_leave': 0}
     if source == 'Training Event':
         from frappe.utils import now_datetime
         return {'company': company, 'event_status': 'Scheduled', 'docstatus': ['<', 2],

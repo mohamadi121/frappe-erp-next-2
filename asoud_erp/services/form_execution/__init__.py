@@ -28,11 +28,20 @@ class Executor(Protocol):
 EXECUTORS: dict[str, Executor] = {}
 
 # Executor modules register here; each one imports only its own dependencies lazily.
-from . import asset_movement, attendance_correction, employee_advance, shift_request, training_enrollment  # noqa: E402
+from . import (  # noqa: E402
+    asset_movement,
+    attendance_correction,
+    employee_advance,
+    leave_application,
+    mission,
+    overtime,
+    shift_request,
+    training_enrollment,
+)
 from . import exit as exit_settlement  # noqa: E402
 
 for _module in (employee_advance, attendance_correction, asset_movement, shift_request, exit_settlement,
-                training_enrollment):
+                training_enrollment, leave_application, mission, overtime):
     EXECUTORS[_module.KIND] = _module
 
 __all__ = ['EXECUTORS', 'Executor', 'Result']
