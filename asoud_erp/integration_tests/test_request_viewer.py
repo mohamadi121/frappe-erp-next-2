@@ -1,11 +1,19 @@
 """`get_request.viewer` is derived from the signed-in user's own open task."""
 
+import base64
+
 import frappe
 
 from asoud_erp.api.v1 import workflow_request, workflow_runtime
-from asoud_erp.integration_tests.fixtures import ACCOUNTANT_USER, APPROVER_USER, EMPLOYEE_USER, APITestCase
+from asoud_erp.integration_tests.fixtures import (
+    ACCOUNTANT_USER,
+    APPROVER_USER,
+    EMPLOYEE_USER,
+    ITEM,
+    APITestCase,
+)
 from asoud_erp.integration_tests.request_fixtures import make_definition
-from asoud_erp.integration_tests.request_helpers import act, create, open_task
+from asoud_erp.integration_tests.request_helpers import act, create, open_task, valid_pdf_bytes
 
 
 class TestRequestViewer(APITestCase):
@@ -84,3 +92,57 @@ class TestRequestViewer(APITestCase):
         frappe.set_user(ACCOUNTANT_USER)
         detail = workflow_request._detail(frappe.get_doc("ASOUD Workflow Request", self.request["name"]))
         self.assertEqual(detail["values"]["reason"], "محرمانه")
+
+
+class TestSensitiveValues(APITestCase):
+    def setUp(self):
+        super().setUp()
+        fields = [
+            {"key": "reason", "label": "دلیل", "type": "Long Text", "max_length": 2000},
+            {"key": "secret", "label": "شرح محرمانه", "type": "Long Text", "max_length": 2000, "sensitive": True},
+            {"key": "proof", "label": "مدرک", "type": "Attachment", "sensitive": True},
+            {"key": "items", "label": "اقلام", "type": "Item Table", "sensitive": True,
+             "row_options": {"item_scope": "all", "note": True, "attachment": False, "min_rows": 0, "max_rows": 10}},
+        ]
+        self.definition, _stages = make_definition(self.company, approvals=1, fields=fields)
+        upload = {"filename": "p.pdf", "content_base64": base64.b64encode(valid_pdf_bytes()).decode(), "ref": "a1"}
+        self.request = create(
+            self.company, definition=self.definition, attachments=[upload],
+            values={"reason": "عادی", "secret": "رمز-۱۲۳", "proof": "attachment:a1",
+                    "items": [{"item_code": ITEM, "qty": 1}]})
+
+    def _detail_as(self, user):
+        frappe.set_user(user)
+        return workflow_request._detail(frappe.get_doc("ASOUD Workflow Request", self.request["name"]))
+
+    def test_owner_and_task_holder_see_the_values_and_files(self):
+        for user in (EMPLOYEE_USER, APPROVER_USER):
+            detail = self._detail_as(user)
+            self.assertEqual(detail["values"]["secret"], "رمز-۱۲۳")
+            self.assertEqual(len(detail["attachments"]), 1)
+
+    def test_past_task_holder_still_sees_the_values(self):
+        act(self.request["workflow_instance"], "Approve")
+        self.assertEqual(self._detail_as(APPROVER_USER)["values"]["secret"], "رمز-۱۲۳")
+
+    def test_a_user_without_a_task_gets_the_mask_and_no_file(self):
+        detail = self._detail_as(ACCOUNTANT_USER)
+        self.assertEqual(detail["values"]["secret"], "محرمانه")
+        self.assertEqual(detail["values"]["proof"], "محرمانه")
+        self.assertEqual(detail["values"]["items"], "محرمانه")
+        self.assertEqual(detail["values"]["reason"], "عادی")
+        self.assertEqual(detail["attachments"], [])
+        self.assertEqual(detail["attachment_count"], 0)
+        self.assertNotIn("p.pdf", frappe.as_json(detail["values"]))
+        with self.assertRaises(frappe.PermissionError):
+            workflow_request.get_request(self.request["name"])
+
+    def test_search_text_never_holds_sensitive_values(self):
+        text = frappe.db.get_value("ASOUD Workflow Request", self.request["name"], "search_text")
+        self.assertNotIn(ITEM, text)
+        self.assertIn(self.request["name"], text)
+
+    def test_the_same_items_are_searchable_when_the_field_is_not_sensitive(self):
+        definition, _stages = make_definition(self.company, approvals=1)
+        plain = create(self.company, definition=definition, values={"items": [{"item_code": ITEM, "qty": 1}]})
+        self.assertIn(ITEM, frappe.db.get_value("ASOUD Workflow Request", plain["name"], "search_text"))

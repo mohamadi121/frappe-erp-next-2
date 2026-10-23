@@ -31,6 +31,17 @@ def mask_sensitive_values(values: dict, fields: list[dict], can_view: bool) -> d
     return result
 
 
+def hidden_file_urls(values: dict, fields: list[dict], can_view: bool) -> set[str]:
+    """File urls that only sensitive fields point to, which a non-participant must not receive."""
+    if can_view:
+        return set()
+    from asoud_erp.services.workflow_response import attachment_references
+
+    masked = mask_sensitive_values(values, fields, False)
+    return ({ref for _scope, ref in attachment_references(fields, values or {})}
+            - {ref for _scope, ref in attachment_references(fields, masked)})
+
+
 def item_rows_of(values: dict | None) -> list[dict]:
     """The item rows of a request: the `items` field, else the first list of rows with an item code."""
     values = values or {}

@@ -214,7 +214,9 @@ def _pending_url(key: str) -> str:
     return PENDING_PREFIX + key
 
 
-def _search_text(name, subject, requester_name, department, project, values) -> str:
+def _search_text(name, subject, requester_name, department, project, values, fields=()) -> str:
+    """Sensitive values never enter the searchable text: a search must not reveal them."""
+    values = request_serializer.mask_sensitive_values(values, list(fields), False)
     department_name = (frappe.db.get_value("Department", department, "department_name")
                        if department else "") or department or ""
     return request_serializer.build_search_text(
@@ -352,6 +354,9 @@ def _detail(doc) -> dict:
                                 "assigned_to": frappe.session.user}))
     visible_values = request_serializer.mask_sensitive_values(
         values, fields, owner or privileged or participant)
+    hidden = request_serializer.hidden_file_urls(values, fields, owner or privileged or participant)
+    entries = [entry for entry in entries if entry["file_url"] not in hidden]
+    by_url = {entry["file_url"]: entry for entry in entries}
     return {
         "name": doc.name, "number": doc.name, "company": doc.company, "template_key": doc.template_key or "",
         "template_version": doc.template_version or 0, "workflow_definition": doc.workflow_definition,
@@ -363,7 +368,7 @@ def _detail(doc) -> dict:
         "request_id": doc.request_id, "rejection_reason": _rejection_reason(doc.workflow_instance),
         "can_edit": bool(can_edit), "can_cancel": bool(owner and running),
         "viewer": build_viewer(owner, _own_open_tasks(doc.workflow_instance) if running else []),
-        "item_count": request_serializer.item_count(values), "attachment_count": len(entries),
+        "item_count": request_serializer.item_count(visible_values), "attachment_count": len(entries),
         "comment_count": request_comments.count_comments(doc.name),
         "values": request_serializer.with_attachment_refs(visible_values, by_url),
         "attachments": entries, "fields": fields,
@@ -567,7 +572,7 @@ def create_request(company: str, workflow_definition: str | None = None, subject
         files.entry(item["name"], item["filename"], item["file_url"], item["size"],
                     scopes.get(item["file_url"], "general")) for item in entries], ensure_ascii=False)
     doc.search_text = _search_text(doc.name, doc.subject, employee.employee_name if employee else
-                                   get_fullname(frappe.session.user), doc.department, doc.project, final)
+                                   get_fullname(frappe.session.user), doc.department, doc.project, final, fields)
     doc.save(ignore_permissions=True)
     result = start_workflow_instance(definition=definition.name, subject=doc.subject,
                                      reference_doctype=doc.doctype, reference_name=doc.name)
@@ -710,7 +715,7 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
     doc.attachments_json = json.dumps(_entries_with_scopes(
         [{**item, "size": item.get("size") or 0} for item in kept] + added, fields, final), ensure_ascii=False)
     doc.search_text = _search_text(doc.name, doc.subject, _requester_name(doc.owner), doc.department,
-                                   doc.project, final)
+                                   doc.project, final, fields)
     doc.save(ignore_permissions=True)
     instance.subject = doc.subject
     instance.save(ignore_permissions=True)
