@@ -64,6 +64,28 @@ on that workflow instance. Other permitted viewers receive `محرمانه` inst
 stored value. Stored request and task responses remain unchanged. Omitting the key means
 `false`, so this addition keeps `schema_version` at 2 and preserves old forms.
 
+### Confidential fields in every output
+
+A field is confidential when it has `sensitive: true` in the form schema (field or table
+column), in the mapped workflow field, or in a workflow step form. A form field that maps to a
+workflow field through `workflow_key` makes that workflow field confidential too, so the flag
+set in the form designer is enough. Confidential values (and files that only they point to) are
+visible to the request owner, System Manager, HR Manager, and users who have or had a task on the
+instance. Nobody else receives them from any output:
+
+| output | rule |
+|---|---|
+| `get_request` values, attachments, `attachment_count`, `item_count` | `محرمانه`, files omitted |
+| `search_text` and the `search` filter | confidential values are never indexed |
+| `update_request` `Resubmitted` activity (`before`/`after`) | `محرمانه` for everyone |
+| `get_workflow_task` | only the task assignee reads it (a participant) |
+| `Send Notification` message and its activity comment | placeholders of confidential fields render `محرمانه` |
+| `Create Document` automatic action and task output | confidential request values are not transferred |
+| execution after approval | a confidential text parameter is never copied into a native document, Comment or note: the native text becomes `محرمانه؛ جزئیات در درخواست <شماره> است.` and the real text stays in the request |
+
+The execution rule applies to parameters whose declared type is `Text` or `LongText`; numbers,
+dates and links are still passed so the document stays valid. Mark only free text confidential.
+
 ## Record sources and derived fields
 
 `get_link_options(company, source, query, form, filter_field, filter_value, exclude_self=0)`
