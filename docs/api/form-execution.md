@@ -18,8 +18,9 @@ Invalid input or missing prerequisites raise `ValueError` with a Persian reason 
 `build(params, ctx)` is pure and uses the E2 context: company, employee, user,
 request_name and today. Company and employee must be present. It produces a draft
 (`docstatus = 0`), with `exchange_rate = 1`. `apply` resolves the requester's active
-Employee in the request company, using `requester_employee` when provided and otherwise
-`requester`; the resolved employee must belong to the requester and company.
+Employee with `user_id = request.owner` in the request company. When
+`requester_employee` is provided, the lookup also requires that employee name; the
+resolved employee must belong to the owner and company.
 Currency is `Company.default_currency`, and advance account is
 `Company.default_employee_advance_account`. The account must exist, belong to the
 company, be enabled, be a leaf and have type Receivable. No holiday list, approver,

@@ -34,8 +34,19 @@ class TestFormExecutionEmployeeAdvance(FrappeTestCase):
             'parent_account': parent, 'account_type': 'Receivable', 'account_currency': 'USD',
         }).insert().name
         frappe.db.set_value('Company', self.company, 'default_employee_advance_account', self.account)
-        self.request = frappe._dict(company=self.company, requester=self.user,
-                                    requester_employee=self.employee, name=f'ADV-{suffix}')
+        definition = frappe.get_doc({
+            'doctype': 'ASOUD Workflow Definition', 'workflow_code': f'ADV-{suffix}',
+            'workflow_title': 'درخواست مساعده', 'company': self.company,
+            'module_key': 'HR', 'target_doctype': 'ASOUD Workflow Request',
+        }).insert()
+        request = frappe.get_doc({
+            'doctype': 'ASOUD Workflow Request', 'company': self.company,
+            'workflow_definition': definition.name, 'request_type': 'مساعده',
+            'subject': 'درخواست مساعده', 'owner': self.user,
+            'requester_employee': self.employee,
+        }).insert()
+        frappe.db.set_value('ASOUD Workflow Request', request.name, 'owner', self.user)
+        self.request = frappe.get_doc('ASOUD Workflow Request', request.name)
         self.params = {'amount': 1500, 'purpose': 'هزینه سفر', 'repay_from_salary': True}
 
     def tearDown(self):
@@ -73,6 +84,15 @@ class TestFormExecutionEmployeeAdvance(FrappeTestCase):
         self.assertEqual((doc.employee, str(doc.posting_date), doc.repay_unclaimed_amount_from_salary),
                          (self.employee, nowdate(), 0))
 
+    def test_persisted_request_owner_resolves_employee(self):
+        self.assertEqual(self.request.owner, self.user)
+        self.assertFalse(self.request.meta.has_field('requester'))
+        self.assertIsNone(self.request.get('requester'))
+        result = apply(self.request, self.params)
+        self.assertEqual(result.status, 'Created')
+        self.assertEqual(frappe.db.get_value('Employee Advance', result.name, 'employee'),
+                         self.employee)
+
     def test_missing_account(self):
         frappe.db.set_value('Company', self.company, 'default_employee_advance_account', None)
         self.assert_failure('حساب پیش‌فرض مساعده کارکنان در شرکت تنظیم نشده است.')
@@ -108,5 +128,5 @@ class TestFormExecutionEmployeeAdvance(FrappeTestCase):
         self.request.requester_employee = 'missing-employee'
         self.assert_failure('پرونده پرسنلی درخواست‌دهنده ثبت نشده است.')
         self.request.requester_employee = None
-        self.request.requester = None
+        self.request.owner = None
         self.assert_failure('پرونده پرسنلی درخواست‌دهنده ثبت نشده است.')

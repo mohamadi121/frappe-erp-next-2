@@ -1,2 +1,4 @@
+from . import employee_advance
+
 EXECUTORS = {}
-EXECUTORS['employee_advance'] = __import__(__name__ + '.employee_advance', fromlist=['employee_advance'])
+EXECUTORS[employee_advance.KIND] = employee_advance

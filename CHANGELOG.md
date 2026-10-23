@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Fix employee advance execution to resolve the requester from the workflow request owner, retaining active employee and company checks. No migration or site configuration is required.
 - Create draft HRMS employee advances from approved form parameters with company currency, validated receivable account and Persian prerequisite errors. No migration or site configuration is required.
 
 

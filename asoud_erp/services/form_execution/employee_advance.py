@@ -69,14 +69,14 @@ def apply(request, params: dict):
                                  ['default_currency', 'default_employee_advance_account'], as_dict=True)
     if not company:
         raise ValueError('شرکت درخواست یافت نشد.')
-    filters = {'company': company_name, 'user_id': request.get('requester'), 'status': 'Active'}
-    if not request.get('requester'):
+    filters = {'company': company_name, 'user_id': request.owner, 'status': 'Active'}
+    if not request.owner:
         raise ValueError('پرونده پرسنلی درخواست‌دهنده ثبت نشده است.')
     if request.get('requester_employee'):
         filters['name'] = request.get('requester_employee')
     employee = frappe.db.get_value('Employee', filters, 'name')
     payload = build(params, dict(company=company_name, employee=employee,
-                                user=request.get('requester'), request_name=request.get('name'), today=nowdate()))
+                                user=request.owner, request_name=request.get('name'), today=nowdate()))
     if not company.default_currency:
         raise ValueError('واحد پول شرکت مشخص نشده است.')
     account_name = company.default_employee_advance_account
