@@ -14,7 +14,7 @@ with a Persian reason for the dispatcher to record as Failed.
 | asset | Link | yes | assets[0].asset |
 | direction | Select | yes | Issue or Receipt → purpose |
 | date | Date | no | transaction_date at midnight; empty uses ctx.today |
-| note | Text, Small Text, Long Text | no | Persian Comment on the draft; no invented native field |
+| note | Text, LongText | no | Persian Comment on the draft; no invented native field |
 
 `build(params, ctx)` is pure. Standard context keys are company, employee, user,
 request_name and today. `apply` adds asset_location and asset_custodian read from
