@@ -89,7 +89,7 @@ dates and links are still passed so the document stays valid. Mark only free tex
 ## Record sources and derived fields
 
 `get_link_options(company, source, query, form, filter_field, filter_value, exclude_self=0)`
-returns `{name, label}` rows. Sources `Attendance`, `Shift Type`, `Training Event` and `Asset`
+returns `{name, label}` rows. Sources `Attendance`, `Shift Type`, `Leave Type`, `Training Event` and `Asset`
 are scoped to the signed-in user and enforced again by `submit_form`
 (`«رکورد انتخاب‌شده در محدوده مجاز شما نیست.»`):
 
@@ -97,11 +97,12 @@ are scoped to the signed-in user and enforced again by `submit_form`
 |---|---|
 | `Attendance` | submitted records of the user's active Employee in the company; `link_filter {field: 'attendance_date', value_field}` allowed |
 | `Shift Type` | all Shift Types (v15 has no `disabled` field) |
+| `Leave Type` | Leave Types that are not optional-holiday leave (`is_optional_leave = 0`); HRMS Leave Type has no company and no `disabled` field. Whether the person has a usable allocation is decided by the leave execution, not by the list |
 | `Training Event` | company events with `event_status = Scheduled`, `start_time >= now`, not cancelled |
 | `Asset` | submitted company Assets whose `custodian` is the user's Employee |
 
 Without an active Employee, `Attendance` and `Asset` return `[]` with `meta.reason = 'no_employee'`
-(submission fails with `«پرونده پرسنلی شما ثبت نشده است.»`). These four sources are read with the
+(submission fails with `«پرونده پرسنلی شما ثبت نشده است.»`). These five sources are read with the
 scope filter as the only authorization (Employees have no native read permission on Training Event
 and Asset). Labels are Persian with Jalali dates and Persian digits:
 Attendance `«۱۴۰۵/۰۷/۲۸ · حاضر · ورود ۰۸:۰۱ · خروج ۱۶:۳۰»` (statuses حاضر, غایب, مرخصی, نیم‌روز,
