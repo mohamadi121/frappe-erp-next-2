@@ -469,7 +469,15 @@ def _action_context(instance) -> dict:
             as_dict=True,
         )
         values = json.loads(request.values_json or "{}") if request else {}
-    values.update(merge_completed_responses(list(reversed(_completed_task_rows(instance)))))
+    rows = _completed_task_rows(instance)
+    values.update(merge_completed_responses(list(reversed(rows))))
+    # Notifications and documents are read by people who may not see the request: confidential values are masked.
+    from asoud_erp.api.v1.workflow_request import request_fields
+    from asoud_erp.services.request_serializer import mask_sensitive_values
+
+    fields = (request_fields(request.name) if request else []) + [
+        field for row in rows for field in row["form_fields"] if isinstance(field, dict)]
+    values = mask_sensitive_values(values, fields, False)
     employee = frappe.db.get_value(
         "Employee", {"user_id": instance.started_by}, ["employee_name", "department"], as_dict=True
     ) or {}

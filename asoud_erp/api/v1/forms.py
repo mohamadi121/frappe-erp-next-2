@@ -586,6 +586,10 @@ def submit_form(name, revision_name, subject, values, request_key):
     entry = store(frappe.get_doc({'doctype': 'ASOUD Form Entry', 'form': doc.name, 'revision': rev.name, 'company': doc.company,
         'subject': subject.strip(), 'values_json': json.dumps(checked, ensure_ascii=False) if schema['kind'] == 'Request' else '{}',
         'reference_doctype': reference_type, 'reference_name': reference_name, 'request_key': key, 'fingerprint': fingerprint}))
+    if reference_type == 'ASOUD Workflow Request':
+        from asoud_erp.api.v1.workflow_request import refresh_search_text
+
+        refresh_search_text(reference_name)
     if reference_type == 'ASOUD Workflow Request' and schema.get('execution'):
         from asoud_erp.services.request_templates.lifecycle import dispatch_native_document
 

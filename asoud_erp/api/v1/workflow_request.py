@@ -104,6 +104,30 @@ def _fields_by_name(definition_name):
     return json.loads(stage.config_json or "{}").get("form_fields", []) if stage else []
 
 
+def confidential_fields(request_name, fields):
+    """`fields` where the form-builder `sensitive` flag of the request's form entry is carried over."""
+    revision = frappe.db.get_value("ASOUD Form Entry", {
+        "reference_doctype": REQUEST_DOCTYPE, "reference_name": request_name}, "revision")
+    schema = frappe.db.get_value("ASOUD Form Revision", revision, "schema_json") if revision else None
+    if not schema:
+        return fields
+    return request_serializer.overlay_sensitive(fields, request_serializer.schema_fields(json.loads(schema)))
+
+
+def request_fields(request_name):
+    """The request form fields with every confidentiality flag, for outputs that must mask."""
+    definition = frappe.db.get_value(REQUEST_DOCTYPE, request_name, "workflow_definition")
+    return confidential_fields(request_name, _fields_by_name(definition)) if definition else []
+
+
+def refresh_search_text(request_name):
+    """Rebuilds `search_text` once the form entry (which can mark fields confidential) exists."""
+    doc = frappe.get_doc(REQUEST_DOCTYPE, request_name)
+    doc.db_set("search_text", _search_text(
+        doc.name, doc.subject, _requester_name(doc.owner), doc.department, doc.project,
+        json.loads(doc.values_json or "{}"), request_fields(doc.name)), update_modified=False)
+
+
 def _spec_for(definition):
     """The TemplateSpec of a system template definition; None for custom request types."""
     if not definition.template_key:
@@ -363,7 +387,7 @@ def _stage_rows(definition, instance_name) -> list:
 def _detail(doc) -> dict:
     instance = _instance_row(doc.workflow_instance)
     instance_status = instance.status if instance else None
-    fields = _fields_by_name(doc.workflow_definition)
+    fields = confidential_fields(doc.name, _fields_by_name(doc.workflow_definition))
     values = effective_values(doc.name)
     stored = json.loads(doc.attachments_json or "[]")
     missing = [item["name"] for item in stored if not item.get("size")]
@@ -770,8 +794,9 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
     doc.values_json = json.dumps(final, ensure_ascii=False)
     doc.attachments_json = json.dumps(_entries_with_scopes(
         [{**item, "size": item.get("size") or 0} for item in kept] + added, fields, final), ensure_ascii=False)
+    flagged = confidential_fields(doc.name, fields)
     doc.search_text = _search_text(doc.name, doc.subject, _requester_name(doc.owner), doc.department,
-                                   doc.project, final, fields)
+                                   doc.project, final, flagged)
     doc.save(ignore_permissions=True)
     instance.subject = doc.subject
     instance.save(ignore_permissions=True)
@@ -783,7 +808,7 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
                             json.dumps(final, ensure_ascii=False))
     files.delete_files([file_name for file_name in remove if file_name in by_name])
     if resubmit:
-        changes = request_resubmit.diff_values(previous, final, fields)
+        changes = request_resubmit.diff_values(previous, final, flagged)
         _activity(instance, "Resubmitted", before={row["key"]: row["before"] for row in changes},
                   after={row["key"]: row["after"] for row in changes},
                   labels={row["key"]: row["label"] for row in changes})

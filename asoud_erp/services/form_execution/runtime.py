@@ -52,8 +52,10 @@ def execute(request):
               for row in frappe.get_all('ASOUD Workflow Stage', filters={
                   'name': ['in', list({task.workflow_stage for task in tasks}) or ['']]},
                   fields=['name', 'config_json'], limit_page_length=0)}
+    text_keys = {name for name, spec in executor.PARAMETERS.items()
+                 if {'Text', 'LongText'} & set(spec.get('types') or [])}
     params = collect_parameters(fields, values, [{
         'name': task.name, 'status': task.status, 'completed_on': task.completed_on,
         'fields': stages.get(task.workflow_stage, []), 'values': json.loads(task.response_json or '{}'),
-    } for task in tasks])
+    } for task in tasks], request_name=request.name, text_keys=text_keys)
     return executor.apply(request, params)
