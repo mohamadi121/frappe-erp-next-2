@@ -347,3 +347,66 @@ reason; then `can_reissue` is false and `reissue_native_document` refuses with t
 
 The `Voided` activity `change_json` also carries `voided` (`[doctype, name]` left behind) and `reissue_blocked`.
 A failed reissue keeps the old link in the history and is retryable with `create_native_document`.
+
+## Employment certificate (`certificate_issue`)
+
+Product decision T3: after the final approval the certificate is issued automatically as a numbered
+PDF with the company letterhead and attached to the request. Appears in `forms.execution_kinds` with
+label «صدور گواهی اشتغال به کار». No second PDF engine: the body is a text template rendered with
+`services/document_templates.render_placeholders` (values are HTML-escaped first) and converted by
+Frappe's own WeasyPrint integration (`frappe.utils.weasyprint.import_weasyprint`). The letterhead is
+the Frappe `Letter Head` named in `Company.default_letter_head`. The numbered text templates are
+constants of the executor: the existing document-template module only maps ERPNext documents and has
+no letterhead or PDF output, so there is nothing else to reuse.
+
+| Parameter | Allowed field types | Required | Meaning |
+|---|---|---|---|
+| `recipient` | Text, LongText | yes | addressee printed on the certificate (max 250 characters) |
+| `purpose` | Select, Text | yes | `bank`, `embassy`, `organization` or `other` |
+| `purpose_details` | Text, LongText | when `purpose = other` | printed only for `other`; ignored for the others |
+| `language` | Select, Text | no (default `persian`) | `persian` or `english` |
+| `include_compensation` | Select, Boolean, Checkbox | no (default no) | `yes`/`no` (or a boolean); salary is printed only when it is yes |
+
+Content comes from real rows only: Employee (`employee_name`, `designation`, `date_of_joining`,
+`status`, `relieving_date`), Company (`company_name`, `default_letter_head`) and, when salary was
+asked for, the latest **submitted** HRMS `Salary Structure Assignment` of the employee in the company
+with `from_date <= today` (`base`, `currency`). `designation` is optional and its phrase is left out
+when empty. Dates are printed Jalali with Persian digits. The certificate says it was issued by the
+system and carries no signature or stamp.
+
+Result (`Result`/`NativeResult`):
+
+| Case | Result |
+|---|---|
+| issued | `Created`, `native_doctype = File`, `native_name` = the private File (`attached_to_doctype = ASOUD Workflow Request`, `attached_to_name` = request, `attached_to_field = certificate`, `file_name = CERT-YYYY-NNNNN.pdf`) |
+| issued before (retry or re-dispatch) | `Created` with the existing File; no new number is taken |
+| employee not `Active` or `relieving_date` reached | `needs_review`: «نیاز به اقدام HR؛ کارمند در حال حاضر شاغل نیست و گواهی اشتغال خودکار صادر نمی‌شود.» |
+| `include_compensation` yes and no submitted assignment, or `base` empty or not positive | `needs_review`: «نیاز به اقدام HR؛ برای درج حقوق، تخصیص ساختار حقوق ثبت‌شده و معتبر برای کارمند وجود ندارد.» |
+| `language = english` | `needs_review`: «نیاز به اقدام HR؛ قالب انگلیسی تأییدشده برای گواهی اشتغال تعریف نشده است.» |
+| company has no enabled Letter Head | `needs_review`: «نیاز به اقدام HR؛ سربرگ شرکت برای صدور گواهی تعریف نشده است.» |
+
+On every `needs_review` no number is taken and no file is written. The requester's Employee is found
+without the `Active` filter for this executor (`ALLOW_INACTIVE`), otherwise a relieved employee would
+fail instead of reaching HR.
+Numbers come from the Frappe naming series `CERT-.YYYY.-.#####` (row-locked, concurrency safe). A
+number lost to a rolled-back failure is not reused.
+Invalid input raises Persian `ValueError`: «مرجع دریافت‌کننده گواهی الزامی است.», «هدف از دریافت گواهی معتبر نیست.»,
+«شرح هدف برای گزینه سایر موارد الزامی است.», «زبان گواهی معتبر نیست.», «گزینه درج حقوق و مزایا معتبر نیست.»,
+«ساخت فایل PDF گواهی انجام نشد؛ تنظیمات چاپ سرور را بررسی کنید.».
+
+### Download — `asoud_erp.api.v1.workflow_request.get_certificate`
+
+`GET`, argument `name` (request). Allowed: the requester (request owner) with company access, and users
+with `HR Manager` or `System Manager` with access to the request's company. Everyone else, including a
+manager of another company, a stage approver, another employee and a user without an Employee, gets the
+permission error «شما اجازهٔ دریافت این گواهی را ندارید.» (HTTP 403). The generic
+`get_attachment` and Frappe's file URL (`File` permission hook) apply the same rule to certificate files.
+
+Response `data`: `{number, filename, content_type: "application/pdf", size, issued_on, content_base64}`.
+Without an issued certificate: «گواهی برای این درخواست صادر نشده است.» (417).
+
+`get_request` gains `certificate`: `null`, or `{number, filename, issued_on}` for a viewer allowed to
+download (never for approvers or other readers). No file content is returned there.
+
+Deployment: no migration. WeasyPrint (a Frappe v15 dependency) must import on the server. The company
+needs a default Letter Head. No new site configuration.

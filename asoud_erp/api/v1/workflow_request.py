@@ -8,8 +8,8 @@ from frappe.utils import get_fullname, getdate, now_datetime, nowdate
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.workflow_runtime import _next_stage, start_workflow_instance
-from asoud_erp.services import request_attachments as files
 from asoud_erp.services import (
+    certificate_access,
     request_comments,
     request_execution,
     request_lookup,
@@ -17,8 +17,10 @@ from asoud_erp.services import (
     request_serializer,
     request_timeline,
 )
+from asoud_erp.services import request_attachments as files
 from asoud_erp.services.erp_documents import require_roles
-from asoud_erp.services.request_access import request_permission, require_company
+from asoud_erp.services.form_execution.certificate_issue import number_of
+from asoud_erp.services.request_access import certificate_permission, request_permission, require_company
 from asoud_erp.services.request_link_values import validate_link_values
 from asoud_erp.services.request_status import (
     GROUP_NAMES,
@@ -430,7 +432,23 @@ def _detail(doc) -> dict:
         "native": {"doctype": doc.native_doctype or "", "name": doc.native_name or "",
                    "status": doc.native_status or "", "error": (doc.native_error or "") if privileged else ""},
         "execution": _execution(doc, instance_status, privileged),
+        "certificate": _certificate_summary(doc),
     }
+
+
+def _certificate_file(request_name):
+    return frappe.db.get_value("File", {
+        "attached_to_doctype": REQUEST_DOCTYPE, "attached_to_name": request_name,
+        "attached_to_field": certificate_access.FIELD}, ["name", "file_name", "creation"], as_dict=True)
+
+
+def _certificate_summary(doc):
+    """`{number, filename, issued_on}` for a viewer who may download the certificate, else None."""
+    if not certificate_permission(doc):
+        return None
+    row = _certificate_file(doc.name)
+    return {"number": number_of(row.file_name or ""), "filename": row.file_name or "",
+            "issued_on": str(row.creation)} if row else None
 
 
 def _execution(doc, instance_status, privileged) -> dict:
@@ -974,7 +992,9 @@ def get_attachment(name, thumbnail: int | str = 0):
     file = frappe.get_doc("File", name)
     if file.attached_to_doctype != REQUEST_DOCTYPE or not file.is_private:
         frappe.throw("Invalid request attachment", frappe.PermissionError)
-    _readable_request(file.attached_to_name)
+    request = _readable_request(file.attached_to_name)
+    if file.attached_to_field == certificate_access.FIELD and not certificate_permission(request):
+        frappe.throw(_(certificate_access.DENIED), frappe.PermissionError)
     if not str(file.file_url).startswith("/private/files/"):
         frappe.throw("Remote attachments are unsupported")
     content = file.get_content()
@@ -986,6 +1006,22 @@ def get_attachment(name, thumbnail: int | str = 0):
         content = files.thumbnail(content, file.file_name or "")
     return success({"filename": file.file_name, "content_type": files.content_type(file.file_name or ""),
                     "size": len(content), "content_base64": base64.b64encode(content).decode()})
+
+
+@frappe.whitelist()
+def get_certificate(name: str):
+    """The issued employment certificate PDF; requester, HR Managers and System Managers only."""
+    doc = frappe.get_doc(REQUEST_DOCTYPE, name)
+    if not certificate_permission(doc):
+        frappe.throw(_(certificate_access.DENIED), frappe.PermissionError)
+    row = _certificate_file(doc.name)
+    if not row:
+        frappe.throw(_(certificate_access.NOT_ISSUED))
+    content = frappe.get_doc("File", row.name).get_content()
+    content = content.encode() if isinstance(content, str) else content
+    return success({"number": number_of(row.file_name or ""), "filename": row.file_name, "content_type": "application/pdf",
+                    "size": len(content), "issued_on": str(row.creation),
+                    "content_base64": base64.b64encode(content).decode()})
 
 
 @frappe.whitelist(methods=["POST"])

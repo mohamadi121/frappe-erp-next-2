@@ -23,6 +23,7 @@ are `frappe.throw` with a code in `_server_messages[].title` (see the table at t
 | `list_request_comments(name, limit_start?, limit_page_length≤100)` | GET | read | free comments, oldest first |
 | `add_request_comment(name, content)` | POST | `add_` | add a comment (1–2000 characters, HTML stripped) |
 | `get_attachment(name, thumbnail?)` | GET | read | one file; `thumbnail=1` scales an image to at most 256 px |
+| `get_certificate(name)` | GET | requester, HR Manager, System Manager | issued employment certificate PDF as base64; others get «شما اجازهٔ دریافت این گواهی را ندارید.»; `get_request.certificate` is `{number, filename, issued_on}` or null (see [form execution](form-execution.md)) |
 | `create_native_document(name)` | POST | `create_` | retry a failed native document (System, HR or Purchase Manager) |
 | `void_native_document(name, reason)` | POST | `void_` | HR Manager only: void the executed native document (see «Void and reissue» in `form-execution.md`) |
 | `reissue_native_document(name)` | POST | `reissue_` | HR Manager only: run the executor again after a void |
