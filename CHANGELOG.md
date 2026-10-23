@@ -6,6 +6,7 @@ Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Wor
 
 Added:
 
+- `get_request` returns `viewer` (is the caller the requester, and their own open task with the stage's decision flags) for an in-page decision card.
 - Form schema support for Select display styles, section presentation/collapse metadata,
   field help text, Date `after_or_equal` validation, and Employee designation and joining-date defaults.
 - Submission enforcement for visible required repeatable tables and their minimum row count.

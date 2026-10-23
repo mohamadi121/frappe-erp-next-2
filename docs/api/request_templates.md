@@ -19,7 +19,7 @@ are `frappe.throw` with a code in `_server_messages[].title` (see the table at t
 | `update_request(name, subject?, values, attachments?, remove_attachments?)` | POST | `update_` | edit while nobody else has acted |
 | `cancel_request(name, reason?)` | POST | `cancel_` | withdraw while in progress |
 | `list_my_requests(company?, template_key?, status_group?, search?, priority?, date_from?, date_to?, limit_start?, limit_page_length≤100)` | GET | read | the caller's own requests |
-| `get_request(name)` | GET | read | detail (owner, System/HR Manager or a task assignee) |
+| `get_request(name)` | GET | read | detail (owner, System/HR Manager or a task assignee); `viewer = {is_requester, open_task: {name, stage_title, stage_type, approve_action, allow_reject, allow_return, comment_required, reject_comment_required, has_form} or null}` is computed from the caller's own Open task only |
 | `list_request_comments(name, limit_start?, limit_page_length≤100)` | GET | read | free comments, oldest first |
 | `add_request_comment(name, content)` | POST | `add_` | add a comment (1–2000 characters, HTML stripped) |
 | `get_attachment(name, thumbnail?)` | GET | read | one file; `thumbnail=1` scales an image to at most 256 px |
