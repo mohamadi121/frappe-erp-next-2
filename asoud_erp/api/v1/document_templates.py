@@ -267,7 +267,12 @@ def create_document(template_name: str, context: dict, company: str, *, transfer
     if template.document_type == "Material Request" and not values.get("set_warehouse"):
         values["set_warehouse"] = frappe.db.get_single_value("Stock Settings", "default_warehouse")
     doc = frappe.get_doc(build_document(template.document_type, values, company))
+    conf = getattr(frappe, "conf", None) or {}
+    if not conf.get("asoud_workflow_service_user"):
+        doc.flags.ignore_permissions = True
     doc.insert()
     if template.auto_submit:
+        if not conf.get("asoud_workflow_service_user"):
+            doc.flags.ignore_permissions = True
         doc.submit()
     return doc

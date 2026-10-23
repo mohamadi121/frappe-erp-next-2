@@ -243,6 +243,19 @@ class TestDocumentTemplates(APITestCase):
         self.assertEqual(frappe.db.get_value("ASOUD Workflow Request", request["name"], "display_status"),
                          "در حال ثبت")
 
+    def test_legacy_change_status_runs_and_completes_without_a_service_user(self):
+        patcher = patch.dict(frappe.conf, {"asoud_workflow_service_user": None,
+                                           "asoud_workflow_service_companies": []})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        request = self._submit_and_approve()
+        instance = frappe.get_doc("ASOUD Workflow Instance", request["workflow_instance"])
+        self.assertEqual(instance.status, "Completed")
+        self.assertEqual(frappe.db.get_value("ASOUD Workflow Request", request["name"], "display_status"),
+                         "در حال ثبت")
+        self.assertFalse(frappe.db.exists("ASOUD Workflow Activity", {
+            "workflow_instance": instance.name, "action": "System Action Failed"}))
+
     def test_inactive_or_foreign_templates_cannot_be_used(self):
         template = self._template()
         document_templates.set_document_template_status(template["name"], "Inactive")
