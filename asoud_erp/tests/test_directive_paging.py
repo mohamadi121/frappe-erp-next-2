@@ -70,6 +70,7 @@ def test_lookahead_page_sets_cursor_only_when_another_row_exists():
 
 def test_site_naive_datetime_converts_offsets_and_keeps_naive():
     from datetime import datetime
+
     from asoud_erp.services.directive_paging import site_naive_datetime
     assert site_naive_datetime("2026-10-23T09:00:00", "Asia/Tehran") == datetime(2026, 10, 23, 9)
     assert site_naive_datetime("2026-10-23T06:00:00Z", "Asia/Tehran") == datetime(2026, 10, 23, 9, 30)

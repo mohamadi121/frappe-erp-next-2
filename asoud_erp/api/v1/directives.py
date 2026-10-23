@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 import frappe
-from frappe.utils import get_datetime, get_fullname, get_system_timezone, getdate, now_datetime, nowdate, strip_html
+from frappe.utils import get_datetime, get_fullname, getdate, now_datetime, nowdate, strip_html
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.directive_access import (
@@ -626,6 +626,7 @@ def _reminder_time(value):
     instant to the site timezone; a value without one is already site time."""
     if not value:
         return None
+    from frappe.utils import get_system_timezone
     try:
         return site_naive_datetime(value, get_system_timezone())
     except (ValueError, TypeError):
