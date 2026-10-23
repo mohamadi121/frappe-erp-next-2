@@ -81,3 +81,67 @@ class TestOrganization(APITestCase):
             with self.assertRaises(frappe.ValidationError):
                 organization.apply_import(self.company, json.dumps(payload), current["revision"])
         self.assertFalse(frappe.db.exists("Department", unit_name))
+
+    def test_employee_cannot_occupy_two_positions(self):
+        current = organization.get_chart(self.company)["data"]
+        employee = "employee:" + self.records["employee"]
+        rows = [dict(code="TEST-" + frappe.generate_hash(length=8), title=f"Position {index}",
+            capacity=1, occupants=[employee]) for index in range(2)]
+        with self.assertRaises(frappe.ValidationError):
+            organization.save_chart(dict(company=self.company, revision=current["revision"],
+                rows=[*current["rows"], *rows]))
+        self.assertEqual(organization.get_chart(self.company)["data"]["revision"], current["revision"])
+
+    def _delete_unit_if_present(self, name, titles):
+        """Delete the unit by its real name; ERPNext may have renamed it after a title change."""
+        units = organization.list_units(self.company)["data"]["units"]
+        unit = next((u for u in units if u["name"] == name), None) or next(
+            (u for u in units if u["department_name"] in titles), None)
+        if unit:
+            organization.delete_unit(self.company, unit["name"], str(unit["modified"]))
+
+    def test_title_rename_refused_while_legacy_rows_depend_on_it(self):
+        title = "Legacy title " + frappe.generate_hash(length=8)
+        name = organization.save_unit(self.company, dict(title=title, is_group=True))["data"]["name"]
+        base = organization.get_chart(self.company)["data"]
+        legacy = dict(code="TEST-" + frappe.generate_hash(length=8), title="Legacy position",
+            department=title, capacity=1, occupants=[])
+        organization.save_chart(dict(company=self.company, revision=base["revision"], rows=[*base["rows"], legacy]))
+
+        def cleanup():
+            chart = organization.get_chart(self.company)["data"]
+            organization.save_chart(dict(company=self.company, revision=chart["revision"], rows=base["rows"]))
+            self._delete_unit_if_present(name, titles)
+
+        self.addCleanup(cleanup)
+        unit = next(u for u in organization.list_units(self.company)["data"]["units"] if u["name"] == name)
+        titles = [title]
+        with self.assertRaises(frappe.ValidationError):
+            organization.save_unit(self.company, dict(name=name, modified=str(unit["modified"]),
+                title="Renamed " + frappe.generate_hash(length=8), is_group=True))
+        self.assertEqual(frappe.db.get_value("Department", name, "department_name"), title)
+
+    def test_title_rename_allowed_for_id_linked_positions_and_shows_new_title(self):
+        name = organization.save_unit(self.company, dict(
+            title="Linked unit " + frappe.generate_hash(length=8), is_group=True))["data"]["name"]
+        base = organization.get_chart(self.company)["data"]
+        position = dict(code="TEST-" + frappe.generate_hash(length=8), title="Linked position",
+            department_id=name, capacity=1, occupants=[])
+        organization.save_chart(dict(company=self.company, revision=base["revision"], rows=[*base["rows"], position]))
+
+        titles = []
+
+        def cleanup():
+            chart = organization.get_chart(self.company)["data"]
+            organization.save_chart(dict(company=self.company, revision=chart["revision"], rows=base["rows"]))
+            self._delete_unit_if_present(name, titles)
+
+        self.addCleanup(cleanup)
+        unit = next(u for u in organization.list_units(self.company)["data"]["units"] if u["name"] == name)
+        new_title = "Renamed " + frappe.generate_hash(length=8)
+        titles.append(new_title)
+        organization.save_unit(self.company, dict(name=name, modified=str(unit["modified"]),
+            title=new_title, is_group=True))
+        chart = organization.get_chart(self.company)["data"]
+        linked = next(r for r in chart["rows"] if r["code"] == position["code"])
+        self.assertEqual(linked["department"], new_title)

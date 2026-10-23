@@ -164,3 +164,21 @@ identity and limitations are documented in [automatic-actions-v2.md](automatic-a
 Legacy stage configuration remains supported; automatic execution now requires
 the configured restricted service identity, and document creation observes native
 permissions. The older permission-bypass description below is historical.
+
+## Paged workflow lists (app contract)
+
+`list_my_workflow_tasks` and `list_my_workflow_instances` return the legacy list
+(`meta.total`) unless the caller sends `paged=1`. With `paged=1` the response is
+`{items, next_cursor}`; send the returned `next_cursor` back as `start`.
+
+- Each database page reads 200 rows. Access checks (`directive_for` and
+  `workflow_permission`) run after that read, so `items` can hold fewer than 200 rows,
+  or none, while `next_cursor` is still set.
+- `next_cursor` is `null` only when the raw database page was shorter than 200 rows.
+  It is never derived from the visible `items`.
+- The client must keep requesting while `next_cursor` is not null, including after an
+  empty page, and must stop only on `next_cursor: null`.
+- Non-paged callers keep the full legacy list and are not affected.
+
+The directive cartable (`directives.reports`, `directives.history`) uses 50-row pages
+with access scope applied inside the query before `LIMIT`, so those pages are not short.
