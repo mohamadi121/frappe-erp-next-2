@@ -201,3 +201,8 @@ module-level `SPEC`. `workflow_request.effective_values(name)` returns the reque
 overlaid with the completed form task responses. The engine passes `request_row` to
 `summarize` with `rejection_reason` and `_labels` (`department`, `project`, `branch` name
 → label maps built in one query each).
+
+Approved form results with native status `Needs Review` appear as execution state
+`needs_review` («نیازمند بررسی»). The Persian reason is visible only to privileged
+viewers. The requester and enabled HR/System Managers receive an in-app alert;
+repeated dispatch does not repeat execution or alerts. Requires `bench migrate`.

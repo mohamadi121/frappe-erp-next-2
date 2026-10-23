@@ -372,3 +372,18 @@ No schema version change, native field migration or preset update is needed.
 Run `bench --site <site> migrate` to add search indexes on Form Entry
 `reference_doctype` and `reference_name` for approval lookups.
 The registry intentionally has no production example executor.
+
+### Results requiring HR review
+
+An approved form executor may return `needs_review`. Dispatch persists
+`native_status = "Needs Review"` and the Persian reason in `native_error`,
+without creating a native document. The requester and enabled HR/System Managers
+receive an in-app alert. This is terminal: repeated dispatch does not execute
+or notify again. `workflow_request.get_request` returns execution state
+`needs_review`, label «نیازمند بررسی», and exposes the reason only to privileged
+viewers. Approval remains completed; the failed-execution retry is unavailable.
+Deployment requires `bench migrate` to add the native status option.
+
+The execution catalog includes `employee_advance`, `attendance_correction`, and
+`asset_movement`. Parameter `types` use the form-builder schema type names;
+workflow stage aliases are accepted separately by mapping validation.
