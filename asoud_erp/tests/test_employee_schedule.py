@@ -13,7 +13,7 @@ def test_schedule_uses_assignment_then_default_then_holiday():
         {"صبح": {"start_time": "08:00:00", "end_time": "16:00:00"},
          "شب": {"start_time": "20:00:00", "end_time": "04:00:00"}},
     )
-    assert [row["source"] for row in rows] == ["assignment", "default", "default"]
+    assert [row["source"] for row in rows] == ["assignment", "holiday", "default"]
     assert rows[0]["end_time"] == "04:00:00"
     assert rows[0]["date_label"] == "۱۴۰۵/۰۸/۰۱"
 

@@ -120,8 +120,8 @@ The response `data` is a list with one row for every date in the requested page:
 `source` is one of `assignment`, `default`, `holiday`, or `none`. The corresponding
 Persian labels are `تخصیص شیفت`, `شیفت پیش‌فرض`, `تعطیل`, and `بدون برنامه`.
 `shift_type`, `start_time`, and `end_time` are `null` for a holiday or a day without a
-schedule. Shift Assignment wins over Employee `default_shift`; a Holiday List date is
-returned as `holiday` only when no submitted assignment covers that day. Time values
+schedule. Shift Assignment wins over a Holiday List date, and a holiday wins over
+Employee `default_shift`. Time values
 remain raw `HH:MM:SS`; all display labels use the shared Jalali and Persian-digit
 services. `meta` contains `from_date`, `to_date`, `days`, and `max_days: 62`.
 

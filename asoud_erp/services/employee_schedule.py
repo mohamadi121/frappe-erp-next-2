@@ -41,10 +41,10 @@ def build_schedule(start, end, assignments, default_shift, holidays, shifts):
         assignment = covering[-1] if covering else None
         if assignment:
             shift_type, source = assignment["shift_type"], "assignment"
-        elif default_shift:
-            shift_type, source = default_shift, "default"
         elif current in holidays:
             shift_type, source = None, "holiday"
+        elif default_shift:
+            shift_type, source = default_shift, "default"
         else:
             shift_type, source = None, "none"
         times = shifts.get(shift_type, {}) if shift_type else {}
