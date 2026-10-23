@@ -47,11 +47,11 @@ class TestRequestResubmit(APITestCase):
         self.assertEqual(detail["return_reason"], "")
         activity = frappe.get_all(
             "ASOUD Workflow Activity", filters={"workflow_instance": self.instance, "action": "Resubmitted"},
-            fields=["comment", "actor"])
+            fields=["change_json", "actor"])
         self.assertEqual(len(activity), 1)
         self.assertEqual(activity[0].actor, EMPLOYEE_USER)
-        self.assertEqual(json.loads(activity[0].comment)["changes"], [
-            {"key": "reason", "label": "دلیل", "before": "دلیل اولیه", "after": "دلیل اصلاح‌شده"}])
+        self.assertEqual(json.loads(activity[0].change_json),
+                         {"before": {"reason": "دلیل اولیه"}, "after": {"reason": "دلیل اصلاح‌شده"}})
         # Stage 1 reviews again: the open task is the first approval, not the returning one.
         task = open_task(self.instance, APPROVER_USER)
         self.assertEqual(frappe.db.get_value("ASOUD Workflow Stage", frappe.db.get_value(

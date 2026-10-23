@@ -1,6 +1,5 @@
-import json
 
-from asoud_erp.services.request_resubmit import changes_comment, diff_values
+from asoud_erp.services.request_resubmit import diff_values
 
 FIELDS = [
     {"key": "reason", "label": "دلیل", "type": "Long Text"},
@@ -30,9 +29,3 @@ def test_a_value_added_or_cleared_is_a_change_and_long_text_is_cut():
     rows = diff_values({}, {"reason": "x" * 500}, FIELDS)
     assert rows[0]["before"] == "" and len(rows[0]["after"]) == 200
     assert diff_values({"reason": "الف"}, {"reason": None}, FIELDS)[0]["after"] == ""
-
-
-def test_the_comment_is_valid_json_with_the_changes():
-    rows = diff_values({"reason": "الف"}, {"reason": "ب"}, FIELDS)
-    assert json.loads(changes_comment(rows)) == {"changes": rows}
-    assert json.loads(changes_comment([])) == {"changes": []}

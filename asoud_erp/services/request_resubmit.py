@@ -31,6 +31,3 @@ def diff_values(before: dict, after: dict, fields: list[dict]) -> list[dict]:
                      "after": SENSITIVE_MASK if masked and new else _shown(new)})
     return rows
 
-
-def changes_comment(rows: list[dict]) -> str:
-    return json.dumps({"changes": rows}, ensure_ascii=False)
