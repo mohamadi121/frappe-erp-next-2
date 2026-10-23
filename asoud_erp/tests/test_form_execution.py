@@ -79,3 +79,74 @@ def test_completed_task_without_completion_time_is_rejected():
     with pytest.raises(ValueError, match='زمان تکمیل'):
         collect_parameters([], {}, [{'name': 'broken', 'status': 'Completed', 'completed_on': None,
                                       'fields': [], 'values': {}}])
+
+
+@pytest.fixture
+def executor_schema(monkeypatch):
+    monkeypatch.setitem(EXECUTORS, 'test_only', SampleExecutor())
+    return {'kind': 'Request', 'execution': {'kind': 'test_only'},
+            'sections': [{'fields': [{'key': 'asked', 'type': 'Currency',
+                                      'execution_key': 'amount'}]}]}
+
+
+def test_execution_schema_accepts_known_kind_and_mapping(executor_schema):
+    from asoud_erp.services.form_execution.schema import validate_execution
+
+    assert validate_execution(executor_schema) is None
+
+
+@pytest.mark.parametrize(('change', 'message'), [
+    ('unknown_kind', 'نوع اجرا'), ('document', 'درخواست'),
+    ('unknown_parameter', 'پارامتر'), ('duplicate', 'تکراری'),
+    ('missing_required', 'الزامی'), ('wrong_type', 'نوع فیلد'),
+    ('no_execution', 'نوع اجرا'), ('invalid_execution', 'نوع اجرا'),
+])
+def test_execution_schema_rejects_invalid_mapping(executor_schema, change, message):
+    from asoud_erp.services.form_execution.schema import validate_execution
+
+    field = executor_schema['sections'][0]['fields'][0]
+    if change == 'unknown_kind':
+        executor_schema['execution']['kind'] = 'unknown'
+    elif change == 'document':
+        executor_schema['kind'] = 'Document'
+    elif change == 'unknown_parameter':
+        field['execution_key'] = 'unknown'
+    elif change == 'duplicate':
+        executor_schema['sections'][0]['fields'].append({**field, 'key': 'second'})
+    elif change == 'missing_required':
+        field.pop('execution_key')
+    elif change == 'wrong_type':
+        field['type'] = 'Date'
+    elif change == 'no_execution':
+        executor_schema.pop('execution')
+    elif change == 'invalid_execution':
+        executor_schema['execution'] = []
+    with pytest.raises(ValueError, match=message):
+        validate_execution(executor_schema)
+
+
+def test_execution_schema_preserves_legacy_forms():
+    from asoud_erp.services.form_execution.schema import validate_execution
+
+    assert validate_execution({'kind': 'Request', 'sections': [{'fields': []}]}) is None
+
+
+def test_stage_fields_retain_execution_mapping_and_validate_keys(monkeypatch):
+    from asoud_erp.services.workflow_stage_policy import _normalize_form_fields
+
+    monkeypatch.setitem(EXECUTORS, 'test_only', SampleExecutor())
+    fields = [{'key': 'approved', 'label': 'مبلغ مصوب', 'type': 'Currency', 'execution_key': 'amount'}]
+    assert _normalize_form_fields(fields)[0]['execution_key'] == 'amount'
+    fields[0]['execution_key'] = 'unknown'
+    with pytest.raises(ValueError, match='پارامتر'):
+        _normalize_form_fields(fields)
+
+
+def test_form_entry_reference_lookup_is_indexed():
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).parents[1] / 'asoud_erp/doctype/asoud_form_entry/asoud_form_entry.json'
+    fields = {field['fieldname']: field for field in json.loads(path.read_text())['fields']}
+    assert fields['reference_name'].get('search_index') == 1
+    assert fields['reference_doctype'].get('search_index') == 1

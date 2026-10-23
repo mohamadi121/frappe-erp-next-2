@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Workflow Activity.workflow_instance`; new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
+Deployment: run `bench --site <site> migrate` (adds Form Entry reference indexes for approval execution; adds a search index on `ASOUD Workflow Activity.workflow_instance`; new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
 
 Fixed:
 
@@ -11,7 +11,7 @@ Fixed:
 
 Added:
 
-- Approval execution contract E1–E4, a structural executor registry reusing the native result shape, and a pure completed-task parameter collector. This is internal groundwork; dispatch, schema acceptance and the editor are not enabled. No migration.
+- Approval execution for versioned request forms: executor catalog, form and stage parameter validation, completed-step overrides, and native draft dispatch after final approval with isolated rollback and retry. Reuses the existing native result fields. Executor registration is separate; no example executor is installed in production. Run migrate for the Form Entry reference indexes; no native fields are added.
 
 - Request-bound workflow step validation for approved amounts and per-row quantities, enforced during task completion. No migration. See `docs/api/forms.md`.
 - `get_request` returns `viewer` (is the caller the requester, and their own open task with the stage's decision flags) for an in-page decision card.

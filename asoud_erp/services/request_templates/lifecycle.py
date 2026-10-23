@@ -47,8 +47,10 @@ def on_instance_update(doc, method=None) -> None:
     key = request_status_key(doc, request.status)
     if key != request.status_key:
         frappe.db.set_value(REQUEST_DOCTYPE, request.name, "status_key", key, update_modified=False)
-    if request.template_key and doc.status == "Completed" and doc.has_value_changed("status"):
-        dispatch_native_document(request.name)
+    if doc.status == "Completed" and doc.has_value_changed("status"):
+        if request.template_key or frappe.db.exists("ASOUD Form Entry", {
+                "reference_doctype": REQUEST_DOCTYPE, "reference_name": request.name}):
+            dispatch_native_document(request.name)
 
 
 def dispatch_native_document(request_name: str) -> None:

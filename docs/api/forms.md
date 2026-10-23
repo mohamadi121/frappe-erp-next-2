@@ -248,8 +248,7 @@ Sensitive masking does not apply here (server side).
 
 ### Editor catalog contract
 
-`asoud_erp.api.v1.forms.execution_kinds()` is specified as a read-only designer endpoint.
-The endpoint is not exposed by the registry package alone.
+`asoud_erp.api.v1.forms.execution_kinds()` is a read-only designer endpoint.
 It uses the same designer roles as `save_form`; no Employee record is required.
 Its response is `success([{kind, label, parameters}], meta)`, where `parameters`
 is an object keyed by parameter name and each value has `label`, `types`, and
@@ -260,9 +259,8 @@ Execution metadata is optional and additive; existing forms retain their behavio
 Invalid mapping errors identify an unknown execution kind, an unknown or duplicate
 parameter, a missing required parameter, or an incompatible field type.
 
-Implementation note: the existing Form Entry field is named `reference_doctype`,
-whereas E4 calls it `reference_type`. E4's exact storage-field requirement must
-be resolved before implementing the lookup; existing entry data must be preserved.
+E4's reference type is stored in the existing `reference_doctype` field of Form Entry;
+no field rename or migration is needed.
 
 ### Pure registry and E3 collector
 
@@ -280,3 +278,32 @@ remain separate decisions. A missing value preserves the earlier value; an
 explicit null, false, zero or empty string replaces it. Missing or malformed
 completion timestamps are rejected with a Persian validation reason. Inputs
 are not mutated. This helper performs no database access or document creation.
+
+### Workflow parameter overrides
+
+Step forms use the workflow field vocabulary (`Currency`, `Short Text`,
+`Long Text`, `Choice`, `Checkbox`, `Number`) alongside the form-builder names
+(`Money`, `Text`, `LongText`, `Select`, `Checkbox`/`Boolean`, `Decimal`).
+Equivalent types are matched when presenting and validating parameter choices;
+executor metadata may use `Check` for a boolean parameter. Request forms must
+map every required parameter. A step may override a subset, since the required
+inputs already come from the request form. Duplicate or incompatible mappings
+are rejected. When a workflow is attached to an execution form, its steps are
+validated against that kind; subsequent stage edits validate against both draft
+and active revision forms attached to the workflow.
+
+The dispatcher locks the request and reads `reference_doctype` / `reference_name`
+from Form Entry, then reads its immutable revision. Later draft changes do not
+change submitted requests. Corrected request values are translated using
+`workflow_key` before completed-step responses are overlaid. The requester must
+still have an active Employee in the request company. A workflow that completes
+during submission is dispatched once more after Form Entry has been saved.
+Created and Skipped results are idempotent; rejection and cancellation cannot
+execute. Failures preserve approval, roll back native writes to a savepoint,
+and record a Persian reason. The existing role- and company-checked retry endpoint
+`workflow_request.create_native_document(name)` handles failed form requests.
+
+No schema version change, native field migration or preset update is needed.
+Run `bench --site <site> migrate` to add search indexes on Form Entry
+`reference_doctype` and `reference_name` for approval lookups.
+The registry intentionally has no production example executor.

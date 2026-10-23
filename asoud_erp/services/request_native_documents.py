@@ -13,6 +13,7 @@ failed request. Payload mapping is pure (``native_payloads``). Rules kept here:
 """
 
 import json
+import re
 
 import frappe
 from frappe import _
@@ -50,13 +51,28 @@ def dispatch(request) -> None:
     ``Failed`` one is tried again (the retry endpoint).
     """
     spec = base.get(request.get("template_key"))
-    if not spec:
+    form_request = not request.get("template_key")
+    if not spec and not form_request:
         return
+    if form_request:
+        request = frappe.get_doc("ASOUD Workflow Request", request.name, for_update=True)
+        if not request.workflow_instance or frappe.db.get_value(
+                "ASOUD Workflow Instance", request.workflow_instance, "status") != "Completed":
+            return
     if frappe.db.get_value("ASOUD Workflow Request", request.name, "native_status") in ("Created", "Skipped"):
         return
     frappe.db.savepoint(SAVEPOINT)
     try:
-        result = spec.on_approved(request)
+        if spec:
+            result = spec.on_approved(request)
+        else:
+            from asoud_erp.services.form_execution.runtime import execute
+
+            result = execute(request)
+        if result is None:
+            return
+        if form_request and result.status == "Failed":
+            raise ValueError(result.reason or "ایجاد سند انجام نشد؛ تنظیمات فرم را بررسی کنید.")
     except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):
         raise  # the transaction is already gone; the approval is retried as a whole
     except Exception as error:  # noqa: BLE001 - nothing here may undo the approval (CONTRACT 4.12)
@@ -65,6 +81,8 @@ def dispatch(request) -> None:
                                   ValueError)):
             frappe.log_error(title=f"Native document of {request.name} failed")
         message = _error_text(error)
+        if form_request and not re.search(r"[\u0600-\u06ff]", message):
+            message = "ایجاد سند انجام نشد؛ تنظیمات و اطلاعات فرم را بررسی کنید."
         frappe.clear_messages()
         # Marks the request Failed and notifies the requester, HR Managers and System Managers.
         record_native_failure(request.name, message[:ERROR_LIMIT])

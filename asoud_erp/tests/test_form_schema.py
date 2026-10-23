@@ -695,3 +695,10 @@ def test_validate_values_fetch_from_ignores_client_value(schema):
         {"key": "in_t", "label": "ورود", "type": "Time", "readonly": True, "fetch_from": "att.in_time"}]))
     assert schema.validate_values(sch, {"att": "ATT-1", "in_t": "23:59:00"}, "ACME")["in_t"] == "08:15:00"
     assert schema.validate_values(sch, {"att": "ATT-1"}, "ACME")["in_t"] == "08:15:00"
+
+
+def test_execution_unknown_kind_is_rejected_by_form_validation(schema):
+    payload = valid_schema()
+    payload['execution'] = {'kind': 'unregistered'}
+    with pytest.raises(ValueError, match='نوع اجرا'):
+        schema.validate_schema(payload)

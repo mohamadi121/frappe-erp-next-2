@@ -215,6 +215,16 @@ def workflow_mapping(schema, company):
     workflow = frappe.get_doc('ASOUD Workflow Definition', schema['workflow'])
     if workflow.company != company or workflow.target_doctype != 'ASOUD Workflow Request' or workflow.status != 'Active' or workflow.readiness_status != 'Ready':
         fail('گردش‌کار درخواست باید فعال، آماده و متعلق به همین دفتر باشد.')
+    if schema.get('execution'):
+        from asoud_erp.services.form_execution.schema import validate_parameter_fields
+
+        for stage in frappe.get_all('ASOUD Workflow Stage', filters={'workflow_definition': workflow.name},
+                                    fields=['config_json'], limit_page_length=0):
+            try:
+                validate_parameter_fields(json.loads(stage.config_json or '{}').get('form_fields', []),
+                                          schema['execution']['kind'])
+            except ValueError as error:
+                fail(str(error))
     targets = {f['key']: f for f in _fields(workflow)}
     used = set()
     for field in fields(schema):
@@ -440,6 +450,10 @@ def submit_form(name, revision_name, subject, values, request_key):
     entry = store(frappe.get_doc({'doctype': 'ASOUD Form Entry', 'form': doc.name, 'revision': rev.name, 'company': doc.company,
         'subject': subject.strip(), 'values_json': json.dumps(checked, ensure_ascii=False) if schema['kind'] == 'Request' else '{}',
         'reference_doctype': reference_type, 'reference_name': reference_name, 'request_key': key, 'fingerprint': fingerprint}))
+    if reference_type == 'ASOUD Workflow Request' and schema.get('execution'):
+        from asoud_erp.services.request_templates.lifecycle import dispatch_native_document
+
+        dispatch_native_document(reference_name)
     return success({'name': entry.name, 'reference_name': reference_name, 'reference_doctype': reference_type})
 
 
@@ -477,3 +491,12 @@ def get_entry(name):
                 native_values[field['key']] = value
             result['values'] = native_values
     return success(result)
+
+
+@frappe.whitelist()
+def execution_kinds():
+    require_roles(DESIGNERS)
+    from asoud_erp.services.form_execution import EXECUTORS
+
+    return success([{'kind': kind, 'label': executor.LABEL, 'parameters': executor.PARAMETERS}
+                    for kind, executor in sorted(EXECUTORS.items())])

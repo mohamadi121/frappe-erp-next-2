@@ -95,8 +95,12 @@ def _normalize_form_fields(values: Any) -> list[dict[str, Any]]:
             "show_in_list": bool(item.get("show_in_list", False)),
             "position": position,
             **({"columns": columns} if field_type == "Table" else {}),
+            **({"execution_key": item["execution_key"]} if "execution_key" in item else {}),
             **_field_extensions(item, field_type, options),
         })
+    from asoud_erp.services.form_execution.schema import validate_stage_parameters
+
+    validate_stage_parameters(result)
     for field in result:
         rule = field.get("visible_when")
         if rule and (rule["field"] == field["key"] or rule["field"] not in keys):

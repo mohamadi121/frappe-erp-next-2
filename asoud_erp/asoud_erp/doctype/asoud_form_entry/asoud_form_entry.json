@@ -47,12 +47,14 @@
     {
       "fieldname": "reference_doctype",
       "label": "reference_doctype",
-      "fieldtype": "Data"
+      "fieldtype": "Data",
+      "search_index": 1
     },
     {
       "fieldname": "reference_name",
       "label": "reference_name",
-      "fieldtype": "Data"
+      "fieldtype": "Data",
+      "search_index": 1
     },
     {
       "fieldname": "request_key",
