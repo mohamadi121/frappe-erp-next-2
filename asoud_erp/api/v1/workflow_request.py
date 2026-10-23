@@ -9,7 +9,7 @@ from frappe.utils import get_fullname, getdate, now_datetime, nowdate
 from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.workflow_runtime import _next_stage, start_workflow_instance
 from asoud_erp.services import request_attachments as files
-from asoud_erp.services import request_comments, request_lookup, request_serializer
+from asoud_erp.services import request_comments, request_lookup, request_serializer, request_timeline
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_access import request_permission, require_company
 from asoud_erp.services.request_link_values import validate_link_values
@@ -311,6 +311,20 @@ def _requester_name(owner: str) -> str:
     return frappe.db.get_value("Employee", {"user_id": owner}, "employee_name") or get_fullname(owner)
 
 
+def _stage_rows(definition, instance_name) -> list:
+    if not instance_name or not definition:
+        return []
+    stages = frappe.get_all("ASOUD Workflow Stage", filters={"workflow_definition": definition},
+                            fields=["name", "stage_type", "stage_title", "sequence_no"], limit_page_length=0)
+    tasks = frappe.get_all("ASOUD Workflow Task", filters={"workflow_instance": instance_name},
+                           fields=["workflow_stage", "assigned_to", "status", "action", "comment", "assigned_on",
+                                   "completed_on"], limit_page_length=0)
+    users = list({task.assigned_to for task in tasks if task.assigned_to})
+    names = {row.name: row.full_name for row in frappe.get_all(
+        "User", filters={"name": ["in", users]}, fields=["name", "full_name"])} if users else {}
+    return request_timeline.build_stages(stages, tasks, names)
+
+
 def _detail(doc) -> dict:
     instance = _instance_row(doc.workflow_instance)
     instance_status = instance.status if instance else None
@@ -341,7 +355,7 @@ def _detail(doc) -> dict:
         "item_count": request_serializer.item_count(values), "attachment_count": len(entries),
         "comment_count": request_comments.count_comments(doc.name),
         "values": request_serializer.with_attachment_refs(values, by_url),
-        "attachments": entries, "fields": fields,
+        "attachments": entries, "fields": fields, "stages": _stage_rows(doc.workflow_definition, doc.workflow_instance),
         "native": {"doctype": doc.native_doctype or "", "name": doc.native_name or "",
                    "status": doc.native_status or "", "error": (doc.native_error or "") if privileged else ""},
     }
