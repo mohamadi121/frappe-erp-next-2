@@ -6,9 +6,16 @@
 
 Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Workflow Activity.workflow_instance`; new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
 
+Fixed:
+
+- Paged workflow task/instance lists filter directive access in SQL (no per-row `get_doc`), keep `meta.total`, and compute the cursor after filtering.
+- `dispatch_reminders` isolates each task; `reminder_at` with an offset or `Z` is converted to the site timezone. Reminders need the scheduler enabled (see `docs/directives-implementation.md`).
+
 Added:
 
 - `get_request` returns `viewer` (is the caller the requester, and their own open task with the stage's decision flags) for an in-page decision card.
+- `get_request` returns `stages` (real workflow steps with status, assignees and times) and instance activity rows carry `actor_name` (`services/request_timeline.py`, `integration_tests/test_request_stages.py`).
+- Form builder record sources: Link sources `Attendance`, `Shift Type`, `Training Event`, `Asset` scoped to the signed-in Employee on both `get_link_options` and submission (`meta.reason = 'no_employee'`), row `extra` attributes, `exclude_self`, `fetch_from` (recomputed server side), `not_equal`, unique table columns, and `default_source` `employee_number` / `default_shift`. No migration. See `docs/api/forms.md`.
 - Form schema support for Select display styles, section presentation/collapse metadata,
   field help text, Date `after_or_equal` validation, and Employee designation and joining-date defaults.
 - Submission enforcement for visible required repeatable tables and their minimum row count.

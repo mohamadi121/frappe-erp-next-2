@@ -52,3 +52,17 @@ def jalali_fiscal_period(year: int, month: int, day: int) -> tuple[date, date]:
     start = jalali_to_gregorian(year, month, day)
     end = jalali_to_gregorian(year + 1, month, day) - timedelta(days=1)
     return start, end
+
+
+def gregorian_to_jalali(value: date) -> tuple[int, int, int]:
+    """Inverse of ``jalali_to_gregorian``."""
+    year = value.year - 621
+    if value < jalali_to_gregorian(year, 1, 1):
+        year -= 1
+    days = (value - jalali_to_gregorian(year, 1, 1)).days
+    for month in range(1, 12):
+        length = 31 if month <= 6 else 30
+        if days < length:
+            return year, month, days + 1
+        days -= length
+    return year, 12, days + 1

@@ -554,3 +554,52 @@ class TestDirectiveStartProgressAndReminders(APITestCase):
         self.assertEqual(set(paged), {"items", "next_cursor"})
         self.assertIsNone(paged["next_cursor"])
         self.assertIn(instance, [item["name"] for item in paged["items"]])
+
+    def test_reminder_with_utc_offset_is_converted_to_site_time(self):
+        from frappe.utils import get_system_timezone
+
+        from asoud_erp.services.directive_paging import site_naive_datetime
+        day = add_days(nowdate(), 2)
+        frappe.set_user(APPROVER_USER)
+        draft = directives.save_draft(
+            company=self.company,
+            payload=self._payload([EMPLOYEE_USER], EMPLOYEE_USER, reminder_at=f"{day}T06:00:00Z"),
+            request_key=_key("draft"),
+        )["data"]
+        stored = get_datetime(frappe.db.get_value(COMMUNICATION, draft["id"], "reminder_at"))
+        self.assertEqual(stored, site_naive_datetime(f"{day}T06:00:00+00:00", get_system_timezone()))
+
+    def test_dispatch_reminders_survives_a_broken_task(self):
+        broken = self._issue([EMPLOYEE_USER], EMPLOYEE_USER, reminder_at=_reminder(2))
+        good = self._issue([EXECUTOR2_USER], EXECUTOR2_USER, reminder_at=_reminder(2))
+        past = add_to_date(now_datetime(), minutes=-5)
+        bad_task = self._report_task(broken, EMPLOYEE_USER)
+        good_task = self._report_task(good, EXECUTOR2_USER)
+        frappe.db.set_value("ASOUD Workflow Task", bad_task, "reminder_on", past)
+        frappe.db.set_value("ASOUD Workflow Task", good_task, "reminder_on", past)
+        frappe.set_user("Administrator")
+        original = directives.notify_reminder
+
+        def flaky(task):
+            if task.name == bad_task:
+                raise RuntimeError("boom")
+            return original(task)
+
+        directives.notify_reminder = flaky
+        try:
+            directives.dispatch_reminders()
+        finally:
+            directives.notify_reminder = original
+        self.assertIsNotNone(frappe.db.get_value("ASOUD Workflow Task", good_task, "reminder_sent_on"))
+        self.assertIsNone(frappe.db.get_value("ASOUD Workflow Task", bad_task, "reminder_sent_on"))
+
+    def test_paged_task_list_reports_total_and_no_cursor_on_last_page(self):
+        directive_id = self._issue([EMPLOYEE_USER], EMPLOYEE_USER)
+        task = self._report_task(directive_id, EMPLOYEE_USER)
+        frappe.set_user(EMPLOYEE_USER)
+        result = workflow_runtime.list_my_workflow_tasks(status="Open", paged=1)
+        self.assertIsNone(result["data"]["next_cursor"])
+        self.assertGreaterEqual(result["meta"]["total"], 1)
+        self.assertIn(task, [i["name"] for i in result["data"]["items"]])
+        instances = workflow_runtime.list_my_workflow_instances(paged=1)
+        self.assertEqual(set(instances["data"]), {"items", "next_cursor"})

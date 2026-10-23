@@ -2,7 +2,7 @@
 import copy
 import json
 import re
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 import frappe
@@ -11,14 +11,64 @@ TYPES = {"Text", "LongText", "Integer", "Decimal", "Money", "Date", "Time", "Dat
          "Select", "MultiSelect", "Boolean", "Checkbox", "Link", "Table", "Formula", "Display", "Rating",
          "File", "Image", "Signature", "Barcode"}
 SOURCES = {"Employee", "Customer", "Supplier", "Item", "Warehouse", "Account", "Cost Center",
-           "Project", "Department"}
+           "Project", "Department", "Attendance", "Shift Type", "Training Event", "Asset"}
+SCOPED_SOURCES = {"Attendance", "Shift Type", "Training Event", "Asset"}
+FETCH_ATTRIBUTES = {
+    "Attendance": ("in_time", "out_time", "attendance_date", "status", "shift"),
+    "Shift Type": ("start_time", "end_time"),
+    "Training Event": ("start_time", "end_time", "type", "level", "training_program"),
+    "Asset": ("asset_name", "item_code", "location"),
+    "Employee": ("department", "designation", "employee_number"),
+}
+DEFAULT_SOURCES = {'user', 'company', 'today', 'employee', 'department', 'designation', 'joining_date',
+                   'employee_number', 'default_shift'}
+NOT_EQUAL_TYPES = {"Text", "Integer", "Decimal", "Money", "Date", "Time", "Select"}
 NUMBERS = {"Integer", "Decimal", "Money", "Rating", "Formula"}
 OPERATORS = {"eq", "ne", "gt", "lt", "ge", "le", "empty", "not_empty", "contains"}
 FORMULAS = {"add", "subtract", "multiply", "divide", "percent", "sum", "sum_product", "average", "count", "chain", "if", "round", "min", "max", "expression"}
 CHAIN_OPS = {"add", "subtract", "multiply", "divide", "percent"}
 LINK_FILTERS = {'Employee': {'department'}, 'Item': {'item_group'}, 'Customer': {'customer_group'},
                 'Supplier': {'supplier_group'}, 'Account': {'account_type'}, 'Warehouse': {'parent_warehouse'},
-                'Cost Center': {'parent_cost_center'}, 'Project': {'status'}, 'Department': {'parent_department'}}
+                'Cost Center': {'parent_cost_center'}, 'Project': {'status'}, 'Department': {'parent_department'},
+                'Attendance': {'attendance_date'}}
+
+
+def current_employee(company):
+    return frappe.db.get_value(
+        'Employee', {'company': company, 'user_id': frappe.session.user, 'status': 'Active'}, 'name')
+
+
+def scope_filters(source, company, employee):
+    """Rows of a scoped source the signed-in user may pick. The scope is the authorization."""
+    if source == 'Attendance':
+        return {'company': company, 'employee': employee, 'docstatus': 1}
+    if source == 'Shift Type':
+        return {}
+    if source == 'Training Event':
+        from frappe.utils import now_datetime
+        return {'company': company, 'event_status': 'Scheduled', 'docstatus': ['<', 2],
+                'start_time': ['>=', now_datetime()]}
+    if source == 'Asset':
+        return {'company': company, 'custodian': employee, 'docstatus': 1}
+    return {}
+
+
+def fetch_value(value, field_type=None):
+    """Plain JSON value of a database attribute; Time fields take the time part."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if field_type == 'Time':
+            return value.time().replace(microsecond=0).isoformat()
+        if field_type == 'Date':
+            return value.date().isoformat()
+        return value.replace(microsecond=0).isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, timedelta):
+        total = int(value.total_seconds())
+        return f'{total // 3600 % 24:02d}:{total // 60 % 60:02d}:{total % 60:02d}'
+    return value if isinstance(value, (int, float)) else str(value)
 
 
 def default_value(field, company):
@@ -29,16 +79,20 @@ def default_value(field, company):
         return company
     if source == 'today':
         return date.today().isoformat()
-    if source in {'employee', 'department', 'designation', 'joining_date'}:
+    if source in {'employee', 'department', 'designation', 'joining_date', 'employee_number', 'default_shift'}:
         employee_field = {
             'employee': 'name', 'department': 'department', 'designation': 'designation',
-            'joining_date': 'date_of_joining',
+            'joining_date': 'date_of_joining', 'employee_number': 'employee_number',
+            'default_shift': 'default_shift',
         }[source]
         value = frappe.db.get_value(
             'Employee',
             {'company': company, 'user_id': frappe.session.user, 'status': 'Active'},
             employee_field,
         )
+        if source == 'employee_number' and not value:
+            return frappe.db.get_value(
+                'Employee', {'company': company, 'user_id': frappe.session.user, 'status': 'Active'}, 'name')
         return value.isoformat() if source == 'joining_date' and value else value
     return field.get('default')
 
@@ -132,12 +186,33 @@ def validate_schema(raw):
             if kind == "Link" and field.get("source") not in SOURCES:
                 fail("منبع اطلاعات سیستم معتبر نیست.")
             default_source = field.get('default_source')
-            if default_source and default_source not in {'user', 'company', 'today', 'employee', 'department', 'designation', 'joining_date'}:
+            if default_source and default_source not in DEFAULT_SOURCES:
                 fail('منبع مقدار پیش‌فرض معتبر نیست.')
             if 'help' in field and (not isinstance(field['help'], str) or len(field['help']) > 1000):
                 fail('راهنمای فیلد معتبر نیست.')
             if 'sensitive' in field and not isinstance(field['sensitive'], bool):
                 fail('تنظیم اطلاعات حساس باید درست یا نادرست باشد.')
+            if 'exclude_self' in field and (field['exclude_self'] is not True and field['exclude_self'] is not False
+                                            or (field['exclude_self'] and (kind != 'Link' or field.get('source') != 'Employee'))):
+                fail('گزینه حذف خود فقط برای فیلد پیوند به کارمند مجاز است.')
+            if field.get('fetch_from') is not None:
+                fetch = field['fetch_from']
+                match = re.fullmatch(r'([a-z][a-z0-9_]{0,59})\.([a-z_]+)', fetch) if isinstance(fetch, str) else None
+                target = next((f for f in items if match and f.get('key') == match.group(1)), None)
+                if (not match or not target or target.get('type') != 'Link' or target['key'] == key
+                        or match.group(2) not in FETCH_ATTRIBUTES.get(target.get('source'), ())):
+                    fail('منبع مقدار خودکار فیلد معتبر نیست.')
+            if 'not_equal' in field:
+                other = next((f for f in items if f.get('key') == field['not_equal']), None) if isinstance(field['not_equal'], str) else None
+                if (not other or other['key'] == key or kind not in NOT_EQUAL_TYPES
+                        or other.get('type') not in NOT_EQUAL_TYPES):
+                    fail('فیلد مقایسه برای شرط یکسان نبودن معتبر نیست.')
+            if 'not_equal_message' in field and (not isinstance(field['not_equal_message'], str)
+                                                 or not 1 <= len(field['not_equal_message']) <= 500
+                                                 or not field.get('not_equal')):
+                fail('پیام شرط یکسان نبودن معتبر نیست.')
+            if 'unique' in field and (not isinstance(field['unique'], bool) or (field['unique'] and not nested)):
+                fail('یکتا بودن فقط برای ستون جدول مجاز است.')
             if field.get('link_filter'):
                 rule = field['link_filter']
                 if not isinstance(rule, dict) or rule.get('field') not in LINK_FILTERS.get(field.get('source'), set()):
@@ -216,6 +291,8 @@ def validate_schema(raw):
         for field in items:
             if field.get('link_filter'):
                 graph[field['key']].add(field['link_filter'].get('value_field'))
+            if field.get('fetch_from'):
+                graph[field['key']].add(field['fetch_from'].split('.')[0])
             for dep in field.get('formula', {}).get('inputs', []) if field['type'] == 'Formula' else []:
                 if kinds.get(dep) not in NUMBERS:
                     fail('ورودی محاسبه باید عددی باشد.')
@@ -654,6 +731,8 @@ def validate_values(schema, raw, company, _file_budget=None):
         evaluating.add(field['key'])
         if field.get('link_filter'):
             compute(by_key[field['link_filter']['value_field']])
+        if field.get('fetch_from'):
+            compute(by_key[field['fetch_from'].split('.')[0]])
         for rule in schema.get('rules', []):
             if rule.get('enabled', True) and rule['target'] == field['key']:
                 for condition in rule['conditions']:
@@ -667,6 +746,8 @@ def validate_values(schema, raw, company, _file_budget=None):
         state = flags(field, schema, values)
         if not state['visible']:
             values.pop(field['key'], None)
+        elif field.get('fetch_from'):
+            values[field['key']] = check(field, fetched(field), state['required'])
         else:
             value = calculate(formula, values) if field['type'] == 'Formula' else values.get(field['key'])
             if state['readonly'] and field['type'] != 'Formula':
@@ -674,6 +755,20 @@ def validate_values(schema, raw, company, _file_budget=None):
             values[field['key']] = check(field, value, state['required'])
         evaluating.remove(field['key'])
         calculated.add(field['key'])
+
+    def employee():
+        if 'employee' not in file_budget:
+            file_budget['employee'] = current_employee(company)
+        return file_budget['employee']
+
+    def fetched(field):
+        """Derived field: always read from the database, never from the client."""
+        link_key, attribute = field['fetch_from'].split('.')
+        link, record = by_key[link_key], values.get(link_key)
+        if not record or not isinstance(record, str):
+            return None
+        raw = frappe.db.get_value(link['source'], record, attribute)
+        return fetch_value(raw, field['type'] if field['type'] in {'Date', 'Time'} else None)
 
     def check(field, value, required):
         label, kind = field['label'], field['type']
@@ -710,10 +805,23 @@ def validate_values(schema, raw, company, _file_budget=None):
                 fail(f"{label}: پیش از بازه مجاز است.")
             if field.get('max_date') and value[:10] > field['max_date'][:10]:
                 fail(f"{label}: پس از بازه مجاز است.")
-        if kind == 'Link':
+        if kind == 'Link' and field['source'] in SCOPED_SOURCES:
+            source = field['source']
+            mine = employee()
+            if not mine and source in {'Attendance', 'Asset'}:
+                fail(f"{label}: پرونده پرسنلی شما ثبت نشده است.")
+            if not isinstance(value, str) or not frappe.db.exists(source, {**scope_filters(source, company, mine), 'name': value}):
+                fail(f"{label}: رکورد انتخاب‌شده در محدوده مجاز شما نیست.")
+            if field.get('link_filter') and source == 'Attendance':
+                rule = field['link_filter']
+                if str(frappe.db.get_value(source, value, rule['field'])) != str(values.get(rule['value_field'])):
+                    fail(f"{label}: رکورد با فیلتر وابسته سازگار نیست.")
+        elif kind == 'Link':
             source = field['source']
             if not isinstance(value, str) or not frappe.has_permission(source, 'read', value):
                 fail(f"{label}: رکورد انتخاب‌شده در دسترس نیست.")
+            if field.get('exclude_self') and value == employee():
+                fail('نمی‌توانید خودتان را انتخاب کنید.')
             record = frappe.get_doc(source, value)
             if record.meta.has_field('company') and record.get('company') != company:
                 fail(f"{label}: رکورد متعلق به این دفتر نیست.")
@@ -755,6 +863,11 @@ def validate_values(schema, raw, company, _file_budget=None):
                 if not isinstance(row, dict) or set(row) - {c['key'] for c in columns}:
                     fail(f"{label}: ستون ناشناخته است.")
                 result.append(validate_values({'sections': [{'fields': columns}], 'rules': []}, row, company, file_budget))
+            for column in field['columns']:
+                if column.get('unique'):
+                    seen = [str(r[column['key']]) for r in result if r.get(column['key']) not in (None, '', [])]
+                    if len(seen) != len(set(seen)):
+                        fail(f"ردیف تکراری: {column['label']}")
             return result
         if isinstance(value, str) and kind not in NUMBERS:
             if len(value) < int(field.get('min_length', 0)) or len(value) > int(field.get('max_length', 5000)):
@@ -771,6 +884,12 @@ def validate_values(schema, raw, company, _file_budget=None):
 
     for field in definitions:
         compute(field)
+    for field in definitions:
+        other = field.get('not_equal')
+        if (other and values.get(field['key']) not in (None, '') and values.get(other) not in (None, '')
+                and (number(values[field['key']]) == number(values[other]) if field['type'] in NUMBERS
+                     and by_key[other]['type'] in NUMBERS else str(values[field['key']]) == str(values[other]))):
+            fail(field.get('not_equal_message') or 'مقدار جدید نباید با مقدار فعلی یکسان باشد.')
     for field in definitions:
         dependency = field.get('after_or_equal')
         if not dependency or field['key'] not in values or dependency not in values:
