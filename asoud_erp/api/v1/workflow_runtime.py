@@ -857,13 +857,16 @@ def get_workflow_task(task: str) -> dict:
                 if reference.get(field.fieldname) not in (None, "", [])
             ],
         }
+    request_row = frappe.db.get_value(
+        "ASOUD Workflow Request", {"workflow_instance": doc.workflow_instance}, ["name", "company"], as_dict=True
+    ) or {}
     return success(
         {
             "name": doc.name,
             "workflow_instance": doc.workflow_instance,
             "workflow_stage": doc.workflow_stage,
-            "request_name": frappe.db.get_value(
-                "ASOUD Workflow Request", {"workflow_instance": doc.workflow_instance}, "name") or "",
+            "request_name": request_row.get("name", ""),
+            "request_company": request_row.get("company", ""),
             "task_title": doc.task_title,
             "status": doc.status,
             "assigned_on": doc.assigned_on,

@@ -50,6 +50,8 @@ class TestRequestViewer(APITestCase):
     def test_the_task_names_its_request_and_the_assignee_can_open_it(self):
         task = open_task(self.request["workflow_instance"], APPROVER_USER)
         frappe.set_user(APPROVER_USER)
-        request_name = workflow_runtime.get_workflow_task(task.name)["data"]["request_name"]
+        data = workflow_runtime.get_workflow_task(task.name)["data"]
+        request_name = data["request_name"]
+        self.assertEqual(data["request_company"], self.company)
         self.assertEqual(request_name, self.request["name"])
         self.assertEqual(workflow_request.get_request(request_name)["data"]["name"], self.request["name"])
