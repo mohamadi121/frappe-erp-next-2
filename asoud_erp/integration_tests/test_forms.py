@@ -445,6 +445,31 @@ class TestFormRecordSources(APITestCase):
         with self.assertRaisesRegex(frappe.ValidationError, "۶۲ روز"):
             forms.employee_schedule(company=self.company, from_date="2026-01-01", to_date="2026-03-04")
 
+    def test_shift_proposal_rejects_same_shift_and_overlapping_assignments(self):
+        current, other_shift = "ASOUD Schedule Morning", "ASOUD Schedule Night"
+        for shift, start, end in ((current, "08:00:00", "16:00:00"), (other_shift, "20:00:00", "23:00:00")):
+            if not frappe.db.exists("Shift Type", shift):
+                frappe.get_doc({"doctype": "Shift Type", "name": shift,
+                                "start_time": start, "end_time": end}).insert(ignore_permissions=True)
+        frappe.db.set_value("Employee", self.me, "default_shift", current)
+        table = {"key": "rows", "label": "شیفت‌ها", "type": "Table", "columns": [
+            {"key": "d", "label": "تاریخ", "type": "Date"},
+            {"key": "s", "label": "شیفت", "type": "Link", "source": "Shift Type"}]}
+        sched = {"key": "sch", "label": "برنامه", "type": "Schedule", "schedule_of": "self",
+                 "from_field": "from", "to_field": "to", "readonly": True}
+        name, rev = self.publish([{"key": "from", "label": "از", "type": "Date"},
+                                  {"key": "to", "label": "تا", "type": "Date"}, sched, table])
+        frappe.set_user(self.me_user)
+        base = {"from": "2026-10-23", "to": "2026-10-23"}
+        with self.assertRaisesRegex(frappe.ValidationError, "یکسان است"):
+            self.submit(name, rev, {**base, "rows": [{"d": "2026-10-23", "s": current}]}, "e" * 24)
+        for start, end in (("2026-10-20", "2026-10-25"), ("2026-10-22", "2026-10-24")):
+            frappe.get_doc({"doctype": "Shift Assignment", "employee": self.me, "company": self.company,
+                            "shift_type": other_shift, "start_date": start, "end_date": end,
+                            "status": "Active", "docstatus": 1}).db_insert()
+        with self.assertRaisesRegex(frappe.ValidationError, "تداخل"):
+            self.submit(name, rev, {**base, "rows": [{"d": "2026-10-23", "s": current}]}, "f" * 24)
+
     def test_attendance_scope_extra_and_submit_rejection(self):
         mine = self.attendance(self.me, "2026-09-01", in_time="2026-09-01 08:15:00")
         theirs = self.attendance(self.other, "2026-09-02")
