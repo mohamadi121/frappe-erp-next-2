@@ -51,7 +51,8 @@ class TestRequestResubmit(APITestCase):
         self.assertEqual(len(activity), 1)
         self.assertEqual(activity[0].actor, EMPLOYEE_USER)
         self.assertEqual(json.loads(activity[0].change_json),
-                         {"before": {"reason": "دلیل اولیه"}, "after": {"reason": "دلیل اصلاح‌شده"}})
+                         {"before": {"reason": "دلیل اولیه"}, "after": {"reason": "دلیل اصلاح‌شده"},
+                          "labels": {"reason": "دلیل"}})
         # Stage 1 reviews again: the open task is the first approval, not the returning one.
         task = open_task(self.instance, APPROVER_USER)
         self.assertEqual(frappe.db.get_value("ASOUD Workflow Stage", frappe.db.get_value(

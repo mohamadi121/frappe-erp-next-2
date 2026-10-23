@@ -646,14 +646,15 @@ def _own_running_request(name, not_editable_code: bool = False):
 
 
 def _activity(instance, action: str, comment: str = "", before: dict | None = None,
-              after: dict | None = None) -> None:
+              after: dict | None = None, labels: dict | None = None) -> None:
     row = {
         "doctype": "ASOUD Workflow Activity", "workflow_instance": instance.name,
         "workflow_stage": instance.current_stage, "actor": frappe.session.user,
         "action": action, "comment": comment[:1000], "created_on": now_datetime(),
     }
     if before or after:
-        row["change_json"] = json.dumps({"before": before or {}, "after": after or {}}, ensure_ascii=False)
+        row["change_json"] = json.dumps({"before": before or {}, "after": after or {}, "labels": labels or {}},
+                                        ensure_ascii=False)
     frappe.get_doc(row).insert(ignore_permissions=True)
 
 
@@ -784,7 +785,8 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
     if resubmit:
         changes = request_resubmit.diff_values(previous, final, fields)
         _activity(instance, "Resubmitted", before={row["key"]: row["before"] for row in changes},
-                  after={row["key"]: row["after"] for row in changes})
+                  after={row["key"]: row["after"] for row in changes},
+                  labels={row["key"]: row["label"] for row in changes})
         # The flow restarts at the first stage after the form; earlier decisions stay in the history.
         _submit_form_task(definition, instance.name, final, doc.name)
     else:

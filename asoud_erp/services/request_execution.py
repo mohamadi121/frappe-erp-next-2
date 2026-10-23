@@ -58,10 +58,13 @@ def build_execution(instance_status, native_status, *, has_execution=False, erro
 
 
 def activity_change(raw) -> dict:
-    """`{before, after}` of an activity from its stored JSON; empty dicts when absent or broken."""
+    """`{before, after, labels}` of an activity from its stored JSON; empty dicts when absent or broken.
+
+    `labels` maps a changed key to its field label, so a client without the form can show it.
+    """
     try:
         value = json.loads(raw) if raw else {}
     except (TypeError, ValueError):
         value = {}
     value = value if isinstance(value, dict) else {}
-    return {key: value[key] if isinstance(value.get(key), dict) else {} for key in ("before", "after")}
+    return {key: value[key] if isinstance(value.get(key), dict) else {} for key in ("before", "after", "labels")}

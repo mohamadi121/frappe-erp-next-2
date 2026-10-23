@@ -75,9 +75,11 @@ def test_reference_and_who_when_come_from_the_result():
 
 
 def test_activity_change_parses_before_and_after():
-    assert activity_change('{"before": {"a": 1}, "after": {"a": 2}}') == {"before": {"a": 1}, "after": {"a": 2}}
+    assert activity_change('{"before": {"a": 1}, "after": {"a": 2}}') == {"before": {"a": 1}, "after": {"a": 2},
+                                                                         "labels": {}}
+    assert activity_change('{"before": {}, "after": {"a": 2}, "labels": {"a": "مبلغ"}}')["labels"] == {"a": "مبلغ"}
 
 
 @pytest.mark.parametrize("raw", [None, "", "{bad", "[1]", '{"before": 3}'])
 def test_activity_change_is_empty_when_missing_or_broken(raw):
-    assert activity_change(raw) == {"before": {}, "after": {}}
+    assert activity_change(raw) == {"before": {}, "after": {}, "labels": {}}
