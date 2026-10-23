@@ -132,12 +132,19 @@ def test_mission_invalid_input(params, message):
         mission.build(params, CTX)
 
 
-def test_mission_conflicts_are_sorted_unique_and_in_range():
-    found = mission.conflict_days("2026-11-01", "2026-11-04", holidays={"2026-11-03", "2027-01-01"},
-                                  attendance={"2026-11-02", "2026-11-03"}, leaves={"2026-10-30"})
-    assert found == ["2026-11-02", "2026-11-03"]
-    assert mission.conflict_days("2026-11-01", "2026-11-02", set(), set(), set()) == []
-    reason = mission.review_reason(found)
+def test_mission_conflicts_only_on_boundary_holidays_and_working_days():
+    holidays = {"2026-11-03", "2027-01-01"}
+    # a holiday inside the range is skipped by HRMS, not a conflict
+    assert mission.conflict_days("2026-11-01", "2026-11-05", holidays, set(), set()) == []
+    # but not as the first or the last day
+    assert mission.conflict_days("2026-11-03", "2026-11-05", holidays, set(), set()) == ["2026-11-03"]
+    assert mission.conflict_days("2026-11-01", "2026-11-03", holidays, set(), set()) == ["2026-11-03"]
+    # attendance and leave matter on working days only, out-of-range rows are ignored
+    found = mission.conflict_days("2026-11-01", "2026-11-04", holidays, {"2026-11-02", "2026-11-03"},
+                                  {"2026-10-30", "2026-11-04"})
+    assert found == ["2026-11-02", "2026-11-04"]
+    assert mission.conflict_days("2026-11-01", "2026-11-04", set(), set(), set(), {"2026-11-03"}) == ["2026-11-03"]
+    reason = mission.review_reason(["2026-11-02", "2026-11-03"])
     assert reason.startswith("نیاز به اقدام HR؛ بازه مأموریت با تعطیلی، مرخصی یا حضور ثبت‌شده تعارض دارد")
     assert "۱۴۰۵/۰۸/۱۱" in reason and "۱۴۰۵/۰۸/۱۲" in reason
 

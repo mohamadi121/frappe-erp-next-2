@@ -372,13 +372,15 @@ selectable). Attendance Request has no destination field, so the three texts for
 `explanation`. `shift`, when given, must be an active Shift Assignment of the person that covers
 the whole range (open ended assignments count) or the Employee default shift: «شیفت انتخاب‌شده برای این پرسنل در بازه مأموریت مجاز نیست.».
 
-Before any write the days of the range are checked. If at least one day is a holiday of the
-employee (HRMS holiday list), already has a non-cancelled Attendance, is covered by a leave
-(Open or Approved), or the range overlaps another Attendance Request, nothing is created and the
-result is **Needs Review** (the requester and HR are notified): «نیاز به اقدام HR؛ بازه مأموریت با تعطیلی، مرخصی یا حضور ثبت‌شده تعارض دارد (<تاریخ‌های شمسی>).».
+Before any write the range is checked. The request is created with `include_holidays = 0`, so a
+holiday inside the range is simply skipped by HRMS (a week over a weekend gets Attendance on the
+working days only). The result is **Needs Review** (nothing written; the requester and HR are
+notified) only when the first or last day is itself a holiday of the employee, or a **working** day
+already has a non-cancelled Attendance or a leave (Open or Approved), or the range overlaps another
+Attendance Request (HRMS refuses that): «نیاز به اقدام HR؛ بازه مأموریت با تعطیلی، مرخصی یا حضور ثبت‌شده تعارض دارد (<تاریخ‌های شمسی>).».
 An existing Attendance is never overwritten. Otherwise the Attendance Request is inserted and
 **submitted** (HRMS creates one `Present`/`Half Day` Attendance per day, linked by
-`attendance_request`); if the number of created Attendance rows differs from the number of days the
+`attendance_request`); if the number of created Attendance rows differs from the number of working days the
 execution fails and rolls back («ثبت حضور مأموریت کامل نشد؛ بازه و شیفت را بررسی کنید.»), so a partial
 result is never kept. Other HRMS refusals (for example several shifts without a choice) give
 «ثبت مأموریت انجام نشد؛ بازه، شیفت و حضور ثبت‌شده را بررسی کنید.». Messages for input errors:

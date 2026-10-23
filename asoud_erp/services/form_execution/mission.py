@@ -47,9 +47,18 @@ def build(params: dict, ctx: dict) -> dict:
     }
 
 
-def conflict_days(start: str, end: str, holidays, attendance, leaves) -> list[str]:
-    """Days of the range that a holiday, an Attendance or a leave already occupies (sorted ISO)."""
-    taken = set(holidays) | set(attendance) | set(leaves)
+def conflict_days(start: str, end: str, holidays, attendance, leaves, requests=()) -> list[str]:
+    """Days that send the mission to HR (sorted ISO).
+
+    A holiday only conflicts when it is the first or last day (a holiday cannot be chosen as a
+    boundary); holidays inside the range are skipped by HRMS (``include_holidays = 0``). On a
+    working day an existing Attendance or a leave conflicts, and so does any overlapping
+    Attendance Request (HRMS refuses overlaps over the whole range).
+    """
+    holidays = set(holidays)
+    taken = {day for day in (start, end) if day in holidays}
+    taken |= (set(attendance) | set(leaves)) - holidays
+    taken |= set(requests)
     day, last, found = date.fromisoformat(start), date.fromisoformat(end), []
     while day <= last:
         if day.isoformat() in taken:
@@ -118,7 +127,7 @@ def apply(request, params: dict):
     requests = _spread(((row.from_date, row.to_date) for row in frappe.get_all('Attendance Request', filters={
         'employee': employee, 'docstatus': ['<', 2], 'from_date': ['<=', end], 'to_date': ['>=', start]},
         fields=['from_date', 'to_date'], limit_page_length=0)), start, end)
-    days = conflict_days(start, end, holidays, attendance | requests, leaves)
+    days = conflict_days(start, end, holidays, attendance, leaves, requests)
     if days:
         return NativeResult(status='needs_review', reason=review_reason(days))
     frappe.db.savepoint(SAVEPOINT)
@@ -128,7 +137,8 @@ def apply(request, params: dict):
             doc.submit()
             created = frappe.db.count('Attendance', {'employee': employee, 'attendance_request': doc.name,
                                                      'docstatus': 1})
-            if created != (date.fromisoformat(end) - date.fromisoformat(start)).days + 1:
+            working = (date.fromisoformat(end) - date.fromisoformat(start)).days + 1 - len(holidays)
+            if created != working:
                 raise ValueError(INCOMPLETE)
             doc.add_comment('Comment', f'ایجاد‌شده از درخواست {request.name}')
     except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):

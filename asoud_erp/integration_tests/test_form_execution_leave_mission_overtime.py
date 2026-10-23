@@ -215,9 +215,27 @@ class TestMissionExecution(Base):
         self.assertEqual(frappe.db.count('Attendance Request', {'employee': self.employee}), requests)
         self.assertEqual(frappe.db.count('Attendance', {'employee': self.employee}), before)
 
-    def test_holiday_in_the_range_needs_review(self):
+    def test_week_over_a_weekend_is_submitted_with_attendance_on_working_days_only(self):
+        weekend = [self.day(2), self.day(3)]
+        frappe.db.set_value('Employee', self.employee, 'holiday_list', self.make_holidays(weekend))
+        params = self.params(to_date=self.day(6))
+        result = mission.apply(self.request, params)
+        self.assertEqual((result.status, result.doctype), ('Created', 'Attendance Request'))
+        doc = frappe.get_doc('Attendance Request', result.name)
+        self.assertEqual((doc.docstatus, doc.include_holidays), (1, 0))
+        days = sorted(str(row.attendance_date) for row in rows('Attendance', attendance_request=doc.name))
+        self.assertEqual(days, [self.day(index) for index in (0, 1, 4, 5, 6)])
+
+    def test_holiday_as_start_or_end_needs_review(self):
+        frappe.db.set_value('Employee', self.employee, 'holiday_list', self.make_holidays([self.day(0)]))
+        self.assert_review_and_nothing_written([self.day(0)])
+        frappe.db.set_value('Employee', self.employee, 'holiday_list', self.make_holidays([self.day(2), self.day(1)]))
+        self.assert_review_and_nothing_written([self.day(2)])
+
+    def test_attendance_on_a_holiday_inside_the_range_is_not_a_conflict(self):
         frappe.db.set_value('Employee', self.employee, 'holiday_list', self.make_holidays([self.day(1)]))
-        self.assert_review_and_nothing_written([self.day(1)])
+        self.make_attendance(self.day(1), 'Absent')
+        self.assertEqual(mission.apply(self.request, self.params()).status, 'Created')
 
     def test_existing_attendance_is_never_overwritten(self):
         name = self.make_attendance(self.day(2), 'Absent')
