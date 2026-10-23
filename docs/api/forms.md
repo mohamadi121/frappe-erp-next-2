@@ -31,6 +31,29 @@ branches), standard comparison operators in conditions (`>`, `<`, `=`, `==`, `>=
 operator precedence (`*`, `/`, `%` evaluated before `+`, `-`), negative numbers,
 parentheses `()`, and nested expressions (`expression` / `chain`).
 
+### Additive presentation and entry-validation keys (schema version 2)
+
+The following optional keys are additive and do not change `schema_version`.
+Every field may include `help` (up to 1,000 characters). Sections may include
+`description`, `icon`, `color`, and `background_color` (each up to 500 characters),
+plus boolean `collapsible` and `collapsed` values. These keys are presentation metadata
+and are retained in published revisions.
+
+A `Select` field may set `style` to `dropdown` (the default) or `radio`; other styles
+are rejected. A `Date` field may set `after_or_equal` to the key of another Date field
+in the same schema. The target cannot refer to itself or participate in a dependency
+cycle. When both visible values are supplied, submission rejects an end date before its
+referenced date with `after_or_equal_message`, or the default message
+`تاریخ پایان نباید قبل از تاریخ شروع باشد.`.
+
+Visible `Table` fields enforce both `required` and `min_rows` during submission. A
+missing required row or too-short table is rejected as `حداقل N ردیف لازم است.`.
+
+`default_source` supports `user`, `company`, `today`, `employee`, `department`,
+`designation`, and `joining_date`. The last two read the signed-in active Employee in
+the form company: designation is the Employee designation and joining date is returned
+as ISO (`YYYY-MM-DD`). Missing Employee data produces no default value.
+
 ## Consumption
 
 Any active employee of the company consumes forms: `list_forms(company)`, `get_form(name)`,

@@ -72,6 +72,74 @@ class TestForms(APITestCase):
         with self.assertRaises(frappe.PermissionError):
             forms.list_forms(company=self.second)
 
+    def test_form_extensions_validate_submission_and_employee_defaults(self):
+        employee_user = "asoud.form-extensions@example.com"
+        if not frappe.db.exists("User", employee_user):
+            frappe.get_doc({
+                "doctype": "User", "email": employee_user, "first_name": "Form extensions",
+                "send_welcome_email": 0, "user_type": "System User",
+                "roles": [{"role": "Employee"}],
+            }).insert(ignore_permissions=True)
+        employee_name = frappe.db.get_value("Employee", {"user_id": employee_user, "company": self.company}, "name")
+        if not employee_name:
+            employee_name = frappe.get_doc({
+                "doctype": "Employee", "first_name": "Form extensions", "gender": "Male",
+                "date_of_birth": "1990-01-01", "date_of_joining": "2020-01-02",
+                "company": self.company, "status": "Active", "user_id": employee_user,
+                "create_user_permission": 0,
+            }).insert(ignore_permissions=True).name
+        frappe.db.set_value("Employee", employee_name, "designation", "کارشناس منابع انسانی")
+
+        extension_schema = {
+            "kind": "Request", "title": "فرم امکانات جدید", "schema_version": 2,
+            "sections": [{
+                "id": "main", "title": "اصلی", "description": "راهنمای بخش", "icon": "event",
+                "color": "blue", "background_color": "#e3f2fd", "collapsible": True,
+                "collapsed": False,
+                "fields": [
+                    {"key": "designation", "label": "سمت", "type": "Text", "readonly": True,
+                     "default_source": "designation", "help": "از پرونده پرسنلی"},
+                    {"key": "joining_date", "label": "تاریخ استخدام", "type": "Date", "readonly": True,
+                     "default_source": "joining_date"},
+                    {"key": "start_date", "label": "تاریخ شروع", "type": "Date", "required": True},
+                    {"key": "end_date", "label": "تاریخ پایان", "type": "Date", "required": True,
+                     "after_or_equal": "start_date"},
+                    {"key": "priority", "label": "اولویت", "type": "Select", "style": "radio",
+                     "options": [{"id": "normal", "label": "عادی"}, {"id": "urgent", "label": "فوری"}]},
+                    {"key": "items", "label": "اقلام", "type": "Table", "required": True, "min_rows": 2,
+                     "columns": [{"key": "name", "label": "نام", "type": "Text", "required": True}]},
+                ],
+            }],
+        }
+        frappe.set_user("Administrator")
+        created = forms.save_form(company=self.company, schema=extension_schema, client_id="e" * 24)["data"]
+        published = forms.transition(name=created["name"], action="publish", expected_version=1)["data"]
+
+        frappe.set_user(employee_user)
+        consumed = forms.get_form(name=created["name"])["data"]["schema"]["sections"][0]["fields"]
+        defaults = {field["key"]: field.get("default") for field in consumed}
+        self.assertEqual(defaults["designation"], "کارشناس منابع انسانی")
+        self.assertEqual(defaults["joining_date"], "2020-01-02")
+
+        with self.assertRaisesRegex(frappe.ValidationError, "حداقل 2 ردیف لازم است"):
+            forms.submit_form(
+                name=created["name"], revision_name=published["active_revision"], subject="ثبت نامعتبر",
+                values={"start_date": "2026-10-23", "end_date": "2026-10-23", "priority": "normal",
+                        "items": [{"name": "الف"}]}, request_key="e" * 24,
+            )
+        with self.assertRaisesRegex(frappe.ValidationError, "تاریخ پایان نباید قبل از تاریخ شروع باشد"):
+            forms.submit_form(
+                name=created["name"], revision_name=published["active_revision"], subject="ثبت ترتیب نامعتبر",
+                values={"start_date": "2026-10-23", "end_date": "2026-10-22", "priority": "normal",
+                        "items": [{"name": "الف"}, {"name": "ب"}]}, request_key="g" * 24,
+            )
+        entry = forms.submit_form(
+            name=created["name"], revision_name=published["active_revision"], subject="ثبت معتبر",
+            values={"start_date": "2026-10-23", "end_date": "2026-10-23", "priority": "normal",
+                    "items": [{"name": "الف"}, {"name": "ب"}]}, request_key="f" * 24,
+        )["data"]
+        self.assertIsNotNone(entry["name"])
+
     def test_employee_consumption_and_permission_boundaries(self):
         # 1. Active employee with only the Employee role
         emp_user = "asoud.form-employee@example.com"

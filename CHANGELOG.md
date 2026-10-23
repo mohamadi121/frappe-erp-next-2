@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+Added:
+
+- Form schema support for Select display styles, section presentation/collapse metadata,
+  field help text, Date `after_or_equal` validation, and Employee designation and joining-date defaults.
+- Submission enforcement for visible required repeatable tables and their minimum row count.
+
 ## 0.16.0 - 2026-10-18
 
 Deployment: run `bench --site <site> migrate` (new DocTypes: `ASOUD Form`, `ASOUD Form Revision`, `ASOUD Form Entry`, `ASOUD Calendar Scope`, `ASOUD Calendar Holiday`; directive receipts). Pairs with app 0.28.0.
