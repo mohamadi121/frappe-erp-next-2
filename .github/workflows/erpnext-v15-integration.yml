@@ -107,7 +107,7 @@ jobs:
                         test_personnel_file test_document_templates test_report_company_scope \
                         test_party_company_scope test_party_employee_sod test_purchase_request_company_scope test_company_scope_enforced \
                         test_projects_timesheet test_role_gate_enforcement test_hr_manager_access test_demo_seed test_account_ops \
-                        test_persian_digits test_forms test_calendar test_directives test_organization test_request_stages; do
+                        test_persian_digits test_forms test_calendar test_directives test_organization test_request_stages test_request_viewer; do
             bench --site test.localhost run-tests --app asoud_erp --skip-test-records \
               --module asoud_erp.integration_tests.$module
           done

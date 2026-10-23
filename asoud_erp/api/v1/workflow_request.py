@@ -25,6 +25,7 @@ from asoud_erp.services.request_status import (
     status_group as group_of_status,
 )
 from asoud_erp.services.request_templates import base as templates
+from asoud_erp.services.request_viewer import build_viewer
 from asoud_erp.services.workflow_history import merge_completed_responses
 from asoud_erp.services.workflow_response import (
     attachment_references,
@@ -311,6 +312,24 @@ def _requester_name(owner: str) -> str:
     return frappe.db.get_value("Employee", {"user_id": owner}, "employee_name") or get_fullname(owner)
 
 
+def _own_open_tasks(instance_name) -> list[dict]:
+    """Open tasks of this instance assigned to the signed-in user only, with their stage rows."""
+    if not instance_name:
+        return []
+    tasks = frappe.get_all("ASOUD Workflow Task", fields=["name", "workflow_stage"], order_by="creation asc",
+                           filters={"workflow_instance": instance_name, "status": "Open",
+                                    "assigned_to": frappe.session.user})
+    if not tasks:
+        return []
+    stages = {row.name: row for row in frappe.get_all(
+        "ASOUD Workflow Stage", fields=["name", "stage_title", "stage_type", "config_json"],
+        filters={"name": ["in", [task.workflow_stage for task in tasks]]})}
+    return [{"name": task.name, "stage_title": stages[task.workflow_stage].stage_title,
+             "stage_type": stages[task.workflow_stage].stage_type,
+             "config_json": stages[task.workflow_stage].config_json}
+            for task in tasks if task.workflow_stage in stages]
+
+
 def _stage_rows(definition, instance_name) -> list:
     if not instance_name or not definition:
         return []
@@ -352,6 +371,7 @@ def _detail(doc) -> dict:
         "workflow_instance": doc.workflow_instance or "", **_status_fields(doc, instance_status),
         "request_id": doc.request_id, "rejection_reason": _rejection_reason(doc.workflow_instance),
         "can_edit": bool(can_edit), "can_cancel": bool(owner and running),
+        "viewer": build_viewer(owner, _own_open_tasks(doc.workflow_instance) if running else []),
         "item_count": request_serializer.item_count(values), "attachment_count": len(entries),
         "comment_count": request_comments.count_comments(doc.name),
         "values": request_serializer.with_attachment_refs(values, by_url),
