@@ -27,7 +27,7 @@ DEFAULT_SOURCES = {
 REQUIRED_BY_SETTINGS = {"request_cost_center_required"}
 MAX_ROW_LIMIT = 100
 TIME_DEFAULT = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
-TABLE_COLUMN_TYPES = {"Short Text", "Number", "Currency", "Date", "Choice", "Attachment"}
+TABLE_COLUMN_TYPES = {"Short Text", "Long Text", "Number", "Currency", "Date", "Choice", "Attachment"}
 REQUEST_CATEGORIES = {"Finance", "HR", "Purchase", "IT", "General", "Other"}
 ASSIGNMENT_TYPES = {"Role", "Department", "Employee", "Initiator", "Initiator Department", "Direct Manager"}
 # Assignment types resolved from the request initiator; they need no target list.
@@ -101,6 +101,16 @@ def _normalize_form_fields(values: Any) -> list[dict[str, Any]]:
         rule = field.get("visible_when")
         if rule and (rule["field"] == field["key"] or rule["field"] not in keys):
             raise ValueError("A conditional field must depend on another field of the form")
+        reason_key = field.get("reason_field")
+        reason = next((candidate for candidate in result if candidate["key"] == reason_key), None)
+        if reason_key and (not reason or reason["type"] not in TEXT_FIELD_TYPES):
+            raise ValueError("A reduction reason must reference a text field in the same form")
+        if field.get("rows_from_request"):
+            columns = field.get("columns", [])
+            column_keys = {column["key"] for column in columns}
+            for column in columns:
+                if column.get("max_from_row") not in (None, "") and column["max_from_row"] not in column_keys:
+                    raise ValueError("A row maximum must reference a column in the same table")
     return result
 
 
@@ -111,6 +121,28 @@ def _field_extensions(item: dict[str, Any], field_type: str, options: list[str])
         if not isinstance(item["sensitive"], bool):
             raise ValueError("Sensitive field setting must be boolean")
         result["sensitive"] = item["sensitive"]
+    numeric = field_type in {"Number", "Currency"}
+    for key in ("max_from_request", "reason_required_if_less_than", "reason_field"):
+        if item.get(key) not in (None, ""):
+            if not numeric or not isinstance(item[key], str) or not re.fullmatch(r"[a-z][a-z0-9_]{1,39}", item[key]):
+                raise ValueError("Invalid request-bound field setting")
+            result[key] = item[key]
+    if "min_value_exclusive" in item:
+        if not numeric or isinstance(item["min_value_exclusive"], bool) or not isinstance(item["min_value_exclusive"], (int, float)):
+            raise ValueError("Invalid exclusive minimum")
+        result["min_value_exclusive"] = item["min_value_exclusive"]
+    if item.get("reason_required_if_less_than") and not item.get("reason_field"):
+        raise ValueError("A reduction reason field is required")
+    if item.get("rows_from_request") not in (None, ""):
+        if field_type != "Table" or not isinstance(item["rows_from_request"], str) or not re.fullmatch(r"[a-z][a-z0-9_]{1,39}", item["rows_from_request"]):
+            raise ValueError("Invalid request table source")
+        result["rows_from_request"] = item["rows_from_request"]
+    if item.get("max_from_row") not in (None, ""):
+        if not numeric or not isinstance(item["max_from_row"], str) or not re.fullmatch(r"[a-z][a-z0-9_]{1,39}", item["max_from_row"]):
+            raise ValueError("Invalid row maximum source")
+        result["max_from_row"] = item["max_from_row"]
+    if "readonly" in item:
+        result["readonly"] = bool(item["readonly"])
     if field_type == "System Select":
         source = item.get("source")
         if source not in SOURCE_FIELD_TYPES:
