@@ -50,9 +50,12 @@ Visible `Table` fields enforce both `required` and `min_rows` during submission.
 missing required row or too-short table is rejected as `حداقل N ردیف لازم است.`.
 
 `default_source` supports `user`, `company`, `today`, `employee`, `department`,
-`designation`, and `joining_date`. The last two read the signed-in active Employee in
-the form company: designation is the Employee designation and joining date is returned
-as ISO (`YYYY-MM-DD`). Missing Employee data produces no default value.
+`designation`, `joining_date`, and `contract_start`. The employee-backed values read the
+signed-in active Employee in the form company. `contract_start` returns the start date of
+the employee's current native Employment Contract; only when no current contract exists it
+falls back to `Employee.date_of_joining`. Dates are returned as ISO (`YYYY-MM-DD`). Missing
+Employee data produces no default value. A field using `contract_start` must label the fallback
+explicitly, for example `شروع دوره همکاری (در نبود قرارداد: تاریخ شروع به کار)`.
 
 ## Record sources and derived fields
 
@@ -78,7 +81,7 @@ Attendance `«۱۴۰۵/۰۷/۲۸ · حاضر · ورود ۰۸:۰۱ · خروج �
 
 Sources with fetchable attributes return `extra` on every row: Attendance `in_time, out_time,
 attendance_date, status, shift`; Shift Type `start_time, end_time`; Training Event `start_time,
-end_time, type, level, training_program`; Asset `asset_name, item_code, location`; Employee
+end_time, type, level, training_program, course, location, trainer, employee_count`; Asset `asset_name, item_code, location`; Employee
 `department, designation, employee_number`. The `extra` values stay raw ISO (the app formats them): datetimes `YYYY-MM-DDTHH:MM:SS`, times `HH:MM:SS`.
 
 Field keys (all validated by `save_form`):
@@ -93,6 +96,15 @@ Field keys (all validated by `save_form`):
   `مقدار جدید نباید با مقدار فعلی یکسان باشد.`
 - Table column `unique: true` — duplicate non-empty values are rejected: `ردیف تکراری: <label>`.
 - `default_source` also accepts `employee_number` (falls back to the Employee name) and `default_shift`.
+- A read-only `Display` field may set `compare: {current: '<field key>', proposed: '<field key>'}`.
+  Both referenced fields must be in the same container. The runtime renders
+  `ساعت ثبت‌شده <current> ← پیشنهادی <proposed>` and uses `ثبت نشده` for either empty side.
+  Comparison fields are presentation-only and are not stored as submitted values.
+- A `Time` field may set `next_day_allowed: true`. The runtime then shows a `روز بعد` toggle and
+  submits its boolean value as `<field key>__next_day`. This companion key is accepted only for
+  such a Time field. Server validation combines the Time with the request's attendance Date;
+  when selected, one day is added before chronological comparisons, so a shift crossing midnight
+  is not treated as an earlier same-day time.
 
 ## Consumption
 
