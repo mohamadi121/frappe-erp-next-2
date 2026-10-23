@@ -9,7 +9,13 @@ from frappe.utils import get_fullname, getdate, now_datetime, nowdate
 from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.workflow_runtime import _next_stage, start_workflow_instance
 from asoud_erp.services import request_attachments as files
-from asoud_erp.services import request_comments, request_lookup, request_serializer, request_timeline
+from asoud_erp.services import (
+    request_comments,
+    request_execution,
+    request_lookup,
+    request_serializer,
+    request_timeline,
+)
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_access import request_permission, require_company
 from asoud_erp.services.request_link_values import validate_link_values
@@ -388,7 +394,19 @@ def _detail(doc) -> dict:
         "attachments": entries, "fields": fields, "stages": _stage_rows(doc.workflow_definition, doc.workflow_instance),
         "native": {"doctype": doc.native_doctype or "", "name": doc.native_name or "",
                    "status": doc.native_status or "", "error": (doc.native_error or "") if privileged else ""},
+        "execution": _execution(doc, instance_status, privileged),
     }
+
+
+def _execution(doc, instance_status, privileged) -> dict:
+    created = doc.native_status == "Created" and doc.native_doctype and doc.native_name
+    row = frappe.db.get_value(doc.native_doctype, doc.native_name, ["creation", "owner"],
+                              as_dict=True) if created else None
+    return request_execution.build_execution(
+        instance_status, doc.native_status, has_execution=bool(templates.get(doc.template_key)),
+        error=doc.native_error, privileged=privileged, reference=doc.native_name,
+        executed_on=str(row.creation) if row else "",
+        executed_by_name=get_fullname(row.owner) if row and row.owner != "Administrator" else "")
 
 
 def _readable_request(name):
@@ -616,12 +634,16 @@ def _own_running_request(name, not_editable_code: bool = False):
     return doc, instance
 
 
-def _activity(instance, action: str, comment: str = "") -> None:
-    frappe.get_doc({
+def _activity(instance, action: str, comment: str = "", before: dict | None = None,
+              after: dict | None = None) -> None:
+    row = {
         "doctype": "ASOUD Workflow Activity", "workflow_instance": instance.name,
         "workflow_stage": instance.current_stage, "actor": frappe.session.user,
         "action": action, "comment": comment[:1000], "created_on": now_datetime(),
-    }).insert(ignore_permissions=True)
+    }
+    if before or after:
+        row["change_json"] = json.dumps({"before": before or {}, "after": after or {}}, ensure_ascii=False)
+    frappe.get_doc(row).insert(ignore_permissions=True)
 
 
 @frappe.whitelist(methods=["POST"])

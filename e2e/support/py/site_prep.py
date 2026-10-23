@@ -289,6 +289,16 @@ def attach(request_name: str, filename: str = "receipt.txt", content: str = "e2e
     return {"name": file_doc.name, "file_url": file_doc.file_url}
 
 
+def mark_native_failed(request_name: str, error: str) -> dict:
+    frappe.db.set_value("ASOUD Workflow Request", request_name, {
+        "template_key": "leave", "native_status": "Failed", "native_error": error}, update_modified=False)
+    # The state production reaches after an approval whose native document failed.
+    instance = frappe.db.get_value("ASOUD Workflow Request", request_name, "workflow_instance")
+    frappe.db.set_value("ASOUD Workflow Instance", instance, "status", "Completed", update_modified=False)
+    frappe.db.commit()
+    return {"name": request_name}
+
+
 def cleanup() -> dict:
     removed = []
     for doctype, filters in (
@@ -322,6 +332,8 @@ def main() -> None:
         result = drop_definition(options["definition"])
     elif action == "attach":
         result = attach(options["request"], options.get("filename", "receipt.txt"), options.get("content", "e2e receipt content"))
+    elif action == "mark-native-failed":
+        result = mark_native_failed(options["request"], options["error"])
     elif action == "cleanup":
         result = cleanup()
     else:

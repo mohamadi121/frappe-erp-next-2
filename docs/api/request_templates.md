@@ -34,6 +34,32 @@ come from the template; client values for them are ignored. The positional argum
 is `company, workflow_definition, subject, request_id, ...` (unchanged); clients call by
 name.
 
+### Execution lane (`get_request.execution`)
+
+`execution = {state, label, error, executed_on, executed_by_name, reference}` is computed by the
+pure `services/request_execution.py` from the workflow instance status and the stored
+`native_status`/`native_error`; no field is stored for it. It is separate from `status_key`:
+an approval is never reported as done.
+
+| state | when | label |
+|---|---|---|
+| `not_applicable` | no instance, rejected, cancelled, or a template without execution and no native result | empty |
+| `not_started` | template with execution; instance Completed and no native result | «تأیید شده، اجرا انجام نشده» |
+| `not_started` | same, instance still Running | «اجرا پس از تأیید نهایی انجام می‌شود» |
+| `pending` | Completed, `native_status = Pending` | «در انتظار اجرا» |
+| `succeeded` | Completed, `native_status = Created` | «اجرا انجام شد» |
+| `failed` | Completed, `native_status = Failed` (the approval stays) | «اجرا ناموفق بود؛ درخواست تأیید شده است» |
+| `needs_review` | instance `Failed` | «نیازمند بررسی» |
+| `not_connected` | Completed, `native_status = Skipped` | «اجرای خودکار برای این نوع درخواست متصل نیست» |
+
+`error` is returned only to System/HR Managers (same rule as `native.error`) and only when the state
+is `failed`. `reference`, `executed_on` and `executed_by_name` are filled only for `succeeded`
+(the native document, its creation time, its creator). Only `succeeded` says «انجام شد».
+
+Activity rows of `get_workflow_instance` carry `before` and `after` (objects, `{}` when absent),
+read from the new optional `ASOUD Workflow Activity.change_json` (`{"before": {...}, "after": {...}}`).
+The migration only adds that column; existing rows return `{}`.
+
 ### Companies and scoping
 
 Every endpoint that takes `company` calls `request_access.require_company`; name-based

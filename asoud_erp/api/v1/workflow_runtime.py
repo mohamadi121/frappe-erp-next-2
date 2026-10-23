@@ -12,6 +12,7 @@ from asoud_erp.api.v1.responses import success
 from asoud_erp.services.directive_paging import lookahead_page
 from asoud_erp.services.document_templates import render_placeholders
 from asoud_erp.services.erp_documents import require_roles
+from asoud_erp.services.request_execution import activity_change
 from asoud_erp.services.request_link_values import validate_link_values, workflow_company
 from asoud_erp.services.request_templates.base import validate_form_stage_response
 from asoud_erp.services.workflow_assignment import assignment_values
@@ -794,11 +795,13 @@ def get_workflow_instance(instance: str) -> dict:
             "created_on",
             "reference_doctype",
             "reference_name",
+            *(["change_json"] if frappe.db.has_column("ASOUD Workflow Activity", "change_json") else []),
         ],
         order_by="created_on asc",
         limit_page_length=0,
     )
     for activity in activities:
+        activity.update(activity_change(activity.pop("change_json", None)))
         activity["stage_title"] = (
             frappe.db.get_value(
                 "ASOUD Workflow Stage", activity.workflow_stage, "stage_title"
