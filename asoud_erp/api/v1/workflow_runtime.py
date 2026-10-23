@@ -793,6 +793,11 @@ def get_workflow_instance(instance: str) -> dict:
             if activity.workflow_stage
             else ""
         ) or ""
+    actors = list({activity.actor for activity in activities if activity.actor})
+    names = {row.name: row.full_name for row in frappe.get_all(
+        "User", filters={"name": ["in", actors]}, fields=["name", "full_name"])} if actors else {}
+    for activity in activities:
+        activity["actor_name"] = names.get(activity.actor) or activity.actor or ""
     return success({**_instance_summary(doc), "activities": activities})
 
 
@@ -897,11 +902,16 @@ def get_workflow_task(task: str) -> dict:
         draft = project_request_rows(config.get("form_fields", []), request_values_for_instance(frappe, instance), draft)
     except ValueError as error:
         frappe.throw(_(str(error)))
+    request_row = frappe.db.get_value(
+        "ASOUD Workflow Request", {"workflow_instance": doc.workflow_instance}, ["name", "company"], as_dict=True
+    ) or {}
     return success(
         {
             "name": doc.name,
             "workflow_instance": doc.workflow_instance,
             "workflow_stage": doc.workflow_stage,
+            "request_name": request_row.get("name", ""),
+            "request_company": request_row.get("company", ""),
             "task_title": doc.task_title,
             "status": doc.status,
             "assigned_on": doc.assigned_on,
