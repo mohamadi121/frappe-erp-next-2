@@ -290,3 +290,49 @@ first participant and is refused as a duplicate. `validate_submit` also refuses,
 event in which the requester is already a participant. Validation errors raised by HRMS while saving
 the event (for example an invalid period) give «ثبت‌نام در دوره آموزشی انجام نشد؛ اطلاعات دوره را بررسی کنید.».
 No migration or configuration.
+
+## Void and reissue (decision N6)
+
+Both endpoints are in `api/v1/workflow_request.py` (thin; the rules are in `services/request_void.py`),
+POST, role **HR Manager only** (Administrator passes; System Manager does not), and scoped with
+`require_company(request.company)`. A user of another company, a plain employee and a user without
+an Employee record get `403`. Nothing is ever deleted.
+
+### `void_native_document(name, reason)`
+
+Requires the request to be approved (instance `Completed`) with `native_status = Created`.
+`reason` is required (1–500 characters after trimming). Result: the same detail as `get_request`.
+
+| Native document | What voiding does |
+|---|---|
+| submitted (docstatus 1) of Employee Advance, Asset Movement, Shift Request, Exit Interview, Leave Application, Material Request | ERPNext/HRMS **Cancel** (docstatus 2), in a savepoint |
+| already cancelled | nothing to cancel; the void is recorded |
+| draft (docstatus 0) | **Frappe cannot cancel a draft and we never delete it.** The draft stays for HR; it gets an escaped Comment «ابطال‌شده از درخواست …: دلیل» and the request records the void |
+| Employee Checkin (not submittable) | same as a draft, plus `skip_auto_attendance = 1` when it has no Attendance yet, so the auto-attendance job ignores it |
+| Training Event (shared by all participants) | **never cancelled**, only a Comment on the event; HR removes the participant |
+| any other doctype (for example the hourly Leave Ledger Entry) | refused |
+
+Then `native_status = Voided` (new option; `native_doctype`/`native_name` keep the voided document),
+`native_error` stays empty, and an `ASOUD Workflow Activity` row is written: `action = Voided`
+(app label «ابطال سند»), `comment = reason`, `actor`, `created_on`, `reference_doctype/name` = the
+voided document. The requester and the HR/System Managers get a notification. The execution lane
+shows «سند ابطال شد». Side effects of the executor outside the document (for example
+`Employee.relieving_date` and the Full and Final Statement of `exit`) are not reverted; HR handles them.
+
+Errors (Persian, HTTP 417 unless stated): «دلیل ابطال سند را بنویسید.» (`VOID_REASON_REQUIRED`),
+«دلیل ابطال حداکثر ۵۰۰ نویسه است.», «برای این درخواست سند اجراشده‌ای وجود ندارد که ابطال شود.»
+(`NATIVE_NOT_VOIDABLE`; includes an already voided request), «ابطال این نوع سند از این مسیر ممکن نیست.»,
+«ابطال سند انجام نشد؛ اسناد وابسته به آن را بررسی کنید.» (ERPNext refused the cancel, nothing changed).
+
+### `reissue_native_document(name)`
+
+Only for form requests (not template requests such as leave or purchase, whose idempotency keys
+would find the old document) with `native_status = Voided`. It writes an activity `action =
+Reissued` (label «صدور مجدد سند», `reference` = the old document), clears the `native_*` fields and
+runs the same dispatcher as the approval, so the executor creates a **fresh** document (or
+`Needs Review` / `Failed` with its reason, then retryable with `create_native_document`).
+Idempotent: a repeat when the latest of Voided/Reissued is `Reissued` and the status is `Created`
+returns the current detail and creates nothing. Other states give «صدور مجدد فقط پس از ابطال سند ممکن است.»
+(`NATIVE_NOT_REISSUABLE`); a template request gives «صدور مجدد برای این نوع درخواست ممکن نیست.».
+If the old document is a draft that HR left in place, executors with their own duplicate rule
+(`exit`: an open settlement exists) fail with that rule's Persian reason until HR handles the draft.

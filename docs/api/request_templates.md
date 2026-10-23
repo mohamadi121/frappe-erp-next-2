@@ -24,6 +24,8 @@ are `frappe.throw` with a code in `_server_messages[].title` (see the table at t
 | `add_request_comment(name, content)` | POST | `add_` | add a comment (1–2000 characters, HTML stripped) |
 | `get_attachment(name, thumbnail?)` | GET | read | one file; `thumbnail=1` scales an image to at most 256 px |
 | `create_native_document(name)` | POST | `create_` | retry a failed native document (System, HR or Purchase Manager) |
+| `void_native_document(name, reason)` | POST | `void_` | HR Manager only: void the executed native document (see «Void and reissue» in `form-execution.md`) |
+| `reissue_native_document(name)` | POST | `reissue_` | HR Manager only: run the executor again after a void |
 
 `create_request` takes `workflow_definition` or `template_key`; the key wins and resolves
 the company's active definition (`TEMPLATE_NOT_AVAILABLE` otherwise). `request_id` is the
@@ -51,6 +53,11 @@ an approval is never reported as done.
 | `failed` | Completed, `native_status = Failed` (the approval stays) | «اجرا ناموفق بود؛ درخواست تأیید شده است» |
 | `needs_review` | instance `Failed`, or Completed with `native_status = Needs Review` | «نیازمند بررسی» |
 | `not_connected` | Completed, `native_status = Skipped` | «اجرای خودکار برای این نوع درخواست متصل نیست» |
+| `voided` | Completed, `native_status = Voided` | «سند ابطال شد» |
+
+Additive keys: `can_void` (HR Manager and `native_status = Created`), `can_reissue` (HR Manager,
+`native_status = Voided` and a form request) and, only in the `voided` state and only for System/HR
+Managers, `void = {reason, by_name, on, reference}` (the voided document).
 
 `error` is returned only to System/HR Managers (same rule as `native.error`) and only when the state
 is `failed` or `needs_review`. `reference`, `executed_on` and `executed_by_name` are filled only for `succeeded`
