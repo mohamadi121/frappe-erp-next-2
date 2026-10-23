@@ -411,7 +411,8 @@ class TestFormRecordSources(APITestCase):
 
     def publish(self, fields):
         frappe.set_user("Administrator")
-        created = forms.save_form(company=self.company, client_id="s" * 24, schema={
+        self.published = getattr(self, "published", 0) + 1
+        created = forms.save_form(company=self.company, client_id=f"s{self.published}".ljust(24, "s"), schema={
             "kind": "Request", "title": "منابع رکورد", "schema_version": 2,
             "sections": [{"id": "main", "title": "اصلی", "fields": fields}]})["data"]
         published = forms.transition(name=created["name"], action="publish", expected_version=1)["data"]
@@ -491,6 +492,7 @@ class TestFormRecordSources(APITestCase):
         self.assertEqual(shifts[shift]["extra"], {"start_time": "08:00:00", "end_time": "16:30:00"})
 
     def test_exclude_self_not_equal_and_unique(self):
+        plain_name, _ = self.publish([self.link("pick", "Employee")])
         name, rev = self.publish([
             self.link("boss", "Employee", exclude_self=True),
             {"key": "old", "label": "قدیم", "type": "Text"},
@@ -501,6 +503,8 @@ class TestFormRecordSources(APITestCase):
         options = [r["name"] for r in forms.get_link_options(company=self.company, source="Employee", form=name, exclude_self=1)["data"]]
         self.assertNotIn(self.me, options)
         self.assertIn(self.other, options)
+        with self.assertRaisesRegex(frappe.ValidationError, "حذف خود را پشتیبانی نمی"):
+            forms.get_link_options(company=self.company, source="Employee", form=plain_name, exclude_self=1)
         with self.assertRaisesRegex(frappe.ValidationError, "نمی‌توانید خودتان را انتخاب کنید"):
             self.submit(name, rev, {"boss": self.me}, "f" * 24)
         with self.assertRaisesRegex(frappe.ValidationError, "مقدار جدید نباید با مقدار فعلی یکسان باشد"):

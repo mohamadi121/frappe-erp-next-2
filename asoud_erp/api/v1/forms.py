@@ -322,6 +322,10 @@ def get_link_options(company, source, query='', form=None, filter_field=None, fi
         sources = {f.get('source') for f in fields(schema)} | {c.get('source') for f in fields(schema) for c in f.get('columns', [])}
         if doc.company != company or doc.disabled or not allowed(schema, company) or source not in sources:
             frappe.throw('دسترسی مجاز نیست.', frappe.PermissionError)
+        if int(exclude_self) and not any(
+                f.get('source') == 'Employee' and f.get('exclude_self') is True
+                for item in fields(schema) for f in [item, *item.get('columns', [])]):
+            fail('این فیلد حذف خود را پشتیبانی نمی‌کند.')
     meta = frappe.get_meta(source)
     employee = current_employee(company)
     scoped = source in SCOPED_SOURCES

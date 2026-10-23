@@ -81,7 +81,7 @@ end_time, type, level, training_program`; Asset `asset_name, item_code, location
 Field keys (all validated by `save_form`):
 
 - `exclude_self: true` — Employee Link only. `get_link_options(..., exclude_self=1)` omits the
-  user's own Employee; submission rejects it (`نمی‌توانید خودتان را انتخاب کنید.`).
+  user's own Employee (non-designers get a Persian error unless the form really has an Employee Link with `exclude_self`); submission rejects it (`نمی‌توانید خودتان را انتخاب کنید.`).
 - `fetch_from: '<link key>.<attribute>'` — the key must be a Link field in the same container with an
   allowed attribute. Submission recomputes the value from the database (Date/Time fields take the
   date/time part) and ignores the client value.
