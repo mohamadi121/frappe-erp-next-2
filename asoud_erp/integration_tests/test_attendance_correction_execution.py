@@ -153,6 +153,21 @@ class TestAttendanceCorrectionExecution(FrappeTestCase):
             execution.apply(self.request, self.punch())
         self.assertEqual(frappe.db.count("Employee Checkin", {"employee": self.employee}), 0)
 
+    def test_selected_employee_must_match_owner_without_falling_back(self):
+        other = frappe.get_doc({
+            "doctype": "Employee", "first_name": "کارمند دیگر", "company": self.company,
+            "status": "Active", "gender": "Male", "date_of_birth": "1990-01-01",
+            "date_of_joining": add_days(nowdate(), -365), "create_user_permission": 0,
+        }).insert()
+        self.request.db_set("requester_employee", other.name)
+        self.request.reload()
+        # The owner also has a valid active Employee; a mismatched explicit selection must fail.
+        with self.assertRaisesRegex(frappe.ValidationError,
+                                    "پرونده پرسنلی درخواست‌دهنده ثبت نشده است."):
+            execution.apply(self.request, self.punch())
+        self.assertEqual(frappe.db.count("Employee Checkin", {"employee": self.employee}), 0)
+        self.assertEqual(frappe.db.count("Employee Checkin", {"employee": other.name}), 0)
+
     def test_invalid_input_cannot_create_a_checkin(self):
         with self.assertRaisesRegex(ValueError, "ساعت ورود پیشنهادی معتبر نیست."):
             execution.apply(self.request, self.punch(in_time="25:00"))

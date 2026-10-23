@@ -76,15 +76,18 @@ def apply(request, params: dict):
         frappe.throw("شرکت درخواست مشخص نشده است.")
     if not request.get("owner"):
         frappe.throw("پرونده پرسنلی درخواست‌دهنده ثبت نشده است.")
+    employee_filters = {"user_id": request.owner, "company": request.company}
+    if request.get("requester_employee"):
+        employee_filters["name"] = request.requester_employee
     # Serialize punches for this employee, including competing approved requests.
     employee = frappe.db.get_value(
-        "Employee", {"user_id": request.owner, "company": request.company},
-        ["name", "status"], as_dict=True, for_update=True,
+        "Employee", {**employee_filters, "status": "Active"},
+        ["name"], as_dict=True, for_update=True,
     )
     if not employee:
+        if frappe.db.exists("Employee", {**employee_filters, "status": ["!=", "Active"]}):
+            frappe.throw("پرونده پرسنلی درخواست‌دهنده فعال نیست.")
         frappe.throw("پرونده پرسنلی درخواست‌دهنده ثبت نشده است.")
-    if employee.status != "Active":
-        frappe.throw("پرونده پرسنلی درخواست‌دهنده فعال نیست.")
     ctx = {"company": request.company, "employee": employee.name, "user": request.owner,
            "request_name": request.name, "today": frappe.utils.nowdate()}
     payload = build(params, ctx)
