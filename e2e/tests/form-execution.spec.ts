@@ -25,8 +25,12 @@ test('catalog uses real HTTP role gates and is available to a designer without E
   const admin = await api.login('admin');
   const catalog = await admin.read<Array<{kind: string; label: string; parameters: object}>>(forms + 'execution_kinds');
   expect(catalog.map(item => item.kind)).toEqual(expect.arrayContaining([
-    'employee_advance', 'attendance_correction', 'asset_movement',
+    'employee_advance', 'attendance_correction', 'asset_movement', 'training_enrollment',
   ]));
+  expect(catalog).toContainEqual({kind: 'training_enrollment', label: 'ثبت‌نام در دوره آموزشی', parameters: {
+    training_event: {label: 'دوره آموزشی', types: ['Link'], required: true},
+    notes: {label: 'توضیحات', types: ['Text', 'LongText'], required: false},
+  }});
   expect(catalog).toContainEqual({kind: 'e2e_form_execution', label: 'اجرای آزمون گردش‌کار', parameters: {
     amount: {label: 'مبلغ', types: ['Money'], required: true},
     fail_first: {label: 'آزمون تلاش مجدد', types: ['Check'], required: false},
