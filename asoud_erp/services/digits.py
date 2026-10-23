@@ -16,6 +16,7 @@ ASCII_DIGITS = "0123456789"
 _DIGIT_TRANSLATION = str.maketrans(
     PERSIAN_DIGITS + ARABIC_INDIC_DIGITS, ASCII_DIGITS + ASCII_DIGITS
 )
+_PERSIAN_TRANSLATION = str.maketrans(ASCII_DIGITS, PERSIAN_DIGITS)
 _SEPARATOR_TRANSLATION = str.maketrans({"٫": ".", "٬": ""})
 _NUMBER_CHARACTERS = frozenset(ASCII_DIGITS + ".,٫٬")
 
@@ -70,3 +71,8 @@ def normalize_column_rows(rows, field):
         if normalized != value:
             updates.append((row.get("name"), normalized))
     return updates
+
+
+def to_persian_digits(text):
+    """Return ``text`` with ASCII digits shown as Persian digits (display only)."""
+    return str(text).translate(_PERSIAN_TRANSLATION)

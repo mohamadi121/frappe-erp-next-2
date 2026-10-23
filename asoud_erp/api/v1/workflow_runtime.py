@@ -9,7 +9,7 @@ from frappe.utils import add_to_date, get_fullname, getdate, now_datetime, nowda
 
 from asoud_erp.api.v1 import document_templates
 from asoud_erp.api.v1.responses import success
-from asoud_erp.services.directive_paging import next_cursor
+from asoud_erp.services.directive_paging import lookahead_page
 from asoud_erp.services.document_templates import render_placeholders
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_link_values import validate_link_values, workflow_company
@@ -48,6 +48,9 @@ def _assert_instance_access(instance) -> None:
     if {"System Manager", "Accounts Manager"}.intersection(frappe.get_roles()):
         return
     frappe.throw(_("Not permitted to view this workflow instance"), frappe.PermissionError)
+
+
+TASK_PAGE = INSTANCE_PAGE = 200
 
 
 def _instance_summary(instance) -> dict:
@@ -662,68 +665,99 @@ def start_workflow_instance(
     return success({"name": instance.name, "status": instance.status})
 
 
+def _is_paged(paged) -> bool:
+    return str(paged).lower() in ('1', 'true')
+
+
+def _instance_summaries(names) -> list[dict]:
+    """`_instance_summary` for many instances with four queries instead of three per row."""
+    if not names:
+        return []
+    instances = {row.name: row for row in frappe.get_all(
+        "ASOUD Workflow Instance", filters={"name": ["in", names]},
+        fields=["name", "subject", "status", "workflow_definition", "current_stage",
+                "reference_doctype", "reference_name", "started_by", "started_on", "completed_on"],
+        limit_page_length=0)}
+    stages = {row.name: row.stage_title for row in frappe.get_all(
+        "ASOUD Workflow Stage",
+        filters={"name": ["in", [row.current_stage for row in instances.values() if row.current_stage] or [""]]},
+        fields=["name", "stage_title"], limit_page_length=0)}
+    assignees: dict[str, list] = {}
+    for row in frappe.get_all(
+        "ASOUD Workflow Task", filters={"workflow_instance": ["in", names], "status": "Open"},
+        fields=["workflow_instance", "assigned_to"], order_by="assigned_on asc", limit_page_length=0,
+    ):
+        assignees.setdefault(row.workflow_instance, []).append(row.assigned_to)
+    summaries = []
+    for name in names:
+        row = instances[name]
+        summaries.append({
+            "name": row.name,
+            "subject": row.subject,
+            "status": row.status,
+            "workflow_definition": row.workflow_definition,
+            "current_stage": row.current_stage or "",
+            "current_stage_title": (stages.get(row.current_stage) or "") if row.current_stage else "",
+            "current_assignees": list(dict.fromkeys(assignees.get(name, []))),
+            "reference_doctype": row.reference_doctype or "",
+            "reference_name": row.reference_name or "",
+            "started_by": row.started_by,
+            "started_on": row.started_on,
+            "completed_on": row.completed_on,
+        })
+    return summaries
+
+
 @frappe.whitelist()
 def list_my_workflow_tasks(status: str = "Open", start=0, paged=False) -> dict:
     """Open/closed workflow tasks assigned to the current user.
 
-    `paged=1` returns `{items, next_cursor}`; without it the legacy list with `meta.total`.
-    Rows are read in pages of 200 and access-filtered afterwards, so `items` can hold
-    fewer than 200 rows, or none, while `next_cursor` is still set. Clients must keep
-    requesting while `next_cursor` is not null and must not stop on an empty page.
+    `paged=1` returns `{items, next_cursor}` with `meta.total`; without it the legacy list
+    (first 200 rows) with `meta.total`. Directive access is applied in SQL before the
+    LIMIT, so every page is full except the last and `next_cursor` is null exactly when
+    no visible row follows.
     """
     if status not in {"Open", "Completed", "Rejected", "Cancelled"}:
         frappe.throw(_("Invalid task status"))
-    rows = frappe.get_all(
-        "ASOUD Workflow Task",
-        filters={"assigned_to": frappe.session.user, "status": status},
-        fields=[
-            "name", "workflow_instance", "workflow_stage", "task_title", "status",
-            "assigned_on", "completed_on",
-            "due_on", "reminder_sent_on", "escalated_on",
-        ],
-        order_by="assigned_on desc, name desc",
-        limit_start=max(0,int(start)),
-        limit_page_length=200,
-    )
-    cursor=next_cursor(start,len(rows),200)
-    from asoud_erp.services.directive_access import directive_for, workflow_permission
-    rows = [row for row in rows if not directive_for(frappe.get_doc("ASOUD Workflow Task",row.name))
-        or workflow_permission(frappe.get_doc("ASOUD Workflow Task",row.name),permission_type="read")]
-    if str(paged).lower() in ('1','true'):
-        return success(dict(items=rows,next_cursor=cursor))
-    return success(rows, meta={"total": len(rows)})
+    from asoud_erp.services.directive_access import instance_clause
+    where = ("assigned_to=%(user)s AND status=%(status)s AND (COALESCE(workflow_instance,'')='' OR "
+        "workflow_instance IN (SELECT name FROM `tabASOUD Workflow Instance` WHERE " + instance_clause() + "))")
+    params = {"user": frappe.session.user, "status": status}
+    start = max(0, int(start))
+    rows = frappe.db.sql(
+        "SELECT name, workflow_instance, workflow_stage, task_title, status, assigned_on, completed_on, "
+        "due_on, reminder_sent_on, escalated_on FROM `tabASOUD Workflow Task` WHERE " + where +
+        " ORDER BY assigned_on DESC, name DESC LIMIT %(start)s, %(limit)s",
+        {**params, "start": start, "limit": TASK_PAGE + 1}, as_dict=True)
+    items, cursor = lookahead_page(start, rows, TASK_PAGE)
+    if _is_paged(paged):
+        total = frappe.db.sql("SELECT COUNT(*) FROM `tabASOUD Workflow Task` WHERE " + where, params)[0][0]
+        return success(dict(items=items, next_cursor=cursor), meta={"total": total})
+    return success(items, meta={"total": len(items)})
 
 
 @frappe.whitelist()
 def list_my_workflow_instances(status: str | None = None, start=0, paged=False) -> dict:
     """Workflow instances started by the current user, with the same paging contract as
-    `list_my_workflow_tasks`: `paged=1` returns `{items, next_cursor}` where the cursor comes
-    from the raw page of 200 names, before access filtering, so a page may be short or empty.
+    `list_my_workflow_tasks`: access is filtered in SQL, `next_cursor` is null on the last
+    visible page and `meta.total` counts all visible rows in paged mode.
     """
     allowed = {"Running", "Completed", "Rejected", "Cancelled", "Failed"}
     if status and status not in allowed:
         frappe.throw(_("Invalid workflow instance status"))
-    filters = {"started_by": frappe.session.user}
-    if status:
-        filters["status"] = status
-    names = frappe.get_all(
-        "ASOUD Workflow Instance",
-        filters=filters,
-        pluck="name",
-        order_by="started_on desc, name desc",
-        limit_start=max(0,int(start)),
-        limit_page_length=200,
-    )
-    cursor=next_cursor(start,len(names),200)
-    from asoud_erp.services.directive_access import directive_for, workflow_permission
-    names = [name for name in names if not directive_for(frappe.get_doc("ASOUD Workflow Instance", name))
-        or workflow_permission(frappe.get_doc("ASOUD Workflow Instance", name),permission_type="read")]
-    rows = [
-        _instance_summary(frappe.get_doc("ASOUD Workflow Instance", name))
-        for name in names
-    ]
-    if str(paged).lower() in ('1','true'):
-        return success(dict(items=rows,next_cursor=cursor))
+    from asoud_erp.services.directive_access import instance_clause
+    where = "started_by=%(user)s AND " + ("status=%(status)s AND " if status else "") + instance_clause()
+    params = {"user": frappe.session.user, "status": status}
+    start = max(0, int(start))
+    names = frappe.db.sql_list(
+        "SELECT name FROM `tabASOUD Workflow Instance` WHERE " + where +
+        " ORDER BY started_on DESC, name DESC LIMIT %(start)s, %(limit)s",
+        {**params, "start": start, "limit": INSTANCE_PAGE + 1})
+    names, cursor = lookahead_page(start, names, INSTANCE_PAGE)
+    rows = _instance_summaries(names)
+    if _is_paged(paged):
+        total = frappe.db.sql("SELECT COUNT(*) FROM `tabASOUD Workflow Instance` WHERE " + where, params)[0][0]
+        return success(dict(items=rows, next_cursor=cursor), meta={"total": total})
     return success(rows, meta={"total": len(rows)})
 
 
@@ -759,6 +793,11 @@ def get_workflow_instance(instance: str) -> dict:
             if activity.workflow_stage
             else ""
         ) or ""
+    actors = list({activity.actor for activity in activities if activity.actor})
+    names = {row.name: row.full_name for row in frappe.get_all(
+        "User", filters={"name": ["in", actors]}, fields=["name", "full_name"])} if actors else {}
+    for activity in activities:
+        activity["actor_name"] = names.get(activity.actor) or activity.actor or ""
     return success({**_instance_summary(doc), "activities": activities})
 
 

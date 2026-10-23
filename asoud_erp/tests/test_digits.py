@@ -58,3 +58,11 @@ def test_normalize_column_rows_only_reports_changes() -> None:
         {"name": "P-4", "value": "متن"},
     ]
     assert normalize_column_rows(rows, "value") == [("P-1", "9877666666")]
+
+
+def test_to_persian_digits_only_changes_ascii_digits():
+    from asoud_erp.services.digits import to_persian_digits
+
+    assert to_persian_digits("1405/07/28 08:01") == "۱۴۰۵/۰۷/۲۸ ۰۸:۰۱"
+    assert to_persian_digits("حاضر") == "حاضر"
+    assert to_persian_digits(1234) == "۱۲۳۴"

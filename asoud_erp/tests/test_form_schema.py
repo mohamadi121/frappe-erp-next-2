@@ -551,3 +551,147 @@ def test_chain_formula_cycle_rejected(schema):
     }
     with pytest.raises(ValueError, match="چرخه"):
         schema.validate_schema(payload)
+
+
+def source_schema(extra_fields, columns=None):
+    return {"kind": "Request", "title": "منابع", "sections": [{"id": "main", "title": "اصلی", "fields": extra_fields}]}
+
+
+def link(key, source, **extra):
+    return {"key": key, "label": key, "type": "Link", "source": source, **extra}
+
+
+def test_new_sources_and_attendance_link_filter_accepted(schema):
+    fields = [{"key": "day", "label": "روز", "type": "Date"},
+              link("att", "Attendance", link_filter={"field": "attendance_date", "value_field": "day"}),
+              link("shift", "Shift Type"), link("event", "Training Event"), link("asset", "Asset")]
+    assert len(schema.validate_schema(source_schema(fields))["sections"][0]["fields"]) == 5
+    fields[1]["link_filter"]["field"] = "status"
+    with pytest.raises(ValueError, match="فیلتر اطلاعات سیستم"):
+        schema.validate_schema(source_schema(fields))
+
+
+def test_exclude_self_only_on_employee_link(schema):
+    schema.validate_schema(source_schema([link("boss", "Employee", exclude_self=True)]))
+    for bad in (link("c", "Customer", exclude_self=True), {"key": "t", "label": "t", "type": "Text", "exclude_self": True},
+                link("e", "Employee", exclude_self="yes")):
+        with pytest.raises(ValueError, match="حذف خود"):
+            schema.validate_schema(source_schema([bad]))
+
+
+def test_fetch_from_schema_rules(schema):
+    ok = [link("att", "Attendance"), {"key": "in_t", "label": "ورود", "type": "Time", "readonly": True, "fetch_from": "att.in_time"}]
+    schema.validate_schema(source_schema(ok))
+    for fetch in ("att.employee", "nope.in_time", "in_t.in_time", "att", "att.in_time.x", 5):
+        ok[1]["fetch_from"] = fetch
+        with pytest.raises(ValueError, match="منبع مقدار خودکار"):
+            schema.validate_schema(source_schema(ok))
+    # the referenced key must be a Link field
+    bad = [{"key": "a", "label": "a", "type": "Text"}, {"key": "b", "label": "b", "type": "Text", "fetch_from": "a.in_time"}]
+    with pytest.raises(ValueError, match="منبع مقدار خودکار"):
+        schema.validate_schema(source_schema(bad))
+    # attribute of another source is refused
+    ok[1]["fetch_from"] = "att.asset_name"
+    with pytest.raises(ValueError, match="منبع مقدار خودکار"):
+        schema.validate_schema(source_schema(ok))
+
+
+def test_not_equal_and_unique_schema_rules(schema):
+    fields = [{"key": "old", "label": "قدیم", "type": "Text"},
+              {"key": "new", "label": "جدید", "type": "Text", "not_equal": "old", "not_equal_message": "یکسان است"}]
+    schema.validate_schema(source_schema(fields))
+    for bad in ("new", "missing", 3):
+        fields[1]["not_equal"] = bad
+        with pytest.raises(ValueError, match="یکسان نبودن"):
+            schema.validate_schema(source_schema(fields))
+    table = {"key": "rows", "label": "ردیف", "type": "Table", "columns": [{"key": "n", "label": "نام", "type": "Text", "unique": "yes"}]}
+    with pytest.raises(ValueError, match="یکتا"):
+        schema.validate_schema(source_schema([table]))
+    table["columns"][0]["unique"] = True
+    schema.validate_schema(source_schema([table]))
+    with pytest.raises(ValueError, match="یکتا"):
+        schema.validate_schema(source_schema([{"key": "t", "label": "t", "type": "Text", "unique": True}]))
+
+
+def test_new_default_sources(schema):
+    schema.validate_schema(source_schema([{"key": "n", "label": "n", "type": "Text", "default_source": "employee_number"},
+                                          {"key": "s", "label": "s", "type": "Text", "default_source": "default_shift"}]))
+    with pytest.raises(ValueError, match="پیش‌فرض"):
+        schema.validate_schema(source_schema([{"key": "n", "label": "n", "type": "Text", "default_source": "x"}]))
+    values = {"employee_number": "E-7", "default_shift": "صبح"}
+    schema.frappe.db.get_value = lambda doctype, filters, field: values.get(field)
+    assert schema.default_value({"default_source": "employee_number"}, "ACME") == "E-7"
+    assert schema.default_value({"default_source": "default_shift"}, "ACME") == "صبح"
+    values.pop("employee_number")
+    values["name"] = "HR-EMP-1"
+    assert schema.default_value({"default_source": "employee_number"}, "ACME") == "HR-EMP-1"
+
+
+def test_fetch_value_normalises_types(schema):
+    from datetime import datetime, timedelta
+    moment = datetime(2026, 10, 23, 8, 30, 15, 99)
+    assert schema.fetch_value(moment) == "2026-10-23T08:30:15"
+    assert schema.fetch_value(moment, "Time") == "08:30:15"
+    assert schema.fetch_value(moment, "Date") == "2026-10-23"
+    assert schema.fetch_value(timedelta(hours=8, minutes=5)) == "08:05:00"
+    assert schema.fetch_value(None) is None
+
+
+def test_validate_values_not_equal_and_unique(schema):
+    sch = schema.validate_schema(source_schema([
+        {"key": "old", "label": "قدیم", "type": "Text"},
+        {"key": "new", "label": "جدید", "type": "Text", "not_equal": "old"},
+        {"key": "rows", "label": "ردیف", "type": "Table", "columns": [{"key": "n", "label": "نام", "type": "Text", "unique": True}]}]))
+    assert schema.validate_values(sch, {"old": "a", "new": "b", "rows": [{"n": "x"}, {"n": ""}, {"n": ""}]}, "ACME")["new"] == "b"
+    with pytest.raises(ValueError, match="مقدار جدید نباید با مقدار فعلی یکسان باشد"):
+        schema.validate_values(sch, {"old": "a", "new": "a"}, "ACME")
+    assert schema.validate_values(sch, {"old": "a"}, "ACME")["old"] == "a"
+    with pytest.raises(ValueError, match="ردیف تکراری: نام"):
+        schema.validate_values(sch, {"rows": [{"n": "x"}, {"n": "y"}, {"n": "x"}]}, "ACME")
+
+
+def test_validate_values_not_equal_numbers_and_hidden(schema):
+    sch = schema.validate_schema(source_schema([
+        {"key": "a", "label": "الف", "type": "Decimal"},
+        {"key": "b", "label": "ب", "type": "Decimal", "not_equal": "a", "not_equal_message": "برابر است"}]))
+    with pytest.raises(ValueError, match="برابر است"):
+        schema.validate_values(sch, {"a": "5", "b": "5.0"}, "ACME")
+    sch["rules"] = [{"target": "b", "action": "visible", "join": "and", "conditions": [{"field": "a", "op": "eq", "value": "9"}]}]
+    assert "b" not in schema.validate_values(sch, {"a": "5", "b": "5"}, "ACME")
+
+
+def test_validate_values_scoped_sources_and_exclude_self(schema):
+    state = {"emp": "EMP-1", "exists": lambda dt, filt: False}
+    schema.frappe.db.get_value = lambda dt, filt, field=None: state["emp"] if dt == "Employee" else None
+    schema.frappe.db.exists = lambda dt, filt=None: state["exists"](dt, filt)
+    schema.frappe.has_permission = lambda *a, **k: True
+    schema.frappe.get_doc = lambda dt, name: types.SimpleNamespace(
+        meta=types.SimpleNamespace(has_field=lambda f: False), get=lambda f: None)
+    asset = schema.validate_schema(source_schema([link("asset", "Asset")]))
+    with pytest.raises(ValueError, match="محدوده مجاز شما نیست"):
+        schema.validate_values(asset, {"asset": "AST-9"}, "ACME")
+    seen = []
+    state["exists"] = lambda dt, filt: seen.append(filt) or True
+    assert schema.validate_values(asset, {"asset": "AST-1"}, "ACME")["asset"] == "AST-1"
+    assert seen[0]["custodian"] == "EMP-1" and seen[0]["name"] == "AST-1" and seen[0]["docstatus"] == 1
+    state["emp"] = None
+    with pytest.raises(ValueError, match="پرونده پرسنلی شما ثبت نشده"):
+        schema.validate_values(asset, {"asset": "AST-1"}, "ACME")
+    boss = schema.validate_schema(source_schema([link("boss", "Employee", exclude_self=True)]))
+    state["emp"] = "EMP-1"
+    with pytest.raises(ValueError, match="نمی‌توانید خودتان را انتخاب کنید"):
+        schema.validate_values(boss, {"boss": "EMP-1"}, "ACME")
+    assert schema.validate_values(boss, {"boss": "EMP-2"}, "ACME")["boss"] == "EMP-2"
+
+
+def test_validate_values_fetch_from_ignores_client_value(schema):
+    from datetime import datetime
+    db = {("Attendance", "ATT-1", "in_time"): datetime(2026, 10, 23, 8, 15, 0)}
+    schema.frappe.db.get_value = lambda dt, name, field=None: db.get((dt, name, field)) if not isinstance(name, dict) else "EMP-1"
+    schema.frappe.db.exists = lambda *a: True
+    schema.frappe.has_permission = lambda *a, **k: True
+    sch = schema.validate_schema(source_schema([
+        link("att", "Attendance"),
+        {"key": "in_t", "label": "ورود", "type": "Time", "readonly": True, "fetch_from": "att.in_time"}]))
+    assert schema.validate_values(sch, {"att": "ATT-1", "in_t": "23:59:00"}, "ACME")["in_t"] == "08:15:00"
+    assert schema.validate_values(sch, {"att": "ATT-1"}, "ACME")["in_t"] == "08:15:00"
