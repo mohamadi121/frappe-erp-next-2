@@ -60,3 +60,16 @@ def test_history_sql_orders_each_branch_by_the_indexed_column_before_its_limit()
     assert "ORDER BY a.created_on DESC, a.name DESC" in HISTORY_SQL
     assert "ORDER BY c.creation DESC, c.name DESC" in HISTORY_SQL
     assert "LIMIT %(page_limit)s OFFSET %(offset)s" in HISTORY_SQL
+
+
+def test_lookahead_page_sets_cursor_only_when_another_row_exists():
+    from asoud_erp.services.directive_paging import lookahead_page
+    assert lookahead_page(0, list(range(3)), 2) == ([0, 1], "2")
+    assert lookahead_page(4, [1, 2], 2) == ([1, 2], None)
+
+
+def test_site_naive_datetime_converts_offsets_and_keeps_naive():
+    from datetime import datetime
+    from asoud_erp.services.directive_paging import site_naive_datetime
+    assert site_naive_datetime("2026-10-23T09:00:00", "Asia/Tehran") == datetime(2026, 10, 23, 9)
+    assert site_naive_datetime("2026-10-23T06:00:00Z", "Asia/Tehran") == datetime(2026, 10, 23, 9, 30)

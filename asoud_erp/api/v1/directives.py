@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 import frappe
-from frappe.utils import get_datetime, get_fullname, getdate, now_datetime, nowdate, strip_html
+from frappe.utils import get_datetime, get_fullname, get_system_timezone, getdate, now_datetime, nowdate, strip_html
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.directive_access import (
@@ -21,7 +21,7 @@ from asoud_erp.services.directive_access import (
     can_read,
     service_write,
 )
-from asoud_erp.services.directive_paging import HISTORY_SQL, history_limits, review_index
+from asoud_erp.services.directive_paging import HISTORY_SQL, history_limits, review_index, site_naive_datetime
 from asoud_erp.services.request_access import require_company
 
 
@@ -324,7 +324,7 @@ def save_draft(company, payload, request_key):
         doc.subject, doc.content = subject, str(data.get('body') or '').strip()
         doc.priority, doc.status = data.get('priority','Medium'), 'Draft'
         doc.due_date = getdate(data['due_date']) if data.get('due_date') else None
-        doc.reminder_at = get_datetime(data['reminder_at']) if data.get('reminder_at') else None
+        doc.reminder_at = _reminder_time(data.get('reminder_at'))
         if doc.reminder_at and doc.due_date and doc.reminder_at>get_datetime(f'{doc.due_date} 23:59:59'):
             frappe.throw('زمان یادآوری باید پیش از پایان مهلت باشد.')
         doc.primary_executor, doc.allow_transfer = primary, bool(data.get('allow_transfer'))
@@ -621,6 +621,17 @@ def notify_overdue(task):
         task.save(ignore_permissions=True)
 
 
+def _reminder_time(value):
+    """Site-local naive datetime. A value with an offset or `Z` is converted from that
+    instant to the site timezone; a value without one is already site time."""
+    if not value:
+        return None
+    try:
+        return site_naive_datetime(value, get_system_timezone())
+    except (ValueError, TypeError):
+        frappe.throw('زمان یادآوری معتبر نیست.')
+
+
 def notify_reminder(task):
     """Use the issuer-selected site-local datetime; serialize against actions."""
     instance=frappe.get_doc('ASOUD Workflow Instance',task.workflow_instance)
@@ -646,4 +657,9 @@ def dispatch_reminders():
         'directive_kind':'Report','status':'Open','reminder_on':['<=',current],
         'due_on':['>',current],'reminder_sent_on':['is','not set']},pluck='name',limit_page_length=0)
     for name in names:
-        notify_reminder(frappe.get_doc('ASOUD Workflow Task',name))
+        frappe.db.savepoint('directive_reminder')
+        try:
+            notify_reminder(frappe.get_doc('ASOUD Workflow Task',name))
+        except Exception:
+            frappe.db.rollback(save_point='directive_reminder')
+            frappe.log_error(title='خطا در ارسال یادآوری دستور: '+str(name))

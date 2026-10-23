@@ -65,3 +65,31 @@ def history_limits(offset: int, page_size: int = HISTORY_PAGE) -> dict:
     """
     fetch = page_size + 1
     return dict(offset=offset, branch_limit=offset + fetch, page_limit=fetch)
+
+
+def lookahead_page(start, rows, page_size: int):
+    """Split `page_size + 1` rows read after access filtering into `(items, next_cursor)`.
+
+    The query already contains the access filter, so the extra row proves another
+    page exists and the cursor never points at an empty tail.
+    """
+    rows = list(rows)
+    if len(rows) <= page_size:
+        return rows, None
+    return rows[:page_size], str(max(0, int(start)) + page_size)
+
+
+def site_naive_datetime(value, site_timezone: str):
+    """Return `value` as a naive datetime in the site timezone.
+
+    A string with an offset or `Z` is an absolute instant: it is converted to
+    `site_timezone`. A string without an offset is already site time and is kept.
+    Anything unparsable raises ValueError.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).strip().replace(" ", "T", 1))
+    if parsed.tzinfo is None:
+        return parsed
+    return parsed.astimezone(ZoneInfo(site_timezone)).replace(tzinfo=None)
