@@ -30,7 +30,7 @@ async function returned(api: { login: (key: 'employee' | 'approver') => Promise<
   const approver = await api.login('approver');
   const created = await employee.mutate<Detail>(METHOD.createRequest, {
     company: state.company,
-    workflow_definition: state.request_type as string,
+    workflow_definition: state.return_request_type,
     subject: subject('درخواست اصلاح', tag),
     request_id: requestId('REQ', tag),
     values: JSON.stringify({ amount: 1500, reason: `e2e-${tag}` }),
