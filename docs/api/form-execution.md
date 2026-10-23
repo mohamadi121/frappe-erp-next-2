@@ -265,3 +265,28 @@ lock): another request of the same employee whose form executes as `exit` and is
 Cancelled, or a Full and Final Statement of the employee that is not cancelled, gives
 «برای این کارمند یک تسویه حساب باز یا ثبت‌شده وجود دارد؛ ابتدا آن را رد یا ابطال کنید.».
 No migration or configuration.
+
+## Training enrolment (`training_enrollment`)
+
+Internal executor through the approval dispatcher and retry endpoint; no new endpoint. It appears
+in `forms.execution_kinds` with label «ثبت‌نام در دوره آموزشی».
+Parameters: `training_event` (Link to Training Event, required), `notes` (Text/LongText, optional;
+stored as an escaped Comment on the event).
+
+After final approval the Training Event row is locked (`for update`) and read:
+
+| Event state | Result |
+|---|---|
+| draft (docstatus 0), scheduled | requester is appended to `Training Event.employees` (`status` Open, `is_mandatory` 0, name and department from Employee); result `Created`, `native_name` = the event |
+| submitted (docstatus 1) | never amended; result `Needs Review` with «نیاز به اقدام HR؛ دوره آموزشی نهایی شده است و افزودن شرکت‌کننده باید توسط منابع انسانی انجام شود.»; the requester and HR/System Managers are notified once |
+| requester already a participant (draft or submitted) | **Failed** (not Skipped, so HR sees it and the request is retryable after the list is fixed): «درخواست‌دهنده قبلاً در فهرست شرکت‌کنندگان این دوره ثبت شده است.» |
+| cancelled (docstatus 2 or `event_status` Cancelled) | Failed: «دوره آموزشی لغو شده است و ثبت‌نام در آن ممکن نیست.» |
+| `event_status` Completed | Failed: «دوره آموزشی برگزار شده است و ثبت‌نام در آن ممکن نیست.» |
+| `company` set and different from the request company | Failed: «دوره آموزشی انتخاب‌شده متعلق به شرکت درخواست نیست.» (an event without company is accepted, HRMS does not require it) |
+| unknown event | Failed: «دوره آموزشی انتخاب‌شده وجود ندارد.» |
+
+The row lock makes two simultaneous approvals for the same event serialise: the second one sees the
+first participant and is refused as a duplicate. `validate_submit` also refuses, at submit time, an
+event in which the requester is already a participant. Validation errors raised by HRMS while saving
+the event (for example an invalid period) give «ثبت‌نام در دوره آموزشی انجام نشد؛ اطلاعات دوره را بررسی کنید.».
+No migration or configuration.
