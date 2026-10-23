@@ -271,6 +271,13 @@ def validate_schema(raw):
                                                       or not 1 <= len(field['after_or_equal_message']) <= 500
                                                       or not field.get('after_or_equal')):
                 fail('پیام وابستگی تاریخ معتبر نیست.')
+            if 'before_or_equal' in field and (kind != 'Date' or not isinstance(field['before_or_equal'], str)
+                                               or not field['before_or_equal']):
+                fail('وابستگی تاریخ معتبر نیست.')
+            if 'before_or_equal_message' in field and (not isinstance(field['before_or_equal_message'], str)
+                                                       or not 1 <= len(field['before_or_equal_message']) <= 500
+                                                       or not field.get('before_or_equal')):
+                fail('پیام وابستگی تاریخ معتبر نیست.')
             for low, high in (("min", "max"), ("min_length", "max_length"), ("min_rows", "max_rows")):
                 if field.get(low) is not None and field.get(high) is not None and number(field[low]) > number(field[high]):
                     fail("حداقل نباید از حداکثر بیشتر باشد.")
@@ -363,11 +370,12 @@ def validate_schema(raw):
                 fail("فیلد تاریخ برنامه شیفت معتبر نیست.")
     graph = {key: set() for key in keys}
     for field in all_fields:
-        if field.get('after_or_equal'):
-            dependency = field['after_or_equal']
-            if dependency == field['key'] or by_key.get(dependency, {}).get('type') != 'Date':
-                fail('فیلد تاریخ وابسته معتبر نیست.')
-            graph[field['key']].add(dependency)
+        for bound in ('after_or_equal', 'before_or_equal'):
+            if field.get(bound):
+                dependency = field[bound]
+                if dependency == field['key'] or by_key.get(dependency, {}).get('type') != 'Date':
+                    fail('فیلد تاریخ وابسته معتبر نیست.')
+                graph[field['key']].add(dependency)
         if field.get('link_filter'):
             dependency = field['link_filter'].get('value_field')
             if dependency not in keys:
@@ -966,10 +974,16 @@ def validate_values(schema, raw, company, _file_budget=None):
             fail(field.get('not_equal_message') or 'مقدار جدید نباید با مقدار فعلی یکسان باشد.')
     for field in definitions:
         dependency = field.get('after_or_equal')
-        if not dependency or field['key'] not in values or dependency not in values:
+        if not dependency or not values.get(field['key']) or not values.get(dependency):
             continue
         if date.fromisoformat(values[field['key']]) < date.fromisoformat(values[dependency]):
             fail(field.get('after_or_equal_message') or 'تاریخ پایان نباید قبل از تاریخ شروع باشد.')
+    for field in definitions:
+        dependency = field.get('before_or_equal')
+        if not dependency or not values.get(field['key']) or not values.get(dependency):
+            continue
+        if date.fromisoformat(values[field['key']]) > date.fromisoformat(values[dependency]):
+            fail(field.get('before_or_equal_message') or 'تاریخ نباید بعد از تاریخ پایان باشد.')
     for field in definitions:
         if field.get('compare'):
             values.pop(field['key'], None)

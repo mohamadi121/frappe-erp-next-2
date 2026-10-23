@@ -46,6 +46,13 @@ cycle. When both visible values are supplied, submission rejects an end date bef
 referenced date with `after_or_equal_message`, or the default message
 `تاریخ پایان نباید قبل از تاریخ شروع باشد.`.
 
+A `Date` field may also set `before_or_equal` (key of another Date field, same rules as
+`after_or_equal`; it joins the same acyclic dependency graph) with an optional
+`before_or_equal_message`. When both visible values are supplied, submission rejects a date
+after the referenced one with that message, or the default `تاریخ نباید بعد از تاریخ پایان باشد.`.
+Together the two keys express «inside the range» (for example the half-day date of a leave).
+A missing (`null` or empty) value on either side is never compared.
+
 Visible `Table` fields enforce both `required` and `min_rows` during submission. A
 missing required row or too-short table is rejected as `حداقل N ردیف لازم است.`.
 

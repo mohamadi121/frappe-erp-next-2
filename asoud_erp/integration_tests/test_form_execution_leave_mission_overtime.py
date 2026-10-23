@@ -426,3 +426,26 @@ class TestLeaveTypeSource(Base):
         entry = forms.submit_form(saved['name'], revision, 'مرخصی', {'kind': normal}, frappe.generate_hash(length=24))
         frappe.set_user('Administrator')
         self.assertTrue(entry['data']['reference_name'])
+
+
+class TestDateUpperBound(Base):
+    def test_submit_rejects_a_half_day_after_the_end_and_a_null_end_is_ignored(self):
+        definition, _ = make_definition(self.company, fields=[])
+        fields = [
+            {'key': 'start', 'label': 'شروع', 'type': 'Date', 'required': True},
+            {'key': 'end', 'label': 'پایان', 'type': 'Date', 'required': True, 'after_or_equal': 'start'},
+            {'key': 'half', 'label': 'نیم‌روز', 'type': 'Date', 'after_or_equal': 'start',
+             'before_or_equal': 'end', 'before_or_equal_message': 'تاریخ نیم‌روز باید در بازه درخواست باشد.'}]
+        schema = {'kind': 'Request', 'title': 'بازه', 'workflow': definition,
+                  'sections': [{'id': 'main', 'title': 'اصلی', 'fields': fields}]}
+        saved = forms.save_form(self.company, schema, client_id=frappe.generate_hash(length=24))['data']
+        revision = forms.transition(saved['name'], 'publish', saved['draft_version'])['data']['active_revision']
+        frappe.set_user(self.user)
+        values = {'start': self.day(0), 'end': self.day(2)}
+        with self.assertRaisesRegex(frappe.ValidationError, 'تاریخ نیم‌روز باید در بازه درخواست باشد.'):
+            forms.submit_form(saved['name'], revision, 'بازه', {**values, 'half': self.day(3)},
+                              frappe.generate_hash(length=24))
+        entry = forms.submit_form(saved['name'], revision, 'بازه', {**values, 'half': self.day(2)},
+                                  frappe.generate_hash(length=24))
+        frappe.set_user('Administrator')
+        self.assertTrue(entry['data']['reference_name'])

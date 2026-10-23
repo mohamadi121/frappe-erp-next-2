@@ -146,6 +146,41 @@ def test_date_after_or_equal_requires_another_date_and_rejects_earlier_visible_v
         schema.validate_schema(payload)
 
 
+def test_date_before_or_equal_bounds_a_date_from_above_with_its_own_message(schema):
+    payload = {
+        "kind": "Request", "title": "نیم‌روز", "sections": [{"id": "main", "title": "اصلی", "fields": [
+            {"key": "start_date", "label": "تاریخ شروع", "type": "Date"},
+            {"key": "end_date", "label": "تاریخ پایان", "type": "Date", "after_or_equal": "start_date"},
+            {"key": "half_date", "label": "تاریخ نیم‌روز", "type": "Date", "after_or_equal": "start_date",
+             "before_or_equal": "end_date", "before_or_equal_message": "تاریخ نیم‌روز باید در بازه درخواست باشد."},
+        ]}],
+    }
+    validated = schema.validate_schema(payload)
+    base = {"start_date": "2026-10-23", "end_date": "2026-10-25"}
+    with pytest.raises(ValueError, match="تاریخ نیم‌روز باید در بازه درخواست باشد."):
+        schema.validate_values(validated, {**base, "half_date": "2026-10-26"}, "ACME")
+    assert schema.validate_values(validated, {**base, "half_date": "2026-10-25"}, "ACME")["half_date"] == "2026-10-25"
+    # default message and a missing partner value do not reject
+    del payload["sections"][0]["fields"][2]["before_or_equal_message"]
+    validated = schema.validate_schema(payload)
+    with pytest.raises(ValueError, match="تاریخ نباید بعد از تاریخ پایان باشد"):
+        schema.validate_values(validated, {**base, "half_date": "2026-10-30"}, "ACME")
+    assert schema.validate_values(validated, {"start_date": "2026-10-23", "half_date": "2026-10-30"}, "ACME")
+
+    for bad in ("half_date", "missing_date", 5):
+        payload["sections"][0]["fields"][2]["before_or_equal"] = bad
+        with pytest.raises(ValueError, match="تاریخ"):
+            schema.validate_schema(payload)
+    payload["sections"][0]["fields"][2]["before_or_equal"] = "end_date"
+    payload["sections"][0]["fields"][1]["after_or_equal"] = "half_date"
+    with pytest.raises(ValueError, match="چرخه"):
+        schema.validate_schema(payload)
+    payload["sections"][0]["fields"][1]["after_or_equal"] = "start_date"
+    payload["sections"][0]["fields"][0]["before_or_equal_message"] = "پیام بدون وابستگی"
+    with pytest.raises(ValueError, match="پیام"):
+        schema.validate_schema(payload)
+
+
 def test_hidden_date_and_required_table_do_not_bypass_their_validation(schema):
     payload = {
         "kind": "Request", "title": "کنترل جدول", "sections": [{"id": "main", "title": "اصلی", "fields": [
