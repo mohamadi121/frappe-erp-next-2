@@ -76,6 +76,7 @@ def _open_requests(employee: str, exclude_request: str | None):
                 and e.reference_name = r.name
            join `tabASOUD Form Revision` v on v.name = e.revision
            where r.requester_employee = %s and r.status not in %s and r.name != %s
+                and ifnull(r.native_status, '') != 'Voided'
            for update""", (employee, OPEN_STATUSES_EXCLUDED, exclude_request or ''), as_dict=True)
     return [row.name for row in rows
             if (json.loads(row.schema_json or '{}').get('execution') or {}).get('kind') == KIND]
@@ -86,9 +87,13 @@ def assert_no_open_settlement(employee: str, exclude_request: str | None = None)
 
     # Serialise concurrent settlements of one employee until the surrounding transaction ends.
     frappe.db.sql('select name from `tabEmployee` where name = %s for update', (employee,))
-    if _open_requests(employee, exclude_request) or frappe.db.sql(
-            'select name from `tabFull and Final Statement` where employee = %s and docstatus != 2 '
-            'for update', (employee,)):
+    from asoud_erp.services.request_void_actions import voided_documents
+
+    left_by_void = voided_documents('Full and Final Statement')
+    statements = frappe.db.sql(
+        'select name from `tabFull and Final Statement` where employee = %s and docstatus != 2 '
+        'for update', (employee,), pluck='name')
+    if _open_requests(employee, exclude_request) or [name for name in statements if name not in left_by_void]:
         raise ValueError(DUPLICATE_ERROR)
 
 
@@ -119,6 +124,7 @@ def apply(request, params: dict):
     try:
         with as_administrator():
             person = frappe.get_doc('Employee', employee)
+            previous = str(person.relieving_date or '')
             person.relieving_date = update['relieving_date']
             person.save(ignore_permissions=True)
             interview = frappe.get_doc(payload).insert(ignore_permissions=True)
@@ -126,7 +132,12 @@ def apply(request, params: dict):
                 from html import escape
 
                 interview.add_comment('Comment', escape(notes))
-            frappe.get_doc(statement).insert(ignore_permissions=True)
+            final = frappe.get_doc(statement).insert(ignore_permissions=True)
+            from asoud_erp.services.request_void_actions import record_effects
+
+            # What a void must undo: the date before this execution and the statement created with it.
+            record_effects(request, {'relieving_date': previous},
+                           {'relieving_date': str(update['relieving_date']), 'statement': final.name})
     except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):
         raise
     except Exception as error:

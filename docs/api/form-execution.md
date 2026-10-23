@@ -334,9 +334,16 @@ runs the same dispatcher as the approval, so the executor creates a **fresh** do
 Idempotent: a repeat when the latest of Voided/Reissued is `Reissued` and the status is `Created`
 returns the current detail and creates nothing. Other states give «صدور مجدد فقط پس از ابطال سند ممکن است.»
 (`NATIVE_NOT_REISSUABLE`); a template request gives «صدور مجدد برای این نوع درخواست ممکن نیست.».
-If the old document is still there (a draft, a checkin or a training participant row, which are never
-deleted), executors whose native validation sees it fail with that rule's Persian reason until HR
-handles the old document: `exit` (open settlement), `attendance_correction` (the same punch exists),
-`shift_request` (overlap), `training_enrollment` (already a participant). `employee_advance` and
-`asset_movement` (and any kind whose old document was cancelled) create a fresh document.
-The failed result keeps the old link in the history and is retryable with `create_native_document`.
+A void leaves nothing effective behind, or says why it cannot (`execution.void.reissue_blocked`, a Persian
+reason; then `can_reissue` is false and `reissue_native_document` refuses with the same reason):
+
+| Kind | Void undoes | Reissue |
+|---|---|---|
+| `employee_advance`, `asset_movement` | cancel (submitted) or comment (draft) | possible |
+| `exit` | executor records `Execution Effects` (previous `Employee.relieving_date`, statement name) when it runs; a void restores the date (only if it still holds the value the execution set), voids the Full and Final Statement like the interview (the statement's duplicate rule ignores statements left by a void) | possible when the interview was submitted and is cancelled; a draft interview stays and HRMS refuses a second one: blocked with a reason. Without the recorded effects: blocked, «سابقهٔ تاریخ پایان همکاری…» |
+| `training_enrollment` | the participant row is removed from a draft event (child row, listed in the `Voided` activity `change_json.voided`); a submitted event is never amended | possible for a draft event; blocked for a submitted one |
+| `shift_request` | cancel (submitted); a draft stays | possible after cancel; a draft overlaps any new request: blocked |
+| `attendance_correction` | checkin stays, `skip_auto_attendance = 1` | blocked (the same punch cannot be recorded twice) |
+
+The `Voided` activity `change_json` also carries `voided` (`[doctype, name]` left behind) and `reissue_blocked`.
+A failed reissue keeps the old link in the history and is retryable with `create_native_document`.

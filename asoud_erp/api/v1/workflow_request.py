@@ -447,8 +447,10 @@ def _execution(doc, instance_status, privileged) -> dict:
         executed_by_name=get_fullname(row.owner) if row and row.owner != "Administrator" else "")
     hr = "HR Manager" in frappe.get_roles()
     block["can_void"] = hr and void_rules.can_void(instance_status, doc.native_status, doc.native_name)
-    block["can_reissue"] = hr and void_rules.can_reissue(doc.native_status, doc.template_key)
-    if doc.native_status == void_rules.VOIDED:
+    voided = doc.native_status == void_rules.VOIDED
+    blocked = void_actions.reissue_blocker(doc.workflow_instance) if voided else ""
+    block["can_reissue"] = hr and void_rules.can_reissue_now(doc.native_status, doc.template_key, blocked)
+    if voided:
         block["void"] = void_actions.last_void(doc.workflow_instance, privileged)
     return block
 

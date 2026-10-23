@@ -150,7 +150,7 @@ class TestRequestVoid(APITestCase):
         return frappe.get_all('Comment', filters={'reference_doctype': doctype, 'reference_name': name,
                                                   'comment_type': 'Comment'}, pluck='content')
 
-    def assert_voided(self, request, voided):
+    def assert_voided(self, request, voided, reissuable=True):
         self.assertEqual((voided['native']['status'], voided['execution']['state'], voided['execution']['label']),
                          ('Voided', 'voided', 'سند ابطال شد'))
         self.assertEqual(voided['native']['name'], request['native']['name'])
@@ -160,7 +160,7 @@ class TestRequestVoid(APITestCase):
         self.assertTrue(row.created_on)
         self.assertEqual(voided['execution']['void']['reason'], REASON)
         self.assertEqual(voided['execution']['void']['reference'], request['native']['name'])
-        self.assertTrue(voided['execution']['can_reissue'])
+        self.assertEqual(voided['execution']['can_reissue'], reissuable)
         self.assertFalse(voided['execution']['can_void'])
 
     # ------------------------------------------------------------------ per executor kind
@@ -212,48 +212,119 @@ class TestRequestVoid(APITestCase):
     def test_checkin_is_neutralised_for_auto_attendance_never_deleted_and_reissue_reports_duplicate(self):
         request = self.checkin()
         old = request['native']['name']
-        self.assert_voided(request, self.void(request))
+        self.assert_voided(request, self.void(request), reissuable=False)
         self.assertEqual(frappe.db.get_value('Employee Checkin', old, 'skip_auto_attendance'), 1)
-        # The checkin cannot be removed, so HRMS refuses the same punch again: the reissue fails
-        # with its Persian reason, keeps the old link in history and can be retried after HR acts.
-        failed = self.reissue(request)
-        self.assertEqual(failed['native']['status'], 'Failed')
-        self.assertIn('قبلاً ثبت شده است', failed['native']['error'])
+        # The checkin cannot be removed and HRMS refuses the same punch again, so the server says why
+        # and offers no reissue.
+        self.assert_not_reissuable(request, 'تردد ثبت‌شده حذف نمی‌شود', old)
         self.assertTrue(frappe.db.exists('Employee Checkin', old))
-        self.assertEqual(self.activities(request, 'Reissued')[0].reference_name, old)
 
     def test_shift_request_draft_is_marked_and_reissue_reports_the_overlap(self):
         request = self.shift()
         old = request['native']['name']
-        self.assert_voided(request, self.void(request))
+        self.assert_voided(request, self.void(request), reissuable=False)
         self.assertEqual(frappe.db.get_value('Shift Request', old, 'docstatus'), 0)
-        # HRMS refuses an overlapping Shift Request and the old draft is still there for HR.
-        failed = self.reissue(request)
-        self.assertEqual(failed['native']['status'], 'Failed')
-        self.assertIn('هم‌پوشانی', failed['native']['error'])
+        # The draft overlaps any new request and cannot be cancelled: no reissue, with the reason.
+        self.assert_not_reissuable(request, 'هم‌پوشانی دارد', old)
         self.assertTrue(frappe.db.exists('Shift Request', old))
 
-    def test_exit_voids_the_interview_and_reissue_waits_for_hr_to_handle_the_open_statement(self):
+    def assert_not_reissuable(self, request, text, old):
+        view = workflow_request.get_request(request['name'])['data']
+        self.assertFalse(view['execution']['can_reissue'])
+        frappe.set_user(self.hr)
+        try:
+            blocked = workflow_request.get_request(request['name'])['data']['execution']
+            self.assertFalse(blocked['can_reissue'])
+            self.assertIn(text, blocked['void']['reissue_blocked'])
+        finally:
+            frappe.set_user('Administrator')
+        with self.assertRaisesRegex(frappe.ValidationError, text):
+            self.reissue(request)
+        self.assertFalse(self.activities(request, 'Reissued'))
+        self.assertEqual(frappe.db.get_value(REQUEST, request['name'], ['native_status', 'native_name']),
+                         ('Voided', old))
+
+    def test_submitted_shift_request_is_cancelled_and_reissue_creates_a_fresh_draft(self):
+        request = self.shift()
+        old = request['native']['name']
+        doc = frappe.get_doc('Shift Request', old)
+        doc.status = 'Approved'
+        doc.save()
+        doc.submit()
+        self.assert_voided(request, self.void(request))
+        self.assertEqual(frappe.db.get_value('Shift Request', old, 'docstatus'), 2)
+        reissued = self.reissue(request)
+        self.assertEqual(reissued['native']['status'], 'Created', reissued['native']['error'])
+        self.assertNotEqual(reissued['native']['name'], old)
+
+    def test_exit_void_restores_an_empty_relieving_date_and_explains_the_draft_interview(self):
         request = self.exit()
         old = request['native']['name']
-        self.assert_voided(request, self.void(request))
+        statement = frappe.db.get_value('Full and Final Statement', {'employee': self.employee}, 'name')
+        self.assertEqual(str(frappe.db.get_value('Employee', self.employee, 'relieving_date')), '2030-02-01')
+        voided = self.void(request)
+        self.assert_voided(request, voided, reissuable=False)
+        self.assertFalse(frappe.db.get_value('Employee', self.employee, 'relieving_date'))
         self.assertTrue(frappe.db.exists('Exit Interview', old))
-        failed = self.reissue(request)
-        self.assertEqual(failed['native']['status'], 'Failed')
-        self.assertIn('تسویه حساب باز', failed['native']['error'])
-        self.assertTrue(failed['execution']['can_void'] is False)
-        self.assertEqual(self.activities(request, 'Reissued')[0].reference_name, old)
+        self.assertTrue(frappe.db.exists('Full and Final Statement', statement))
+        self.assertEqual(len(self.comments('Full and Final Statement', statement)), 1)
+        # HRMS refuses a second non-cancelled Exit Interview and a draft cannot be cancelled.
+        self.assert_not_reissuable(request, 'مصاحبهٔ خروج', old)
 
-    def test_training_event_is_never_cancelled(self):
+    def test_exit_void_restores_an_earlier_relieving_date(self):
+        frappe.db.set_value('Employee', self.employee, 'relieving_date', '2029-12-01')
+        request = self.exit()
+        self.assertEqual(str(frappe.db.get_value('Employee', self.employee, 'relieving_date')), '2030-02-01')
+        self.void(request)
+        self.assertEqual(str(frappe.db.get_value('Employee', self.employee, 'relieving_date')), '2029-12-01')
+
+    def test_exit_void_cancels_a_submitted_interview_and_reissue_creates_fresh_documents(self):
+        request = self.exit()
+        old = request['native']['name']
+        interview = frappe.get_doc('Exit Interview', old)
+        interview.status = 'Completed'
+        interview.date = nowdate()
+        interview.save()
+        interview.submit()
+        voided = self.void(request)
+        self.assert_voided(request, voided)
+        self.assertEqual(frappe.db.get_value('Exit Interview', old, 'docstatus'), 2)
+        self.assertFalse(frappe.db.get_value('Employee', self.employee, 'relieving_date'))
+        reissued = self.reissue(request)
+        self.assertEqual(reissued['native']['status'], 'Created', reissued['native']['error'])
+        self.assertNotEqual(reissued['native']['name'], old)
+        self.assertEqual(str(frappe.db.get_value('Employee', self.employee, 'relieving_date')), '2030-02-01')
+        self.assertEqual(len(frappe.get_all('Full and Final Statement', filters={
+            'employee': self.employee, 'docstatus': ['<', 2]})), 2)
+
+    def test_a_voided_settlement_does_not_block_another_request_of_the_employee(self):
+        request = self.exit()
+        self.void(request)
+        from asoud_erp.services.form_execution.exit import assert_no_open_settlement
+
+        assert_no_open_settlement(self.employee)  # no ValueError: the voided drafts are ignored
+
+    def test_training_void_removes_the_row_of_a_draft_event_and_reissues(self):
         request = self.training()
         event = request['native']['name']
-        self.assertEqual(event, self.event)
-        frappe.get_doc('Training Event', event).submit()
+        self.assertEqual(len(frappe.get_all('Training Event Employee', filters={'parent': event})), 1)
         self.assert_voided(request, self.void(request))
+        self.assertEqual(frappe.db.get_value('Training Event', event, 'docstatus'), 0)
+        self.assertFalse(frappe.get_all('Training Event Employee', filters={'parent': event}))
+        row = self.activities(request, 'Voided')[0]
+        self.assertTrue(row.reference_name)
+        reissued = self.reissue(request)
+        self.assertEqual(reissued['native']['status'], 'Created', reissued['native']['error'])
+        self.assertEqual(len(frappe.get_all('Training Event Employee', filters={'parent': event})), 1)
+
+    def test_training_event_that_became_final_is_never_amended_and_explains(self):
+        request = self.training()
+        event = request['native']['name']
+        frappe.get_doc('Training Event', event).submit()
+        self.assert_voided(request, self.void(request), reissuable=False)
         self.assertEqual(frappe.db.get_value('Training Event', event, 'docstatus'), 1)
-        self.assertEqual(len(self.comments('Training Event', event)), 1)
-        failed = self.reissue(request)
-        self.assertEqual(failed['native']['status'], 'Failed')
+        self.assertEqual(len(frappe.get_all('Training Event Employee', filters={'parent': event})), 1)
+        self.assert_not_reissuable(request, 'دوره ثبت شده است', event)
 
     # ------------------------------------------------------------------ rules
 
