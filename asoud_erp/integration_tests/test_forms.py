@@ -424,6 +424,27 @@ class TestFormRecordSources(APITestCase):
     def link(self, key, source, **extra):
         return {"key": key, "label": key, "type": "Link", "source": source, **extra}
 
+    def test_employee_schedule_uses_default_and_allows_colleague_schedule_only(self):
+        shift_name = "ASOUD Schedule Morning"
+        if not frappe.db.exists("Shift Type", shift_name):
+            frappe.get_doc({"doctype": "Shift Type", "name": shift_name,
+                            "start_time": "08:00:00", "end_time": "16:00:00"}).insert(ignore_permissions=True)
+        frappe.db.set_value("Employee", self.me, "default_shift", shift_name)
+        frappe.db.set_value("Employee", self.other, "default_shift", shift_name)
+        frappe.set_user(self.me_user)
+
+        own = forms.employee_schedule(company=self.company, from_date="2026-10-23", to_date="2026-10-23")
+        self.assertEqual(own["data"][0]["shift_type"], shift_name)
+        self.assertEqual(own["data"][0]["source"], "default")
+        self.assertRegex(own["data"][0]["date_label"], r"^[۰-۹]{4}/[۰-۹]{2}/[۰-۹]{2}$")
+        colleague = forms.employee_schedule(company=self.company, employee=self.other,
+                                            from_date="2026-10-23", to_date="2026-10-23")
+        self.assertEqual(colleague["data"][0]["shift_type"], shift_name)
+        self.assertEqual(colleague["meta"]["max_days"], 62)
+
+        with self.assertRaisesRegex(frappe.ValidationError, "۶۲ روز"):
+            forms.employee_schedule(company=self.company, from_date="2026-01-01", to_date="2026-03-04")
+
     def test_attendance_scope_extra_and_submit_rejection(self):
         mine = self.attendance(self.me, "2026-09-01", in_time="2026-09-01 08:15:00")
         theirs = self.attendance(self.other, "2026-09-02")

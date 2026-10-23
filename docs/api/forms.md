@@ -99,9 +99,9 @@ Field keys (all validated by `save_form`):
 `employee_schedule(company, from_date, to_date, employee=None)` returns the effective
 work schedule for one inclusive date page. `from_date` and `to_date` are ISO dates and
 the page may contain at most 62 days. Omitting `employee` selects the signed-in active
-Employee. Supplying an Employee is allowed only when the caller has native read
-permission for that Employee; this exception exposes schedule rows only and does not
-grant access to any other Employee data.
+Employee. Supplying another active Employee in the same company is allowed for the
+colleague picker use case; this narrow exception exposes schedule rows only and does
+not grant access to any other Employee data.
 
 The response `data` is a list with one row for every date in the requested page:
 

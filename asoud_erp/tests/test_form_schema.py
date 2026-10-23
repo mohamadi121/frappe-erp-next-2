@@ -627,6 +627,29 @@ def test_new_default_sources(schema):
     assert schema.default_value({"default_source": "employee_number"}, "ACME") == "HR-EMP-1"
 
 
+def test_schedule_references_employee_and_dates(schema):
+    fields = [
+        link("colleague", "Employee"),
+        {"key": "start", "label": "شروع", "type": "Date"},
+        {"key": "end", "label": "پایان", "type": "Date"},
+        {"key": "schedule", "label": "برنامه", "type": "Schedule",
+         "schedule_of": "colleague", "from_field": "start", "to_field": "end"},
+    ]
+    assert schema.validate_schema(source_schema(fields))["sections"][0]["fields"][-1]["type"] == "Schedule"
+    invalid = [*fields[:-1], {**fields[-1], "from_field": "colleague"}]
+    with pytest.raises(Exception, match="تاریخ برنامه"):
+        schema.validate_schema(source_schema(invalid))
+
+
+def test_schedule_value_is_never_persisted(schema):
+    raw = source_schema([
+        {"key": "day", "label": "روز", "type": "Date"},
+        {"key": "schedule", "label": "برنامه", "type": "Schedule",
+         "schedule_of": "self", "from_field": "day", "to_field": "day"},
+    ])
+    assert schema.validate_values(raw, {"day": "2026-10-23", "schedule": "ساختگی"}, "ACME") == {"day": "2026-10-23"}
+
+
 def test_fetch_value_normalises_types(schema):
     from datetime import datetime, timedelta
     moment = datetime(2026, 10, 23, 8, 30, 15, 99)

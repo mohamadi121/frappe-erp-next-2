@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import json
+from datetime import date
 
 import frappe
 from frappe.utils import now_datetime
@@ -363,6 +364,88 @@ def get_link_options(company, source, query='', form=None, filter_field=None, fi
     return success(rows)
 
 
+@frappe.whitelist()
+def employee_schedule(company, from_date, to_date, employee=None):
+    """Effective HRMS schedule for the caller or a readable colleague."""
+    from asoud_erp.services.employee_schedule import MAX_DAYS, build_schedule, parse_range
+
+    require_company(company)
+    own_employee = current_employee(company)
+    target = employee or own_employee
+    if not target:
+        fail('پرونده پرسنلی شما ثبت نشده است.')
+    employee_doc = frappe.get_doc('Employee', target)
+    if employee_doc.company != company or employee_doc.status != 'Active':
+        fail('پرسنل انتخاب‌شده در این دفتر فعال نیست.')
+    try:
+        start, end, days = parse_range(from_date, to_date)
+    except ValueError as error:
+        fail(str(error))
+    rows = frappe.get_all(
+        'Shift Assignment',
+        filters={'employee': target, 'docstatus': 1, 'start_date': ['<=', end], 'end_date': ['>=', start]},
+        fields=['name', 'shift_type', 'start_date', 'end_date'],
+        order_by='start_date asc, creation asc',
+        limit_page_length=200,
+    )
+    shift_names = {row.shift_type for row in rows if row.shift_type}
+    if employee_doc.default_shift:
+        shift_names.add(employee_doc.default_shift)
+    shift_rows = frappe.get_all('Shift Type', filters={'name': ['in', list(shift_names)]},
+                                fields=['name', 'start_time', 'end_time'], limit_page_length=200) if shift_names else []
+    shifts = {row.name: {'start_time': fetch_value(row.start_time), 'end_time': fetch_value(row.end_time)}
+              for row in shift_rows}
+    holiday_list = employee_doc.holiday_list or frappe.db.get_value('Company', company, 'default_holiday_list')
+    holiday_rows = frappe.get_all('Holiday', filters={'parent': holiday_list, 'holiday_date': ['between', [start, end]]},
+                                  pluck='holiday_date', limit_page_length=MAX_DAYS) if holiday_list else []
+    assignments = [{'shift_type': row.shift_type, 'start_date': row.start_date, 'end_date': row.end_date}
+                   for row in rows]
+    data = build_schedule(start, end, assignments, employee_doc.default_shift, set(holiday_rows), shifts)
+    return success(data, {'from_date': start.isoformat(), 'to_date': end.isoformat(), 'days': days, 'max_days': MAX_DAYS})
+
+
+def _validate_shift_request(schema, values, company):
+    """Recheck day-by-day shift proposals immediately before request creation."""
+    schedule_fields = [field for field in fields(schema) if field['type'] == 'Schedule']
+    if not schedule_fields:
+        return
+    tables = []
+    for field in fields(schema):
+        if field['type'] != 'Table':
+            continue
+        date_column = next((column for column in field['columns'] if column['type'] == 'Date'), None)
+        shift_column = next((column for column in field['columns']
+                             if column['type'] == 'Link' and column.get('source') == 'Shift Type'), None)
+        if date_column and shift_column:
+            tables.append((field, date_column, shift_column))
+    proposed = []
+    for table, date_column, shift_column in tables:
+        for row in values.get(table['key'], []):
+            proposed.append((row[date_column['key']], row[shift_column['key']]))
+    if not proposed:
+        return
+    employee = current_employee(company)
+    if not employee:
+        fail('پرونده پرسنلی شما ثبت نشده است.')
+    dates = [date.fromisoformat(value[0]) for value in proposed]
+    rows = frappe.get_all(
+        'Shift Assignment',
+        filters={'employee': employee, 'docstatus': 1,
+                 'start_date': ['<=', max(dates)], 'end_date': ['>=', min(dates)]},
+        fields=['shift_type', 'start_date', 'end_date'],
+        limit_page_length=200,
+    )
+    default_shift = frappe.db.get_value('Employee', employee, 'default_shift')
+    for day_text, requested_shift in proposed:
+        day = date.fromisoformat(day_text)
+        covering = [row for row in rows if row.start_date <= day <= row.end_date]
+        if len(covering) > 1:
+            fail('برای این روز بیش از یک تخصیص شیفت ثبت‌شده وجود دارد؛ ابتدا تداخل برنامه را برطرف کنید.')
+        current = covering[0].shift_type if covering else default_shift
+        if current and requested_shift == current:
+            fail('شیفت پیشنهادی در این روز با شیفت فعلی یکسان است.')
+
+
 @frappe.whitelist(methods=['POST'])
 def upload_file(form, filename, content):
     from frappe.utils.file_manager import save_file
@@ -406,6 +489,7 @@ def submit_form(name, revision_name, subject, values, request_key):
     if not allowed(schema, doc.company):
         frappe.throw('ثبت این فرم مجاز نیست.', frappe.PermissionError)
     checked = validate_values(schema, raw, doc.company)
+    _validate_shift_request(schema, checked, doc.company)
     reference_type = reference_name = ''
     if schema['kind'] == 'Request' and schema.get('workflow'):
         from asoud_erp.api.v1.workflow_request import create_request
