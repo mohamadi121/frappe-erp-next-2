@@ -54,6 +54,46 @@ missing required row or too-short table is rejected as `حداقل N ردیف ل
 the form company: designation is the Employee designation and joining date is returned
 as ISO (`YYYY-MM-DD`). Missing Employee data produces no default value.
 
+## Record sources and derived fields
+
+`get_link_options(company, source, query, form, filter_field, filter_value, exclude_self=0)`
+returns `{name, label}` rows. Sources `Attendance`, `Shift Type`, `Training Event` and `Asset`
+are scoped to the signed-in user and enforced again by `submit_form`
+(`«رکورد انتخاب‌شده در محدوده مجاز شما نیست.»`):
+
+| source | rows |
+|---|---|
+| `Attendance` | submitted records of the user's active Employee in the company; `link_filter {field: 'attendance_date', value_field}` allowed |
+| `Shift Type` | all Shift Types (v15 has no `disabled` field) |
+| `Training Event` | company events with `event_status = Scheduled`, `start_time >= now`, not cancelled |
+| `Asset` | submitted company Assets whose `custodian` is the user's Employee |
+
+Without an active Employee, `Attendance` and `Asset` return `[]` with `meta.reason = 'no_employee'`
+(submission fails with `«پرونده پرسنلی شما ثبت نشده است.»`). These four sources are read with the
+scope filter as the only authorization (Employees have no native read permission on Training Event
+and Asset). Labels are Persian with Jalali dates and Persian digits:
+Attendance `«۱۴۰۵/۰۷/۲۸ · حاضر · ورود ۰۸:۰۱ · خروج ۱۶:۳۰»` (statuses حاضر, غایب, مرخصی, نیم‌روز,
+دورکاری; missing parts are omitted), Shift Type `«<name> · ۰۸:۰۰ تا ۱۶:۰۰»`, Training Event
+`«<event_name> · <Jalali start date>»`, Asset `«<asset_name> (<name>)»`.
+
+Sources with fetchable attributes return `extra` on every row: Attendance `in_time, out_time,
+attendance_date, status, shift`; Shift Type `start_time, end_time`; Training Event `start_time,
+end_time, type, level, training_program`; Asset `asset_name, item_code, location`; Employee
+`department, designation, employee_number`. The `extra` values stay raw ISO (the app formats them): datetimes `YYYY-MM-DDTHH:MM:SS`, times `HH:MM:SS`.
+
+Field keys (all validated by `save_form`):
+
+- `exclude_self: true` — Employee Link only. `get_link_options(..., exclude_self=1)` omits the
+  user's own Employee (non-designers get a Persian error unless the form really has an Employee Link with `exclude_self`); submission rejects it (`نمی‌توانید خودتان را انتخاب کنید.`).
+- `fetch_from: '<link key>.<attribute>'` — the key must be a Link field in the same container with an
+  allowed attribute. Submission recomputes the value from the database (Date/Time fields take the
+  date/time part) and ignores the client value.
+- `not_equal: '<key>'` (+ `not_equal_message`) — Text/Integer/Decimal/Money/Date/Time/Select; checked
+  when both values are visible and non-empty. Default message
+  `مقدار جدید نباید با مقدار فعلی یکسان باشد.`
+- Table column `unique: true` — duplicate non-empty values are rejected: `ردیف تکراری: <label>`.
+- `default_source` also accepts `employee_number` (falls back to the Employee name) and `default_shift`.
+
 ## Consumption
 
 Any active employee of the company consumes forms: `list_forms(company)`, `get_form(name)`,

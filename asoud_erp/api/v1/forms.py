@@ -9,16 +9,22 @@ from frappe.utils import now_datetime
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.form_schema import (
+    FETCH_ATTRIBUTES,
     LINK_FILTERS,
+    SCOPED_SOURCES,
     SOURCES,
+    current_employee,
     default_value,
     fail,
+    fetch_value,
     fields,
     migrate_schema,
     parse,
+    scope_filters,
     validate_schema,
     validate_values,
 )
+from asoud_erp.services.record_labels import LABELS
 from asoud_erp.services.request_access import require_company
 
 DESIGNERS = ('System Manager', 'HR Manager', 'Accounts Manager', 'Purchase Manager')
@@ -307,7 +313,7 @@ def get_options(company):
 
 
 @frappe.whitelist()
-def get_link_options(company, source, query='', form=None, filter_field=None, filter_value=None):
+def get_link_options(company, source, query='', form=None, filter_field=None, filter_value=None, exclude_self=0):
     require_company(company)
     if source not in SOURCES:
         fail('منبع اطلاعات مجاز نیست.')
@@ -317,8 +323,19 @@ def get_link_options(company, source, query='', form=None, filter_field=None, fi
         sources = {f.get('source') for f in fields(schema)} | {c.get('source') for f in fields(schema) for c in f.get('columns', [])}
         if doc.company != company or doc.disabled or not allowed(schema, company) or source not in sources:
             frappe.throw('دسترسی مجاز نیست.', frappe.PermissionError)
+        if int(exclude_self) and not any(
+                f.get('source') == 'Employee' and f.get('exclude_self') is True
+                for item in fields(schema) for f in [item, *item.get('columns', [])]):
+            fail('این فیلد حذف خود را پشتیبانی نمی‌کند.')
     meta = frappe.get_meta(source)
-    filters = {'company': company} if meta.has_field('company') else {}
+    employee = current_employee(company)
+    scoped = source in SCOPED_SOURCES
+    if scoped:
+        if source in {'Attendance', 'Asset'} and not employee:
+            return success([], {'reason': 'no_employee'})
+        filters = scope_filters(source, company, employee)
+    else:
+        filters = {'company': company} if meta.has_field('company') else {}
     if filter_field:
         if filter_field not in LINK_FILTERS.get(source, set()):
             fail('فیلتر منبع اطلاعات مجاز نیست.')
@@ -329,8 +346,21 @@ def get_link_options(company, source, query='', form=None, filter_field=None, fi
         filters['disabled'] = 0
     if meta.has_field('is_group'):
         filters['is_group'] = 0
+    if source == 'Employee' and int(exclude_self) and employee:
+        filters['name'] = ['!=', employee]
     title = meta.title_field or 'name'
-    return success(frappe.get_list(source, filters=filters, or_filters={title: ['like', f'%{query[:100]}%'], 'name': ['like', f'%{query[:100]}%']}, fields=['name', f'{title} as label'], limit_page_length=30))
+    attributes = list(FETCH_ATTRIBUTES.get(source, ()))
+    query = query[:100]
+    getter = frappe.get_all if scoped else frappe.get_list
+    rows = getter(source, filters=filters, or_filters={title: ['like', f'%{query}%'], 'name': ['like', f'%{query}%']},
+                  fields=['name', f'{title} as label', *attributes], limit_page_length=30)
+    if not attributes:
+        return success(rows)
+    for row in rows:
+        extra = {key: fetch_value(row.pop(key, None)) for key in attributes}
+        row['label'] = LABELS[source](row | extra) if source in LABELS else row['label']
+        row['extra'] = extra
+    return success(rows)
 
 
 @frappe.whitelist(methods=['POST'])
