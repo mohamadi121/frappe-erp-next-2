@@ -1,0 +1,27 @@
+"""Registry contract for native documents created from approved form requests."""
+
+from typing import Any, Protocol, runtime_checkable
+
+from asoud_erp.services.request_templates.base import NativeResult as Result
+
+
+@runtime_checkable
+class Executor(Protocol):
+    """An executor module separates pure payload construction from native writes."""
+
+    KIND: str
+    LABEL: str
+    PARAMETERS: dict[str, dict[str, Any]]
+
+    def build(self, params: dict, ctx: dict) -> dict:
+        """Build a native document payload without importing Frappe."""
+        ...
+
+    def apply(self, request: Any, params: dict) -> Result:
+        """Resolve native defaults, insert the document and return its outcome."""
+        ...
+
+
+EXECUTORS: dict[str, Executor] = {}
+
+__all__ = ['EXECUTORS', 'Executor', 'Result']

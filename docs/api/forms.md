@@ -248,7 +248,8 @@ Sensitive masking does not apply here (server side).
 
 ### Editor catalog contract
 
-`asoud_erp.api.v1.forms.execution_kinds()` is a read-only designer endpoint.
+`asoud_erp.api.v1.forms.execution_kinds()` is specified as a read-only designer endpoint.
+The endpoint is not exposed by the registry package alone.
 It uses the same designer roles as `save_form`; no Employee record is required.
 Its response is `success([{kind, label, parameters}], meta)`, where `parameters`
 is an object keyed by parameter name and each value has `label`, `types`, and
@@ -262,3 +263,20 @@ parameter, a missing required parameter, or an incompatible field type.
 Implementation note: the existing Form Entry field is named `reference_doctype`,
 whereas E4 calls it `reference_type`. E4's exact storage-field requirement must
 be resolved before implementing the lookup; existing entry data must be preserved.
+
+### Pure registry and E3 collector
+
+`services.form_execution` defines the structural `Executor` protocol and
+`EXECUTORS` registry. `Result` is an alias of the existing template
+`NativeResult`, so status, doctype, name and reason keep their existing meanings.
+No example executor is registered in production.
+
+`services.form_execution.parameters.collect_parameters(request_fields,
+request_values, tasks)` collects unmasked values by `execution_key`. The caller
+supplies each task's decoded `values`, stage `fields`, `status`, `completed_on`,
+and `name`. Only `Completed` tasks are applied, sorted by completion timestamp
+and name as the deterministic tie breaker. Repeated tasks from the same stage
+remain separate decisions. A missing value preserves the earlier value; an
+explicit null, false, zero or empty string replaces it. Missing or malformed
+completion timestamps are rejected with a Persian validation reason. Inputs
+are not mutated. This helper performs no database access or document creation.
