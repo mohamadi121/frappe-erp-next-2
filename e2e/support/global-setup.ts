@@ -159,7 +159,7 @@ async function designRequestType(
       assignment_type: 'Direct Manager',
       approval_mode: 'Any',
       allow_reject: true,
-      allow_return: false,
+      allow_return: true,
       reject_comment_required: true,
     }),
   });

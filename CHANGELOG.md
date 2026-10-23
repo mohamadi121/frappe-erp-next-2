@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A request returned for correction can be edited once by its owner: `get_request` returns `return_reason`, `can_edit` is true while it is returned, and `update_request` records a `Resubmitted` activity with the changed fields and restarts the review from the first stage after the form. No migration is required.
+
 - Workflow decisions now always require a Persian reason for rejection or return, block self-approval, and mask form fields marked `sensitive` outside the owner, workflow participants, and System/HR managers. No migration is required.
 
 Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Workflow Activity.workflow_instance`; new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).

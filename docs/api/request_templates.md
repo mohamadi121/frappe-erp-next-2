@@ -16,7 +16,7 @@ are `frappe.throw` with a code in `_server_messages[].title` (see the table at t
 | `request_options(company)` | GET | read | submittable types with fields, resolved defaults, `settings`, `attachments` limits |
 | `request_field_options(company, field_type, txt?, item_code?, scope?, limit_start?, limit_page_length≤50)` | GET | read | choices for a field |
 | `create_request(company, template_key? \| workflow_definition?, request_id, subject?, values, priority?, required_by?, project?, department?, attachments?)` | POST | `create_` (repository outbox) | create and submit |
-| `update_request(name, subject?, values, attachments?, remove_attachments?)` | POST | `update_` | edit while nobody else has acted |
+| `update_request(name, subject?, values, attachments?, remove_attachments?)` | POST | `update_` | edit while nobody else has acted, or once after a return for correction (see below) |
 | `cancel_request(name, reason?)` | POST | `cancel_` | withdraw while in progress |
 | `list_my_requests(company?, template_key?, status_group?, search?, priority?, date_from?, date_to?, limit_start?, limit_page_length≤100)` | GET | read | the caller's own requests |
 | `get_request(name)` | GET | read | detail (owner, System/HR Manager or a task assignee); `viewer = {is_requester, open_task: {name, stage_title, stage_type, approve_action, allow_reject, allow_return, comment_required, reject_comment_required, has_form} or null}` is computed from the caller's own Open task only |
@@ -80,6 +80,21 @@ extensions `pdf png jpg jpeg xls xlsx doc docx` (a template may narrow them with
 File name (values pointing at them are cleared; a required attachment field cannot lose
 its file) and keeps an attachment key that is missing from `values`. Re-sending the same
 new file after a replay reuses the stored one.
+
+### Return for correction and resubmit
+
+When a reviewer returns a request, `get_request` reports `status_key = "returned"` and
+`return_reason` (the reviewer's reason; empty in every other state). For the owner,
+`can_edit` is true only in that state (or while nobody else has acted). `update_request`
+on a returned request:
+
+* is refused (`REQUEST_NOT_EDITABLE`) when the caller has no open form task, so a second
+  resubmit, a request already approved, rejected or cancelled, and any non-owner (403) fail;
+* writes a `Resubmitted` activity whose `comment` is JSON
+  `{"changes": [{"key", "label", "before", "after"}]}` (sensitive fields show `محرمانه`,
+  tables show the row count, text is cut at 200 characters);
+* completes the owner's form task, so the flow restarts at the first stage after the form
+  stage. Earlier tasks and activities (including the return) stay in the history.
 
 ## Status model
 
