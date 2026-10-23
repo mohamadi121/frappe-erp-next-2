@@ -136,6 +136,8 @@ def validate_schema(raw):
                 fail('منبع مقدار پیش‌فرض معتبر نیست.')
             if 'help' in field and (not isinstance(field['help'], str) or len(field['help']) > 1000):
                 fail('راهنمای فیلد معتبر نیست.')
+            if 'sensitive' in field and not isinstance(field['sensitive'], bool):
+                fail('تنظیم اطلاعات حساس باید درست یا نادرست باشد.')
             if field.get('link_filter'):
                 rule = field['link_filter']
                 if not isinstance(rule, dict) or rule.get('field') not in LINK_FILTERS.get(field.get('source'), set()):

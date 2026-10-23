@@ -347,6 +347,11 @@ def _detail(doc) -> dict:
     form_stage = form_stage_name(doc.workflow_definition) if instance else None
     can_edit = owner and running and not _has_acted(instance.name, form_stage)
     privileged = bool(MANAGER_ROLES & set(frappe.get_roles()))
+    participant = bool(doc.workflow_instance and frappe.db.exists(
+        "ASOUD Workflow Task", {"workflow_instance": doc.workflow_instance,
+                                "assigned_to": frappe.session.user}))
+    visible_values = request_serializer.mask_sensitive_values(
+        values, fields, owner or privileged or participant)
     return {
         "name": doc.name, "number": doc.name, "company": doc.company, "template_key": doc.template_key or "",
         "template_version": doc.template_version or 0, "workflow_definition": doc.workflow_definition,
@@ -360,7 +365,7 @@ def _detail(doc) -> dict:
         "viewer": build_viewer(owner, _own_open_tasks(doc.workflow_instance) if running else []),
         "item_count": request_serializer.item_count(values), "attachment_count": len(entries),
         "comment_count": request_comments.count_comments(doc.name),
-        "values": request_serializer.with_attachment_refs(values, by_url),
+        "values": request_serializer.with_attachment_refs(visible_values, by_url),
         "attachments": entries, "fields": fields,
         "native": {"doctype": doc.native_doctype or "", "name": doc.native_name or "",
                    "status": doc.native_status or "", "error": (doc.native_error or "") if privileged else ""},

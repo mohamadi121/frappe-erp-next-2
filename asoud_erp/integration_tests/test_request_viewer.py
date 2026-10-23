@@ -55,3 +55,32 @@ class TestRequestViewer(APITestCase):
         self.assertEqual(data["request_company"], self.company)
         self.assertEqual(request_name, self.request["name"])
         self.assertEqual(workflow_request.get_request(request_name)["data"]["name"], self.request["name"])
+
+    def test_reject_always_requires_a_reason_even_for_legacy_stage_setting(self):
+        task = open_task(self.request["workflow_instance"], APPROVER_USER)
+        stage = frappe.get_doc("ASOUD Workflow Stage", frappe.db.get_value(
+            "ASOUD Workflow Task", task.name, "workflow_stage"))
+        config = frappe.parse_json(stage.config_json)
+        config["reject_comment_required"] = False
+        stage.config_json = frappe.as_json(config)
+        stage.save(ignore_permissions=True)
+        frappe.set_user(APPROVER_USER)
+        with self.assertRaisesRegex(frappe.ValidationError, "ثبت دلیل رد یا بازگشت الزامی است"):
+            workflow_runtime.complete_workflow_task(task.name, "Reject")
+
+    def test_request_owner_cannot_decide_their_own_approval_task(self):
+        task = open_task(self.request["workflow_instance"], APPROVER_USER)
+        frappe.db.set_value("ASOUD Workflow Task", task.name, "assigned_to", EMPLOYEE_USER)
+        frappe.set_user(EMPLOYEE_USER)
+        with self.assertRaisesRegex(frappe.PermissionError, "تأیید درخواست خودتان مجاز نیست"):
+            workflow_runtime.complete_workflow_task(task.name, "Approve")
+
+    def test_sensitive_value_is_masked_for_a_third_user_without_task_history(self):
+        form_stage = frappe.get_doc("ASOUD Workflow Stage", workflow_request.form_stage_name(self.definition))
+        config = frappe.parse_json(form_stage.config_json)
+        next(field for field in config["form_fields"] if field["key"] == "reason")["sensitive"] = True
+        form_stage.config_json = frappe.as_json(config)
+        form_stage.save(ignore_permissions=True)
+        frappe.set_user(ACCOUNTANT_USER)
+        detail = workflow_request._detail(frappe.get_doc("ASOUD Workflow Request", self.request["name"]))
+        self.assertEqual(detail["values"]["reason"], "محرمانه")

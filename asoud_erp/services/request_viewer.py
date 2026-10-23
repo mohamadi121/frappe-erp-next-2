@@ -31,7 +31,7 @@ def open_task_view(task: dict) -> dict:
         "allow_reject": bool(config.get("allow_reject", False)),
         "allow_return": bool(config.get("allow_return", False)),
         "comment_required": bool(config.get("comment_required")),
-        "reject_comment_required": bool(config.get("reject_comment_required")),
+        "reject_comment_required": True,
         "has_form": bool(form_fields),
     }
 
@@ -39,4 +39,6 @@ def open_task_view(task: dict) -> dict:
 def build_viewer(is_requester: bool, own_open_tasks: list[dict]) -> dict:
     """`own_open_tasks` must already be limited to tasks assigned to the viewer, oldest first."""
     task = own_open_tasks[0] if own_open_tasks else None
+    if is_requester and task and task.get("stage_type") == "Approval":
+        return {"is_requester": True, "self_approval_blocked": True, "open_task": None}
     return {"is_requester": bool(is_requester), "open_task": open_task_view(task) if task else None}

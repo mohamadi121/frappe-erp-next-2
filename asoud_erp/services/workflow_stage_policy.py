@@ -107,6 +107,10 @@ def _normalize_form_fields(values: Any) -> list[dict[str, Any]]:
 def _field_extensions(item: dict[str, Any], field_type: str, options: list[str]) -> dict[str, Any]:
     """Optional presentation and validation attributes; only the ones that are set are kept."""
     result: dict[str, Any] = {}
+    if "sensitive" in item:
+        if not isinstance(item["sensitive"], bool):
+            raise ValueError("Sensitive field setting must be boolean")
+        result["sensitive"] = item["sensitive"]
     if field_type == "System Select":
         source = item.get("source")
         if source not in SOURCE_FIELD_TYPES:
