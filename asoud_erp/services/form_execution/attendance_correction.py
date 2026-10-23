@@ -40,7 +40,7 @@ def build(params: dict, ctx: dict) -> dict:
     if params.get("reason") is not None and not isinstance(params["reason"], str):
         raise ValueError("دلیل اصلاح تردد باید متن باشد.")
     if kind in REVIEW_REASONS:
-        raise ValueError(REVIEW_REASONS[kind])
+        return {"needs_review": REVIEW_REASONS[kind]}
     key, log_type = PUNCHES[kind]
     clock = params.get(key)
     message = f"{PARAMETERS[key]['label']} معتبر نیست."
@@ -87,14 +87,9 @@ def apply(request, params: dict):
         frappe.throw("پرونده پرسنلی درخواست‌دهنده فعال نیست.")
     ctx = {"company": request.company, "employee": employee.name, "user": request.owner,
            "request_name": request.name, "today": frappe.utils.nowdate()}
-    try:
-        payload = build(params, ctx)
-    except ValueError as error:
-        # Only the two explicit review outcomes are converted; malformed input still fails.
-        kind = params.get("kind") if isinstance(params, dict) else None
-        if isinstance(kind, str) and kind in REVIEW_REASONS and str(error) == REVIEW_REASONS[kind]:
-            return NativeResult(status="needs_review", reason=str(error))
-        raise
+    payload = build(params, ctx)
+    if "needs_review" in payload:
+        return NativeResult(status="needs_review", reason=payload["needs_review"])
     duplicate = frappe.db.exists("Employee Checkin", {
         "employee": employee.name, "time": payload["time"], "log_type": payload["log_type"],
     })

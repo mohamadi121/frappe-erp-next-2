@@ -76,9 +76,7 @@ def test_missing_optional_values_and_overnight_exit():
     ("other", "نیاز به اقدام HR؛ نوع عملیات برای سایر موارد مشخص نشده است."),
 ])
 def test_review_kinds_have_no_native_payload(kind, reason):
-    with pytest.raises(ValueError) as error:
-        execution.build({"date": TODAY, "kind": kind}, CTX)
-    assert str(error.value) == reason
+    assert execution.build({"date": TODAY, "kind": kind}, CTX) == {"needs_review": reason}
 
 
 @pytest.mark.parametrize("key,message", [
