@@ -862,6 +862,8 @@ def get_workflow_task(task: str) -> dict:
             "name": doc.name,
             "workflow_instance": doc.workflow_instance,
             "workflow_stage": doc.workflow_stage,
+            "request_name": frappe.db.get_value(
+                "ASOUD Workflow Request", {"workflow_instance": doc.workflow_instance}, "name") or "",
             "task_title": doc.task_title,
             "status": doc.status,
             "assigned_on": doc.assigned_on,

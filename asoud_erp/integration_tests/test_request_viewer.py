@@ -2,7 +2,7 @@
 
 import frappe
 
-from asoud_erp.api.v1 import workflow_request
+from asoud_erp.api.v1 import workflow_request, workflow_runtime
 from asoud_erp.integration_tests.fixtures import ACCOUNTANT_USER, APPROVER_USER, EMPLOYEE_USER, APITestCase
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.request_helpers import act, create, open_task
@@ -46,3 +46,10 @@ class TestRequestViewer(APITestCase):
         self.assertEqual(viewer["open_task"]["stage_type"], "User Task")
         self.assertEqual(viewer["open_task"]["approve_action"], "Complete")
         self.assertTrue(viewer["open_task"]["has_form"])
+
+    def test_the_task_names_its_request_and_the_assignee_can_open_it(self):
+        task = open_task(self.request["workflow_instance"], APPROVER_USER)
+        frappe.set_user(APPROVER_USER)
+        request_name = workflow_runtime.get_workflow_task(task.name)["data"]["request_name"]
+        self.assertEqual(request_name, self.request["name"])
+        self.assertEqual(workflow_request.get_request(request_name)["data"]["name"], self.request["name"])

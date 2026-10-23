@@ -13,7 +13,6 @@ from asoud_erp.services import request_comments, request_lookup, request_seriali
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_access import request_permission, require_company
 from asoud_erp.services.request_link_values import validate_link_values
-from asoud_erp.services.request_viewer import build_viewer
 from asoud_erp.services.request_status import (
     GROUP_NAMES,
     PRIORITY_LABELS,
@@ -26,6 +25,7 @@ from asoud_erp.services.request_status import (
     status_group as group_of_status,
 )
 from asoud_erp.services.request_templates import base as templates
+from asoud_erp.services.request_viewer import build_viewer
 from asoud_erp.services.workflow_history import merge_completed_responses
 from asoud_erp.services.workflow_response import (
     attachment_references,
