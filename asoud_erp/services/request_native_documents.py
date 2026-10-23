@@ -23,7 +23,7 @@ from asoud_erp.services import leave_balance as lb
 from asoud_erp.services import leave_hours as lh
 from asoud_erp.services import native_payloads as payloads
 from asoud_erp.services.request_templates import base
-from asoud_erp.services.request_templates.lifecycle import record_native_failure
+from asoud_erp.services.request_templates.lifecycle import notify_native_result, record_native_failure
 from asoud_erp.services.session_scope import as_administrator
 
 SAVEPOINT = "asoud_native_doc"
@@ -47,8 +47,8 @@ def effective_values(request) -> dict:
 def dispatch(request) -> None:
     """Creates the native document of an approved template request, once.
 
-    Safe to call repeatedly: ``Created`` and ``Skipped`` requests are left alone, a
-    ``Failed`` one is tried again (the retry endpoint).
+    Safe to call repeatedly: ``Created``, ``Skipped`` and ``Needs Review`` requests
+    are left alone; a ``Failed`` one is tried again (the retry endpoint).
     """
     spec = base.get(request.get("template_key"))
     form_request = not request.get("template_key")
@@ -59,7 +59,7 @@ def dispatch(request) -> None:
         if not request.workflow_instance or frappe.db.get_value(
                 "ASOUD Workflow Instance", request.workflow_instance, "status") != "Completed":
             return
-    if frappe.db.get_value("ASOUD Workflow Request", request.name, "native_status") in ("Created", "Skipped"):
+    if frappe.db.get_value("ASOUD Workflow Request", request.name, "native_status") in ("Created", "Skipped", "Needs Review"):
         return
     frappe.db.savepoint(SAVEPOINT)
     try:
@@ -89,8 +89,12 @@ def dispatch(request) -> None:
         return
     frappe.db.set_value("ASOUD Workflow Request", request.name, {
         "native_doctype": result.doctype or "", "native_name": result.name or "",
-        "native_status": result.status, "native_error": result.reason or "",
+        "native_status": "Needs Review" if result.status == "needs_review" else result.status,
+        "native_error": result.reason or "",
     }, update_modified=False)
+    if result.status == "needs_review":
+        notify_native_result(request.name, result.reason or "",
+                             _("درخواست {0} نیازمند بررسی منابع انسانی است.").format(request.name))
 
 
 def _error_text(error: Exception) -> str:

@@ -83,3 +83,13 @@ def test_activity_change_parses_before_and_after():
 @pytest.mark.parametrize("raw", [None, "", "{bad", "[1]", '{"before": 3}'])
 def test_activity_change_is_empty_when_missing_or_broken(raw):
     assert activity_change(raw) == {"before": {}, "after": {}, "labels": {}}
+
+
+@pytest.mark.parametrize('privileged', [False, True])
+def test_native_needs_review_keeps_approval_and_masks_reason(privileged):
+    reason = 'این درخواست به بررسی منابع انسانی نیاز دارد.'
+    result = build_execution('Completed', 'Needs Review', has_execution=True,
+                             error=reason, privileged=privileged, reference='unused')
+    assert result == {'state': 'needs_review', 'label': 'نیازمند بررسی',
+                      'error': reason if privileged else '', 'reference': '',
+                      'executed_on': '', 'executed_by_name': ''}

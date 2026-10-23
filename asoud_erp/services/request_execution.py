@@ -19,7 +19,8 @@ LABELS = {
     "needs_review": "نیازمند بررسی",
     "not_connected": "اجرای خودکار برای این نوع درخواست متصل نیست",
 }
-_NATIVE_STATES = {"Pending": "pending", "Created": "succeeded", "Failed": "failed", "Skipped": "not_connected"}
+_NATIVE_STATES = {"Pending": "pending", "Created": "succeeded", "Failed": "failed", "Skipped": "not_connected",
+                  "Needs Review": "needs_review"}
 _CLOSED_WITHOUT_APPROVAL = ("Rejected", "Cancelled")
 
 
@@ -43,14 +44,14 @@ def build_execution(instance_status, native_status, *, has_execution=False, erro
                     reference="", executed_on="", executed_by_name="") -> dict:
     """The `execution` block of `get_request`.
 
-    `error` is returned only to privileged users and only for a failed execution; the
-    reference and the who/when only for a succeeded one.
+    `error` is returned only to privileged users for failure or review; the reference
+    and the who/when only for a succeeded execution.
     """
     state, label = _state(instance_status, native_status or "", has_execution)
     done = state == "succeeded"
     return {
         "state": state, "label": LABELS[label],
-        "error": (error or "") if state == "failed" and privileged else "",
+        "error": (error or "") if state in {"failed", "needs_review"} and privileged else "",
         "executed_on": str(executed_on or "") if done else "",
         "executed_by_name": (executed_by_name or "") if done else "",
         "reference": (reference or "") if done else "",

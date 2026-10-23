@@ -79,6 +79,11 @@ def record_native_failure(request_name: str, error: str) -> None:
     """Marks the request `Failed` with the error and notifies the people who can fix it."""
     frappe.db.set_value(REQUEST_DOCTYPE, request_name, {
         "native_status": "Failed", "native_error": (error or "")[:ERROR_LIMIT]}, update_modified=False)
+    notify_native_result(request_name, error, _("ایجاد سند درخواست {0} ناموفق بود.").format(request_name))
+
+
+def notify_native_result(request_name: str, reason: str, subject: str) -> None:
+    """Notify the requester and enabled HR/System Managers about a native result."""
     request = frappe.db.get_value(REQUEST_DOCTYPE, request_name, ["owner", "workflow_instance"], as_dict=True)
     managers = frappe.get_all("Has Role", filters={"role": ["in", list(MANAGER_ROLES)], "parenttype": "User"},
                               pluck="parent", limit_page_length=0)
@@ -89,8 +94,8 @@ def record_native_failure(request_name: str, error: str) -> None:
         # In-app alert, like the workflow runtime's notifications; recipients are the requester and managers.
         frappe.get_doc({
             "doctype": "Notification Log", "for_user": user, "from_user": frappe.session.user, "type": "Alert",
-            "subject": _("Creating the document for request {0} failed").format(request_name),
+            "subject": subject,
             "document_type": "ASOUD Workflow Instance" if request.workflow_instance else REQUEST_DOCTYPE,
             "document_name": request.workflow_instance or request_name,
-            "email_content": (error or "")[:500], "read": 0,
+            "email_content": (reason or "")[:500], "read": 0,
         }).insert(ignore_permissions=True)

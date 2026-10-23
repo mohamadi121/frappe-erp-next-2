@@ -49,11 +49,11 @@ an approval is never reported as done.
 | `pending` | Completed, `native_status = Pending` | «در انتظار اجرا» |
 | `succeeded` | Completed, `native_status = Created` | «اجرا انجام شد» |
 | `failed` | Completed, `native_status = Failed` (the approval stays) | «اجرا ناموفق بود؛ درخواست تأیید شده است» |
-| `needs_review` | instance `Failed` | «نیازمند بررسی» |
+| `needs_review` | instance `Failed`, or Completed with `native_status = Needs Review` | «نیازمند بررسی» |
 | `not_connected` | Completed, `native_status = Skipped` | «اجرای خودکار برای این نوع درخواست متصل نیست» |
 
 `error` is returned only to System/HR Managers (same rule as `native.error`) and only when the state
-is `failed`. `reference`, `executed_on` and `executed_by_name` are filled only for `succeeded`
+is `failed` or `needs_review`. `reference`, `executed_on` and `executed_by_name` are filled only for `succeeded`
 (the native document, its creation time, its creator). Only `succeeded` says «انجام شد».
 
 Activity rows of `get_workflow_instance` carry `before`, `after` and `labels` (objects, `{}` when
