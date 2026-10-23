@@ -56,8 +56,10 @@ an approval is never reported as done.
 is `failed`. `reference`, `executed_on` and `executed_by_name` are filled only for `succeeded`
 (the native document, its creation time, its creator). Only `succeeded` says «انجام شد».
 
-Activity rows of `get_workflow_instance` carry `before` and `after` (objects, `{}` when absent),
-read from the new optional `ASOUD Workflow Activity.change_json` (`{"before": {...}, "after": {...}}`).
+Activity rows of `get_workflow_instance` carry `before`, `after` and `labels` (objects, `{}` when
+absent), read from the new optional `ASOUD Workflow Activity.change_json`
+(`{"before": {...}, "after": {...}, "labels": {key: field label}}`); `labels` lets a client without
+the form (task page, print) show the field label.
 The migration only adds that column; existing rows return `{}`.
 
 ### Companies and scoping
