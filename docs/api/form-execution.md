@@ -10,10 +10,10 @@ Invalid input or missing prerequisites raise `ValueError` with a Persian reason 
 
 | Parameter | Allowed field types | Required | Native mapping |
 | --- | --- | --- | --- |
-| `amount` | number, currency | yes | `advance_amount`, positive finite number |
-| `purpose` | text, textarea | yes | trimmed `purpose` |
-| `posting_date` | date | no | ISO `posting_date`; missing, null or empty uses `ctx.today` |
-| `repay_from_salary` | check | no | `repay_unclaimed_amount_from_salary`; missing, null or empty is 0; accepts booleans and 0/1 |
+| `amount` | Integer, Decimal, Money | yes | `advance_amount`, positive finite number |
+| `purpose` | Text, LongText | yes | trimmed `purpose` |
+| `posting_date` | Date | no | ISO `posting_date`; missing, null or empty uses `ctx.today` |
+| `repay_from_salary` | Boolean, Checkbox | no | `repay_unclaimed_amount_from_salary`; missing, null or empty is 0; accepts booleans and 0/1 |
 
 `build(params, ctx)` is pure and uses the E2 context: company, employee, user,
 request_name and today. Company and employee must be present. It produces a draft
