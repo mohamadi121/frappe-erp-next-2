@@ -1,12 +1,13 @@
 """Purchase template: numbering, validation and the Material Request created after approval."""
 
+import json
 import re
 
 import frappe
 from frappe.utils import add_days, nowdate
 
-from asoud_erp.api.v1 import workflow_request
-from asoud_erp.integration_tests.fixtures import ITEM, SERVICE, warehouse
+from asoud_erp.api.v1 import workflow_request, workflow_runtime
+from asoud_erp.integration_tests.fixtures import APPROVER_USER, ITEM, SERVICE, warehouse
 from asoud_erp.integration_tests.request_template_support import TemplateTestCase
 from asoud_erp.services import request_native_documents as native
 
@@ -16,6 +17,29 @@ def material_requests(request_name: str) -> list:
 
 
 class TestPurchaseRequestTemplate(TemplateTestCase):
+    def test_step_table_uses_request_rows_and_rejects_excess_quantity(self):
+        name = self.create("purchase", self.purchase_values())["name"]
+        instance = self.row(name).workflow_instance
+        task = frappe.db.get_value("ASOUD Workflow Task", {
+            "workflow_instance": instance, "status": "Open", "assigned_to": APPROVER_USER}, "name")
+        stage = frappe.db.get_value("ASOUD Workflow Task", task, "workflow_stage")
+        config = json.loads(frappe.db.get_value("ASOUD Workflow Stage", stage, "config_json") or "{}")
+        config["form_fields"] = [{
+            "key": "approved_items", "label": "اقلام مصوب", "type": "Table", "rows_from_request": "items",
+            "columns": [
+                {"key": "item_code", "label": "کالا", "type": "Short Text", "readonly": True},
+                {"key": "qty", "label": "درخواستی", "type": "Number", "readonly": True},
+                {"key": "approved_qty", "label": "مصوب", "type": "Number", "max_from_row": "qty"},
+            ],
+        }]
+        frappe.db.set_value("ASOUD Workflow Stage", stage, "config_json", json.dumps(config, ensure_ascii=False))
+        frappe.set_user(APPROVER_USER)
+        detail = workflow_runtime.get_workflow_task(task)["data"]
+        self.assertEqual(detail["draft"]["approved_items"][0]["qty"], 2)
+        with self.assertRaises(frappe.ValidationError):
+            workflow_runtime.complete_workflow_task(task, "Approve", response={"approved_items": [{
+                "item_code": ITEM, "qty": 2, "approved_qty": 3}]})
+
     def test_create_is_idempotent_and_numbered(self):
         values = self.purchase_values()
         first = self.create("purchase", values, "خرید تجهیزات ICU", request_id="purchase-idem-0001")

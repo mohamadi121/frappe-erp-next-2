@@ -85,3 +85,21 @@ def test_valid_extension_attributes_are_normalized():
     assert result[1]["visible_when"] == {"field": "kind", "in": ["a", "b"]}
     assert result[2]["row_options"] == {"item_scope": "all", "note": True, "attachment": False,
                                         "min_rows": 0, "max_rows": 100}
+
+
+def test_request_bound_step_fields_round_trip():
+    fields = [
+        {"key": "approved", "label": "مبلغ مصوب", "type": "Currency", "max_from_request": "requested",
+         "min_value_exclusive": 0, "reason_required_if_less_than": "requested", "reason_field": "reason"},
+        {"key": "reason", "label": "علت کاهش", "type": "Long Text"},
+        {"key": "rows", "label": "اقلام مصوب", "type": "Table", "rows_from_request": "items", "columns": [
+            {"key": "quantity", "label": "تعداد درخواستی", "type": "Number", "readonly": True},
+            {"key": "approved_quantity", "label": "تعداد مصوب", "type": "Number", "max_from_row": "quantity"},
+        ]},
+    ]
+    result = normalize_stage_config("User Task", _stage(fields))["form_fields"]
+    assert result[0]["max_from_request"] == "requested"
+    assert result[0]["min_value_exclusive"] == 0
+    assert result[2]["rows_from_request"] == "items"
+    assert result[2]["columns"][0]["readonly"] is True
+    assert result[2]["columns"][1]["max_from_row"] == "quantity"

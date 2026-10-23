@@ -857,6 +857,12 @@ def get_workflow_task(task: str) -> dict:
                 if reference.get(field.fieldname) not in (None, "", [])
             ],
         }
+    draft = json.loads(doc.draft_json or "{}")
+    from asoud_erp.services.workflow_step_validation import project_request_rows, request_values_for_instance
+    try:
+        draft = project_request_rows(config.get("form_fields", []), request_values_for_instance(frappe, instance), draft)
+    except ValueError as error:
+        frappe.throw(_(str(error)))
     return success(
         {
             "name": doc.name,
@@ -870,11 +876,12 @@ def get_workflow_task(task: str) -> dict:
             "escalated_on": doc.escalated_on,
             "stage_type": stage.stage_type,
             "config": config,
-            "draft": json.loads(doc.draft_json or "{}"),
+            "draft": draft,
             "response": json.loads(doc.response_json or "{}"),
             "history": history,
             "previous_data": _previous_task_data(instance, exclude_task=doc.name),
             "document": document_context,
+            "request_values": request_values_for_instance(frappe, instance),
         }
     )
 
@@ -999,6 +1006,16 @@ def complete_workflow_task(
         validate_link_values(
             config.get("form_fields", []), normalized_response, workflow_company(doc.workflow_instance)
         )
+        from asoud_erp.services.workflow_step_validation import (
+            request_values_for_instance,
+            validate_request_bounds,
+        )
+        try:
+            instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
+            normalized_response = validate_request_bounds(
+                config.get("form_fields", []), request_values_for_instance(frappe, instance), normalized_response)
+        except ValueError as error:
+            frappe.throw(_(str(error)))
         if stage.stage_type == "User Task":
             normalized_response = validate_form_stage_response(
                 frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance), stage, normalized_response

@@ -168,7 +168,7 @@ workflow stage can show the submitted rows and collect an approved quantity:
       "type": "Table",
       "rows_from_request": "equipment_items",
       "columns": [
-        {"key": "item", "label": "کالا یا تجهیز", "type": "Link", "source": "Item", "readonly": true},
+        {"key": "item", "label": "کالا یا تجهیز", "type": "Short Text", "readonly": true},
         {"key": "quantity", "label": "تعداد درخواستی", "type": "Integer", "readonly": true},
         {"key": "item_notes", "label": "مشخصات تکمیلی", "type": "LongText", "readonly": true},
         {"key": "approved_quantity", "label": "تعداد مورد تأیید", "type": "Integer", "required": true, "min": 0, "max_from_row": "quantity"}
