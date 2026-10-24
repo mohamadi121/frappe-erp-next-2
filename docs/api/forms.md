@@ -8,6 +8,32 @@ Manager`) use `save_form`, `get_validation`, `get_options`, `get_history`, and
 `transition`. Only a System Manager may publish, enable, or disable a form.
 Every call takes or resolves the form's company and checks company access.
 
+## Built-in HR catalog
+
+The ten existing Flutter HR presets are shipped unchanged as the trusted server
+bundle `services/hr_form_presets.json`. `list_forms` includes them for Request
+forms with `builtin_key`; a missing company instance is a virtual catalog row
+(`builtin_pending: true`, `draft_version: 0`), not a user draft or a copied form.
+Names are deterministic per company and key. No database writes occur on listing.
+
+POST `open_builtin(company, key, manage=0)` checks company scope and, when manage
+is requested, designer access. It locks the company, creates at most one instance
+and immutable initial revision from the trusted bundle (never client schema), then
+returns the normal `get_form` envelope. With manage=0 this includes `name`,
+`company`, `schema`, `revision`, `version`; manage=1 returns the editable draft.
+Normal entry validation, defaults, uploads and submit_form apply unchanged.
+Designers edit the draft; only System Manager/Administrator publishes a new
+revision. Original published revisions cannot be overwritten.
+
+POST `remove_builtin(company, key)` is restricted to System Manager/Administrator.
+It retains a disabled company instance as a tombstone; it never deletes entries,
+revisions or attachments. The item is omitted from the catalog on subsequent
+loads and will not be recreated by retries. Opening a removed item is denied.
+Existing open forms are rejected by submit_form after removal. Unknown keys and
+missing company access are rejected. No schema or DocType migration is required;
+deploy the matching server before the client. The shipped raw presets create no
+approval workflow or native transaction implicitly.
+
 ## Schema and revisions
 
 `save_form(company, schema, name?, expected_version?, client_id?)` saves a draft.
