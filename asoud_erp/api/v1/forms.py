@@ -74,11 +74,15 @@ def allowed(schema, company):
 
 
 def row(doc, schema=False):
+    from asoud_erp.services.hr_form_catalog import builtin_key
     active = revision(doc) if doc.active_revision else None
     result = {key: doc.get(key) for key in ('name', 'title', 'company', 'kind', 'module_key', 'draft_version', 'active_revision', 'disabled', 'pending_review')}
     result['status'] = 'Inactive' if doc.disabled else 'Pending' if doc.pending_review else 'Published' if active else 'Draft'
     result['version'] = active.version if active else 0
     result['has_changes'] = bool(active and doc.draft_json != active.schema_json)
+    key = builtin_key(doc.company, doc.name)
+    if key:
+        result['builtin_key'] = key
     if schema:
         result['schema'] = migrate_schema(json.loads(doc.draft_json)) if doc.draft_json else {}
     return result
@@ -86,21 +90,61 @@ def row(doc, schema=False):
 
 @frappe.whitelist()
 def list_forms(company, kind='Request', manage=0):
+    from asoud_erp.services.hr_form_catalog import builtin_key, catalog_rows
     require_company(company)
     manage = bool(int(manage))
     if manage:
         require_roles(DESIGNERS)
     result = []
-    for name in frappe.get_all('ASOUD Form', filters={'company': company, 'kind': kind}, pluck='name', order_by='modified desc', limit_page_length=500):
+    defaults = []
+    names = frappe.get_all('ASOUD Form', filters={'company': company, 'kind': kind}, pluck='name', order_by='modified desc', limit_page_length=500)
+    if kind == 'Request':
+        # Include all catalog identities even if outside the ordinary list limit:
+        # disabled tombstones must not reappear as virtual defaults.
+        from asoud_erp.services.hr_form_catalog import catalog, form_name
+        identities = [form_name(company, key) for key in catalog()]
+        existing = frappe.get_all('ASOUD Form', filters={'company': company, 'name': ['in', identities]}, pluck='name')
+        defaults = catalog_rows(company, existing)
+        names = list(dict.fromkeys([*names, *existing]))
+    for name in names:
         doc = load(name)
+        key = builtin_key(company, name)
+        if key and doc.disabled:
+            continue
         if manage:
             result.append(row(doc, schema=True))
         elif not doc.disabled and doc.active_revision:
             rev = revision(doc)
             schema = migrate_schema(json.loads(rev.schema_json))
             if allowed(schema, company):
-                result.append({'name': doc.name, 'title': schema['title'], 'company': company, 'kind': schema['kind'], 'module_key': schema.get('module'), 'category': schema.get('category', ''), 'status': 'Published', 'version': rev.version})
-    return success(result)
+                result.append({'name': doc.name, 'title': schema['title'], 'company': company, 'kind': schema['kind'], 'module_key': schema.get('module'), 'category': schema.get('category', ''), 'status': 'Published', 'version': rev.version, **({'builtin_key': key} if key else {})})
+    return success([*result, *defaults])
+
+
+@frappe.whitelist(methods=['POST'])
+def open_builtin(company, key, manage=0):
+    require_company(company)
+    if int(manage):
+        require_roles(DESIGNERS)
+    from asoud_erp.services.hr_form_catalog import ensure_builtin
+    doc = ensure_builtin(company, key)
+    if doc.disabled:
+        frappe.throw('این قالب از فهرست شرکت حذف شده است.', frappe.PermissionError)
+    return get_form(doc.name, manage=manage)
+
+
+@frappe.whitelist(methods=['POST'])
+def remove_builtin(company, key):
+    require_roles(('System Manager',))
+    require_company(company)
+    from asoud_erp.services.hr_form_catalog import ensure_builtin
+    doc = ensure_builtin(company, key)
+    if not doc.disabled:
+        doc.disabled = 1
+        doc.draft_version += 1
+        store(doc)
+        doc.add_comment('Info', 'حذف قالب پیش‌فرض از فهرست شرکت؛ سوابق حفظ شدند.')
+    return success({'name': doc.name, 'removed': True})
 
 
 @frappe.whitelist()

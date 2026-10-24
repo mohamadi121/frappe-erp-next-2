@@ -1,0 +1,3276 @@
+{
+  "traffic_correction": {
+    "schema_version": 2,
+    "format": 1,
+    "kind": "Request",
+    "title": "درخواست اصلاح تردد",
+    "module": "HR",
+    "icon": "clock",
+    "color": "#6B5CE7",
+    "description": "فرم درخواست اصلاح ورود، خروج یا ساعت ثبت‌شده تردد",
+    "sections": [
+      {
+        "id": "applicant",
+        "title": "مشخصات متقاضی",
+        "icon": "person",
+        "color": "#E8F2FF",
+        "fields": [
+          {
+            "key": "applicant_employee",
+            "label": "نام و نام خانوادگی",
+            "type": "Link",
+            "source": "Employee",
+            "default_source": "employee",
+            "readonly": true
+          },
+          {
+            "key": "applicant_department",
+            "label": "واحد سازمانی",
+            "type": "Link",
+            "source": "Department",
+            "default_source": "department",
+            "readonly": true,
+            "span": 1
+          },
+          {
+            "key": "applicant_position",
+            "label": "سمت سازمانی",
+            "type": "Text",
+            "default_source": "designation",
+            "readonly": true,
+            "span": 1
+          }
+        ]
+      },
+      {
+        "id": "traffic_details",
+        "title": "مشخصات اصلاح تردد",
+        "icon": "schedule",
+        "color": "#F2EAFE",
+        "fields": [
+          {
+            "key": "correction_type",
+            "label": "نوع اصلاح",
+            "type": "Select",
+            "required": true,
+            "options": [
+              {
+                "id": "missing_check_in",
+                "label": "فراموشی ثبت ورود"
+              },
+              {
+                "id": "missing_check_out",
+                "label": "فراموشی ثبت خروج"
+              },
+              {
+                "id": "correct_recorded_time",
+                "label": "اصلاح ساعت ثبت‌شده"
+              },
+              {
+                "id": "other",
+                "label": "سایر موارد"
+              }
+            ]
+          },
+          {
+            "key": "attendance_date",
+            "label": "تاریخ تردد",
+            "type": "Date",
+            "required": true
+          },
+          {
+            "key": "proposed_check_in_time",
+            "label": "ساعت ورود پیشنهادی",
+            "type": "Time",
+            "next_day_allowed": true,
+            "help": "ساعت ورود را از ساعت‌گزین انتخاب کنید."
+          },
+          {
+            "key": "proposed_check_out_time",
+            "label": "ساعت خروج پیشنهادی",
+            "type": "Time",
+            "next_day_allowed": true,
+            "help": "ساعت خروج را از ساعت‌گزین انتخاب کنید."
+          },
+          {
+            "key": "attendance_record",
+            "label": "رکورد تردد",
+            "type": "Link",
+            "source": "Attendance",
+            "link_filter": {
+              "field": "attendance_date",
+              "value_field": "attendance_date"
+            },
+            "help": "پس از انتخاب تاریخ تردد، رکورد ثبت‌شده همان روز را انتخاب کنید."
+          },
+          {
+            "key": "recorded_event",
+            "label": "کدام ساعت اصلاح شود؟",
+            "type": "Select",
+            "style": "radio",
+            "options": [
+              {
+                "id": "check_in",
+                "label": "ساعت ورود"
+              },
+              {
+                "id": "check_out",
+                "label": "ساعت خروج"
+              }
+            ]
+          },
+          {
+            "key": "current_in_time",
+            "label": "ساعت ورود ثبت‌شده فعلی",
+            "type": "Time",
+            "next_day_allowed": true,
+            "readonly": true,
+            "fetch_from": "attendance_record.in_time"
+          },
+          {
+            "key": "proposed_correct_in_time",
+            "label": "ساعت ورود صحیح پیشنهادی",
+            "type": "Time",
+            "next_day_allowed": true,
+            "not_equal": "current_in_time",
+            "not_equal_message": "ساعت پیشنهادی با ساعت ثبت‌شده فعلی یکسان است.",
+            "help": "ساعت صحیح را از ساعت‌گزین انتخاب کنید."
+          },
+          {
+            "key": "in_time_comparison",
+            "label": "مقایسه ساعت ورود",
+            "type": "Display",
+            "readonly": true,
+            "compare": {
+              "current": "current_in_time",
+              "proposed": "proposed_correct_in_time"
+            }
+          },
+          {
+            "key": "current_out_time",
+            "label": "ساعت خروج ثبت‌شده فعلی",
+            "type": "Time",
+            "next_day_allowed": true,
+            "readonly": true,
+            "fetch_from": "attendance_record.out_time"
+          },
+          {
+            "key": "proposed_correct_out_time",
+            "label": "ساعت خروج صحیح پیشنهادی",
+            "type": "Time",
+            "next_day_allowed": true,
+            "not_equal": "current_out_time",
+            "not_equal_message": "ساعت پیشنهادی با ساعت ثبت‌شده فعلی یکسان است.",
+            "help": "ساعت صحیح را از ساعت‌گزین انتخاب کنید."
+          },
+          {
+            "key": "out_time_comparison",
+            "label": "مقایسه ساعت خروج",
+            "type": "Display",
+            "readonly": true,
+            "compare": {
+              "current": "current_out_time",
+              "proposed": "proposed_correct_out_time"
+            }
+          },
+          {
+            "key": "other_correction_description",
+            "label": "شرح نوع اصلاح",
+            "type": "LongText",
+            "help": "توضیح دهید چه موردی باید اصلاح شود."
+          }
+        ]
+      },
+      {
+        "id": "reason",
+        "title": "علت درخواست",
+        "icon": "edit_note",
+        "color": "#FFF0DD",
+        "fields": [
+          {
+            "key": "correction_reason",
+            "label": "دلیل اصلاح تردد",
+            "type": "LongText",
+            "required": true,
+            "help": "علت ثبت‌نشدن یا اشتباه‌بودن تردد را توضیح دهید."
+          }
+        ]
+      },
+      {
+        "id": "attachments",
+        "title": "پیوست‌ها",
+        "icon": "attach_file",
+        "color": "#E6F6F7",
+        "fields": [
+          {
+            "key": "attachments",
+            "label": "پیوست‌ها",
+            "type": "File"
+          }
+        ]
+      },
+      {
+        "id": "approval_flow",
+        "title": "گردش تأیید",
+        "icon": "account_tree",
+        "color": "#FCE9EE",
+        "fields": [
+          {
+            "key": "approval_flow_notice",
+            "label": "مسیر بررسی",
+            "type": "Display",
+            "default": "مسیر بررسی از گردش کار تعریف‌شده تعیین می‌شود."
+          }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "target": "proposed_check_in_time",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "missing_check_in"
+          }
+        ]
+      },
+      {
+        "target": "proposed_check_in_time",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "missing_check_in"
+          }
+        ]
+      },
+      {
+        "target": "proposed_check_out_time",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "missing_check_out"
+          }
+        ]
+      },
+      {
+        "target": "proposed_check_out_time",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "missing_check_out"
+          }
+        ]
+      },
+      {
+        "target": "attendance_record",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "correct_recorded_time"
+          }
+        ]
+      },
+      {
+        "target": "attendance_record",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "correct_recorded_time"
+          }
+        ]
+      },
+      {
+        "target": "recorded_event",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "correct_recorded_time"
+          }
+        ]
+      },
+      {
+        "target": "recorded_event",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "correct_recorded_time"
+          }
+        ]
+      },
+      {
+        "target": "current_in_time",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "correct_recorded_time"
+          },
+          {
+            "field": "recorded_event",
+            "op": "eq",
+            "value": "check_in"
+          }
+        ]
+      },
+      {
+        "target": "proposed_correct_in_time",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "correct_recorded_time"
+          },
+          {
+            "field": "recorded_event",
+            "op": "eq",
+            "value": "check_in"
+          }
+        ]
+      },
+      {
+        "target": "in_time_comparison",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "correct_recorded_time"
+          },
+          {
+            "field": "recorded_event",
+            "op": "eq",
+            "value": "check_in"
+          }
+        ]
+      },
+      {
+        "target": "proposed_correct_in_time",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "correct_recorded_time"
+          },
+          {
+            "field": "recorded_event",
+            "op": "eq",
+            "value": "check_in"
+          }
+        ]
+      },
+      {
+        "target": "current_out_time",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "correct_recorded_time"
+          },
+          {
+            "field": "recorded_event",
+            "op": "eq",
+            "value": "check_out"
+          }
+        ]
+      },
+      {
+        "target": "proposed_correct_out_time",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "correct_recorded_time"
+          },
+          {
+            "field": "recorded_event",
+            "op": "eq",
+            "value": "check_out"
+          }
+        ]
+      },
+      {
+        "target": "out_time_comparison",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "correct_recorded_time"
+          },
+          {
+            "field": "recorded_event",
+            "op": "eq",
+            "value": "check_out"
+          }
+        ]
+      },
+      {
+        "target": "proposed_correct_out_time",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "correct_recorded_time"
+          },
+          {
+            "field": "recorded_event",
+            "op": "eq",
+            "value": "check_out"
+          }
+        ]
+      },
+      {
+        "target": "other_correction_description",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      },
+      {
+        "target": "other_correction_description",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "correction_type",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      }
+    ]
+  },
+  "employment_certificate": {
+    "schema_version": 2,
+    "format": 1,
+    "kind": "Request",
+    "title": "درخواست گواهی اشتغال به کار",
+    "module": "HR",
+    "icon": "badge",
+    "color": "#6D5BD0",
+    "description": "ثبت درخواست گواهی اشتغال به کار",
+    "layout": "sections",
+    "access": {
+      "mode": "all",
+      "roles": [],
+      "departments": []
+    },
+    "sections": [
+      {
+        "id": "applicant",
+        "title": "مشخصات متقاضی",
+        "color": "#E8F2FF",
+        "icon": "person",
+        "fields": [
+          {
+            "key": "applicant_employee",
+            "label": "نام و نام خانوادگی",
+            "type": "Link",
+            "source": "Employee",
+            "default_source": "employee",
+            "readonly": true
+          },
+          {
+            "key": "applicant_department",
+            "label": "واحد سازمانی",
+            "type": "Link",
+            "source": "Department",
+            "default_source": "department",
+            "readonly": true,
+            "span": 1
+          },
+          {
+            "key": "applicant_position",
+            "label": "سمت سازمانی",
+            "type": "Text",
+            "default_source": "designation",
+            "readonly": true,
+            "span": 1
+          }
+        ]
+      },
+      {
+        "id": "certificate_details",
+        "title": "مشخصات گواهی درخواستی",
+        "color": "#F2EAFE",
+        "icon": "badge",
+        "fields": [
+          {
+            "key": "recipient",
+            "label": "مرجع دریافت‌کننده گواهی",
+            "type": "Text",
+            "required": true,
+            "help": "نام بانک، سفارت، سازمان یا شرکت",
+            "max_length": 250
+          },
+          {
+            "key": "purpose",
+            "label": "هدف از دریافت گواهی",
+            "type": "Select",
+            "required": true,
+            "options": [
+              {
+                "id": "bank",
+                "label": "ارائه به بانک"
+              },
+              {
+                "id": "embassy",
+                "label": "ارائه به سفارت"
+              },
+              {
+                "id": "organization",
+                "label": "ارائه به سازمان یا شرکت"
+              },
+              {
+                "id": "other",
+                "label": "سایر موارد"
+              }
+            ]
+          },
+          {
+            "key": "purpose_details",
+            "label": "شرح هدف",
+            "type": "LongText",
+            "max_length": 1000
+          },
+          {
+            "key": "certificate_language",
+            "label": "زبان گواهی",
+            "type": "Select",
+            "required": true,
+            "default": "persian",
+            "style": "radio",
+            "options": [
+              {
+                "id": "persian",
+                "label": "فارسی"
+              },
+              {
+                "id": "english",
+                "label": "انگلیسی"
+              }
+            ]
+          },
+          {
+            "key": "include_compensation",
+            "label": "درج حقوق و مزایا در گواهی",
+            "type": "Select",
+            "required": true,
+            "default": "no",
+            "style": "radio",
+            "options": [
+              {
+                "id": "no",
+                "label": "خیر"
+              },
+              {
+                "id": "yes",
+                "label": "بله"
+              }
+            ]
+          },
+          {
+            "key": "compensation_notice",
+            "label": "اطلاع‌رسانی",
+            "type": "Display",
+            "default": "درج اطلاعات حقوق و مزایا پس از بررسی مجوز و دریافت اطلاعات معتبر انجام می‌شود."
+          }
+        ]
+      },
+      {
+        "id": "delivery",
+        "title": "نحوه دریافت گواهی",
+        "color": "#E5F7EF",
+        "icon": "download",
+        "fields": [
+          {
+            "key": "delivery_method",
+            "label": "روش دریافت پیشنهادی",
+            "type": "Select",
+            "required": true,
+            "default": "electronic",
+            "style": "radio",
+            "options": [
+              {
+                "id": "electronic",
+                "label": "نسخه الکترونیکی"
+              },
+              {
+                "id": "printed",
+                "label": "نسخه چاپی"
+              },
+              {
+                "id": "both",
+                "label": "هر دو"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "additional_notes",
+        "title": "توضیحات تکمیلی",
+        "color": "#FFF0DD",
+        "icon": "notes",
+        "fields": [
+          {
+            "key": "additional_notes",
+            "label": "توضیحات تکمیلی",
+            "type": "LongText",
+            "max_length": 2000
+          }
+        ]
+      },
+      {
+        "id": "approval_issuance",
+        "title": "گردش تأیید و صدور",
+        "color": "#FCE9EE",
+        "icon": "account_tree",
+        "fields": [
+          {
+            "key": "workflow_notice",
+            "label": "گردش تأیید و صدور",
+            "type": "Display",
+            "default": "مسیر بررسی از گردش کار تعریف‌شده تعیین می‌شود."
+          },
+          {
+            "key": "preview_notice",
+            "label": "یادآوری",
+            "type": "Display",
+            "default": "این صفحه پیش‌نمایش درخواست است، نه متن گواهی صادرشده. صدور سند واقعی به داده معتبر، مجوز و قالب سند نیاز دارد."
+          }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "target": "purpose_details",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "purpose",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      },
+      {
+        "target": "purpose_details",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "purpose",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      },
+      {
+        "target": "compensation_notice",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "include_compensation",
+            "op": "eq",
+            "value": "yes"
+          }
+        ]
+      }
+    ]
+  },
+  "shift_change": {
+    "schema_version": 2,
+    "kind": "Request",
+    "title": "درخواست تغییر شیفت",
+    "module": "HR",
+    "icon": "calendar",
+    "color": "#1876D2",
+    "description": "قالب خام درخواست تغییر شیفت یا جابه‌جایی شیفت با همکار",
+    "sections": [
+      {
+        "id": "applicant_details",
+        "title": "مشخصات متقاضی",
+        "icon": "person",
+        "color": "#E8F2FF",
+        "fields": [
+          {
+            "key": "applicant_employee",
+            "label": "نام و نام خانوادگی",
+            "type": "Link",
+            "source": "Employee",
+            "default_source": "employee",
+            "readonly": true,
+            "required": true,
+            "span": 2
+          },
+          {
+            "key": "applicant_department",
+            "label": "واحد سازمانی",
+            "type": "Link",
+            "source": "Department",
+            "default_source": "department",
+            "readonly": true,
+            "span": 1
+          },
+          {
+            "key": "applicant_position",
+            "label": "سمت سازمانی",
+            "type": "Text",
+            "default_source": "designation",
+            "readonly": true,
+            "span": 1
+          }
+        ]
+      },
+      {
+        "id": "shift_details",
+        "title": "مشخصات تغییر شیفت",
+        "icon": "schedule",
+        "color": "#F2EAFE",
+        "fields": [
+          {
+            "key": "change_type",
+            "label": "نوع تغییر",
+            "type": "Select",
+            "default": "self_change",
+            "required": true,
+            "style": "radio",
+            "options": [
+              {
+                "id": "self_change",
+                "label": "تغییر شیفت خودم"
+              },
+              {
+                "id": "swap_with_colleague",
+                "label": "جابه‌جایی شیفت با همکار"
+              }
+            ]
+          },
+          {
+            "key": "duration_mode",
+            "label": "مدت درخواست",
+            "type": "Select",
+            "default": "single_day",
+            "required": true,
+            "style": "radio",
+            "options": [
+              {
+                "id": "single_day",
+                "label": "یک روز"
+              },
+              {
+                "id": "date_range",
+                "label": "بازه زمانی"
+              }
+            ]
+          },
+          {
+            "key": "change_date",
+            "label": "تاریخ تغییر",
+            "type": "Date",
+            "span": 2
+          },
+          {
+            "key": "start_date",
+            "label": "تاریخ شروع",
+            "type": "Date",
+            "span": 1
+          },
+          {
+            "key": "end_date",
+            "label": "تاریخ پایان",
+            "type": "Date",
+            "after_or_equal": "start_date",
+            "after_or_equal_message": "تاریخ پایان نباید قبل از تاریخ شروع باشد.",
+            "span": 1
+          },
+          {
+            "key": "current_schedule_day",
+            "label": "برنامه فعلی",
+            "type": "Schedule",
+            "schedule_of": "self",
+            "from_field": "change_date",
+            "to_field": "change_date",
+            "readonly": true,
+            "span": 2
+          },
+          {
+            "key": "current_schedule_range",
+            "label": "برنامه فعلی",
+            "type": "Schedule",
+            "schedule_of": "self",
+            "from_field": "start_date",
+            "to_field": "end_date",
+            "readonly": true,
+            "span": 2
+          },
+          {
+            "key": "requested_shifts",
+            "label": "شیفت‌های پیشنهادی",
+            "type": "Table",
+            "required": true,
+            "min_rows": 1,
+            "span": 2,
+            "columns": [
+              {
+                "key": "date",
+                "label": "تاریخ",
+                "type": "Date",
+                "required": true,
+                "unique": true
+              },
+              {
+                "key": "shift_type",
+                "label": "شیفت پیشنهادی",
+                "type": "Link",
+                "source": "Shift Type",
+                "required": true
+              }
+            ]
+          },
+          {
+            "key": "exchange_colleague",
+            "label": "همکار طرف جابه‌جایی",
+            "type": "Link",
+            "source": "Employee",
+            "exclude_self": true,
+            "span": 2
+          },
+          {
+            "key": "colleague_schedule_day",
+            "label": "برنامه فعلی همکار",
+            "type": "Schedule",
+            "schedule_of": "exchange_colleague",
+            "from_field": "change_date",
+            "to_field": "change_date",
+            "readonly": true,
+            "span": 2
+          },
+          {
+            "key": "colleague_schedule_range",
+            "label": "برنامه فعلی همکار",
+            "type": "Schedule",
+            "schedule_of": "exchange_colleague",
+            "from_field": "start_date",
+            "to_field": "end_date",
+            "readonly": true,
+            "span": 2
+          }
+        ]
+      },
+      {
+        "id": "reason_details",
+        "title": "دلیل درخواست",
+        "icon": "notes",
+        "color": "#FFF0DD",
+        "fields": [
+          {
+            "key": "reason",
+            "label": "علت تغییر شیفت",
+            "type": "Select",
+            "required": true,
+            "options": [
+              {
+                "id": "personal",
+                "label": "امور شخصی"
+              },
+              {
+                "id": "medical",
+                "label": "دلایل درمانی"
+              },
+              {
+                "id": "family",
+                "label": "مسائل خانوادگی"
+              },
+              {
+                "id": "other",
+                "label": "سایر موارد"
+              }
+            ]
+          },
+          {
+            "key": "reason_description",
+            "label": "شرح علت",
+            "type": "LongText",
+            "sensitive": true,
+            "span": 2
+          },
+          {
+            "key": "additional_notes",
+            "label": "توضیحات تکمیلی",
+            "type": "LongText",
+            "sensitive": true,
+            "span": 2
+          }
+        ]
+      },
+      {
+        "id": "workflow_guidance",
+        "title": "گردش تأیید",
+        "icon": "account_tree",
+        "color": "#E5F7EF",
+        "fields": [
+          {
+            "key": "workflow_note",
+            "label": "گردش تأیید",
+            "type": "Display",
+            "default": "مسیر بررسی از گردش کار تعریف‌شده تعیین می‌شود.",
+            "span": 2
+          },
+          {
+            "key": "preview_notice",
+            "label": "یادآوری",
+            "type": "Display",
+            "default": "این صفحه پیش‌نمایش درخواست تغییر شیفت است. ثبت یا تأیید درخواست به‌تنهایی برنامه کاری را تغییر نمی‌دهد.",
+            "span": 2
+          }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "target": "change_date",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "duration_mode",
+            "op": "eq",
+            "value": "single_day"
+          }
+        ]
+      },
+      {
+        "target": "change_date",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "duration_mode",
+            "op": "eq",
+            "value": "single_day"
+          }
+        ]
+      },
+      {
+        "target": "start_date",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "duration_mode",
+            "op": "eq",
+            "value": "date_range"
+          }
+        ]
+      },
+      {
+        "target": "start_date",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "duration_mode",
+            "op": "eq",
+            "value": "date_range"
+          }
+        ]
+      },
+      {
+        "target": "end_date",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "duration_mode",
+            "op": "eq",
+            "value": "date_range"
+          }
+        ]
+      },
+      {
+        "target": "end_date",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "duration_mode",
+            "op": "eq",
+            "value": "date_range"
+          }
+        ]
+      },
+      {
+        "target": "exchange_colleague",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "change_type",
+            "op": "eq",
+            "value": "swap_with_colleague"
+          }
+        ]
+      },
+      {
+        "target": "current_schedule_day",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "duration_mode",
+            "op": "eq",
+            "value": "single_day"
+          }
+        ]
+      },
+      {
+        "target": "current_schedule_range",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "duration_mode",
+            "op": "eq",
+            "value": "date_range"
+          }
+        ]
+      },
+      {
+        "target": "colleague_schedule_day",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "change_type",
+            "op": "eq",
+            "value": "swap_with_colleague"
+          },
+          {
+            "field": "duration_mode",
+            "op": "eq",
+            "value": "single_day"
+          }
+        ]
+      },
+      {
+        "target": "colleague_schedule_range",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "change_type",
+            "op": "eq",
+            "value": "swap_with_colleague"
+          },
+          {
+            "field": "duration_mode",
+            "op": "eq",
+            "value": "date_range"
+          }
+        ]
+      },
+      {
+        "target": "exchange_colleague",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "change_type",
+            "op": "eq",
+            "value": "swap_with_colleague"
+          }
+        ]
+      },
+      {
+        "target": "reason_description",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "reason",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      },
+      {
+        "target": "reason_description",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "reason",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      }
+    ]
+  },
+  "training": {
+    "schema_version": 2,
+    "kind": "Request",
+    "title": "درخواست آموزش کارکنان",
+    "module": "HR",
+    "icon": "school",
+    "color": "#1876D2",
+    "description": "ثبت درخواست شرکت در دوره موجود یا پیشنهاد آموزش جدید",
+    "sections": [
+      {
+        "id": "applicant",
+        "title": "مشخصات متقاضی",
+        "icon": "person",
+        "color": "#E8F2FF",
+        "fields": [
+          {
+            "key": "applicant_employee",
+            "label": "نام و نام خانوادگی",
+            "type": "Link",
+            "readonly": true,
+            "source": "Employee",
+            "default_source": "employee",
+            "span": 2
+          },
+          {
+            "key": "applicant_department",
+            "label": "واحد سازمانی",
+            "type": "Link",
+            "readonly": true,
+            "source": "Department",
+            "default_source": "department",
+            "span": 1
+          },
+          {
+            "key": "applicant_position",
+            "label": "سمت سازمانی",
+            "type": "Text",
+            "readonly": true,
+            "default_source": "designation",
+            "span": 1
+          }
+        ]
+      },
+      {
+        "id": "training",
+        "title": "مشخصات آموزش",
+        "icon": "school",
+        "color": "#F2EAFE",
+        "fields": [
+          {
+            "key": "request_type",
+            "label": "نوع درخواست",
+            "type": "Select",
+            "required": true,
+            "style": "radio",
+            "default": "existing_course",
+            "span": 2,
+            "options": [
+              {
+                "id": "existing_course",
+                "label": "شرکت در دوره آموزشی موجود"
+              },
+              {
+                "id": "new_training",
+                "label": "پیشنهاد آموزش جدید"
+              }
+            ]
+          },
+          {
+            "key": "training_course",
+            "label": "دوره آموزشی",
+            "type": "Link",
+            "source": "Training Event",
+            "span": 2,
+            "help": "یکی از دوره‌های برنامه‌ریزی‌شده را انتخاب کنید."
+          },
+          {
+            "key": "course_type",
+            "label": "نوع دوره",
+            "type": "Text",
+            "readonly": true,
+            "fetch_from": "training_course.type",
+            "span": 2
+          },
+          {
+            "key": "course_title",
+            "label": "عنوان دوره",
+            "type": "Text",
+            "readonly": true,
+            "fetch_from": "training_course.course",
+            "span": 2
+          },
+          {
+            "key": "course_trainer",
+            "label": "مدرس",
+            "type": "Text",
+            "readonly": true,
+            "fetch_from": "training_course.trainer_name",
+            "span": 1
+          },
+          {
+            "key": "course_location",
+            "label": "محل برگزاری",
+            "type": "Text",
+            "readonly": true,
+            "fetch_from": "training_course.location",
+            "span": 1
+          },
+          {
+            "key": "course_employee_count",
+            "label": "تعداد شرکت‌کنندگان",
+            "type": "Integer",
+            "readonly": true,
+            "fetch_from": "training_course.employee_count",
+            "span": 1
+          },
+          {
+            "key": "course_start_time",
+            "label": "ساعت شروع دوره",
+            "type": "Time",
+            "readonly": true,
+            "fetch_from": "training_course.start_time",
+            "span": 1
+          },
+          {
+            "key": "course_end_time",
+            "label": "ساعت پایان دوره",
+            "type": "Time",
+            "readonly": true,
+            "fetch_from": "training_course.end_time",
+            "span": 1
+          },
+          {
+            "key": "proposed_training_title",
+            "label": "عنوان آموزش پیشنهادی",
+            "type": "Text",
+            "span": 2,
+            "help": "عنوان دوره یا کارگاه"
+          },
+          {
+            "key": "proposed_provider",
+            "label": "برگزارکننده پیشنهادی",
+            "type": "Text",
+            "span": 2,
+            "help": "نام مرکز یا مدرس پیشنهادی"
+          },
+          {
+            "key": "training_goal",
+            "label": "هدف از آموزش",
+            "type": "Select",
+            "style": "radio",
+            "required": true,
+            "span": 2,
+            "options": [
+              {
+                "id": "job_skill",
+                "label": "ارتقای مهارت شغلی"
+              },
+              {
+                "id": "specialized",
+                "label": "آموزش تخصصی"
+              },
+              {
+                "id": "mandatory",
+                "label": "آموزش الزامی سازمان"
+              },
+              {
+                "id": "other",
+                "label": "سایر موارد"
+              }
+            ]
+          },
+          {
+            "key": "training_goal_details",
+            "label": "شرح هدف",
+            "type": "LongText",
+            "span": 2
+          }
+        ]
+      },
+      {
+        "id": "schedule",
+        "title": "زمان و نحوه برگزاری",
+        "icon": "calendar",
+        "color": "#E5F7EF",
+        "fields": [
+          {
+            "key": "delivery_method",
+            "label": "شیوه برگزاری",
+            "type": "Select",
+            "style": "radio",
+            "span": 2,
+            "options": [
+              {
+                "id": "online",
+                "label": "آنلاین"
+              },
+              {
+                "id": "in_person",
+                "label": "حضوری"
+              },
+              {
+                "id": "hybrid",
+                "label": "ترکیبی"
+              }
+            ]
+          },
+          {
+            "key": "proposed_start_date",
+            "label": "تاریخ شروع",
+            "type": "Date",
+            "span": 1
+          },
+          {
+            "key": "proposed_end_date",
+            "label": "تاریخ پایان",
+            "type": "Date",
+            "span": 1,
+            "after_or_equal": "proposed_start_date",
+            "after_or_equal_message": "تاریخ پایان نباید قبل از تاریخ شروع باشد."
+          }
+        ]
+      },
+      {
+        "id": "cost",
+        "title": "هزینه آموزش",
+        "icon": "payments",
+        "color": "#FFF0DD",
+        "fields": [
+          {
+            "key": "cost_status",
+            "label": "وضعیت هزینه پیشنهادی",
+            "type": "Select",
+            "required": true,
+            "style": "radio",
+            "default": "unknown",
+            "span": 2,
+            "options": [
+              {
+                "id": "unknown",
+                "label": "هنوز مشخص نیست"
+              },
+              {
+                "id": "no_cost",
+                "label": "بدون هزینه"
+              },
+              {
+                "id": "known_cost",
+                "label": "دارای هزینه مشخص"
+              }
+            ]
+          },
+          {
+            "key": "estimated_cost",
+            "label": "مبلغ برآوردی",
+            "type": "Money",
+            "min": 0.01,
+            "span": 2,
+            "help": "ثبت هزینه، به‌معنای تأیید مالی، خرید دوره یا پرداخت وجه نیست."
+          }
+        ]
+      },
+      {
+        "id": "notes",
+        "title": "توضیحات تکمیلی",
+        "icon": "notes",
+        "color": "#E6F6F7",
+        "fields": [
+          {
+            "key": "additional_notes",
+            "label": "توضیحات تکمیلی",
+            "type": "LongText",
+            "span": 2,
+            "help": "دلیل نیاز به دوره، کاربرد آموزشی یا توضیحات بیشتر..."
+          }
+        ]
+      },
+      {
+        "id": "review_flow",
+        "title": "گردش بررسی و آموزش",
+        "icon": "route",
+        "color": "#FDE8F1",
+        "fields": [
+          {
+            "key": "review_flow_info",
+            "label": "گردش بررسی و آموزش",
+            "type": "Display",
+            "readonly": true,
+            "default": "مسیر بررسی از گردش کار تعریف‌شده تعیین می‌شود. این درخواست به‌معنای ثبت‌نام قطعی، پرداخت هزینه یا گذراندن دوره نیست."
+          }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "target": "course_title",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "request_type",
+            "op": "eq",
+            "value": "existing_course"
+          }
+        ]
+      },
+      {
+        "target": "course_trainer",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "request_type",
+            "op": "eq",
+            "value": "existing_course"
+          }
+        ]
+      },
+      {
+        "target": "course_location",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "request_type",
+            "op": "eq",
+            "value": "existing_course"
+          }
+        ]
+      },
+      {
+        "target": "course_employee_count",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "request_type",
+            "op": "eq",
+            "value": "existing_course"
+          }
+        ]
+      },
+      {
+        "target": "course_type",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "request_type",
+            "op": "eq",
+            "value": "existing_course"
+          }
+        ]
+      },
+      {
+        "target": "course_start_time",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "request_type",
+            "op": "eq",
+            "value": "existing_course"
+          }
+        ]
+      },
+      {
+        "target": "course_end_time",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "request_type",
+            "op": "eq",
+            "value": "existing_course"
+          }
+        ]
+      },
+      {
+        "target": "training_course",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "request_type",
+            "op": "eq",
+            "value": "existing_course"
+          }
+        ]
+      },
+      {
+        "target": "training_course",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "request_type",
+            "op": "eq",
+            "value": "existing_course"
+          }
+        ]
+      },
+      {
+        "target": "proposed_training_title",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "request_type",
+            "op": "eq",
+            "value": "new_training"
+          }
+        ]
+      },
+      {
+        "target": "proposed_training_title",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "request_type",
+            "op": "eq",
+            "value": "new_training"
+          }
+        ]
+      },
+      {
+        "target": "proposed_provider",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "request_type",
+            "op": "eq",
+            "value": "new_training"
+          }
+        ]
+      },
+      {
+        "target": "training_goal_details",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "training_goal",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      },
+      {
+        "target": "training_goal_details",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "training_goal",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      },
+      {
+        "target": "estimated_cost",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "cost_status",
+            "op": "eq",
+            "value": "known_cost"
+          }
+        ]
+      },
+      {
+        "target": "estimated_cost",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "cost_status",
+            "op": "eq",
+            "value": "known_cost"
+          }
+        ]
+      }
+    ],
+    "access": {
+      "mode": "all",
+      "roles": [],
+      "departments": []
+    }
+  },
+  "equipment": {
+    "schema_version": 2,
+    "format": 1,
+    "kind": "Request",
+    "title": "درخواست تحویل یا عودت تجهیزات",
+    "module": "HR",
+    "icon": "box",
+    "color": "#1876D2",
+    "description": "ثبت درخواست دریافت یا عودت چند قلم تجهیز بدون اجرای عملیات انبار یا اموال",
+    "access": {
+      "mode": "all",
+      "roles": [],
+      "departments": []
+    },
+    "sections": [
+      {
+        "id": "applicant",
+        "title": "مشخصات متقاضی",
+        "icon": "person",
+        "color": "#1876D2",
+        "background_color": "#E8F2FF",
+        "fields": [
+          {
+            "key": "applicant_employee",
+            "label": "نام و نام خانوادگی",
+            "type": "Link",
+            "source": "Employee",
+            "default_source": "employee",
+            "readonly": true
+          },
+          {
+            "key": "applicant_department",
+            "label": "واحد سازمانی",
+            "type": "Link",
+            "source": "Department",
+            "default_source": "department",
+            "readonly": true,
+            "span": 1
+          },
+          {
+            "key": "applicant_position",
+            "label": "سمت سازمانی",
+            "type": "Text",
+            "default_source": "designation",
+            "readonly": true,
+            "span": 1
+          }
+        ]
+      },
+      {
+        "id": "request_type",
+        "title": "نوع درخواست",
+        "icon": "swap_horiz",
+        "color": "#7B1FA2",
+        "background_color": "#F2EAFE",
+        "fields": [
+          {
+            "key": "equipment_request_type",
+            "label": "نوع درخواست",
+            "type": "Select",
+            "required": true,
+            "style": "radio",
+            "default": "receive_equipment",
+            "options": [
+              {
+                "id": "receive_equipment",
+                "label": "دریافت تجهیزات"
+              },
+              {
+                "id": "return_equipment",
+                "label": "عودت تجهیزات"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "equipment",
+        "title": "تجهیزات",
+        "icon": "inventory_2",
+        "color": "#1876D2",
+        "background_color": "#E8F2FF",
+        "fields": [
+          {
+            "key": "requested_equipment",
+            "label": "تجهیزات مورد درخواست",
+            "type": "Table",
+            "required": true,
+            "min_rows": 1,
+            "max_rows": 100,
+            "columns": [
+              {
+                "key": "item",
+                "label": "کالا یا تجهیز",
+                "type": "Link",
+                "source": "Item",
+                "required": true
+              },
+              {
+                "key": "quantity",
+                "label": "تعداد",
+                "type": "Integer",
+                "required": true,
+                "default": 1,
+                "min": 1,
+                "max": 999999
+              },
+              {
+                "key": "item_details",
+                "label": "مشخصات تکمیلی کالا",
+                "type": "LongText"
+              }
+            ]
+          },
+          {
+            "key": "requested_equipment_total",
+            "label": "جمع تعداد تجهیزات",
+            "type": "Formula",
+            "readonly": true,
+            "formula": {
+              "op": "sum",
+              "table": "requested_equipment",
+              "columns": [
+                "quantity"
+              ],
+              "precision": 0
+            }
+          },
+          {
+            "key": "returnable_equipment",
+            "label": "تجهیزات قابل عودت",
+            "type": "Table",
+            "required": true,
+            "min_rows": 1,
+            "max_rows": 100,
+            "columns": [
+              {
+                "key": "equipment_reference",
+                "label": "تجهیز در اختیار شما",
+                "type": "Link",
+                "source": "Asset",
+                "required": true,
+                "unique": true,
+                "help": "یکی از دارایی‌های تحویل‌گرفته‌شده را انتخاب کنید؛ تکرار یک دارایی مجاز نیست."
+              },
+              {
+                "key": "quantity",
+                "label": "تعداد",
+                "type": "Integer",
+                "required": true,
+                "default": 1,
+                "min": 1,
+                "max": 999999
+              },
+              {
+                "key": "reported_condition",
+                "label": "وضعیت تجهیز از نظر متقاضی",
+                "type": "Select",
+                "required": true,
+                "default": "needs_review",
+                "options": [
+                  {
+                    "id": "healthy",
+                    "label": "سالم"
+                  },
+                  {
+                    "id": "damaged",
+                    "label": "دارای آسیب یا ایراد"
+                  },
+                  {
+                    "id": "needs_review",
+                    "label": "نیازمند بررسی مسئول"
+                  }
+                ]
+              },
+              {
+                "key": "equipment_notes",
+                "label": "توضیحات تجهیز",
+                "type": "LongText"
+              }
+            ]
+          },
+          {
+            "key": "returnable_equipment_total",
+            "label": "جمع تعداد تجهیزات انتخاب‌شده",
+            "type": "Formula",
+            "readonly": true,
+            "formula": {
+              "op": "sum",
+              "table": "returnable_equipment",
+              "columns": [
+                "quantity"
+              ],
+              "precision": 0
+            }
+          }
+        ]
+      },
+      {
+        "id": "reason",
+        "title": "دلیل درخواست",
+        "icon": "description",
+        "color": "#7B1FA2",
+        "background_color": "#F2EAFE",
+        "fields": [
+          {
+            "key": "receive_reason",
+            "label": "دلیل درخواست",
+            "type": "Select",
+            "required": true,
+            "default": "work_need",
+            "options": [
+              {
+                "id": "work_need",
+                "label": "نیاز کاری"
+              },
+              {
+                "id": "replacement",
+                "label": "جایگزینی تجهیز"
+              },
+              {
+                "id": "project_need",
+                "label": "نیاز پروژه"
+              },
+              {
+                "id": "other",
+                "label": "سایر موارد"
+              }
+            ]
+          },
+          {
+            "key": "other_receive_reason",
+            "label": "شرح دلیل",
+            "type": "LongText"
+          }
+        ]
+      },
+      {
+        "id": "schedule",
+        "title": "زمان‌بندی پیشنهادی",
+        "icon": "event",
+        "color": "#2E7D32",
+        "background_color": "#E5F7EF",
+        "fields": [
+          {
+            "key": "needed_date",
+            "label": "تاریخ موردنیاز",
+            "type": "Date"
+          },
+          {
+            "key": "suggested_return_date",
+            "label": "تاریخ پیشنهادی عودت",
+            "type": "Date"
+          }
+        ]
+      },
+      {
+        "id": "notes",
+        "title": "توضیحات تکمیلی",
+        "icon": "notes",
+        "color": "#F57F17",
+        "background_color": "#FFF0DD",
+        "fields": [
+          {
+            "key": "general_notes",
+            "label": "توضیحات تکمیلی",
+            "type": "LongText",
+            "help": "مشخصات فنی موردنیاز، علت آسیب یا توضیحات بیشتر…"
+          }
+        ]
+      },
+      {
+        "id": "review_flow",
+        "title": "گردش بررسی و انجام عملیات",
+        "icon": "account_tree",
+        "color": "#00838F",
+        "background_color": "#E6F6F7",
+        "fields": [
+          {
+            "key": "review_flow_notice",
+            "label": "گردش بررسی و انجام عملیات",
+            "type": "Display",
+            "readonly": true,
+            "default": "مسیر بررسی از گردش کار تعریف‌شده تعیین می‌شود."
+          }
+        ]
+      },
+      {
+        "id": "final_notice",
+        "title": "بررسی نهایی",
+        "icon": "info",
+        "color": "#F57F17",
+        "background_color": "#FFF0DD",
+        "fields": [
+          {
+            "key": "final_warning",
+            "label": "هشدار",
+            "type": "Display",
+            "readonly": true,
+            "default": "ثبت درخواست به‌معنای ثبت ورود یا خروج کالا، تحویل قطعی تجهیز، عودت واقعی یا تسویه مسئولیت اموال نیست."
+          }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "target": "requested_equipment",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "equipment_request_type",
+            "op": "eq",
+            "value": "receive_equipment"
+          }
+        ]
+      },
+      {
+        "target": "requested_equipment_total",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "equipment_request_type",
+            "op": "eq",
+            "value": "receive_equipment"
+          }
+        ]
+      },
+      {
+        "target": "returnable_equipment",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "equipment_request_type",
+            "op": "eq",
+            "value": "return_equipment"
+          }
+        ]
+      },
+      {
+        "target": "returnable_equipment_total",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "equipment_request_type",
+            "op": "eq",
+            "value": "return_equipment"
+          }
+        ]
+      },
+      {
+        "target": "receive_reason",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "equipment_request_type",
+            "op": "eq",
+            "value": "receive_equipment"
+          }
+        ]
+      },
+      {
+        "target": "other_receive_reason",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "receive_reason",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      },
+      {
+        "target": "other_receive_reason",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "receive_reason",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      },
+      {
+        "target": "needed_date",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "equipment_request_type",
+            "op": "eq",
+            "value": "receive_equipment"
+          }
+        ]
+      },
+      {
+        "target": "suggested_return_date",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "equipment_request_type",
+            "op": "eq",
+            "value": "return_equipment"
+          }
+        ]
+      }
+    ]
+  },
+  "leave": {
+    "schema_version": 2,
+    "kind": "Request",
+    "title": "درخواست مرخصی",
+    "module": "HR",
+    "icon": "calendar",
+    "color": "#2E7D32",
+    "description": "قالب خام درخواست مرخصی روزانه یا نیم‌روز با نوع مرخصی واقعی",
+    "sections": [
+      {
+        "id": "applicant_details",
+        "title": "مشخصات متقاضی",
+        "icon": "person",
+        "color": "#E8F2FF",
+        "fields": [
+          {
+            "key": "applicant_employee",
+            "label": "نام و نام خانوادگی",
+            "type": "Link",
+            "source": "Employee",
+            "default_source": "employee",
+            "readonly": true,
+            "required": true,
+            "span": 2
+          },
+          {
+            "key": "applicant_department",
+            "label": "واحد سازمانی",
+            "type": "Link",
+            "source": "Department",
+            "default_source": "department",
+            "readonly": true,
+            "span": 1
+          },
+          {
+            "key": "applicant_position",
+            "label": "سمت سازمانی",
+            "type": "Text",
+            "default_source": "designation",
+            "readonly": true,
+            "span": 1
+          }
+        ]
+      },
+      {
+        "id": "leave_details",
+        "title": "مشخصات مرخصی",
+        "icon": "event_available",
+        "color": "#E5F7EF",
+        "fields": [
+          {
+            "key": "leave_type",
+            "label": "نوع مرخصی",
+            "type": "Link",
+            "source": "Leave Type",
+            "required": true,
+            "span": 2
+          },
+          {
+            "key": "from_date",
+            "label": "تاریخ شروع",
+            "type": "Date",
+            "default_source": "today",
+            "required": true,
+            "span": 1
+          },
+          {
+            "key": "to_date",
+            "label": "تاریخ پایان",
+            "type": "Date",
+            "required": true,
+            "after_or_equal": "from_date",
+            "after_or_equal_message": "تاریخ پایان نباید پیش از تاریخ شروع باشد.",
+            "span": 1
+          },
+          {
+            "key": "half_day",
+            "label": "نیم‌روز",
+            "type": "Boolean",
+            "default": false,
+            "span": 2
+          },
+          {
+            "key": "half_day_date",
+            "label": "تاریخ نیم‌روز",
+            "type": "Date",
+            "after_or_equal": "from_date",
+            "after_or_equal_message": "تاریخ نیم‌روز باید در بازه درخواست باشد.",
+            "before_or_equal": "to_date",
+            "before_or_equal_message": "تاریخ نیم‌روز باید در بازه درخواست باشد.",
+            "span": 2
+          }
+        ]
+      },
+      {
+        "id": "description",
+        "title": "توضیحات",
+        "icon": "notes",
+        "color": "#FFF0DD",
+        "fields": [
+          {
+            "key": "description",
+            "label": "توضیح درخواست مرخصی",
+            "type": "LongText",
+            "max_length": 2000,
+            "sensitive": true,
+            "span": 2
+          }
+        ]
+      },
+      {
+        "id": "attachments",
+        "title": "پیوست‌ها",
+        "icon": "attach_file",
+        "color": "#E6F6F7",
+        "fields": [
+          {
+            "key": "attachments",
+            "label": "پیوست‌ها",
+            "type": "File",
+            "sensitive": true,
+            "span": 2,
+            "help": "گواهی پزشکی یا مدرک دیگر را در صورت نیاز اضافه کنید؛ فقط شما و منابع انسانی آن را می‌بینید."
+          }
+        ]
+      },
+      {
+        "id": "approval_flow",
+        "title": "گردش تأیید",
+        "icon": "account_tree",
+        "color": "#FCE9EE",
+        "fields": [
+          {
+            "key": "approval_flow_notice",
+            "label": "مسیر بررسی",
+            "type": "Display",
+            "span": 2,
+            "default": "مسیر بررسی از گردش کار تعریف‌شده تعیین می‌شود."
+          }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "target": "half_day_date",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "half_day",
+            "op": "eq",
+            "value": true
+          }
+        ]
+      },
+      {
+        "target": "half_day_date",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "half_day",
+            "op": "eq",
+            "value": true
+          }
+        ]
+      }
+    ],
+    "access": {
+      "mode": "all",
+      "roles": [],
+      "departments": []
+    }
+  },
+  "mission": {
+    "schema_version": 2,
+    "kind": "Request",
+    "title": "درخواست مأموریت",
+    "module": "HR",
+    "icon": "briefcase",
+    "color": "#2E7D32",
+    "description": "قالب خام درخواست مأموریت اداری روزانه یا نیم‌روز",
+    "sections": [
+      {
+        "id": "applicant_details",
+        "title": "مشخصات متقاضی",
+        "icon": "person",
+        "color": "#E8F2FF",
+        "fields": [
+          {
+            "key": "applicant_employee",
+            "label": "نام و نام خانوادگی",
+            "type": "Link",
+            "source": "Employee",
+            "default_source": "employee",
+            "readonly": true,
+            "required": true,
+            "span": 2
+          },
+          {
+            "key": "applicant_department",
+            "label": "واحد سازمانی",
+            "type": "Link",
+            "source": "Department",
+            "default_source": "department",
+            "readonly": true,
+            "span": 1
+          },
+          {
+            "key": "applicant_position",
+            "label": "سمت سازمانی",
+            "type": "Text",
+            "default_source": "designation",
+            "readonly": true,
+            "span": 1
+          }
+        ]
+      },
+      {
+        "id": "mission_details",
+        "title": "مشخصات مأموریت",
+        "icon": "flight_takeoff",
+        "color": "#E5F7EF",
+        "fields": [
+          {
+            "key": "destination",
+            "label": "مقصد مأموریت",
+            "type": "Text",
+            "required": true,
+            "max_length": 250,
+            "span": 2
+          },
+          {
+            "key": "purpose",
+            "label": "هدف مأموریت",
+            "type": "LongText",
+            "required": true,
+            "max_length": 2000,
+            "span": 2
+          },
+          {
+            "key": "from_date",
+            "label": "تاریخ شروع",
+            "type": "Date",
+            "default_source": "today",
+            "required": true,
+            "span": 1
+          },
+          {
+            "key": "to_date",
+            "label": "تاریخ پایان",
+            "type": "Date",
+            "required": true,
+            "after_or_equal": "from_date",
+            "after_or_equal_message": "تاریخ پایان نباید پیش از تاریخ شروع باشد.",
+            "span": 1
+          },
+          {
+            "key": "half_day",
+            "label": "نیم‌روز",
+            "type": "Boolean",
+            "default": false,
+            "span": 2
+          },
+          {
+            "key": "half_day_date",
+            "label": "تاریخ نیم‌روز",
+            "type": "Date",
+            "after_or_equal": "from_date",
+            "after_or_equal_message": "تاریخ نیم‌روز باید در بازه درخواست باشد.",
+            "before_or_equal": "to_date",
+            "before_or_equal_message": "تاریخ نیم‌روز باید در بازه درخواست باشد.",
+            "span": 2
+          },
+          {
+            "key": "shift",
+            "label": "شیفت مرتبط",
+            "type": "Link",
+            "source": "Shift Type",
+            "span": 2,
+            "help": "اگر در این بازه بیش از یک شیفت دارید، شیفت مرتبط را انتخاب کنید."
+          }
+        ]
+      },
+      {
+        "id": "notes_details",
+        "title": "توضیحات",
+        "icon": "notes",
+        "color": "#FFF0DD",
+        "fields": [
+          {
+            "key": "notes",
+            "label": "توضیحات تکمیلی",
+            "type": "LongText",
+            "max_length": 2000,
+            "sensitive": true,
+            "span": 2
+          }
+        ]
+      },
+      {
+        "id": "attachments",
+        "title": "پیوست‌ها",
+        "icon": "attach_file",
+        "color": "#E6F6F7",
+        "fields": [
+          {
+            "key": "attachments",
+            "label": "پیوست‌ها",
+            "type": "File",
+            "span": 2,
+            "help": "در صورت نیاز، فایل را مطابق محدودیت‌های سامانه اضافه کنید."
+          }
+        ]
+      },
+      {
+        "id": "approval_flow",
+        "title": "گردش تأیید",
+        "icon": "account_tree",
+        "color": "#FCE9EE",
+        "fields": [
+          {
+            "key": "approval_flow_notice",
+            "label": "مسیر بررسی",
+            "type": "Display",
+            "span": 2,
+            "default": "مسیر بررسی از گردش کار تعریف‌شده تعیین می‌شود."
+          }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "target": "half_day_date",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "half_day",
+            "op": "eq",
+            "value": true
+          }
+        ]
+      },
+      {
+        "target": "half_day_date",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "half_day",
+            "op": "eq",
+            "value": true
+          }
+        ]
+      }
+    ],
+    "access": {
+      "mode": "all",
+      "roles": [],
+      "departments": []
+    }
+  },
+  "overtime": {
+    "schema_version": 2,
+    "kind": "Request",
+    "title": "درخواست اضافه‌کار",
+    "module": "HR",
+    "icon": "clock",
+    "color": "#6B5CE7",
+    "description": "قالب خام درخواست اضافه‌کار یک روز با ساعت شروع و پایان",
+    "sections": [
+      {
+        "id": "applicant_details",
+        "title": "مشخصات متقاضی",
+        "icon": "person",
+        "color": "#E8F2FF",
+        "fields": [
+          {
+            "key": "applicant_employee",
+            "label": "نام و نام خانوادگی",
+            "type": "Link",
+            "source": "Employee",
+            "default_source": "employee",
+            "readonly": true,
+            "required": true,
+            "span": 2
+          },
+          {
+            "key": "applicant_department",
+            "label": "واحد سازمانی",
+            "type": "Link",
+            "source": "Department",
+            "default_source": "department",
+            "readonly": true,
+            "span": 1
+          },
+          {
+            "key": "applicant_position",
+            "label": "سمت سازمانی",
+            "type": "Text",
+            "default_source": "designation",
+            "readonly": true,
+            "span": 1
+          }
+        ]
+      },
+      {
+        "id": "overtime_details",
+        "title": "مشخصات اضافه‌کار",
+        "icon": "schedule",
+        "color": "#F2EAFE",
+        "fields": [
+          {
+            "key": "work_date",
+            "label": "تاریخ اضافه‌کار",
+            "type": "Date",
+            "default_source": "today",
+            "required": true,
+            "span": 2
+          },
+          {
+            "key": "start_time",
+            "label": "ساعت شروع",
+            "type": "Time",
+            "required": true,
+            "help": "ساعت را از ساعت‌گزین انتخاب کنید.",
+            "span": 1
+          },
+          {
+            "key": "end_time",
+            "label": "ساعت پایان",
+            "type": "Time",
+            "required": true,
+            "next_day_allowed": true,
+            "time_after": "start_time",
+            "time_after_message": "ساعت پایان باید پس از ساعت شروع باشد.",
+            "help": "برای اضافه‌کار تا بعد از نیمه‌شب، «روز بعد» را فعال کنید.",
+            "span": 1
+          },
+          {
+            "key": "purpose",
+            "label": "شرح کار",
+            "type": "LongText",
+            "required": true,
+            "max_length": 2000,
+            "span": 2
+          }
+        ]
+      },
+      {
+        "id": "notes_details",
+        "title": "توضیحات",
+        "icon": "notes",
+        "color": "#FFF0DD",
+        "fields": [
+          {
+            "key": "notes",
+            "label": "توضیحات تکمیلی",
+            "type": "LongText",
+            "max_length": 2000,
+            "sensitive": true,
+            "span": 2
+          }
+        ]
+      },
+      {
+        "id": "attachments",
+        "title": "پیوست‌ها",
+        "icon": "attach_file",
+        "color": "#E6F6F7",
+        "fields": [
+          {
+            "key": "attachments",
+            "label": "پیوست‌ها",
+            "type": "File",
+            "span": 2,
+            "help": "در صورت نیاز، فایل را مطابق محدودیت‌های سامانه اضافه کنید."
+          }
+        ]
+      },
+      {
+        "id": "approval_flow",
+        "title": "گردش تأیید",
+        "icon": "account_tree",
+        "color": "#FCE9EE",
+        "fields": [
+          {
+            "key": "approval_flow_notice",
+            "label": "مسیر بررسی",
+            "type": "Display",
+            "span": 2,
+            "default": "مسیر بررسی از گردش کار تعریف‌شده تعیین می‌شود."
+          }
+        ]
+      }
+    ],
+    "rules": [],
+    "access": {
+      "mode": "all",
+      "roles": [],
+      "departments": []
+    }
+  },
+  "salary_advance": {
+    "schema_version": 2,
+    "format": 1,
+    "kind": "Request",
+    "title": "درخواست مساعده",
+    "module": "HR",
+    "icon": "wallet",
+    "color": "#7B1FA2",
+    "description": "قالب خام ثبت مبلغ و پیشنهاد تسویه مساعده کارکنان",
+    "sections": [
+      {
+        "id": "applicant",
+        "title": "مشخصات متقاضی",
+        "icon": "person",
+        "color": "#E8F2FF",
+        "fields": [
+          {
+            "key": "applicant_employee",
+            "label": "نام و نام خانوادگی",
+            "type": "Link",
+            "source": "Employee",
+            "default_source": "employee",
+            "readonly": true,
+            "span": 2
+          },
+          {
+            "key": "applicant_department",
+            "label": "واحد سازمانی",
+            "type": "Link",
+            "source": "Department",
+            "default_source": "department",
+            "readonly": true,
+            "span": 1
+          },
+          {
+            "key": "applicant_position",
+            "label": "سمت سازمانی",
+            "type": "Text",
+            "default_source": "designation",
+            "readonly": true,
+            "span": 1
+          }
+        ]
+      },
+      {
+        "id": "advance_details",
+        "title": "مشخصات مساعده",
+        "icon": "payments",
+        "color": "#F2EAFE",
+        "fields": [
+          {
+            "key": "requested_amount",
+            "label": "مبلغ مساعده درخواستی",
+            "type": "Money",
+            "required": true,
+            "min": 0.01,
+            "span": 2,
+            "help": "مبلغ مطابق تنظیمات پایه و واحد پول سازمان ثبت می‌شود."
+          },
+          {
+            "key": "advance_reason",
+            "label": "دلیل درخواست مساعده",
+            "type": "Select",
+            "sensitive": true,
+            "required": true,
+            "span": 2,
+            "options": [
+              {
+                "id": "essential_personal_expenses",
+                "label": "هزینه‌های ضروری شخصی"
+              },
+              {
+                "id": "medical_expenses",
+                "label": "هزینه درمان"
+              },
+              {
+                "id": "housing_expenses",
+                "label": "هزینه مسکن"
+              },
+              {
+                "id": "other",
+                "label": "سایر موارد"
+              }
+            ]
+          },
+          {
+            "key": "reason_detail",
+            "label": "شرح دلیل درخواست",
+            "type": "LongText",
+            "sensitive": true,
+            "span": 2
+          },
+          {
+            "key": "additional_notes",
+            "label": "توضیحات تکمیلی",
+            "type": "LongText",
+            "sensitive": true,
+            "span": 2
+          }
+        ]
+      },
+      {
+        "id": "repayment_proposal",
+        "title": "پیشنهاد نحوه تسویه",
+        "icon": "event_repeat",
+        "color": "#FFF0DD",
+        "collapsible": true,
+        "fields": [
+          {
+            "key": "repayment_method",
+            "label": "روش تسویه پیشنهادی",
+            "type": "Select",
+            "required": true,
+            "span": 2,
+            "options": [
+              {
+                "id": "payroll_deduction",
+                "label": "کسر از حقوق"
+              },
+              {
+                "id": "direct_repayment",
+                "label": "بازپرداخت مستقیم"
+              },
+              {
+                "id": "finance_decision",
+                "label": "مطابق تصمیم امور مالی"
+              }
+            ]
+          },
+          {
+            "key": "installment_count",
+            "label": "تعداد اقساط پیشنهادی",
+            "type": "Select",
+            "span": 1,
+            "style": "radio",
+            "options": [
+              {
+                "id": "installments_1",
+                "label": "۱ قسط"
+              },
+              {
+                "id": "installments_2",
+                "label": "۲ قسط"
+              },
+              {
+                "id": "installments_3",
+                "label": "۳ قسط"
+              },
+              {
+                "id": "installments_4",
+                "label": "۴ قسط"
+              },
+              {
+                "id": "installments_5",
+                "label": "۵ قسط"
+              },
+              {
+                "id": "installments_6",
+                "label": "۶ قسط"
+              },
+              {
+                "id": "installments_9",
+                "label": "۹ قسط"
+              },
+              {
+                "id": "installments_12",
+                "label": "۱۲ قسط"
+              }
+            ]
+          },
+          {
+            "key": "estimated_installment_1",
+            "label": "مبلغ تقریبی هر قسط",
+            "type": "Formula",
+            "span": 1,
+            "formula": {
+              "expression": "requested_amount / 1",
+              "precision": 0
+            }
+          },
+          {
+            "key": "estimated_installment_2",
+            "label": "مبلغ تقریبی هر قسط",
+            "type": "Formula",
+            "span": 1,
+            "formula": {
+              "expression": "requested_amount / 2",
+              "precision": 0
+            }
+          },
+          {
+            "key": "estimated_installment_3",
+            "label": "مبلغ تقریبی هر قسط",
+            "type": "Formula",
+            "span": 1,
+            "formula": {
+              "expression": "requested_amount / 3",
+              "precision": 0
+            }
+          },
+          {
+            "key": "estimated_installment_4",
+            "label": "مبلغ تقریبی هر قسط",
+            "type": "Formula",
+            "span": 1,
+            "formula": {
+              "expression": "requested_amount / 4",
+              "precision": 0
+            }
+          },
+          {
+            "key": "estimated_installment_5",
+            "label": "مبلغ تقریبی هر قسط",
+            "type": "Formula",
+            "span": 1,
+            "formula": {
+              "expression": "requested_amount / 5",
+              "precision": 0
+            }
+          },
+          {
+            "key": "estimated_installment_6",
+            "label": "مبلغ تقریبی هر قسط",
+            "type": "Formula",
+            "span": 1,
+            "formula": {
+              "expression": "requested_amount / 6",
+              "precision": 0
+            }
+          },
+          {
+            "key": "estimated_installment_9",
+            "label": "مبلغ تقریبی هر قسط",
+            "type": "Formula",
+            "span": 1,
+            "formula": {
+              "expression": "requested_amount / 9",
+              "precision": 0
+            }
+          },
+          {
+            "key": "estimated_installment_12",
+            "label": "مبلغ تقریبی هر قسط",
+            "type": "Formula",
+            "span": 1,
+            "formula": {
+              "expression": "requested_amount / 12",
+              "precision": 0
+            }
+          },
+          {
+            "key": "installment_estimate_notice",
+            "label": "توضیح برآورد قسط",
+            "type": "Display",
+            "span": 2,
+            "default": "این مبلغ صرفاً برآورد اولیه است و برنامه قطعی کسر از حقوق محسوب نمی‌شود."
+          }
+        ]
+      },
+      {
+        "id": "attachments",
+        "title": "پیوست‌ها",
+        "icon": "attach_file",
+        "color": "#E6F6F7",
+        "fields": [
+          {
+            "key": "attachments",
+            "label": "پیوست‌ها",
+            "type": "File",
+            "sensitive": true,
+            "span": 2,
+            "help": "در صورت نیاز، فایل را مطابق محدودیت‌های سامانه اضافه کنید."
+          }
+        ]
+      },
+      {
+        "id": "approval_flow",
+        "title": "گردش تأیید",
+        "icon": "account_tree",
+        "color": "#FCE9EE",
+        "fields": [
+          {
+            "key": "approval_flow_notice",
+            "label": "مسیر بررسی",
+            "type": "Display",
+            "span": 2,
+            "default": "مسیر بررسی از گردش کار تعریف‌شده تعیین می‌شود."
+          },
+          {
+            "key": "final_notice",
+            "label": "توضیح نهایی",
+            "type": "Display",
+            "span": 2,
+            "default": "روش بازپرداخت، مبلغ مصوب و پرداخت واقعی پس از رسیدگی توسط مسئولان مجاز تعیین می‌شود."
+          }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "target": "reason_detail",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "advance_reason",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      },
+      {
+        "target": "reason_detail",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "advance_reason",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      },
+      {
+        "target": "installment_count",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "repayment_method",
+            "op": "eq",
+            "value": "payroll_deduction"
+          }
+        ]
+      },
+      {
+        "target": "installment_count",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "repayment_method",
+            "op": "eq",
+            "value": "payroll_deduction"
+          }
+        ]
+      },
+      {
+        "target": "estimated_installment_1",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "repayment_method",
+            "op": "eq",
+            "value": "payroll_deduction"
+          },
+          {
+            "field": "installment_count",
+            "op": "eq",
+            "value": "installments_1"
+          }
+        ]
+      },
+      {
+        "target": "estimated_installment_2",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "repayment_method",
+            "op": "eq",
+            "value": "payroll_deduction"
+          },
+          {
+            "field": "installment_count",
+            "op": "eq",
+            "value": "installments_2"
+          }
+        ]
+      },
+      {
+        "target": "estimated_installment_3",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "repayment_method",
+            "op": "eq",
+            "value": "payroll_deduction"
+          },
+          {
+            "field": "installment_count",
+            "op": "eq",
+            "value": "installments_3"
+          }
+        ]
+      },
+      {
+        "target": "estimated_installment_4",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "repayment_method",
+            "op": "eq",
+            "value": "payroll_deduction"
+          },
+          {
+            "field": "installment_count",
+            "op": "eq",
+            "value": "installments_4"
+          }
+        ]
+      },
+      {
+        "target": "estimated_installment_5",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "repayment_method",
+            "op": "eq",
+            "value": "payroll_deduction"
+          },
+          {
+            "field": "installment_count",
+            "op": "eq",
+            "value": "installments_5"
+          }
+        ]
+      },
+      {
+        "target": "estimated_installment_6",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "repayment_method",
+            "op": "eq",
+            "value": "payroll_deduction"
+          },
+          {
+            "field": "installment_count",
+            "op": "eq",
+            "value": "installments_6"
+          }
+        ]
+      },
+      {
+        "target": "estimated_installment_9",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "repayment_method",
+            "op": "eq",
+            "value": "payroll_deduction"
+          },
+          {
+            "field": "installment_count",
+            "op": "eq",
+            "value": "installments_9"
+          }
+        ]
+      },
+      {
+        "target": "estimated_installment_12",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "repayment_method",
+            "op": "eq",
+            "value": "payroll_deduction"
+          },
+          {
+            "field": "installment_count",
+            "op": "eq",
+            "value": "installments_12"
+          }
+        ]
+      },
+      {
+        "target": "installment_estimate_notice",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "repayment_method",
+            "op": "eq",
+            "value": "payroll_deduction"
+          },
+          {
+            "field": "installment_count",
+            "op": "not_empty"
+          }
+        ]
+      }
+    ]
+  },
+  "settlement": {
+    "schema_version": 2,
+    "kind": "Request",
+    "title": "درخواست تسویه‌حساب پرسنل",
+    "module": "HR",
+    "icon": "assignment_turned_in",
+    "color": "#1876D2",
+    "description": "آغاز درخواست بررسی تسویه‌حساب پرسنل",
+    "sections": [
+      {
+        "id": "personnel_details",
+        "title": "مشخصات پرسنلی",
+        "icon": "badge",
+        "color": "#E8F2FF",
+        "fields": [
+          {
+            "key": "applicant_employee",
+            "label": "نام و نام خانوادگی",
+            "type": "Link",
+            "readonly": true,
+            "source": "Employee",
+            "default_source": "employee",
+            "span": 2
+          },
+          {
+            "key": "applicant_code",
+            "label": "کد پرسنلی",
+            "type": "Text",
+            "readonly": true,
+            "default_source": "employee_number",
+            "span": 1
+          },
+          {
+            "key": "applicant_department",
+            "label": "واحد سازمانی",
+            "type": "Link",
+            "readonly": true,
+            "source": "Department",
+            "default_source": "department",
+            "span": 1
+          },
+          {
+            "key": "applicant_position",
+            "label": "سمت سازمانی",
+            "type": "Text",
+            "readonly": true,
+            "default_source": "designation",
+            "span": 1
+          },
+          {
+            "key": "applicant_joining_date",
+            "label": "شروع دوره همکاری (در نبود قرارداد: تاریخ شروع به کار)",
+            "type": "Date",
+            "readonly": true,
+            "default_source": "contract_start",
+            "span": 1
+          }
+        ]
+      },
+      {
+        "id": "settlement_request_details",
+        "title": "مشخصات درخواست تسویه",
+        "icon": "assignment",
+        "color": "#F2EAFE",
+        "fields": [
+          {
+            "key": "settlement_reason",
+            "label": "علت درخواست",
+            "type": "Select",
+            "sensitive": true,
+            "required": true,
+            "options": [
+              {
+                "id": "resignation",
+                "label": "استعفا"
+              },
+              {
+                "id": "contract_end",
+                "label": "پایان قرارداد"
+              },
+              {
+                "id": "retirement",
+                "label": "بازنشستگی"
+              },
+              {
+                "id": "other_termination",
+                "label": "سایر موارد خاتمه همکاری"
+              },
+              {
+                "id": "other",
+                "label": "سایر موارد"
+              }
+            ]
+          },
+          {
+            "key": "reason_description",
+            "label": "شرح علت",
+            "type": "LongText",
+            "sensitive": true,
+            "help": "شرح علت درخواست را وارد کنید.",
+            "max_length": 5000
+          },
+          {
+            "key": "proposed_end_date",
+            "label": "تاریخ پیشنهادی پایان همکاری",
+            "type": "Date",
+            "required": true,
+            "help": "این تاریخ پیشنهادی است و تا زمان تأیید مراجع دارای اختیار، تاریخ قطعی پایان همکاری محسوب نمی‌شود."
+          }
+        ]
+      },
+      {
+        "id": "property_handover_status",
+        "title": "وضعیت تحویل اموال و تجهیزات",
+        "icon": "inventory_2",
+        "color": "#E5F7EF",
+        "description": "این انتخاب صرفاً اعلام متقاضی است. تأیید نهایی وضعیت اموال و تجهیزات توسط واحد مسئول انجام می‌شود.",
+        "fields": [
+          {
+            "key": "property_declaration",
+            "label": "وضعیت اولیه از نظر متقاضی",
+            "type": "Select",
+            "required": true,
+            "style": "radio",
+            "default": "needs_review",
+            "options": [
+              {
+                "id": "all_returned",
+                "label": "تمام اموال تحویل داده شده‌اند."
+              },
+              {
+                "id": "items_outstanding",
+                "label": "اموال یا تجهیزات تحویل‌داده‌نشده دارم."
+              },
+              {
+                "id": "needs_review",
+                "label": "نیازمند بررسی واحد مسئول."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "additional_notes",
+        "title": "توضیحات تکمیلی",
+        "icon": "notes",
+        "color": "#FFF0DD",
+        "fields": [
+          {
+            "key": "additional_notes",
+            "label": "توضیحات تکمیلی",
+            "type": "LongText",
+            "sensitive": true,
+            "help": "توضیحات مربوط به درخواست...",
+            "max_length": 5000
+          }
+        ]
+      },
+      {
+        "id": "review_steps",
+        "title": "مراحل بررسی تسویه",
+        "icon": "fact_check",
+        "color": "#E6F6F7",
+        "fields": [
+          {
+            "key": "review_steps_info",
+            "label": "مراحل بررسی تسویه",
+            "type": "Display",
+            "readonly": true,
+            "default": "مسیر بررسی از گردش کار تعریف‌شده تعیین می‌شود. ثبت این درخواست به معنای پذیرش استعفا، خاتمه همکاری، تسویه مالی، تسویه اموال یا صدور سند نهایی نیست."
+          }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "target": "reason_description",
+        "action": "visible",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "settlement_reason",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      },
+      {
+        "target": "reason_description",
+        "action": "required",
+        "join": "and",
+        "conditions": [
+          {
+            "field": "settlement_reason",
+            "op": "eq",
+            "value": "other"
+          }
+        ]
+      }
+    ],
+    "access": {
+      "mode": "all",
+      "roles": [],
+      "departments": []
+    }
+  }
+}

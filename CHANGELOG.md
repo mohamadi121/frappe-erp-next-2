@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- ده قالب خام موجود منابع انسانی به فهرست فرم‌های هر شرکت اضافه می‌شود. `open_builtin` فقط یک نمونه ثابت برای هر قالب و شرکت ایجاد می‌کند؛ `remove_builtin` مخصوص مدیر سیستم است و نسخه‌ها و ثبت‌های قبلی را حفظ می‌کند. هیچ گردش‌کار یا سند بومی به‌صورت ضمنی ایجاد نمی‌شود. استقرار: کد و بسته JSON را قبل از اپ جدید به‌روز و سرویس را restart کنید؛ این تغییر به مهاجرت تازه نیاز ندارد.
+
 ## 0.17.0 - 2026-10-24
 
 Deployment: run `bench --site <site> migrate` (new `native_status` options `Needs Review` and `Voided`, patch `v0_15_3.normalize_native_review_status`), then restart so the new `doc_events` in `hooks.py` load. The certificate needs WeasyPrint on the server and a default Letter Head on the company.

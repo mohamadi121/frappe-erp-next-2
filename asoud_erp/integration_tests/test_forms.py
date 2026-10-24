@@ -41,6 +41,33 @@ def document_schema(title="سند آزمایشی"):
 
 
 class TestForms(APITestCase):
+    def test_builtin_catalog_is_read_only_until_open_and_removal_preserves_revision(self):
+        from asoud_erp.services.form_schema import validate_schema
+        from asoud_erp.services.hr_form_catalog import catalog, form_name
+
+        for preset in catalog().values():
+            validate_schema(preset)
+        name = form_name(self.company, 'leave')
+        self.assertFalse(frappe.db.exists('ASOUD Form', name))
+        rows = forms.list_forms(company=self.company, manage=1)['data']
+        self.assertEqual(len([r for r in rows if r.get('builtin_key')]), 10)
+        self.assertFalse(frappe.db.exists('ASOUD Form', name))
+        opened = forms.open_builtin(self.company, 'leave', manage=1)['data']
+        again = forms.open_builtin(self.company, 'leave', manage=1)['data']
+        self.assertEqual(opened['name'], again['name'])
+        self.assertEqual(opened['active_revision'], again['active_revision'])
+        frappe.set_user(HR_MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            forms.remove_builtin(self.company, 'leave')
+        with self.assertRaises(frappe.PermissionError):
+            forms.open_builtin(self.second, 'leave', manage=1)
+        frappe.set_user('Administrator')
+        forms.remove_builtin(self.company, 'leave')
+        self.assertTrue(frappe.db.exists('ASOUD Form Revision', opened['active_revision']))
+        self.assertNotIn(name, [r['name'] for r in forms.list_forms(self.company, manage=1)['data']])
+        with self.assertRaises(frappe.PermissionError):
+            forms.open_builtin(self.company, 'leave')
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
