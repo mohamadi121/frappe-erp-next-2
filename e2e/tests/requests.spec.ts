@@ -280,7 +280,7 @@ test.describe('request lifecycle over HTTP', () => {
 
     const silent = await approver.post(METHOD.completeTask, { task: task!.name, action: 'Reject' });
     expect(silent.status).toBeGreaterThanOrEqual(400);
-    expect(errorText(silent)).toContain('rejection reason is required');
+    expect(errorText(silent)).toContain('ثبت دلیل رد یا بازگشت الزامی است');
 
     await approver.mutate(METHOD.completeTask, {
       task: task!.name,

@@ -13,6 +13,7 @@ failed request. Payload mapping is pure (``native_payloads``). Rules kept here:
 """
 
 import json
+import re
 
 import frappe
 from frappe import _
@@ -22,7 +23,7 @@ from asoud_erp.services import leave_balance as lb
 from asoud_erp.services import leave_hours as lh
 from asoud_erp.services import native_payloads as payloads
 from asoud_erp.services.request_templates import base
-from asoud_erp.services.request_templates.lifecycle import record_native_failure
+from asoud_erp.services.request_templates.lifecycle import notify_native_result, record_native_failure
 from asoud_erp.services.session_scope import as_administrator
 
 SAVEPOINT = "asoud_native_doc"
@@ -46,17 +47,37 @@ def effective_values(request) -> dict:
 def dispatch(request) -> None:
     """Creates the native document of an approved template request, once.
 
-    Safe to call repeatedly: ``Created`` and ``Skipped`` requests are left alone, a
-    ``Failed`` one is tried again (the retry endpoint).
+    Safe to call repeatedly: ``Created``, ``Skipped`` and ``Needs Review`` requests
+    are left alone; a ``Failed`` one is tried again (the retry endpoint).
     """
     spec = base.get(request.get("template_key"))
-    if not spec:
+    form_request = not request.get("template_key")
+    if not spec and not form_request:
         return
-    if frappe.db.get_value("ASOUD Workflow Request", request.name, "native_status") in ("Created", "Skipped"):
+    if form_request:
+        request = frappe.get_doc("ASOUD Workflow Request", request.name, for_update=True)
+        if not request.workflow_instance or frappe.db.get_value(
+                "ASOUD Workflow Instance", request.workflow_instance, "status") != "Completed":
+            return
+    if frappe.db.get_value("ASOUD Workflow Request", request.name, "native_status") in ("Created", "Skipped", "Needs Review"):
         return
     frappe.db.savepoint(SAVEPOINT)
     try:
-        result = spec.on_approved(request)
+        if spec:
+            result = spec.on_approved(request)
+        else:
+            from asoud_erp.services.form_execution.runtime import execute
+
+            result = execute(request)
+        if result is None:
+            return
+        if form_request and result.status == "Failed":
+            raise ValueError(result.reason or "ایجاد سند انجام نشد؛ تنظیمات فرم را بررسی کنید.")
+        if result.followup:
+            # Same savepoint as the document: if the task cannot be made, the document is rolled back too.
+            from asoud_erp.services.request_followup_runtime import create_followup
+
+            create_followup(request, result.followup)
     except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):
         raise  # the transaction is already gone; the approval is retried as a whole
     except Exception as error:  # noqa: BLE001 - nothing here may undo the approval (CONTRACT 4.12)
@@ -65,14 +86,20 @@ def dispatch(request) -> None:
                                   ValueError)):
             frappe.log_error(title=f"Native document of {request.name} failed")
         message = _error_text(error)
+        if form_request and not re.search(r"[\u0600-\u06ff]", message):
+            message = "ایجاد سند انجام نشد؛ تنظیمات و اطلاعات فرم را بررسی کنید."
         frappe.clear_messages()
         # Marks the request Failed and notifies the requester, HR Managers and System Managers.
         record_native_failure(request.name, message[:ERROR_LIMIT])
         return
     frappe.db.set_value("ASOUD Workflow Request", request.name, {
         "native_doctype": result.doctype or "", "native_name": result.name or "",
-        "native_status": result.status, "native_error": result.reason or "",
+        "native_status": "Needs Review" if result.status == "needs_review" else result.status,
+        "native_error": result.reason or "",
     }, update_modified=False)
+    if result.status == "needs_review":
+        notify_native_result(request.name, result.reason or "",
+                             _("درخواست {0} نیازمند بررسی منابع انسانی است.").format(request.name))
 
 
 def _error_text(error: Exception) -> str:

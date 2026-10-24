@@ -3,10 +3,10 @@ import { readFileSync } from 'node:fs';
 import { BENCH, PYTHON, type SiteState } from './config';
 
 /** The site facts global setup wrote; every spec reads them instead of guessing. */
-export function loadState(): SiteState & { request_type: string } {
+export function loadState(): SiteState & { request_type: string; return_request_type: string } {
   return JSON.parse(
     readFileSync(`${__dirname}/../test-results/site-state.json`, 'utf8'),
-  ) as SiteState & { request_type: string };
+  ) as SiteState & { request_type: string; return_request_type: string };
 }
 
 /** Call site_prep.py with an action and options. */

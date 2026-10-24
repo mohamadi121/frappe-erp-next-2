@@ -112,6 +112,10 @@ def guard_write(doc, method=None):
 def reject_generic(doc):
     if directive_for(doc):
         frappe.throw("این وظیفه فقط از API دستورات قابل اقدام است.", frappe.PermissionError)
+    from asoud_erp.services.request_followup import followup_of
+
+    if doc.doctype == "ASOUD Workflow Task" and followup_of(doc.get("draft_json")):
+        frappe.throw("این وظیفه فقط با تأیید یا عدم دریافت تجهیز قابل اقدام است.", frappe.PermissionError)
 
 
 def communication_query(user=None):

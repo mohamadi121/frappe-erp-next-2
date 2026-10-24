@@ -73,3 +73,28 @@ def test_sensitive_values_are_masked_recursively_without_mutating_storage():
         "reason": "محرمانه", "items": [{"name": "دارو", "cost": "محرمانه"}], "public": "نمایان"}
     assert mask_sensitive_values(values, fields, True) == values
     assert values["reason"] == "درمان" and values["items"][0]["cost"] == 500
+
+
+def test_form_sensitivity_marks_the_mapped_workflow_field_and_column():
+    from asoud_erp.services.request_serializer import overlay_sensitive, schema_fields
+
+    workflow = [{"key": "reason", "type": "Long Text"}, {"key": "amount", "type": "Currency"},
+                {"key": "rows", "type": "Table", "columns": [{"key": "a"}, {"key": "b"}]}]
+    schema = {"sections": [{"fields": [
+        {"key": "why", "type": "LongText", "workflow_key": "reason", "sensitive": True},
+        {"key": "sum", "type": "Money", "workflow_key": "amount"},
+        {"key": "lines", "type": "Table", "workflow_key": "rows", "columns": [
+            {"key": "x", "workflow_key": "a", "sensitive": True}, {"key": "y", "workflow_key": "b"}]}]}]}
+    marked = overlay_sensitive(workflow, schema_fields(schema))
+    assert marked[0]["sensitive"] is True and "sensitive" not in marked[1]
+    assert marked[2]["columns"][0]["sensitive"] is True and "sensitive" not in marked[2]["columns"][1]
+    assert "sensitive" not in workflow[0], "the input must not be modified"
+    values = {"reason": "بیماری", "amount": 5, "rows": [{"a": 1, "b": 2}]}
+    assert mask_sensitive_values(values, marked, False) == {
+        "reason": "محرمانه", "amount": 5, "rows": [{"a": "محرمانه", "b": 2}]}
+
+
+def test_a_field_already_sensitive_in_the_workflow_stays_sensitive():
+    from asoud_erp.services.request_serializer import overlay_sensitive
+
+    assert overlay_sensitive([{"key": "k", "sensitive": True}], [])[0]["sensitive"] is True

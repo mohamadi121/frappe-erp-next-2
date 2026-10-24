@@ -5,3 +5,4 @@ asoud_erp.patches.v0_5.normalize_detail_groups
 asoud_erp.patches.v0_14.backfill_request_status_key
 asoud_erp.patches.v0_14.map_leave_type_categories
 asoud_erp.patches.v0_15_3.normalize_persian_digits
+asoud_erp.patches.v0_15_3.normalize_native_review_status

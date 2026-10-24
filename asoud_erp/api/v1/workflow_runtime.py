@@ -12,6 +12,7 @@ from asoud_erp.api.v1.responses import success
 from asoud_erp.services.directive_paging import lookahead_page
 from asoud_erp.services.document_templates import render_placeholders
 from asoud_erp.services.erp_documents import require_roles
+from asoud_erp.services.request_execution import activity_change
 from asoud_erp.services.request_link_values import validate_link_values, workflow_company
 from asoud_erp.services.request_templates.base import validate_form_stage_response
 from asoud_erp.services.workflow_assignment import assignment_values
@@ -468,7 +469,15 @@ def _action_context(instance) -> dict:
             as_dict=True,
         )
         values = json.loads(request.values_json or "{}") if request else {}
-    values.update(merge_completed_responses(list(reversed(_completed_task_rows(instance)))))
+    rows = _completed_task_rows(instance)
+    values.update(merge_completed_responses(list(reversed(rows))))
+    # Notifications and documents are read by people who may not see the request: confidential values are masked.
+    from asoud_erp.api.v1.workflow_request import request_fields
+    from asoud_erp.services.request_serializer import mask_sensitive_values
+
+    fields = (request_fields(request.name) if request else []) + [
+        field for row in rows for field in row["form_fields"] if isinstance(field, dict)]
+    values = mask_sensitive_values(values, fields, False)
     employee = frappe.db.get_value(
         "Employee", {"user_id": instance.started_by}, ["employee_name", "department"], as_dict=True
     ) or {}
@@ -560,13 +569,15 @@ def _run_system_action(instance, stage, config: dict, source_task=None) -> None:
     """
     instance.save(ignore_permissions=True)
     frappe.db.savepoint("asoud_system_action")
-    identity_ready = False
     try:
-        from asoud_erp.services.automatic_action_metadata import identity
+        conf = getattr(frappe, "conf", None) or {}
+        if conf.get("asoud_workflow_service_user"):
+            from asoud_erp.services.automatic_action_metadata import identity
 
-        company = frappe.db.get_value("ASOUD Workflow Definition", instance.workflow_definition, "company")
-        with identity(company):
-            identity_ready = True
+            company = frappe.db.get_value("ASOUD Workflow Definition", instance.workflow_definition, "company")
+            with identity(company):
+                comment, doctype, name = _execute_system_action(instance, stage, config)
+        else:
             comment, doctype, name = _execute_system_action(instance, stage, config)
         outcome = "Success"
     except (frappe.ValidationError, frappe.PermissionError, frappe.DoesNotExistError, ValueError) as error:
@@ -588,7 +599,7 @@ def _run_system_action(instance, stage, config: dict, source_task=None) -> None:
             "reference_name": name,
         }
     ).insert(ignore_permissions=True)
-    target = _system_route(instance, stage.name, outcome) if identity_ready else None
+    target = _system_route(instance, stage.name, outcome)
     if target:
         _activate_stage(instance, target, source_task=source_task)
         return
@@ -721,6 +732,21 @@ def _instance_summaries(names) -> list[dict]:
     return summaries
 
 
+def _mark_followups(items: list) -> None:
+    """Adds ``followup`` (the kind, or None) to each task row; only candidate drafts are read."""
+    from asoud_erp.services.request_followup import followup_of
+
+    candidates = [row["name"] for row in items if row.pop("is_followup", 0)]
+    kinds = {}
+    if candidates:
+        for row in frappe.get_all("ASOUD Workflow Task", filters={"name": ["in", candidates]},
+                                  fields=["name", "draft_json"], limit_page_length=0):
+            marker = followup_of(row.draft_json)
+            kinds[row.name] = marker["kind"] if marker else None
+    for row in items:
+        row["followup"] = kinds.get(row["name"])
+
+
 @frappe.whitelist()
 def list_my_workflow_tasks(status: str = "Open", start=0, paged=False) -> dict:
     """Open/closed workflow tasks assigned to the current user.
@@ -739,10 +765,12 @@ def list_my_workflow_tasks(status: str = "Open", start=0, paged=False) -> dict:
     start = max(0, int(start))
     rows = frappe.db.sql(
         "SELECT name, workflow_instance, workflow_stage, task_title, status, assigned_on, completed_on, "
-        "due_on, reminder_sent_on, escalated_on FROM `tabASOUD Workflow Task` WHERE " + where +
+        "due_on, reminder_sent_on, escalated_on, draft_json LIKE '{\"followup\":%%' AS is_followup "
+        "FROM `tabASOUD Workflow Task` WHERE " + where +
         " ORDER BY assigned_on DESC, name DESC LIMIT %(start)s, %(limit)s",
         {**params, "start": start, "limit": TASK_PAGE + 1}, as_dict=True)
     items, cursor = lookahead_page(start, rows, TASK_PAGE)
+    _mark_followups(items)
     if _is_paged(paged):
         total = frappe.db.sql("SELECT COUNT(*) FROM `tabASOUD Workflow Task` WHERE " + where, params)[0][0]
         return success(dict(items=items, next_cursor=cursor), meta={"total": total})
@@ -794,11 +822,13 @@ def get_workflow_instance(instance: str) -> dict:
             "created_on",
             "reference_doctype",
             "reference_name",
+            *(["change_json"] if frappe.db.has_column("ASOUD Workflow Activity", "change_json") else []),
         ],
         order_by="created_on asc",
         limit_page_length=0,
     )
     for activity in activities:
+        activity.update(activity_change(activity.pop("change_json", None)))
         activity["stage_title"] = (
             frappe.db.get_value(
                 "ASOUD Workflow Stage", activity.workflow_stage, "stage_title"
@@ -852,6 +882,27 @@ def mark_workflow_notification_read(notification: str) -> dict:
     return success({"name": doc.name, "read": True})
 
 
+def _followup_task(doc, followup: dict, activity_type: str) -> dict:
+    """``get_workflow_task`` body of a follow-up task (docs/api/form-execution.md, N6)."""
+    from asoud_erp.services.request_followup_runtime import detail_document
+
+    request_row = frappe.db.get_value("ASOUD Workflow Request", {"workflow_instance": doc.workflow_instance},
+                                      ["name", "company"], as_dict=True) or {}
+    history = frappe.get_all("ASOUD Workflow Activity", filters={"workflow_instance": doc.workflow_instance},
+        fields=["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
+        order_by="created_on asc", limit_page_length=0)
+    return {
+        "name": doc.name, "workflow_instance": doc.workflow_instance, "workflow_stage": doc.workflow_stage,
+        "request_name": request_row.get("name", ""), "request_company": request_row.get("company", ""),
+        "task_title": doc.task_title, "status": doc.status, "assigned_on": doc.assigned_on, "due_on": doc.due_on,
+        "reminder_sent_on": doc.reminder_sent_on, "escalated_on": doc.escalated_on, "stage_type": "User Task",
+        "config": {"activity_type": activity_type, "allow_reject": True, "allow_return": False,
+                   "comment_required": False, "form_fields": []},
+        "draft": {}, "response": json.loads(doc.response_json or "{}"), "history": history, "previous_data": [],
+        "document": detail_document(followup), "request_values": {},
+    }
+
+
 @frappe.whitelist()
 def get_workflow_task(task: str) -> dict:
     doc = frappe.get_doc("ASOUD Workflow Task", task)
@@ -863,6 +914,11 @@ def get_workflow_task(task: str) -> dict:
             workflow_stage=doc.workflow_stage,task_title=doc.task_title,status=doc.status,
             config={"activity_type":"Directive"},document={"doctype":directive.doctype,
                 "name":directive.name,"values":[]},history=[],draft={},response={}))
+    from asoud_erp.services.request_followup import ACTIVITY_TYPE, followup_of
+
+    followup = followup_of(doc.draft_json)
+    if followup:
+        return success(_followup_task(doc, followup, ACTIVITY_TYPE[followup["kind"]]))
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
     config = json.loads(stage.config_json or "{}")
     instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)

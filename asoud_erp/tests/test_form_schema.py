@@ -146,6 +146,80 @@ def test_date_after_or_equal_requires_another_date_and_rejects_earlier_visible_v
         schema.validate_schema(payload)
 
 
+def test_date_before_or_equal_bounds_a_date_from_above_with_its_own_message(schema):
+    payload = {
+        "kind": "Request", "title": "نیم‌روز", "sections": [{"id": "main", "title": "اصلی", "fields": [
+            {"key": "start_date", "label": "تاریخ شروع", "type": "Date"},
+            {"key": "end_date", "label": "تاریخ پایان", "type": "Date", "after_or_equal": "start_date"},
+            {"key": "half_date", "label": "تاریخ نیم‌روز", "type": "Date", "after_or_equal": "start_date",
+             "before_or_equal": "end_date", "before_or_equal_message": "تاریخ نیم‌روز باید در بازه درخواست باشد."},
+        ]}],
+    }
+    validated = schema.validate_schema(payload)
+    base = {"start_date": "2026-10-23", "end_date": "2026-10-25"}
+    with pytest.raises(ValueError, match="تاریخ نیم‌روز باید در بازه درخواست باشد."):
+        schema.validate_values(validated, {**base, "half_date": "2026-10-26"}, "ACME")
+    assert schema.validate_values(validated, {**base, "half_date": "2026-10-25"}, "ACME")["half_date"] == "2026-10-25"
+    # default message and a missing partner value do not reject
+    del payload["sections"][0]["fields"][2]["before_or_equal_message"]
+    validated = schema.validate_schema(payload)
+    with pytest.raises(ValueError, match="تاریخ نباید بعد از تاریخ پایان باشد"):
+        schema.validate_values(validated, {**base, "half_date": "2026-10-30"}, "ACME")
+    assert schema.validate_values(validated, {"start_date": "2026-10-23", "half_date": "2026-10-30"}, "ACME")
+
+    for bad in ("half_date", "missing_date", 5):
+        payload["sections"][0]["fields"][2]["before_or_equal"] = bad
+        with pytest.raises(ValueError, match="تاریخ"):
+            schema.validate_schema(payload)
+    payload["sections"][0]["fields"][2]["before_or_equal"] = "end_date"
+    payload["sections"][0]["fields"][1]["after_or_equal"] = "half_date"
+    with pytest.raises(ValueError, match="چرخه"):
+        schema.validate_schema(payload)
+    payload["sections"][0]["fields"][1]["after_or_equal"] = "start_date"
+    payload["sections"][0]["fields"][0]["before_or_equal_message"] = "پیام بدون وابستگی"
+    with pytest.raises(ValueError, match="پیام"):
+        schema.validate_schema(payload)
+
+
+def test_time_after_orders_two_times_with_the_next_day_marker(schema):
+    payload = {
+        "kind": "Request", "title": "اضافه‌کار", "sections": [{"id": "main", "title": "اصلی", "fields": [
+            {"key": "start_time", "label": "ساعت شروع", "type": "Time"},
+            {"key": "end_time", "label": "ساعت پایان", "type": "Time", "next_day_allowed": True,
+             "time_after": "start_time", "time_after_message": "ساعت پایان باید پس از ساعت شروع باشد."},
+        ]}],
+    }
+    validated = schema.validate_schema(payload)
+    message = "ساعت پایان باید پس از ساعت شروع باشد."
+    for start, end, next_day in (("17:00", "17:00", False), ("17:00", "08:00", False), ("17:00:00", "16:59", False),
+                                 ("17:00", "08:00", None)):
+        values = {"start_time": start, "end_time": end}
+        if next_day is not None:
+            values["end_time__next_day"] = next_day
+        with pytest.raises(ValueError, match=message):
+            schema.validate_values(validated, values, "ACME")
+    ok = schema.validate_values(validated, {"start_time": "17:00", "end_time": "17:01"}, "ACME")
+    assert ok["end_time"] == "17:01"
+    assert schema.validate_values(validated, {"start_time": "22:00", "end_time": "01:00", "end_time__next_day": True}, "ACME")
+    assert schema.validate_values(validated, {"start_time": "22:00"}, "ACME")  # nothing to compare
+    del payload["sections"][0]["fields"][1]["time_after_message"]
+    with pytest.raises(ValueError, match="ساعت باید پس از ساعت مرجع باشد"):
+        schema.validate_values(schema.validate_schema(payload), {"start_time": "17:00", "end_time": "09:00"}, "ACME")
+
+    for bad in ("end_time", "missing", 3):
+        payload["sections"][0]["fields"][1]["time_after"] = bad
+        with pytest.raises(ValueError, match="ساعت"):
+            schema.validate_schema(payload)
+    payload["sections"][0]["fields"][1]["time_after"] = "start_time"
+    payload["sections"][0]["fields"][0]["type"] = "Date"
+    with pytest.raises(ValueError, match="ساعت"):
+        schema.validate_schema(payload)
+    payload["sections"][0]["fields"][0]["type"] = "Time"
+    payload["sections"][0]["fields"][0]["time_after"] = "end_time"
+    with pytest.raises(ValueError, match="چرخه"):
+        schema.validate_schema(payload)
+
+
 def test_hidden_date_and_required_table_do_not_bypass_their_validation(schema):
     payload = {
         "kind": "Request", "title": "کنترل جدول", "sections": [{"id": "main", "title": "اصلی", "fields": [
@@ -649,6 +723,59 @@ def test_schedule_value_is_never_persisted(schema):
     ])
     assert schema.validate_values(raw, {"day": "2026-10-23", "schedule": "ساختگی"}, "ACME") == {"day": "2026-10-23"}
 
+def test_contract_start_uses_current_contract_then_joining_date(schema):
+    schema.frappe.get_all = lambda doctype, **kwargs: [
+        {"start_date": date(2025, 3, 20), "end_date": date(2999, 1, 1)}]
+    schema.frappe.db.get_value = lambda doctype, filters, field=None, **kwargs: (
+        "EMP-1" if field == "name" else date(2020, 1, 2))
+    assert schema.default_value({"default_source": "contract_start"}, "ACME") == "2025-03-20"
+    schema.frappe.get_all = lambda doctype, **kwargs: []
+    assert schema.default_value({"default_source": "contract_start"}, "ACME") == "2020-01-02"
+
+
+def test_compare_and_next_day_schema_contract(schema):
+    fields = [
+        {"key": "attendance_date", "label": "تاریخ", "type": "Date"},
+        {"key": "current", "label": "ثبت‌شده", "type": "Time"},
+        {"key": "proposed", "label": "پیشنهادی", "type": "Time", "next_day_allowed": True},
+        {"key": "comparison", "label": "مقایسه", "type": "Display", "readonly": True,
+         "compare": {"current": "current", "proposed": "proposed"}},
+    ]
+    validated = schema.validate_schema(source_schema(fields))
+    values = schema.validate_values(validated, {
+        "attendance_date": "2026-10-23", "current": "23:30", "proposed": "01:00",
+        "proposed__next_day": True,
+    }, "ACME")
+    assert values["proposed__next_day"] is True
+    assert "comparison" not in values
+    fields[2]["not_equal"] = "current"
+    validated = schema.validate_schema(source_schema(fields))
+    values = schema.validate_values(validated, {
+        "attendance_date": "2026-10-23", "current": "01:00", "proposed": "01:00",
+        "proposed__next_day": True,
+    }, "ACME")
+    assert values["proposed"] == "01:00"
+    fields[2].pop("not_equal")
+    for bad_compare in ({"current": "missing", "proposed": "proposed"},
+                        {"current": "current", "proposed": "attendance_date"}):
+        fields[3]["compare"] = bad_compare
+        with pytest.raises(ValueError, match="مقایسه"):
+            schema.validate_schema(source_schema(fields))
+    fields[3]["compare"] = {"current": "current", "proposed": "proposed"}
+    fields[2]["next_day_allowed"] = "yes"
+    with pytest.raises(ValueError, match="روز بعد"):
+        schema.validate_schema(source_schema(fields))
+
+
+def test_next_day_companion_is_rejected_without_enabled_time(schema):
+    sch = schema.validate_schema(source_schema([
+        {"key": "attendance_date", "label": "تاریخ", "type": "Date"},
+        {"key": "proposed", "label": "پیشنهادی", "type": "Time"},
+    ]))
+    with pytest.raises(ValueError, match="فیلد ناشناخته"):
+        schema.validate_values(sch, {"attendance_date": "2026-10-23", "proposed": "01:00",
+                                     "proposed__next_day": True}, "ACME")
+
 
 def test_fetch_value_normalises_types(schema):
     from datetime import datetime, timedelta
@@ -718,3 +845,23 @@ def test_validate_values_fetch_from_ignores_client_value(schema):
         {"key": "in_t", "label": "ورود", "type": "Time", "readonly": True, "fetch_from": "att.in_time"}]))
     assert schema.validate_values(sch, {"att": "ATT-1", "in_t": "23:59:00"}, "ACME")["in_t"] == "08:15:00"
     assert schema.validate_values(sch, {"att": "ATT-1"}, "ACME")["in_t"] == "08:15:00"
+
+
+def test_not_equal_time_compares_next_day_without_attendance_date(schema):
+    fields = [
+        {"key": "current", "label": "ثبت‌شده", "type": "Time"},
+        {"key": "proposed", "label": "پیشنهادی", "type": "Time", "next_day_allowed": True,
+         "not_equal": "current"},
+    ]
+    validated = schema.validate_schema(source_schema(fields))
+    values = schema.validate_values(validated, {"current": "08:00", "proposed": "08:00",
+                                                "proposed__next_day": True}, "ACME")
+    assert values["proposed"] == "08:00"
+    with pytest.raises(ValueError, match="یکسان"):
+        schema.validate_values(validated, {"current": "08:00", "proposed": "08:00"}, "ACME")
+
+def test_execution_unknown_kind_is_rejected_by_form_validation(schema):
+    payload = valid_schema()
+    payload['execution'] = {'kind': 'unregistered'}
+    with pytest.raises(ValueError, match='نوع اجرا'):
+        schema.validate_schema(payload)

@@ -8,10 +8,19 @@ from frappe.utils import get_fullname, getdate, now_datetime, nowdate
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.workflow_runtime import _next_stage, start_workflow_instance
+from asoud_erp.services import (
+    certificate_access,
+    request_comments,
+    request_execution,
+    request_lookup,
+    request_resubmit,
+    request_serializer,
+    request_timeline,
+)
 from asoud_erp.services import request_attachments as files
-from asoud_erp.services import request_comments, request_lookup, request_serializer, request_timeline
 from asoud_erp.services.erp_documents import require_roles
-from asoud_erp.services.request_access import request_permission, require_company
+from asoud_erp.services.form_execution.certificate_issue import number_of
+from asoud_erp.services.request_access import certificate_permission, request_permission, require_company
 from asoud_erp.services.request_link_values import validate_link_values
 from asoud_erp.services.request_status import (
     GROUP_NAMES,
@@ -95,6 +104,30 @@ def _fields_by_name(definition_name):
     """Form fields of a definition by name; empty when it has no request form."""
     stage = _form_stage_or_none(definition_name)
     return json.loads(stage.config_json or "{}").get("form_fields", []) if stage else []
+
+
+def confidential_fields(request_name, fields):
+    """`fields` where the form-builder `sensitive` flag of the request's form entry is carried over."""
+    revision = frappe.db.get_value("ASOUD Form Entry", {
+        "reference_doctype": REQUEST_DOCTYPE, "reference_name": request_name}, "revision")
+    schema = frappe.db.get_value("ASOUD Form Revision", revision, "schema_json") if revision else None
+    if not schema:
+        return fields
+    return request_serializer.overlay_sensitive(fields, request_serializer.schema_fields(json.loads(schema)))
+
+
+def request_fields(request_name):
+    """The request form fields with every confidentiality flag, for outputs that must mask."""
+    definition = frappe.db.get_value(REQUEST_DOCTYPE, request_name, "workflow_definition")
+    return confidential_fields(request_name, _fields_by_name(definition)) if definition else []
+
+
+def refresh_search_text(request_name):
+    """Rebuilds `search_text` once the form entry (which can mark fields confidential) exists."""
+    doc = frappe.get_doc(REQUEST_DOCTYPE, request_name)
+    doc.db_set("search_text", _search_text(
+        doc.name, doc.subject, _requester_name(doc.owner), doc.department, doc.project,
+        json.loads(doc.values_json or "{}"), request_fields(doc.name)), update_modified=False)
 
 
 def _spec_for(definition):
@@ -310,6 +343,13 @@ def _rejection_reason(instance_name) -> str:
                                "comment", order_by="completed_on desc") or ""
 
 
+def _return_reason(instance_name) -> str:
+    if not instance_name:
+        return ""
+    return frappe.db.get_value("ASOUD Workflow Task", {"workflow_instance": instance_name, "action": "Return"},
+                               "comment", order_by="completed_on desc") or ""
+
+
 def _requester_name(owner: str) -> str:
     return frappe.db.get_value("Employee", {"user_id": owner}, "employee_name") or get_fullname(owner)
 
@@ -349,7 +389,7 @@ def _stage_rows(definition, instance_name) -> list:
 def _detail(doc) -> dict:
     instance = _instance_row(doc.workflow_instance)
     instance_status = instance.status if instance else None
-    fields = _fields_by_name(doc.workflow_definition)
+    fields = confidential_fields(doc.name, _fields_by_name(doc.workflow_definition))
     values = effective_values(doc.name)
     stored = json.loads(doc.attachments_json or "[]")
     missing = [item["name"] for item in stored if not item.get("size")]
@@ -361,7 +401,9 @@ def _detail(doc) -> dict:
     owner = doc.owner == frappe.session.user
     running = instance_status == "Running"
     form_stage = form_stage_name(doc.workflow_definition) if instance else None
-    can_edit = owner and running and not _has_acted(instance.name, form_stage)
+    status = _status_fields(doc, instance_status)
+    returned = running and status["status_key"] == "returned"
+    can_edit = owner and running and (returned or not _has_acted(instance.name, form_stage))
     privileged = bool(MANAGER_ROLES & set(frappe.get_roles()))
     participant = bool(doc.workflow_instance and frappe.db.exists(
         "ASOUD Workflow Task", {"workflow_instance": doc.workflow_instance,
@@ -378,8 +420,9 @@ def _detail(doc) -> dict:
         "required_by": str(doc.required_by or ""), "project": doc.project or "", "department": doc.department or "",
         "owner": doc.owner, "requester_name": _requester_name(doc.owner),
         "requester_employee": doc.requester_employee or "", "creation": str(doc.creation or ""),
-        "workflow_instance": doc.workflow_instance or "", **_status_fields(doc, instance_status),
+        "workflow_instance": doc.workflow_instance or "", **status,
         "request_id": doc.request_id, "rejection_reason": _rejection_reason(doc.workflow_instance),
+        "return_reason": _return_reason(doc.workflow_instance) if returned else "",
         "can_edit": bool(can_edit), "can_cancel": bool(owner and running),
         "viewer": build_viewer(owner, _own_open_tasks(doc.workflow_instance) if running else []),
         "item_count": request_serializer.item_count(visible_values), "attachment_count": len(entries),
@@ -388,7 +431,46 @@ def _detail(doc) -> dict:
         "attachments": entries, "fields": fields, "stages": _stage_rows(doc.workflow_definition, doc.workflow_instance),
         "native": {"doctype": doc.native_doctype or "", "name": doc.native_name or "",
                    "status": doc.native_status or "", "error": (doc.native_error or "") if privileged else ""},
+        "execution": _execution(doc, instance_status, privileged),
+        "certificate": _certificate_summary(doc),
     }
+
+
+def _certificate_file(request_name):
+    return frappe.db.get_value("File", {
+        "attached_to_doctype": REQUEST_DOCTYPE, "attached_to_name": request_name,
+        "attached_to_field": certificate_access.FIELD}, ["name", "file_name", "creation"], as_dict=True)
+
+
+def _certificate_summary(doc):
+    """`{number, filename, issued_on}` for a viewer who may download the certificate, else None."""
+    if not certificate_permission(doc):
+        return None
+    row = _certificate_file(doc.name)
+    return {"number": number_of(row.file_name or ""), "filename": row.file_name or "",
+            "issued_on": str(row.creation)} if row else None
+
+
+def _execution(doc, instance_status, privileged) -> dict:
+    from asoud_erp.services import request_void as void_rules
+    from asoud_erp.services import request_void_actions as void_actions
+
+    created = doc.native_status == "Created" and doc.native_doctype and doc.native_name
+    row = frappe.db.get_value(doc.native_doctype, doc.native_name, ["creation", "owner"],
+                              as_dict=True) if created else None
+    block = request_execution.build_execution(
+        instance_status, doc.native_status, has_execution=bool(templates.get(doc.template_key)),
+        error=doc.native_error, privileged=privileged, reference=doc.native_name,
+        executed_on=str(row.creation) if row else "",
+        executed_by_name=get_fullname(row.owner) if row and row.owner != "Administrator" else "")
+    hr = "HR Manager" in frappe.get_roles()
+    block["can_void"] = hr and void_rules.can_void(instance_status, doc.native_status, doc.native_name)
+    voided = doc.native_status == void_rules.VOIDED
+    blocked = void_actions.reissue_blocker(doc.workflow_instance) if voided else ""
+    block["can_reissue"] = hr and void_rules.can_reissue_now(doc.native_status, doc.template_key, blocked)
+    if voided:
+        block["void"] = void_actions.last_void(doc.workflow_instance, privileged)
+    return block
 
 
 def _readable_request(name):
@@ -616,12 +698,17 @@ def _own_running_request(name, not_editable_code: bool = False):
     return doc, instance
 
 
-def _activity(instance, action: str, comment: str = "") -> None:
-    frappe.get_doc({
+def _activity(instance, action: str, comment: str = "", before: dict | None = None,
+              after: dict | None = None, labels: dict | None = None) -> None:
+    row = {
         "doctype": "ASOUD Workflow Activity", "workflow_instance": instance.name,
         "workflow_stage": instance.current_stage, "actor": frappe.session.user,
         "action": action, "comment": comment[:1000], "created_on": now_datetime(),
-    }).insert(ignore_permissions=True)
+    }
+    if before or after:
+        row["change_json"] = json.dumps({"before": before or {}, "after": after or {}, "labels": labels or {}},
+                                        ensure_ascii=False)
+    frappe.get_doc(row).insert(ignore_permissions=True)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -661,7 +748,15 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
     doc, instance = _own_running_request(name, not_editable_code=True)
     definition = frappe.get_doc("ASOUD Workflow Definition", doc.workflow_definition)
     form_stage = _form_stage(definition)
-    if _has_acted(instance.name, form_stage.name):
+    resubmit = doc.status_key == "returned"
+    if resubmit:
+        # A returned request is edited once: the owner's re-opened form task is what lets them in.
+        form_task = frappe.db.get_value("ASOUD Workflow Task", {
+            "workflow_instance": instance.name, "workflow_stage": form_stage.name, "status": "Open",
+            "assigned_to": frappe.session.user}, "name")
+        if not form_task:
+            templates.throw_error("REQUEST_NOT_EDITABLE")
+    elif _has_acted(instance.name, form_stage.name):
         templates.throw_error("REQUEST_NOT_EDITABLE")
     spec = _spec_for(definition)
     raw = _parse_json(values, "Invalid request values")
@@ -728,19 +823,28 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
     doc.values_json = json.dumps(final, ensure_ascii=False)
     doc.attachments_json = json.dumps(_entries_with_scopes(
         [{**item, "size": item.get("size") or 0} for item in kept] + added, fields, final), ensure_ascii=False)
+    flagged = confidential_fields(doc.name, fields)
     doc.search_text = _search_text(doc.name, doc.subject, _requester_name(doc.owner), doc.department,
-                                   doc.project, final, fields)
+                                   doc.project, final, flagged)
     doc.save(ignore_permissions=True)
     instance.subject = doc.subject
     instance.save(ignore_permissions=True)
     task = frappe.db.get_value("ASOUD Workflow Task", {
         "workflow_instance": instance.name, "workflow_stage": form_stage.name,
-        "status": "Completed"}, "name")
-    if task:
+        "status": "Completed"}, "name", order_by="completed_on desc")
+    if task and not resubmit:
         frappe.db.set_value("ASOUD Workflow Task", task, "response_json",
                             json.dumps(final, ensure_ascii=False))
     files.delete_files([file_name for file_name in remove if file_name in by_name])
-    _activity(instance, "Edited")
+    if resubmit:
+        changes = request_resubmit.diff_values(previous, final, flagged)
+        _activity(instance, "Resubmitted", before={row["key"]: row["before"] for row in changes},
+                  after={row["key"]: row["after"] for row in changes},
+                  labels={row["key"]: row["label"] for row in changes})
+        # The flow restarts at the first stage after the form; earlier decisions stay in the history.
+        _submit_form_task(definition, instance.name, final, doc.name)
+    else:
+        _activity(instance, "Edited")
     doc.reload()
     return success(_detail(doc))
 
@@ -888,7 +992,9 @@ def get_attachment(name, thumbnail: int | str = 0):
     file = frappe.get_doc("File", name)
     if file.attached_to_doctype != REQUEST_DOCTYPE or not file.is_private:
         frappe.throw("Invalid request attachment", frappe.PermissionError)
-    _readable_request(file.attached_to_name)
+    request = _readable_request(file.attached_to_name)
+    if file.attached_to_field == certificate_access.FIELD and not certificate_permission(request):
+        frappe.throw(_(certificate_access.DENIED), frappe.PermissionError)
     if not str(file.file_url).startswith("/private/files/"):
         frappe.throw("Remote attachments are unsupported")
     content = file.get_content()
@@ -900,6 +1006,22 @@ def get_attachment(name, thumbnail: int | str = 0):
         content = files.thumbnail(content, file.file_name or "")
     return success({"filename": file.file_name, "content_type": files.content_type(file.file_name or ""),
                     "size": len(content), "content_base64": base64.b64encode(content).decode()})
+
+
+@frappe.whitelist()
+def get_certificate(name: str):
+    """The issued employment certificate PDF; requester, HR Managers and System Managers only."""
+    doc = frappe.get_doc(REQUEST_DOCTYPE, name)
+    if not certificate_permission(doc):
+        frappe.throw(_(certificate_access.DENIED), frappe.PermissionError)
+    row = _certificate_file(doc.name)
+    if not row:
+        frappe.throw(_(certificate_access.NOT_ISSUED))
+    content = frappe.get_doc("File", row.name).get_content()
+    content = content.encode() if isinstance(content, str) else content
+    return success({"number": number_of(row.file_name or ""), "filename": row.file_name, "content_type": "application/pdf",
+                    "size": len(content), "issued_on": str(row.creation),
+                    "content_base64": base64.b64encode(content).decode()})
 
 
 @frappe.whitelist(methods=["POST"])
@@ -915,5 +1037,31 @@ def create_native_document(name: str):
     if status != "Completed" or doc.native_status != "Failed":
         templates.throw_error("NATIVE_NOT_RETRYABLE")
     dispatch(doc)
+    doc.reload()
+    return success(_detail(doc))
+
+
+@frappe.whitelist(methods=["POST"])
+def void_native_document(name: str, reason: str = ""):
+    """HR Manager voids the executed native document (cancel, never delete) with a reason."""
+    from asoud_erp.services import request_void_actions as void_actions
+
+    require_roles(("HR Manager",))
+    doc = frappe.get_doc(REQUEST_DOCTYPE, name, for_update=True)
+    require_company(doc.company)
+    void_actions.void(doc, reason)
+    doc.reload()
+    return success(_detail(doc))
+
+
+@frappe.whitelist(methods=["POST"])
+def reissue_native_document(name: str):
+    """HR Manager runs the executor again after a void; a repeat creates nothing."""
+    from asoud_erp.services import request_void_actions as void_actions
+
+    require_roles(("HR Manager",))
+    doc = frappe.get_doc(REQUEST_DOCTYPE, name, for_update=True)
+    require_company(doc.company)
+    void_actions.reissue(doc)
     doc.reload()
     return success(_detail(doc))

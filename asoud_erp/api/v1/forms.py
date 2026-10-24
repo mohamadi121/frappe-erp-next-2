@@ -216,6 +216,16 @@ def workflow_mapping(schema, company):
     workflow = frappe.get_doc('ASOUD Workflow Definition', schema['workflow'])
     if workflow.company != company or workflow.target_doctype != 'ASOUD Workflow Request' or workflow.status != 'Active' or workflow.readiness_status != 'Ready':
         fail('گردش‌کار درخواست باید فعال، آماده و متعلق به همین دفتر باشد.')
+    if schema.get('execution'):
+        from asoud_erp.services.form_execution.schema import validate_parameter_fields
+
+        for stage in frappe.get_all('ASOUD Workflow Stage', filters={'workflow_definition': workflow.name},
+                                    fields=['config_json'], limit_page_length=0):
+            try:
+                validate_parameter_fields(json.loads(stage.config_json or '{}').get('form_fields', []),
+                                          schema['execution']['kind'])
+            except ValueError as error:
+                fail(str(error))
     targets = {f['key']: f for f in _fields(workflow)}
     used = set()
     for field in fields(schema):
@@ -351,14 +361,24 @@ def get_link_options(company, source, query='', form=None, filter_field=None, fi
         filters['name'] = ['!=', employee]
     title = meta.title_field or 'name'
     attributes = list(FETCH_ATTRIBUTES.get(source, ()))
+    database_attributes = [key for key in attributes if key != 'employee_count']
     query = query[:100]
     getter = frappe.get_all if scoped else frappe.get_list
     rows = getter(source, filters=filters, or_filters={title: ['like', f'%{query}%'], 'name': ['like', f'%{query}%']},
-                  fields=['name', f'{title} as label', *attributes], limit_page_length=30)
+                  fields=['name', f'{title} as label', *database_attributes], limit_page_length=30)
     if not attributes:
         return success(rows)
+    employee_counts = {}
+    if source == 'Training Event' and rows:
+        counts = frappe.get_all(
+            'Training Event Employee', filters={'parent': ['in', [row['name'] for row in rows]],
+                                                'parenttype': 'Training Event'},
+            fields=['parent', 'count(name) as count'], group_by='parent')
+        employee_counts = {row.parent: row.count for row in counts}
     for row in rows:
-        extra = {key: fetch_value(row.pop(key, None)) for key in attributes}
+        extra = {key: fetch_value(row.pop(key, None)) for key in database_attributes}
+        if source == 'Training Event' and 'employee_count' in attributes:
+            extra['employee_count'] = employee_counts.get(row['name'], 0)
         row['label'] = LABELS[source](row | extra) if source in LABELS else row['label']
         row['extra'] = extra
     return success(rows)
@@ -492,6 +512,23 @@ def upload_file(form, filename, content):
     return success({'name': file.name, 'label': file.file_name})
 
 
+def _validate_execution_submit(schema, values, company):
+    """Let the executor refuse a request before it is stored (optional validate_submit hook)."""
+    from asoud_erp.services.form_execution import EXECUTORS
+    from asoud_erp.services.form_execution.parameters import collect_parameters
+
+    kind = (schema.get('execution') or {}).get('kind')
+    hook = getattr(EXECUTORS.get(kind), 'validate_submit', None)
+    if not hook:
+        return
+    params = collect_parameters(fields(schema), values, [])
+    try:
+        hook(params, {'company': company, 'employee': current_employee(company),
+                      'user': frappe.session.user})
+    except ValueError as error:
+        fail(str(error))
+
+
 @frappe.whitelist(methods=['POST'])
 def submit_form(name, revision_name, subject, values, request_key):
     doc = load(name, lock=True)
@@ -514,6 +551,7 @@ def submit_form(name, revision_name, subject, values, request_key):
         frappe.throw('ثبت این فرم مجاز نیست.', frappe.PermissionError)
     checked = validate_values(schema, raw, doc.company)
     _validate_shift_request(schema, checked, doc.company)
+    _validate_execution_submit(schema, checked, doc.company)
     reference_type = reference_name = ''
     if schema['kind'] == 'Request' and schema.get('workflow'):
         from asoud_erp.api.v1.workflow_request import create_request
@@ -548,6 +586,14 @@ def submit_form(name, revision_name, subject, values, request_key):
     entry = store(frappe.get_doc({'doctype': 'ASOUD Form Entry', 'form': doc.name, 'revision': rev.name, 'company': doc.company,
         'subject': subject.strip(), 'values_json': json.dumps(checked, ensure_ascii=False) if schema['kind'] == 'Request' else '{}',
         'reference_doctype': reference_type, 'reference_name': reference_name, 'request_key': key, 'fingerprint': fingerprint}))
+    if reference_type == 'ASOUD Workflow Request':
+        from asoud_erp.api.v1.workflow_request import refresh_search_text
+
+        refresh_search_text(reference_name)
+    if reference_type == 'ASOUD Workflow Request' and schema.get('execution'):
+        from asoud_erp.services.request_templates.lifecycle import dispatch_native_document
+
+        dispatch_native_document(reference_name)
     return success({'name': entry.name, 'reference_name': reference_name, 'reference_doctype': reference_type})
 
 
@@ -585,3 +631,12 @@ def get_entry(name):
                 native_values[field['key']] = value
             result['values'] = native_values
     return success(result)
+
+
+@frappe.whitelist()
+def execution_kinds():
+    require_roles(DESIGNERS)
+    from asoud_erp.services.form_execution import EXECUTORS
+
+    return success([{'kind': kind, 'label': executor.LABEL, 'parameters': executor.PARAMETERS}
+                    for kind, executor in sorted(EXECUTORS.items())])

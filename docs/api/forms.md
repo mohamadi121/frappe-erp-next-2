@@ -46,13 +46,30 @@ cycle. When both visible values are supplied, submission rejects an end date bef
 referenced date with `after_or_equal_message`, or the default message
 `تاریخ پایان نباید قبل از تاریخ شروع باشد.`.
 
+A `Date` field may also set `before_or_equal` (key of another Date field, same rules as
+`after_or_equal`; it joins the same acyclic dependency graph) with an optional
+`before_or_equal_message`. When both visible values are supplied, submission rejects a date
+after the referenced one with that message, or the default `تاریخ نباید بعد از تاریخ پایان باشد.`.
+Together the two keys express «inside the range» (for example the half-day date of a leave).
+A missing (`null` or empty) value on either side is never compared.
+
+A `Time` field may set `time_after` to the key of another Time field (not itself, no cycle) with an
+optional `time_after_message`. When both visible values are supplied, submission requires the
+field to be strictly later than the referenced one. The comparison uses the pairs
+`(<key>__next_day, time)`, so `22:00` followed by `01:00` with `end_time__next_day = true` is valid
+and `17:00` followed by `08:00` without the marker is rejected with the message, or the default
+`ساعت باید پس از ساعت مرجع باشد.`. A missing value on either side is not compared.
+
 Visible `Table` fields enforce both `required` and `min_rows` during submission. A
 missing required row or too-short table is rejected as `حداقل N ردیف لازم است.`.
 
 `default_source` supports `user`, `company`, `today`, `employee`, `department`,
-`designation`, and `joining_date`. The last two read the signed-in active Employee in
-the form company: designation is the Employee designation and joining date is returned
-as ISO (`YYYY-MM-DD`). Missing Employee data produces no default value.
+`designation`, `joining_date`, and `contract_start`. The employee-backed values read the
+signed-in active Employee in the form company. `contract_start` returns the start date of
+the employee's current native Employment Contract; only when no current contract exists it
+falls back to `Employee.date_of_joining`. Dates are returned as ISO (`YYYY-MM-DD`). Missing
+Employee data produces no default value. A field using `contract_start` must label the fallback
+explicitly, for example `شروع دوره همکاری (در نبود قرارداد: تاریخ شروع به کار)`.
 
 Every field and table column may include the optional boolean key `sensitive`. For
 request details and workflow-task previews, a sensitive value is returned only to the
@@ -61,10 +78,32 @@ on that workflow instance. Other permitted viewers receive `محرمانه` inst
 stored value. Stored request and task responses remain unchanged. Omitting the key means
 `false`, so this addition keeps `schema_version` at 2 and preserves old forms.
 
+### Confidential fields in every output
+
+A field is confidential when it has `sensitive: true` in the form schema (field or table
+column), in the mapped workflow field, or in a workflow step form. A form field that maps to a
+workflow field through `workflow_key` makes that workflow field confidential too, so the flag
+set in the form designer is enough. Confidential values (and files that only they point to) are
+visible to the request owner, System Manager, HR Manager, and users who have or had a task on the
+instance. Nobody else receives them from any output:
+
+| output | rule |
+|---|---|
+| `get_request` values, attachments, `attachment_count`, `item_count` | `محرمانه`, files omitted |
+| `search_text` and the `search` filter | confidential values are never indexed |
+| `update_request` `Resubmitted` activity (`before`/`after`) | `محرمانه` for everyone |
+| `get_workflow_task` | only the task assignee reads it (a participant) |
+| `Send Notification` message and its activity comment | placeholders of confidential fields render `محرمانه` |
+| `Create Document` automatic action and task output | confidential request values are not transferred |
+| execution after approval | a confidential text parameter is never copied into a native document, Comment or note: the native text becomes `محرمانه؛ جزئیات در درخواست <شماره> است.` and the real text stays in the request |
+
+The execution rule applies to parameters whose declared type is `Text` or `LongText`; numbers,
+dates and links are still passed so the document stays valid. Mark only free text confidential.
+
 ## Record sources and derived fields
 
 `get_link_options(company, source, query, form, filter_field, filter_value, exclude_self=0)`
-returns `{name, label}` rows. Sources `Attendance`, `Shift Type`, `Training Event` and `Asset`
+returns `{name, label}` rows. Sources `Attendance`, `Shift Type`, `Leave Type`, `Training Event` and `Asset`
 are scoped to the signed-in user and enforced again by `submit_form`
 (`«رکورد انتخاب‌شده در محدوده مجاز شما نیست.»`):
 
@@ -72,11 +111,12 @@ are scoped to the signed-in user and enforced again by `submit_form`
 |---|---|
 | `Attendance` | submitted records of the user's active Employee in the company; `link_filter {field: 'attendance_date', value_field}` allowed |
 | `Shift Type` | all Shift Types (v15 has no `disabled` field) |
+| `Leave Type` | Leave Types that are not optional-holiday leave (`is_optional_leave = 0`); HRMS Leave Type has no company and no `disabled` field. Whether the person has a usable allocation is decided by the leave execution, not by the list |
 | `Training Event` | company events with `event_status = Scheduled`, `start_time >= now`, not cancelled |
 | `Asset` | submitted company Assets whose `custodian` is the user's Employee |
 
 Without an active Employee, `Attendance` and `Asset` return `[]` with `meta.reason = 'no_employee'`
-(submission fails with `«پرونده پرسنلی شما ثبت نشده است.»`). These four sources are read with the
+(submission fails with `«پرونده پرسنلی شما ثبت نشده است.»`). These five sources are read with the
 scope filter as the only authorization (Employees have no native read permission on Training Event
 and Asset). Labels are Persian with Jalali dates and Persian digits:
 Attendance `«۱۴۰۵/۰۷/۲۸ · حاضر · ورود ۰۸:۰۱ · خروج ۱۶:۳۰»` (statuses حاضر, غایب, مرخصی, نیم‌روز,
@@ -85,7 +125,7 @@ Attendance `«۱۴۰۵/۰۷/۲۸ · حاضر · ورود ۰۸:۰۱ · خروج �
 
 Sources with fetchable attributes return `extra` on every row: Attendance `in_time, out_time,
 attendance_date, status, shift`; Shift Type `start_time, end_time`; Training Event `start_time,
-end_time, type, level, training_program`; Asset `asset_name, item_code, location`; Employee
+end_time, type, level, training_program, course, location, trainer_name, employee_count`; Asset `asset_name, item_code, location`; Employee
 `department, designation, employee_number`. The `extra` values stay raw ISO (the app formats them): datetimes `YYYY-MM-DDTHH:MM:SS`, times `HH:MM:SS`.
 
 Field keys (all validated by `save_form`):
@@ -100,6 +140,15 @@ Field keys (all validated by `save_form`):
   `مقدار جدید نباید با مقدار فعلی یکسان باشد.`
 - Table column `unique: true` — duplicate non-empty values are rejected: `ردیف تکراری: <label>`.
 - `default_source` also accepts `employee_number` (falls back to the Employee name) and `default_shift`.
+- A read-only `Display` field may set `compare: {current: '<field key>', proposed: '<field key>'}`.
+  Both referenced fields must be in the same container. The runtime renders
+  `ساعت ثبت‌شده <current> ← پیشنهادی <proposed>` and uses `ثبت نشده` for either empty side.
+  Comparison fields are presentation-only and are not stored as submitted values.
+- A `Time` field may set `next_day_allowed: true`. The runtime then shows a `روز بعد` toggle and
+  submits its boolean value as `<field key>__next_day`. This companion key is accepted only for
+  such a Time field. Server validation combines the Time with the request's attendance Date;
+  when selected, one day is added before chronological comparisons, so a shift crossing midnight
+  is not treated as an earlier same-day time.
 
 ### Employee schedule and `Schedule` fields
 
@@ -254,3 +303,124 @@ redirected to a draft or foreign revision.
 Document forms create an ERPNext draft with native permissions and controllers; employees without
 native permission on the target document type are refused by ERPNext. Request forms use the
 selected active ASOUD workflow. Neither path auto-submits a native document.
+
+## Execution after approval — contract
+
+## E1 Schema keys (form level and field level, additive, schema_version stays 2)
+- Form level, `kind == 'Request'` only: `execution: {"kind": "<executor kind>"}`.
+- Field level, both on request-form fields and on workflow step-form fields (`form_fields` in
+  stage config): `execution_key: "<parameter name>"`.
+- The validator (`save_form` / stage settings) rejects an unknown kind, an `execution_key` that is not a
+  parameter of that kind, a required parameter of that kind that no field maps, and two fields with the
+  same `execution_key` in the same form.
+
+## E2 Registry (backend)
+- Package `asoud_erp/services/form_execution/`.
+- `__init__.py` holds `EXECUTORS: dict[str, Executor]`.
+- Each executor lives in its own module `form_execution/<kind>.py`, which defines:
+  - `KIND = "<kind>"`;
+  - `LABEL = "<Persian label for the editor>"`;
+  - `PARAMETERS = {"<name>": {"label": "<Persian>", "types": [<allowed field types>], "required": bool}}`;
+  - `build(params: dict, ctx: dict) -> dict`: **pure**, no frappe import. It returns the `frappe.get_doc` dict, or raises `ValueError("<Persian reason>")`;
+  - `apply(request, params: dict) -> Result`: does the lookups (accounts, approver, defaults), inserts the document, and returns `Result(doctype, name, status, reason)`, the same shape the existing template specs return.
+- `ctx` = `{company, employee, user, request_name, today}`. The requester's active Employee in the company is resolved by the framework. If there is none, the result is `Failed` with «پرونده پرسنلی درخواست‌دهنده ثبت نشده است.».
+- Registration is one line per executor in `__init__.py` (merge conflicts there are trivial).
+
+## E3 Parameter values
+`params` = the request-form values by `execution_key`. They are then overlaid by the values of every
+**completed** step task whose stage form has fields with an `execution_key`, in completion order. The
+last decision wins (for example, the amount the manager or HR approved overrides the requested amount).
+Sensitive masking does not apply here (server side).
+
+## E4 When and how it runs
+- The same hook as today: `lifecycle.on_instance_update` → `request_native_documents.dispatch(request)`
+  when the instance becomes Completed (approved). For a request without `template_key`, dispatch finds the
+  form entry that references the request (`reference_type = 'ASOUD Workflow Request'`,
+  `reference_name = request.name`), reads its revision schema, and runs `EXECUTORS[execution.kind]`.
+- Same rules as the existing dispatcher:
+  - a savepoint;
+  - on failure, roll back only the native document and set `native_status = Failed` with a Persian `native_error`; the approval is never undone;
+  - `Created`/`Skipped` are never redone;
+  - the retry endpoint `workflow_request.create_native_document` works for these requests too.
+- Documents are inserted as **drafts (docstatus 0)** unless the HRMS flow requires a submitted document
+  to have any effect, and the executor documents why. A rejected or cancelled request never runs.
+- `ignore_permissions` only inside `as_administrator` for the insert. The requester's permission is
+  already proven by the approved request.
+
+
+### Editor catalog contract
+
+`asoud_erp.api.v1.forms.execution_kinds()` is a read-only designer endpoint.
+It uses the same designer roles as `save_form`; no Employee record is required.
+Its response is `success([{kind, label, parameters}], meta)`, where `parameters`
+is an object keyed by parameter name and each value has `label`, `types`, and
+`required`. An empty registry returns `data: []`. Unauthorized callers receive
+403. Catalog labels and validation errors are Persian.
+
+Execution metadata is optional and additive; existing forms retain their behavior.
+Invalid mapping errors identify an unknown execution kind, an unknown or duplicate
+parameter, a missing required parameter, or an incompatible field type.
+
+E4's reference type is stored in the existing `reference_doctype` field of Form Entry;
+no field rename or migration is needed.
+
+### Pure registry and E3 collector
+
+`services.form_execution` defines the structural `Executor` protocol and
+`EXECUTORS` registry. `Result` is an alias of the existing template
+`NativeResult`, so status, doctype, name and reason keep their existing meanings.
+No example executor is registered in production.
+
+`services.form_execution.parameters.collect_parameters(request_fields,
+request_values, tasks)` collects unmasked values by `execution_key`. The caller
+supplies each task's decoded `values`, stage `fields`, `status`, `completed_on`,
+and `name`. Only `Completed` tasks are applied, sorted by completion timestamp
+and name as the deterministic tie breaker. Repeated tasks from the same stage
+remain separate decisions. A missing value preserves the earlier value; an
+explicit null, false, zero or empty string replaces it. Missing or malformed
+completion timestamps are rejected with a Persian validation reason. Inputs
+are not mutated. This helper performs no database access or document creation.
+
+### Workflow parameter overrides
+
+Step forms use the workflow field vocabulary (`Currency`, `Short Text`,
+`Long Text`, `Choice`, `Checkbox`, `Number`) alongside the form-builder names
+(`Money`, `Text`, `LongText`, `Select`, `Checkbox`/`Boolean`, `Decimal`).
+Equivalent types are matched when presenting and validating parameter choices;
+executor metadata may use `Check` for a boolean parameter. Request forms must
+map every required parameter. A step may override a subset, since the required
+inputs already come from the request form. Duplicate or incompatible mappings
+are rejected. When a workflow is attached to an execution form, its steps are
+validated against that kind; subsequent stage edits validate against both draft
+and active revision forms attached to the workflow.
+
+The dispatcher locks the request and reads `reference_doctype` / `reference_name`
+from Form Entry, then reads its immutable revision. Later draft changes do not
+change submitted requests. Corrected request values are translated using
+`workflow_key` before completed-step responses are overlaid. The requester must
+still have an active Employee in the request company. A workflow that completes
+during submission is dispatched once more after Form Entry has been saved.
+Created and Skipped results are idempotent; rejection and cancellation cannot
+execute. Failures preserve approval, roll back native writes to a savepoint,
+and record a Persian reason. The existing role- and company-checked retry endpoint
+`workflow_request.create_native_document(name)` handles failed form requests.
+
+No schema version change, native field migration or preset update is needed.
+Run `bench --site <site> migrate` to add search indexes on Form Entry
+`reference_doctype` and `reference_name` for approval lookups.
+The registry intentionally has no production example executor.
+
+### Results requiring HR review
+
+An approved form executor may return `needs_review`. Dispatch persists
+`native_status = "Needs Review"` and the Persian reason in `native_error`,
+without creating a native document. The requester and enabled HR/System Managers
+receive an in-app alert. This is terminal: repeated dispatch does not execute
+or notify again. `workflow_request.get_request` returns execution state
+`needs_review`, label «نیازمند بررسی», and exposes the reason only to privileged
+viewers. Approval remains completed; the failed-execution retry is unavailable.
+Deployment requires `bench migrate` to add the native status option.
+
+The execution catalog includes `employee_advance`, `attendance_correction`, and
+`asset_movement`. Parameter `types` use the form-builder schema type names;
+workflow stage aliases are accepted separately by mapping validation.

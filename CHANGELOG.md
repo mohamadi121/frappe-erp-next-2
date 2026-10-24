@@ -2,9 +2,34 @@
 
 ## Unreleased
 
+- ابطال و صدور مجدد سند اجراشده: مدیر منابع انسانی (فقط `HR Manager`) با نوشتن دلیل، سند ساخته‌شدهٔ درخواست را ابطال می‌کند (`void_native_document`) و سپس می‌تواند با `reissue_native_document` سند تازه بسازد. سند ثبت‌شده با Cancel ابطال می‌شود، پیش‌نویس و تردد هرگز حذف نمی‌شوند (توضیح روی سند و ثبت در درخواست)، رویداد آموزشی هرگز لغو نمی‌شود. وضعیت `native_status = Voided`، نوار اجرا «سند ابطال شد»، فعالیت‌های `Voided`/`Reissued` با دلیل، کاربر و زمان. کلیدهای افزوده در `execution`: `can_void`، `can_reissue`، `void`. ابطال تسویه حساب تاریخ پایان همکاری قبلی را برمی‌گرداند و بیانیهٔ نهایی را مثل مصاحبه ابطال می‌کند؛ ابطال ثبت‌نام آموزشی ردیف شرکت‌کنندهٔ دورهٔ پیش‌نویس را برمی‌دارد. هرجا اثر قبلی صادقانه برگشت‌پذیر نیست (تردد، پیش‌نویس شیفت، مصاحبهٔ خروج پیش‌نویس، دورهٔ ثبت‌شده) `can_reissue` نادرست است و `execution.void.reissue_blocked` دلیل فارسی را می‌دهد. Deployment: `bench --site <site> migrate` (گزینهٔ تازهٔ `Voided` در `native_status`).
+
+- اصلاح اقدام خودکار قدیمی (تغییر وضعیت و ایجاد سند): وقتی `asoud_workflow_service_user` در تنظیمات سایت نیست، اقدام قدیمی مانند قبل اجرا می‌شود و درخواست به‌جای «ناموفق» تکمیل می‌شود (این رفتار در ادغام ۲۰ مهر از دست رفته بود). اقدام نسخهٔ ۲ همچنان به کاربر سرویس نیاز دارد. بدون نیاز به مهاجرت یا تنظیم جدید.
+
+- ابطال و صدور مجدد سند اجراشده: مدیر منابع انسانی (فقط `HR Manager`) با نوشتن دلیل، سند ساخته‌شدهٔ درخواست را ابطال می‌کند (`void_native_document`) و سپس می‌تواند با `reissue_native_document` سند تازه بسازد. سند ثبت‌شده با Cancel ابطال می‌شود، پیش‌نویس و تردد هرگز حذف نمی‌شوند (توضیح روی سند و ثبت در درخواست)، رویداد آموزشی هرگز لغو نمی‌شود. وضعیت `native_status = Voided`، نوار اجرا «سند ابطال شد»، فعالیت‌های `Voided`/`Reissued` با دلیل، کاربر و زمان. کلیدهای افزوده در `execution`: `can_void`، `can_reissue`، `void`. Deployment: `bench --site <site> migrate` (گزینهٔ تازهٔ `Voided` در `native_status`).
+- اجرای مرخصی، مأموریت و اضافه‌کار پس از تأیید: `leave_application` پس از تأیید نهایی Leave Application را با مانده واقعی HRMS (`get_leave_details`) ثبت و submit می‌کند (کمبود مانده، نبود تخصیص، هم‌پوشانی و تأییدکننده تنظیم‌نشده با پیام فارسی رد می‌شوند)؛ `mission` یک Attendance Request با دلیل `On Duty` (بدون احتساب تعطیلات) ثبت و submit می‌کند و فقط اگر روز اول یا آخر تعطیل باشد یا روزی کاری حضور، مرخصی یا درخواست حضور داشته باشد هیچ سندی نمی‌سازد (تعطیلی‌های میانی از حضور کنار گذاشته می‌شوند) و نتیجه «نیازمند بررسی» است؛ `overtime` فقط نتیجه «نیازمند بررسی» با تاریخ و مدت تأییدشده می‌دهد و سندی نمی‌سازد. منبع جدید لینک `Leave Type` (بدون مرخصی اختیاری) به فرم‌ساز افزوده شد و ساعت‌های «روز بعد» اکنون با کلید همراه `<execution_key>__next_day` به اجراکننده می‌رسند (پیش‌تر حذف می‌شدند). کلید افزودنی `before_or_equal` (+ `before_or_equal_message`) برای فیلد تاریخ، مثلاً «نیم‌روز داخل بازه» (در ارسال و در اپ یکسان)، و `time_after` (+ `time_after_message`) برای فیلد ساعت با احتساب «روز بعد»؛ مقایسهٔ تاریخ‌های `after_or_equal` با مقدار خالی دیگر خطا نمی‌دهد. بدون نیاز به مهاجرت یا تنظیم جدید.
+
+- محرمانگی فیلدهای فرم: علامت `sensitive` فرم‌ساز اکنون به فیلد گردش‌کار نگاشت‌شده منتقل می‌شود (جزئیات درخواست، فهرست جست‌وجو و تغییرات ارسال مجدد). متن اعلان و توضیح فعالیت در اقدام «ارسال اعلان» و سند ساخته‌شده با «ایجاد سند» مقدار محرمانه را نشان نمی‌دهد (`محرمانه`). در اجرای پس از تأیید، پارامتر متنی که از فیلد محرمانه می‌آید به‌جای متن واقعی با جملهٔ «محرمانه؛ جزئیات در درخواست … است.» در سند بومی و Comment ثبت می‌شود. بدون نیاز به مهاجرت یا تنظیم جدید.
+
+- گواهی اشتغال به کار (`certificate_issue`): پس از تأیید نهایی، گواهی با شمارهٔ ترتیبی `CERT-سال-#####` و سربرگ شرکت (Letter Head پیش‌فرض Company) به‌صورت PDF خصوصی به درخواست پیوست می‌شود. اطلاعات فقط از Employee، Company و در صورت درخواست فرم از آخرین Salary Structure Assignment ثبت‌شده (submit) گرفته می‌شود؛ کارمند غیرفعال یا خارج‌شده، نبود رکورد حقوق، زبان انگلیسی و نبود سربرگ به نتیجهٔ «نیازمند بررسی» با دلیل فارسی ختم می‌شود و شماره‌ای مصرف نمی‌شود. اجرای مجدد گواهی دوم نمی‌سازد. دریافت با `workflow_request.get_certificate` فقط برای درخواست‌دهنده، HR Manager و System Manager همان شرکت است (مجوز File و `get_attachment` هم همین قاعده را دارند)؛ `get_request` کلید `certificate` دارد. بدون مهاجرت؛ WeasyPrint باید روی سرور بارگذاری شود و شرکت به Letter Head پیش‌فرض نیاز دارد.
+- تأیید دریافت تجهیز (N6): پس از ثبت پیش‌نویس تحویل تجهیز (`asset_movement`، جهت تحویل)، برای درخواست‌دهنده وظیفهٔ «تأیید دریافت تجهیز» در کارتابل ساخته می‌شود. نقطهٔ توسعهٔ عمومی `NativeResult.followup` در همان savepoint سند اجرا می‌شود. `request_followup.confirm_receipt` حرکت دارایی را ثبت نهایی می‌کند (ERPNext متصدی را تعیین می‌کند) و `request_followup.reject_receipt` با «علت عدم دریافت» پیش‌نویس را نگه می‌دارد و به مدیران منابع انسانی و انبار شرکت اعلان می‌دهد. فقط خود درخواست‌دهنده؛ تأیید دوباره، لغو حرکت دارایی و وظیفهٔ بسته با پیام فارسی رد می‌شوند و لغو یا حذف حرکت، وظیفهٔ باز را لغو می‌کند. `complete_workflow_task` و ذخیرهٔ پیش‌نویس این وظیفه را رد می‌کنند. جزئیات: `docs/api/form-execution.md`. بدون DocType یا فیلد جدید؛ نیازی به `bench migrate` نیست، فقط راه‌اندازی مجدد برای خواندن `doc_events` تازه در `hooks.py`.
+
+- اجرای ثبت‌نام آموزشی (`training_enrollment`): پس از تأیید، درخواست‌دهنده به فهرست شرکت‌کنندگان دوره‌ای که هنوز پیش‌نویس است افزوده می‌شود؛ دورهٔ ثبت‌شده هرگز تغییر نمی‌کند و نتیجه «نیازمند بررسی» با اعلان به منابع انسانی است. ثبت‌نام تکراری، دورهٔ لغوشده/برگزارشده و دورهٔ شرکت دیگر با پیام فارسی رد می‌شود و ردیف دوره هنگام اجرا قفل می‌شود. بدون نیاز به مهاجرت یا تنظیم جدید.
+
+- اجرای تسویه حساب (`exit`): پس از تأیید، پیش‌نویس Exit Interview و Full and Final Statement و تاریخ پایان همکاری کارمند به‌صورت اتمی ثبت می‌شود؛ ثبت تسویه دوم برای همان کارمند هنگام ارسال و اجرا رد می‌شود (هوک اختیاری `validate_submit` در رجیستری). بدون نیاز به مهاجرت یا تنظیم جدید.
+
+- اجرای تغییر شیفت: ساخت اتمی پیش‌نویس‌های بومی تغییر و جابه‌جایی شیفت با اعتبارسنجی HRMS؛ بدون نیاز به مهاجرت یا تنظیم جدید.
+- Approved form results requiring HR action now persist terminal `Needs Review`, show «نیازمند بررسی» with the reason restricted to privileged viewers, and notify the requester and HR/System Managers once. Asset direction Select ids `issue`/`receipt` map to native purposes. Run `bench migrate` to add the status option and normalize previously stored `needs_review` values; no new site configuration.
+- Fix employee advance execution to resolve the requester from the workflow request owner, retaining active employee and company checks. No migration or site configuration is required.
+- Create draft HRMS employee advances from approved form parameters with company currency, validated receivable account and Persian prerequisite errors. No migration or site configuration is required.
+
+
+- A request returned for correction can be edited once by its owner: `get_request` returns `return_reason`, `can_edit` is true while it is returned, and `update_request` records a `Resubmitted` activity with the changed fields and restarts the review from the first stage after the form. No migration is required.
+
 - Workflow decisions now always require a Persian reason for rejection or return, block self-approval, and mask form fields marked `sensitive` outside the owner, workflow participants, and System/HR managers. No migration is required.
 
 Deployment: run `bench --site <site> migrate` (adds a search index on `ASOUD Workflow Activity.workflow_instance`; new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
+Deployment: run `bench --site <site> migrate` (adds Form Entry reference indexes for approval execution; adds a search index on `ASOUD Workflow Activity.workflow_instance`; new `reminder_at` field on `ASOUD Internal Communication`; new `In Progress` option on the recipient `directive_state`).
 
 Fixed:
 
@@ -13,15 +38,24 @@ Fixed:
 
 Added:
 
+- `get_request` returns `execution` (state, Persian label, privileged-only error, reference) kept apart from `status_key`, computed in `services/request_execution.py`; workflow activity rows carry optional `before`/`after`. Needs `bench migrate` (new `ASOUD Workflow Activity.change_json`). See `docs/api/request_templates.md`.
 - Employee schedule form capability: `forms.employee_schedule` reads HRMS Shift Assignment,
   Employee default shift and Holiday List for a bounded 62-day range; schema version 2 gains
   the additive read-only `Schedule` field, and shift-change tables are revalidated on submit.
   No migration is required.
   A colleague's schedule is readable only through a form with an `exclude_self` Employee link
   (`form`/`field` arguments) or by HR / System managers; others get a Persian permission error.
+- Approval execution for versioned request forms: executor catalog, form and stage parameter validation, completed-step overrides, and native draft dispatch after final approval with isolated rollback and retry. Reuses the existing native result fields. Executor registration is separate; no example executor is installed in production. Run migrate for the Form Entry reference indexes; no native fields are added.
+
+- Attendance correction form executor: missing entry/exit creates one native Employee Checkin; existing-time corrections and other cases return `needs_review` with a Persian explanation. Existing Checkins are preserved. A stored requester Employee must match the request owner, company and active status; an invalid selection is never replaced with another Employee. No migration; requires the form execution framework to dispatch approved forms. HR review notifications await a shared helper.
+- Approved form requests can create draft equipment Issue/Receipt movements with requester custody checks. No migration. See `docs/api/form-execution.md`.
+
 - Request-bound workflow step validation for approved amounts and per-row quantities, enforced during task completion. No migration. See `docs/api/forms.md`.
 - `get_request` returns `viewer` (is the caller the requester, and their own open task with the stage's decision flags) for an in-page decision card.
 - `get_request` returns `stages` (real workflow steps with status, assignees and times) and instance activity rows carry `actor_name` (`services/request_timeline.py`, `integration_tests/test_request_stages.py`).
+- Form schema support for read-only time comparison boxes, next-day Time companions for
+  overnight attendance, current native Contract start defaults (with joining-date fallback),
+  and real HRMS Training Event course, trainer, location and attendee-count attributes. No migration.
 - Form builder record sources: Link sources `Attendance`, `Shift Type`, `Training Event`, `Asset` scoped to the signed-in Employee on both `get_link_options` and submission (`meta.reason = 'no_employee'`), row `extra` attributes, `exclude_self`, `fetch_from` (recomputed server side), `not_equal`, unique table columns, and `default_source` `employee_number` / `default_shift`. No migration. See `docs/api/forms.md`.
 - Form schema support for Select display styles, section presentation/collapse metadata,
   field help text, Date `after_or_equal` validation, and Employee designation and joining-date defaults.

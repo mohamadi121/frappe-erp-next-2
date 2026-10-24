@@ -16,14 +16,17 @@ are `frappe.throw` with a code in `_server_messages[].title` (see the table at t
 | `request_options(company)` | GET | read | submittable types with fields, resolved defaults, `settings`, `attachments` limits |
 | `request_field_options(company, field_type, txt?, item_code?, scope?, limit_start?, limit_page_length≤50)` | GET | read | choices for a field |
 | `create_request(company, template_key? \| workflow_definition?, request_id, subject?, values, priority?, required_by?, project?, department?, attachments?)` | POST | `create_` (repository outbox) | create and submit |
-| `update_request(name, subject?, values, attachments?, remove_attachments?)` | POST | `update_` | edit while nobody else has acted |
+| `update_request(name, subject?, values, attachments?, remove_attachments?)` | POST | `update_` | edit while nobody else has acted, or once after a return for correction (see below) |
 | `cancel_request(name, reason?)` | POST | `cancel_` | withdraw while in progress |
 | `list_my_requests(company?, template_key?, status_group?, search?, priority?, date_from?, date_to?, limit_start?, limit_page_length≤100)` | GET | read | the caller's own requests |
 | `get_request(name)` | GET | read | detail (owner, System/HR Manager or a task assignee); `viewer = {is_requester, open_task: {name, stage_title, stage_type, approve_action, allow_reject, allow_return, comment_required, reject_comment_required, has_form} or null}` is computed from the caller's own Open task only |
 | `list_request_comments(name, limit_start?, limit_page_length≤100)` | GET | read | free comments, oldest first |
 | `add_request_comment(name, content)` | POST | `add_` | add a comment (1–2000 characters, HTML stripped) |
 | `get_attachment(name, thumbnail?)` | GET | read | one file; `thumbnail=1` scales an image to at most 256 px |
+| `get_certificate(name)` | GET | requester, HR Manager, System Manager | issued employment certificate PDF as base64; others get «شما اجازهٔ دریافت این گواهی را ندارید.»; `get_request.certificate` is `{number, filename, issued_on}` or null (see [form execution](form-execution.md)) |
 | `create_native_document(name)` | POST | `create_` | retry a failed native document (System, HR or Purchase Manager) |
+| `void_native_document(name, reason)` | POST | `void_` | HR Manager only: void the executed native document (see «Void and reissue» in `form-execution.md`) |
+| `reissue_native_document(name)` | POST | `reissue_` | HR Manager only: run the executor again after a void |
 
 `create_request` takes `workflow_definition` or `template_key`; the key wins and resolves
 the company's active definition (`TEMPLATE_NOT_AVAILABLE` otherwise). `request_id` is the
@@ -33,6 +36,39 @@ priority, required-by date, project, department and (for generated subjects) the
 come from the template; client values for them are ignored. The positional argument order
 is `company, workflow_definition, subject, request_id, ...` (unchanged); clients call by
 name.
+
+### Execution lane (`get_request.execution`)
+
+`execution = {state, label, error, executed_on, executed_by_name, reference}` is computed by the
+pure `services/request_execution.py` from the workflow instance status and the stored
+`native_status`/`native_error`; no field is stored for it. It is separate from `status_key`:
+an approval is never reported as done.
+
+| state | when | label |
+|---|---|---|
+| `not_applicable` | no instance, rejected, cancelled, or a template without execution and no native result | empty |
+| `not_started` | template with execution; instance Completed and no native result | «تأیید شده، اجرا انجام نشده» |
+| `not_started` | same, instance still Running | «اجرا پس از تأیید نهایی انجام می‌شود» |
+| `pending` | Completed, `native_status = Pending` | «در انتظار اجرا» |
+| `succeeded` | Completed, `native_status = Created` | «اجرا انجام شد» |
+| `failed` | Completed, `native_status = Failed` (the approval stays) | «اجرا ناموفق بود؛ درخواست تأیید شده است» |
+| `needs_review` | instance `Failed`, or Completed with `native_status = Needs Review` | «نیازمند بررسی» |
+| `not_connected` | Completed, `native_status = Skipped` | «اجرای خودکار برای این نوع درخواست متصل نیست» |
+| `voided` | Completed, `native_status = Voided` | «سند ابطال شد» |
+
+Additive keys: `can_void` (HR Manager and `native_status = Created`), `can_reissue` (HR Manager,
+`native_status = Voided` and a form request) and, only in the `voided` state and only for System/HR
+Managers, `void = {reason, by_name, on, reference}` (the voided document).
+
+`error` is returned only to System/HR Managers (same rule as `native.error`) and only when the state
+is `failed` or `needs_review`. `reference`, `executed_on` and `executed_by_name` are filled only for `succeeded`
+(the native document, its creation time, its creator). Only `succeeded` says «انجام شد».
+
+Activity rows of `get_workflow_instance` carry `before`, `after` and `labels` (objects, `{}` when
+absent), read from the new optional `ASOUD Workflow Activity.change_json`
+(`{"before": {...}, "after": {...}, "labels": {key: field label}}`); `labels` lets a client without
+the form (task page, print) show the field label.
+The migration only adds that column; existing rows return `{}`.
 
 ### Companies and scoping
 
@@ -80,6 +116,21 @@ extensions `pdf png jpg jpeg xls xlsx doc docx` (a template may narrow them with
 File name (values pointing at them are cleared; a required attachment field cannot lose
 its file) and keeps an attachment key that is missing from `values`. Re-sending the same
 new file after a replay reuses the stored one.
+
+### Return for correction and resubmit
+
+When a reviewer returns a request, `get_request` reports `status_key = "returned"` and
+`return_reason` (the reviewer's reason; empty in every other state). For the owner,
+`can_edit` is true only in that state (or while nobody else has acted). `update_request`
+on a returned request:
+
+* is refused (`REQUEST_NOT_EDITABLE`) when the caller has no open form task, so a second
+  resubmit, a request already approved, rejected or cancelled, and any non-owner (403) fail;
+* writes a `Resubmitted` activity whose `before`/`after` (activity `change_json`, see the
+  execution section) hold only the changed field keys and their old and new values
+  (sensitive fields show `محرمانه`, tables show the row count, text is cut at 200 characters);
+* completes the owner's form task, so the flow restarts at the first stage after the form
+  stage. Earlier tasks and activities (including the return) stay in the history.
 
 ## Status model
 
@@ -158,3 +209,8 @@ module-level `SPEC`. `workflow_request.effective_values(name)` returns the reque
 overlaid with the completed form task responses. The engine passes `request_row` to
 `summarize` with `rejection_reason` and `_labels` (`department`, `project`, `branch` name
 → label maps built in one query each).
+
+Approved form results with native status `Needs Review` appear as execution state
+`needs_review` («نیازمند بررسی»). The Persian reason is visible only to privileged
+viewers. The requester and enabled HR/System Managers receive an in-app alert;
+repeated dispatch does not repeat execution or alerts. Requires `bench migrate`.

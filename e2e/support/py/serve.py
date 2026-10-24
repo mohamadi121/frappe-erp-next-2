@@ -8,9 +8,11 @@ are required: every request on this port is served by ``E2E_SITE``
 a run never disturbs a bench web server another worker is using.
 """
 
+import importlib.util
 import logging  # noqa: E402
 import os
 import sys
+from pathlib import Path
 
 BENCH = os.environ.get("E2E_BENCH_PATH", os.path.expanduser("~/frappe-dev/bench"))
 SITE = os.environ.get("E2E_SITE", "asoud.test")
@@ -28,6 +30,13 @@ if not os.environ.get("E2E_SERVER_LOG"):
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 frappe.init(site=SITE, sites_path=os.path.join(BENCH, "sites"))
+# This fixture is confined to the test server; production imports no test executor.
+fixture_path = Path(__file__).resolve().parents[2] / 'tests' / 'form_execution_fixture.py'
+fixture_spec = importlib.util.spec_from_file_location('form_execution_fixture', fixture_path)
+fixture = importlib.util.module_from_spec(fixture_spec)
+fixture_spec.loader.exec_module(fixture)
+fixture.register()
+
 frappe.app.serve(
     port=PORT,
     site=SITE,

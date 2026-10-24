@@ -31,6 +31,38 @@ def mask_sensitive_values(values: dict, fields: list[dict], can_view: bool) -> d
     return result
 
 
+def schema_fields(schema: dict) -> list[dict]:
+    """The flat field list of a form-builder schema."""
+    return [field for section in (schema or {}).get("sections", []) or []
+            for field in section.get("fields", []) or [] if isinstance(field, dict)]
+
+
+def overlay_sensitive(fields: list[dict], form_fields: list[dict]) -> list[dict]:
+    """Workflow fields where a field the form marks `sensitive` (by `workflow_key`) is sensitive too.
+
+    The form designer sets the flag on its own field; the request is stored under the workflow
+    field, so the flag is carried over (columns by their own `workflow_key`). The input is not changed.
+    """
+    flagged = {field.get("workflow_key") for field in form_fields or []
+               if field.get("workflow_key") and field.get("sensitive") is True}
+    flagged_columns: dict[str, set] = {}
+    for field in form_fields or []:
+        if field.get("workflow_key") and isinstance(field.get("columns"), list):
+            flagged_columns[field["workflow_key"]] = {
+                column.get("workflow_key") for column in field["columns"]
+                if isinstance(column, dict) and column.get("workflow_key") and column.get("sensitive") is True}
+    result = copy.deepcopy(fields or [])
+    for field in result:
+        if not isinstance(field, dict):
+            continue
+        if field.get("key") in flagged:
+            field["sensitive"] = True
+        for column in field.get("columns") or []:
+            if isinstance(column, dict) and column.get("key") in flagged_columns.get(field.get("key"), ()):
+                column["sensitive"] = True
+    return result
+
+
 def hidden_file_urls(values: dict, fields: list[dict], can_view: bool) -> set[str]:
     """File urls that only sensitive fields point to, which a non-participant must not receive."""
     if can_view:

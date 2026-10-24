@@ -243,6 +243,19 @@ class TestDocumentTemplates(APITestCase):
         self.assertEqual(frappe.db.get_value("ASOUD Workflow Request", request["name"], "display_status"),
                          "در حال ثبت")
 
+    def test_legacy_change_status_runs_and_completes_without_a_service_user(self):
+        patcher = patch.dict(frappe.conf, {"asoud_workflow_service_user": None,
+                                           "asoud_workflow_service_companies": []})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        request = self._submit_and_approve()
+        instance = frappe.get_doc("ASOUD Workflow Instance", request["workflow_instance"])
+        self.assertEqual(instance.status, "Completed")
+        self.assertEqual(frappe.db.get_value("ASOUD Workflow Request", request["name"], "display_status"),
+                         "در حال ثبت")
+        self.assertFalse(frappe.db.exists("ASOUD Workflow Activity", {
+            "workflow_instance": instance.name, "action": "System Action Failed"}))
+
     def test_inactive_or_foreign_templates_cannot_be_used(self):
         template = self._template()
         document_templates.set_document_template_status(template["name"], "Inactive")
@@ -581,13 +594,29 @@ class TestDocumentTemplates(APITestCase):
         with self.assertRaises(frappe.ValidationError):
             workflow_request.cancel_request(request["name"])
 
+    def _manager_task(self, request):
+        frappe.set_user(APPROVER_USER)
+        return frappe.db.get_value("ASOUD Workflow Task", {
+            "workflow_instance": request["workflow_instance"], "status": "Open"}, "name")
+
     def test_edit_is_refused_after_the_manager_acted(self):
         request = self._submit("late")
-        frappe.set_user(APPROVER_USER)
-        approval = frappe.db.get_value("ASOUD Workflow Task", {
-            "workflow_instance": request["workflow_instance"], "status": "Open"}, "name")
+        approval = self._manager_task(request)
         with patch.object(workflow_runtime, "_notify_user"):
-            workflow_runtime.complete_workflow_task(approval, "Return", comment="مبلغ را اصلاح کنید")
+            workflow_runtime.complete_workflow_task(approval, "Approve")
         frappe.set_user(EMPLOYEE_USER)
         with self.assertRaises(frappe.ValidationError):
             workflow_request.update_request(request["name"], "خرید تجهیزات", {"amount": 20})
+
+    def test_a_returned_request_is_editable_exactly_once(self):
+        # Product rule: the owner may edit only after a return for correction, and only once.
+        request = self._submit("returned")
+        approval = self._manager_task(request)
+        with patch.object(workflow_runtime, "_notify_user"):
+            workflow_runtime.complete_workflow_task(approval, "Return", comment="مبلغ را اصلاح کنید")
+        frappe.set_user(EMPLOYEE_USER)
+        with patch.object(workflow_runtime, "_notify_user"):
+            updated = workflow_request.update_request(request["name"], "خرید تجهیزات", {"amount": 20})["data"]
+        self.assertEqual(updated["values"]["amount"], 20)
+        with self.assertRaises(frappe.ValidationError):
+            workflow_request.update_request(request["name"], "خرید تجهیزات", {"amount": 30})

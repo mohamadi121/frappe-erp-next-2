@@ -623,6 +623,10 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
         frappe.throw(_("Stage configuration must be an object"))
     try:
         normalized = normalize_stage_config(doc.stage_type, raw)
+        if normalized.get('form_fields'):
+            from asoud_erp.services.form_execution.stage_validation import validate_for_workflow
+
+            validate_for_workflow(definition, normalized['form_fields'])
     except ValueError as error:
         frappe.throw(_(str(error)))
 
