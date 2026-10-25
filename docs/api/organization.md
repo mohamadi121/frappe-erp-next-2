@@ -88,6 +88,35 @@ A Frappe-level refusal (for example a native link) is returned unchanged.
 
 ## employee_photo
 
+## preview_delete_position
+
+`GET` or `POST` `preview_delete_position(company, code, revision)` is read-only.
+Requires `System Manager` or `HR Manager`, Company read permission, and write
+permission on the existing `ASOUD Organization Chart`. It checks the current
+server revision and exact position code. Missing positions fail with
+`جایگاه موردنظر در ساختار فعلی وجود ندارد.`; stale revisions fail with
+`ساختار تغییر کرده است؛ دوباره بارگذاری کنید.` (TimestampMismatchError).
+
+Returns `{"can_delete": false, "blockers": ["..."], "counts":
+{"occupants": 1, "subordinates": 0, "history": 1}, "revision": 7}`.
+Counts cover active occupants (including legacy employee), direct reporting
+positions and server-owned assignment history. These are the position references
+supported by the existing chart model; native workflow documents do not link to
+individual JSON position codes. This endpoint does not delete or cascade.
+Deletion still uses `save_chart`, under the company lock and revision check;
+the controller rechecks the same blockers against the previous server chart.
+Move/reparent children in a separate saved operation before deleting their parent.
+
+## preview_delete_unit
+
+`GET` or `POST` `preview_delete_unit(company, name, modified)` requires the write
+role group and native Department delete permission. Returns
+`{"can_delete": false, "blockers": ["..."], "modified": "..."}`.
+Checks child units, position references and native static/dynamic document links.
+Stale modified values fail; `delete_unit` repeats checks under the company lock.
+
+## employee_photo
+
 `GET` `employee_photo(company, employee)`
 
 `employee` is `employee:<Employee name>` or the bare name. Returns a JPEG thumbnail
