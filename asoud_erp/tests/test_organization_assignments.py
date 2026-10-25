@@ -47,6 +47,27 @@ def test_legacy_removal_requires_explicit_history_conversion():
         reconcile([{"code": "P", "employee": ""}], [{"code": "P", "employee": "E"}], "now", "hr")
 
 
+def test_deletion_cannot_cascade_reporting_children():
+    previous = [row(), row(code="CHILD", parent="P")]
+    with pytest.raises(ValueError, match="زیرمجموعه"):
+        reconcile([], previous, "now", "hr")
+
+
+def test_delete_review_counts_and_missing_position():
+    from asoud_erp.services.organization_assignments import deletion_review
+
+    rows = [row(occupants=["employee:E"], assignment_history=[{"employee": "employee:E"}]),
+            row(code="CHILD", parent="P")]
+    review = deletion_review(rows, "P")
+    assert review["counts"] == {"occupants": 1, "subordinates": 1, "history": 1}
+    assert not review["can_delete"]
+    assert len(review["blockers"]) == 3
+    assert deletion_review([row()], "P")["can_delete"]
+    assert not deletion_review([row(employee="legacy:E")], "P")["can_delete"]
+    with pytest.raises(ValueError):
+        deletion_review(rows, "MISSING")
+
+
 def test_multiple_occupants_and_stable_native_department():
     result = validate_rows([row(occupants=["employee:A", "employee:B"], department_id="DEPT-ID")])
     assert result[0]["occupants"] == ["employee:A", "employee:B"]

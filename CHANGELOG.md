@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Organization management: added read-only `preview_delete_position` with company, role, document and revision checks; chart saves now block cascading removal of reporting children as well as occupants/history. Deploy backend before the matching Flutter inline editor; restart workers, no new schema or migration.
+
 - ده قالب خام موجود منابع انسانی به فهرست فرم‌های هر شرکت اضافه می‌شود. `open_builtin` فقط یک نمونه ثابت برای هر قالب و شرکت ایجاد می‌کند؛ `remove_builtin` مخصوص مدیر سیستم است و نسخه‌ها و ثبت‌های قبلی را حفظ می‌کند. هیچ گردش‌کار یا سند بومی به‌صورت ضمنی ایجاد نمی‌شود. استقرار: کد و بسته JSON را قبل از اپ جدید به‌روز و سرویس را restart کنید؛ این تغییر به مهاجرت تازه نیاز ندارد.
 
 ## 0.17.0 - 2026-10-24

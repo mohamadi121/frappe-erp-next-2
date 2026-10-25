@@ -16,7 +16,7 @@ roles listed). Frappe errors follow the [API conventions](README.md#errors):
 | Role group | Methods |
 | --- | --- |
 | Read: `System Manager`, `HR Manager`, `HR User` | `list_units`, `employee_photo` |
-| Write: `System Manager`, `HR Manager` | `save_unit`, `delete_unit`, `preview_import`, `apply_import` |
+| Write: `System Manager`, `HR Manager` | `save_unit`, `delete_unit`, `preview_delete_unit`, `preview_delete_position`, `preview_import`, `apply_import` |
 
 Each write also needs the matching native `Department` or `Employee` permission
 for the user. Users without the roles get `PermissionError` with message
@@ -85,8 +85,6 @@ Returns `{"deleted": "<name>"}`. Errors:
 - `واحد دارای زیرواحد است؛ حذف مجاز نیست.`: sub-units exist.
 
 A Frappe-level refusal (for example a native link) is returned unchanged.
-
-## employee_photo
 
 ## preview_delete_position
 

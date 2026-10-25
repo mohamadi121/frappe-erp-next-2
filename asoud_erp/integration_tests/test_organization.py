@@ -8,6 +8,30 @@ from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER, APITestCase
 
 
 class TestOrganization(APITestCase):
+    def test_position_delete_review_and_transactional_recheck(self):
+        current = organization.get_chart(self.company)["data"]
+        code = "REVIEW-" + frappe.generate_hash(length=10)
+        saved = organization.save_chart(dict(company=self.company, revision=current["revision"],
+            rows=[*current["rows"], dict(code=code, title="Review position", capacity=1, occupants=[])]))["data"]
+        result = organization.preview_delete_position(self.company, code, saved["revision"])["data"]
+        self.assertTrue(result["can_delete"])
+        self.assertEqual(result["counts"], dict(occupants=0, subordinates=0, history=0))
+        with self.assertRaises(frappe.TimestampMismatchError):
+            organization.preview_delete_position(self.company, code, saved["revision"] - 1)
+        frappe.set_user(EMPLOYEE_USER)
+        with self.assertRaises(frappe.PermissionError):
+            organization.preview_delete_position(self.company, code, saved["revision"])
+        frappe.set_user("Administrator")
+        updated = organization.save_chart(dict(company=self.company, revision=saved["revision"],
+            rows=[*saved["rows"], dict(code=code + "-CHILD", title="Child", parent=code,
+                                      capacity=1, occupants=[])]))["data"]
+        self.assertFalse(organization.preview_delete_position(self.company, code, updated["revision"])["data"]["can_delete"])
+        with self.assertRaises(frappe.ValidationError):
+            organization.save_chart(dict(company=self.company, revision=updated["revision"], rows=current["rows"]))
+        # Explicitly remove the leaf first; deletion never cascades.
+        clean = organization.save_chart(dict(company=self.company, revision=updated["revision"], rows=saved["rows"]))["data"]
+        organization.save_chart(dict(company=self.company, revision=clean["revision"], rows=current["rows"]))
+
     def test_native_root_is_preserved_on_title_edit(self):
         name = organization.save_unit(self.company, dict(
             title="Root preservation " + frappe.generate_hash(length=8), is_group=True))["data"]["name"]
