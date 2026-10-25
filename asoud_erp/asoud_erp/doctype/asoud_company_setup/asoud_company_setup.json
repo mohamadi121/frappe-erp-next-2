@@ -12,7 +12,7 @@
     "address", "postal_code", "description", "office_saved",
     "accounting_basis", "display_currency", "fiscal_year_start_day", "fiscal_year_start_month", "fiscal_year", "chart_template",
     "auto_generate_account_code", "group_code_digits", "general_code_digits", "ledger_code_digits",
-    "auto_generate_detail_code", "accounting_saved", "enabled_roles_json", "roles_saved"
+    "auto_generate_detail_code", "accounting_saved", "enabled_roles_json", "roles_saved", "office_admin"
   ],
   "fields": [
     {"fieldname": "company", "label": "Company", "fieldtype": "Link", "options": "Company", "reqd": 1, "unique": 1, "in_list_view": 1},
@@ -34,6 +34,7 @@
     {"fieldname": "fiscal_year", "label": "Fiscal Year", "fieldtype": "Data", "default": "1405"},
     {"fieldname": "description", "label": "Description", "fieldtype": "Small Text"},
     {"fieldname": "office_saved", "label": "Office Saved", "fieldtype": "Check", "default": "0", "read_only": 1},
+    {"fieldname": "office_admin", "label": "Office Admin (system administrator that created the first office)", "fieldtype": "Link", "options": "User", "read_only": 1},
     {"fieldname": "accounting_basis", "label": "Accounting Basis", "fieldtype": "Data", "default": "Accrual", "read_only": 1},
     {"fieldname": "display_currency", "label": "Display Currency", "fieldtype": "Select", "options": "Rial\nToman", "default": "Rial"},
     {"fieldname": "fiscal_year_start_day", "label": "Fiscal Year Start Day", "fieldtype": "Int", "default": "1"},

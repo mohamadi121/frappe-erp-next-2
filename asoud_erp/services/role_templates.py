@@ -25,6 +25,8 @@ BASE_ROLES = {
     "HR User": ("کارشناس منابع انسانی", "عملیات منابع انسانی طبق مجوزهای نصب‌شده HRMS"),
     "Payroll Manager": ("مدیر حقوق و دستمزد", "مجوزهای حساس حقوق و دستمزد در HRMS"),
     "Payroll Employee": ("پرسنل حقوق و دستمزد", "دسترسی استاندارد پرسنلی حقوق و دستمزد"),
+    "ASOUD Office Creator": ("ایجاد دفتر کار", "مجوز مستقل ایجاد دفتر جدید؛ مدیریت دفتر یا اختیار مدیر کل را نمی‌دهد"),
+    "ASOUD Role Assigner": ("واگذاری نقش", "اختصاص نقش‌هایی که خود دارنده آن است؛ نقش مدیر کل قابل واگذاری نیست"),
     "Employee": ("پرسنل", "نقش استاندارد پرسنل؛ ارتباط کاربر با Employee باید جداگانه تنظیم شود"),
 }
 
@@ -42,4 +44,6 @@ TEMPLATES = [
     ("HR_USER", "کارشناس منابع انسانی", "HR", ["HR User"]),
     ("PAYROLL_MANAGER", "مسئول حقوق و دستمزد", "FINANCE", ["Payroll Manager"]),
     ("EMPLOYEE", "پرسنل", "EMPLOYEE", ["Employee"]),
+    ("OFFICE_CREATOR", "مجوز ایجاد دفتر", "SYSTEM", ["ASOUD Office Creator"]),
+    ("ROLE_ASSIGNER", "واگذاری نقش", "SYSTEM", ["ASOUD Role Assigner"]),
 ]

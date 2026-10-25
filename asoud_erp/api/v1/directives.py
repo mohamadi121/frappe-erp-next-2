@@ -23,6 +23,7 @@ from asoud_erp.services.directive_access import (
 )
 from asoud_erp.services.directive_paging import HISTORY_SQL, history_limits, review_index, site_naive_datetime
 from asoud_erp.services.request_access import require_company
+from asoud_erp.services.system_admin import is_system_admin
 
 
 def _data(value):
@@ -33,19 +34,33 @@ def _data(value):
 
 
 def _employee(company, user=None):
+    """The acting personnel row. A system administrator without a personnel file acts with a
+    virtual row (no Employee is created): directives are issued by an account, not by a file."""
     require_company(company)
     user = user or frappe.session.user
     if not active_user(user):
         frappe.throw("حساب فعال لازم است.", frappe.PermissionError)
     row = frappe.db.get_value("Employee", {"company": company, "user_id": user,
         "status": "Active"}, ["name", "employee_name", "department", "designation", "reports_to"], as_dict=True)
+    if not row and is_system_admin(user):
+        return frappe._dict(name=None, employee_name=get_fullname(user), department=None,
+                            designation=None, reports_to=None)
     if not row:
         frappe.throw("پرسنل فعال این سازمان به حساب متصل نیست.", frappe.PermissionError)
     return row
 
 
-def _people(company, manager=None):
-    manager = manager or _employee(company).name
+def _people(company, manager=None, sender=None):
+    """Who the sender may direct: the whole company for a system administrator (global scope),
+    otherwise the sender's active direct reports."""
+    sender = sender or frappe.session.user
+    if manager is None and is_system_admin(sender):
+        rows = frappe.get_all("Employee", filters={"company": company, "status": "Active",
+            "user_id": ["is", "set"]}, fields=["user_id", "employee_name", "department", "designation"],
+            limit_page_length=0)
+        return [dict(id=r.user_id, name=r.employee_name, department=r.department or "",
+            position=r.designation or "") for r in rows if active_user(r.user_id) and r.user_id != sender]
+    manager = manager or _employee(company, sender).name
     rows = frappe.get_all("Employee", filters={"company": company, "reports_to": manager,
         "status": "Active", "user_id": ["is", "set"]},
         fields=["user_id", "employee_name", "department", "designation"], limit_page_length=0)
@@ -145,7 +160,9 @@ def _view(doc):
     actions = _actions(doc)
     manager = frappe.db.get_value("Employee", {"company": doc.company,
         "user_id": doc.sender, "status": "Active"}, "name")
-    people = _people(doc.company, manager) if manager and "transfer" in actions and active_user(doc.sender) else []
+    people = (_people(doc.company, manager, doc.sender)
+              if (manager or is_system_admin(doc.sender)) and "transfer" in actions and active_user(doc.sender)
+              else [])
     if not people and "transfer" in actions:
         actions.remove("transfer")
     return dict(id=doc.name, number=doc.name, company=doc.company, subject=doc.subject or "",
@@ -475,7 +492,7 @@ def transfer(company,directive,recipient_id,reason,request_key,executor_id=None)
         doc=_get(directive,company,True)
         source=executor_id if doc.sender==frappe.session.user else frappe.session.user
         row=next((r for r in _active(doc) if r.user==source),None)
-        available={p['id'] for p in _people(doc.company,_employee(doc.company,doc.sender).name)}
+        available={p['id'] for p in _people(doc.company,None,doc.sender)}
         if 'transfer' not in _actions(doc) or not row or row.directive_state not in ('Pending','Returned','In Progress') or not str(reason or '').strip():
             frappe.throw('ارجاع در این وضعیت مجاز نیست یا دلیل وارد نشده است.',frappe.PermissionError)
         if recipient_id not in available or recipient_id in {r.user for r in doc.recipients}|{doc.sender,frappe.session.user}:

@@ -12,7 +12,9 @@
     "parent_role",
     "role_profile",
     "description",
-    "enabled"
+    "enabled",
+    "scope",
+    "is_system"
   ],
   "fields": [
     {
@@ -63,6 +65,21 @@
       "label": "Available for Assignment",
       "fieldtype": "Check",
       "default": "1"
+    },
+    {
+      "fieldname": "scope",
+      "label": "Scope",
+      "fieldtype": "Select",
+      "options": "global\noffice",
+      "default": "global",
+      "description": "global: the profile applies site-wide (native Frappe role profile). office: it is granted per office through ASOUD Office Role Assignment."
+    },
+    {
+      "fieldname": "is_system",
+      "label": "System Role",
+      "fieldtype": "Check",
+      "default": "0",
+      "read_only": 1
     }
   ],
   "permissions": [
