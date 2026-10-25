@@ -7,13 +7,23 @@ from frappe.utils import getdate
 from asoud_erp.services.request_access import require_company
 
 
-def require_roles(roles) -> None:
-    """Like ``frappe.only_for``, but also enforced while tests run."""
+def require_roles(roles, company=None) -> None:
+    """Like ``frappe.only_for``, but also enforced while tests run.
+
+    With ``company`` the roles an account holds only in that office (per-office role
+    assignments) count as well; without it only the global roles do.
+    """
     roles = (roles,) if isinstance(roles, str) else tuple(roles)
     if frappe.session.user == "Administrator":
         return
-    if not set(roles) & set(frappe.get_roles()):
-        frappe.throw(_("Not permitted"), frappe.PermissionError)
+    if set(roles) & set(frappe.get_roles()):
+        return
+    if company:
+        from asoud_erp.services.office_access import office_roles
+
+        if set(roles) & office_roles(frappe.session.user, company):
+            return
+    frappe.throw(_("Not permitted"), frappe.PermissionError)
 
 
 def load(doctype: str, name: str, ptype: str = "read"):

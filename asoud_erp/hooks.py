@@ -18,16 +18,27 @@ doc_events = {
         "on_trash": "asoud_erp.services.organization_units.guard_department",
         "before_rename": "asoud_erp.services.organization_units.guard_rename",
     },
-    "User": {"validate": [
-        "asoud_erp.services.role_assignment.validate_role_profile_assignment",
-        "asoud_erp.api.v1.user_access.attach_roles",
-    ]},
+    "User": {
+        "validate": [
+            "asoud_erp.services.role_assignment.validate_role_profile_assignment",
+            "asoud_erp.api.v1.user_access.attach_roles",
+            # last: it judges the final role list after the role profile has been applied
+            "asoud_erp.services.system_admin.guard_user_change",
+        ],
+        "on_update": "asoud_erp.services.user_audit.on_user_update",
+        "on_trash": "asoud_erp.services.system_admin.guard_user_trash",
+    },
+    "ASOUD Role Definition": {"on_update": "asoud_erp.services.user_audit.on_role_definition_update"},
+    "Activity Log": {"after_insert": "asoud_erp.services.user_audit.mirror_activity_log"},
     "Company": {"after_insert": "asoud_erp.services.request_templates.seed.on_company_insert"},
     "ASOUD Workflow Instance": {"on_update": "asoud_erp.services.request_templates.lifecycle.on_instance_update"},
     "Asset Movement": {"on_cancel": "asoud_erp.services.request_followup_runtime.cancel_open_tasks",
                        "on_trash": "asoud_erp.services.request_followup_runtime.cancel_open_tasks"},
     "Leave Application": {"validate": "asoud_erp.services.leave_balance.validate_leave_application"},
 }
+
+before_request = ["asoud_erp.services.session_guard.enforce_password_change"]
+on_login = ["asoud_erp.services.session_guard.on_login"]
 
 after_install = "asoud_erp.install.after_install"
 after_migrate = "asoud_erp.install.after_migrate"

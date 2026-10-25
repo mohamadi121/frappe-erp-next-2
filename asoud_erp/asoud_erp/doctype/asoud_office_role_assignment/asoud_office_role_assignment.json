@@ -1,0 +1,16 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Office Role Assignment",
+  "module": "ASOUD ERP",
+  "autoname": "hash",
+  "track_changes": 1,
+  "field_order": ["user", "company", "role_definition", "assignment_key", "granted_by"],
+  "fields": [
+    {"fieldname": "user", "label": "User", "fieldtype": "Link", "options": "User", "reqd": 1, "search_index": 1, "in_list_view": 1},
+    {"fieldname": "company", "label": "Office", "fieldtype": "Link", "options": "Company", "reqd": 1, "search_index": 1, "in_list_view": 1},
+    {"fieldname": "role_definition", "label": "Role", "fieldtype": "Link", "options": "ASOUD Role Definition", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "assignment_key", "label": "Assignment Key", "fieldtype": "Data", "unique": 1, "read_only": 1},
+    {"fieldname": "granted_by", "label": "Granted By", "fieldtype": "Link", "options": "User", "read_only": 1}
+  ],
+  "permissions": [{"role": "System Manager", "read": 1}]
+}

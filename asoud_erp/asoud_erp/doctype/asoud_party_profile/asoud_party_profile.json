@@ -7,6 +7,7 @@
   "search_fields": "display_name,national_id,mobile",
   "track_changes": 1,
   "field_order": [
+    "user",
     "company",
     "party_type",
     "display_name",
@@ -64,6 +65,14 @@
     "disabled"
   ],
   "fields": [
+    {
+      "fieldname": "user",
+      "label": "Login Account",
+      "fieldtype": "Link",
+      "options": "User",
+      "search_index": 1,
+      "description": "The login account of this person (one person, at most one account)."
+    },
     {
       "fieldname": "company",
       "label": "Company",

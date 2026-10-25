@@ -9,6 +9,7 @@ import frappe
 from frappe.utils import cint
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services import security_audit
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.role_templates import BASE_ROLES, CATEGORIES, TEMPLATES
 
@@ -65,7 +66,7 @@ def _row(doc):
         "enabled": bool(doc.enabled), "profile": profile.name,
         "base_roles": sorted(row.role for row in profile.roles),
         "modified": str(doc.modified), "profile_modified": str(profile.modified),
-        "assigned_users": len(assigned),
+        "assigned_users": len(assigned), "scope": doc.scope or "global", "system": bool(doc.is_system),
     }
 
 
@@ -76,6 +77,7 @@ def catalog():
     roles = [_row(frappe.get_doc("ASOUD Role Definition", name))
              for name in frappe.get_all("ASOUD Role Definition", pluck="name", order_by="title asc")]
     return success({
+        "system_roles": [system_admin_row()],
         "categories": [{"code": row.name, "title": row.title, "style": row.style}
                        for row in frappe.get_all("ASOUD Role Category",
                            fields=["name", "title", "style"], order_by="creation asc")],
@@ -89,6 +91,37 @@ def catalog():
                       for code, title, category, base in TEMPLATES],
         "template_categories": CATEGORIES,
     })
+
+
+def system_admin_row():
+    from asoud_erp.services.system_admin import SYSTEM_ADMIN_ROLE, active_named_admins
+
+    return {"code": "SYSTEM_ADMIN", "native_role": SYSTEM_ADMIN_ROLE, "title": "مدیر کل سیستم",
+            "scope": "global", "scope_title": "سراسری", "system": True, "editable": False,
+            "description": "نقش سیستمی با دسترسی کامل در همین استقرار؛ فهرست مجوزها از "
+                           "system_admin_permissions خوانده می‌شود.",
+            "holders": active_named_admins()}
+
+
+@frappe.whitelist()
+def system_admin_permissions():
+    """«مدیر کل سیستم» with scope «سراسری» and its full permission list, derived from the real
+    permissions: every DocType right of ``System Manager`` (so a module added tomorrow appears
+    automatically) plus the ASOUD capabilities, each with the server gate that enforces it."""
+    from asoud_erp.services.permission_catalog import capabilities_for
+
+    _read_access()
+    rights = ("read", "write", "create", "delete", "submit", "cancel", "amend",
+              "report", "export", "import", "print", "email", "share")
+    by_doctype: dict[str, set[str]] = {}
+    for table in ("DocPerm", "Custom DocPerm"):
+        for perm in frappe.get_all(table, filters={"role": "System Manager", "permlevel": 0},
+                                   fields=["parent", *rights], limit_page_length=0):
+            by_doctype.setdefault(perm.parent, set()).update(r for r in rights if perm.get(r))
+    documents = [{"doctype": dt, "actions": sorted(actions)} for dt, actions in sorted(by_doctype.items())
+                 if actions]
+    return success({**system_admin_row(), "capabilities": capabilities_for([], True),
+                    "document_permissions": documents, "document_permission_count": len(documents)})
 
 
 @frappe.whitelist(methods=["POST"])
@@ -105,6 +138,7 @@ def create_category(payload):
         frappe.throw("عنوان یا سبک دسته معتبر نیست.")
     doc = frappe.get_doc({"doctype": "ASOUD Role Category", "category_code": code,
                           "title": title, "style": style}).insert()
+    security_audit.record("role.category_create", target_type="ASOUD Role Category", target=doc.name)
     return success({"code": doc.name, "title": doc.title, "style": doc.style})
 
 
@@ -122,6 +156,9 @@ def _save(data):
     parent = str(data.get("parent") or "")
     if parent and not frappe.db.exists("ASOUD Role Definition", parent):
         frappe.throw("نقش والد یافت نشد.")
+    scope = str(data.get("scope") or "global")
+    if scope not in ("global", "office"):
+        frappe.throw("محدوده نقش باید سراسری یا دفتری باشد.")
     profile_name = f"ASOUD:{code}"
     exists = frappe.db.exists("ASOUD Role Definition", code)
     if exists:
@@ -150,10 +187,21 @@ def _save(data):
         profile.set("roles", [{"role": role} for role in roles])
         # Empty manual profiles grant no access. Existing permissions are not inferred.
         profile.save()
+    final_roles = sorted(row.role for row in profile.roles)
+    if "System Manager" in final_roles and scope != "global":
+        frappe.throw("نقشی که شامل مدیر کل سیستم است فقط می‌تواند سراسری باشد.")
+    before_roles = current_roles if exists else []
     doc.update({"title": title, "category": category, "parent_role": parent or None,
                 "description": description, "enabled": cint(data.get("enabled", 1)),
-                "role_profile": profile.name})
+                "role_profile": profile.name, "scope": scope,
+                "is_system": 1 if "System Manager" in final_roles else 0})
     doc.save()
+    security_audit.record("role.update" if exists else "role.create", target_type="ASOUD Role Definition",
+                          target=doc.name, details={"scope": scope, "base_roles": final_roles})
+    if final_roles != before_roles:
+        security_audit.record("role.permission_change", target_type="ASOUD Role Definition", target=doc.name,
+                              details={"added": sorted(set(final_roles) - set(before_roles)),
+                                       "removed": sorted(set(before_roles) - set(final_roles))})
     return _row(doc)
 
 

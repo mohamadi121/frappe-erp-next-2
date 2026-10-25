@@ -1,0 +1,24 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Security Audit",
+  "module": "ASOUD ERP",
+  "autoname": "format:SEC-{YYYY}-{#######}",
+  "track_changes": 0,
+  "in_create": 1,
+  "title_field": "action",
+  "sort_field": "occurred_on",
+  "sort_order": "DESC",
+  "field_order": ["occurred_on", "actor", "action", "result", "source", "target_type", "target", "company", "details"],
+  "fields": [
+    {"fieldname": "occurred_on", "label": "Occurred On", "fieldtype": "Datetime", "reqd": 1, "read_only": 1, "search_index": 1, "in_list_view": 1},
+    {"fieldname": "actor", "label": "Actor", "fieldtype": "Data", "read_only": 1, "search_index": 1, "in_list_view": 1, "description": "User id of the acting account, or the attempted login name for a failed login."},
+    {"fieldname": "action", "label": "Action", "fieldtype": "Data", "reqd": 1, "read_only": 1, "search_index": 1, "in_list_view": 1},
+    {"fieldname": "result", "label": "Result", "fieldtype": "Select", "options": "success\nfailure\ndenied", "reqd": 1, "read_only": 1, "in_list_view": 1},
+    {"fieldname": "source", "label": "Source", "fieldtype": "Data", "read_only": 1, "description": "Client address and/or API method; never a token."},
+    {"fieldname": "target_type", "label": "Target Type", "fieldtype": "Data", "read_only": 1},
+    {"fieldname": "target", "label": "Target", "fieldtype": "Data", "read_only": 1, "search_index": 1},
+    {"fieldname": "company", "label": "Office", "fieldtype": "Data", "read_only": 1},
+    {"fieldname": "details", "label": "Details (sanitised JSON)", "fieldtype": "Long Text", "read_only": 1}
+  ],
+  "permissions": [{"role": "System Manager", "read": 1, "export": 1, "report": 1}]
+}
