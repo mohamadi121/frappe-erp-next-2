@@ -19,15 +19,25 @@ def service_write():
 
 
 def active_user(user):
-    return user not in (None, "Guest", "Administrator") and bool(
-        frappe.db.get_value("User", user, "enabled"))
+    """An enabled account. ``Administrator`` counts: a system administrator must be able to
+    issue and receive directives (it used to be excluded, which locked the admin out)."""
+    return user not in (None, "Guest") and bool(frappe.db.get_value("User", user, "enabled"))
+
+
+def _admin_in_company(user, company):
+    from asoud_erp.services.request_access import company_access
+    from asoud_erp.services.system_admin import is_system_admin
+
+    return is_system_admin(user) and company_access(company, user)
 
 
 def can_read(doc, user=None):
+    """Sender or recipient with an active personnel file in the company; a system administrator
+    needs no personnel file (still only for directives they sent or received)."""
     user = user or frappe.session.user
-    if not active_user(user) or not frappe.db.exists("Employee", {
+    if not active_user(user) or not (frappe.db.exists("Employee", {
         "user_id": user, "company": doc.company, "status": "Active"
-    }):
+    }) or _admin_in_company(user, doc.company)):
         return False
     return doc.sender == user or (doc.status != "Draft" and any(
         row.user == user for row in doc.recipients))
@@ -119,11 +129,16 @@ def reject_generic(doc):
 
 
 def communication_query(user=None):
-    user = frappe.db.escape(user or frappe.session.user)
+    from asoud_erp.services.system_admin import is_system_admin
+
+    raw_user = user or frappe.session.user
+    user = frappe.db.escape(raw_user)
     table = "`tabASOUD Internal Communication`"
+    employee_clause = ("1=1" if is_system_admin(raw_user) else
+        f"EXISTS (SELECT 1 FROM `tabEmployee` de WHERE de.user_id={user} AND de.status='Active' AND de.company={table}.company)")
     return (f"({table}.communication_type != 'Directive' OR ("
         f"EXISTS (SELECT 1 FROM `tabUser` du WHERE du.name={user} AND du.enabled=1) AND "
-        f"EXISTS (SELECT 1 FROM `tabEmployee` de WHERE de.user_id={user} AND de.status='Active' AND de.company={table}.company) AND "
+        f"{employee_clause} AND "
         f"({table}.sender={user} OR ({table}.status!='Draft' AND EXISTS (SELECT 1 FROM "
         f"`tabASOUD Communication Recipient` dr WHERE dr.parent={table}.name AND dr.parenttype='{COMMUNICATION}' AND dr.user={user})))))")
 

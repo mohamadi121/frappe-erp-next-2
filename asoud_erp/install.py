@@ -4,6 +4,7 @@ from asoud_erp.api.v1.detail_group import DEFAULT_GROUPS
 
 
 def after_install():
+    ensure_security_roles()
     settings = frappe.get_single("ASOUD Settings")
     settings.accounting_basis = "Accrual"
     settings.display_currency = "Rial"
@@ -32,10 +33,22 @@ def after_install():
             frappe.db.set_value("ASOUD Detail Group", existing, "party_role", party_role)
 
 
+SECURITY_ROLES = ("ASOUD Office Creator", "ASOUD Role Assigner")
+
+
+def ensure_security_roles():
+    """Native roles behind the independent «ایجاد دفتر» and «واگذاری نقش» permissions. They grant
+    no DocType right by themselves; only the ASOUD gates read them. Idempotent."""
+    for name in SECURITY_ROLES:
+        if not frappe.db.exists("Role", name):
+            frappe.get_doc({"doctype": "Role", "role_name": name, "desk_access": 0}).insert(ignore_permissions=True)
+
+
 def after_migrate():
     """Keep installation and migration hooks explicitly idempotent."""
     from asoud_erp.services.request_templates.seed import ensure_system_templates
 
+    ensure_security_roles()
     ensure_system_templates()
     for code, title, party_role in DEFAULT_GROUPS:
         existing = frappe.db.exists("ASOUD Detail Group", code)

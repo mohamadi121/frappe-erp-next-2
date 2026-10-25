@@ -4,7 +4,7 @@
   "module": "ASOUD ERP",
   "issingle": 1,
   "track_changes": 1,
-  "field_order": ["accounting_basis", "display_currency", "auto_generate_account_code", "group_code_digits", "general_code_digits", "ledger_code_digits", "auto_generate_detail_code", "detail_code_digits"],
+  "field_order": ["accounting_basis", "display_currency", "auto_generate_account_code", "group_code_digits", "general_code_digits", "ledger_code_digits", "auto_generate_detail_code", "detail_code_digits", "first_office_section", "first_office_company", "first_office_created_by", "first_office_created_on"],
   "fields": [
     {"fieldname": "accounting_basis", "label": "Accounting Basis", "fieldtype": "Data", "default": "Accrual", "read_only": 1},
     {"fieldname": "display_currency", "label": "Display Currency", "fieldtype": "Select", "options": "Rial\nToman", "default": "Rial", "reqd": 1},
@@ -13,7 +13,11 @@
     {"fieldname": "general_code_digits", "label": "General Code Digits", "fieldtype": "Int", "default": "2", "reqd": 1},
     {"fieldname": "ledger_code_digits", "label": "Ledger Code Digits", "fieldtype": "Int", "default": "2", "reqd": 1},
     {"fieldname": "auto_generate_detail_code", "label": "Auto Generate Detail Code", "fieldtype": "Check", "default": "1"},
-    {"fieldname": "detail_code_digits", "label": "Detail Code Digits", "fieldtype": "Int", "default": "5", "reqd": 1}
+    {"fieldname": "detail_code_digits", "label": "Detail Code Digits", "fieldtype": "Int", "default": "5", "reqd": 1},
+    {"fieldname": "first_office_section", "label": "First Office Bootstrap", "fieldtype": "Section Break"},
+    {"fieldname": "first_office_company", "label": "First Office", "fieldtype": "Link", "options": "Company", "read_only": 1},
+    {"fieldname": "first_office_created_by", "label": "First Office Created By", "fieldtype": "Link", "options": "User", "read_only": 1},
+    {"fieldname": "first_office_created_on", "label": "First Office Created On", "fieldtype": "Datetime", "read_only": 1}
   ],
   "permissions": [
     {"role": "System Manager", "read": 1, "write": 1},

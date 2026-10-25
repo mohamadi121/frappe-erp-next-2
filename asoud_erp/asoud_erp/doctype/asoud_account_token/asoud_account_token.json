@@ -1,0 +1,19 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Account Token",
+  "module": "ASOUD ERP",
+  "autoname": "hash",
+  "track_changes": 0,
+  "field_order": ["user", "purpose", "token_hash", "salt", "expires_on", "attempts", "consumed_on", "requested_from"],
+  "fields": [
+    {"fieldname": "user", "label": "User", "fieldtype": "Link", "options": "User", "reqd": 1, "search_index": 1},
+    {"fieldname": "purpose", "label": "Purpose", "fieldtype": "Select", "options": "password_reset\nactivation", "reqd": 1},
+    {"fieldname": "token_hash", "label": "Token Hash", "fieldtype": "Data", "reqd": 1, "read_only": 1},
+    {"fieldname": "salt", "label": "Salt", "fieldtype": "Data", "reqd": 1, "read_only": 1},
+    {"fieldname": "expires_on", "label": "Expires On", "fieldtype": "Datetime", "reqd": 1},
+    {"fieldname": "attempts", "label": "Failed Attempts", "fieldtype": "Int", "default": "0"},
+    {"fieldname": "consumed_on", "label": "Consumed On", "fieldtype": "Datetime"},
+    {"fieldname": "requested_from", "label": "Requested From", "fieldtype": "Data"}
+  ],
+  "permissions": []
+}

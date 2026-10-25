@@ -8,17 +8,16 @@ from frappe.utils import cint
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.role_management import _access, _lock_definitions, _object
+from asoud_erp.services import security_audit
+from asoud_erp.services.permission_catalog import (
+    ADVANCED_ONLY,
+    ALL_ACTIONS,
+    MEDIUM_ACTIONS,
+    catalog_rows,
+    validate_grant,
+)
 
-ACTIONS = ("read", "create", "write", "delete")
-MODULES = {
-    "حسابداری": (("Journal Entry", "سند حسابداری"), ("Payment Entry", "دریافت و پرداخت"), ("Account", "حساب‌ها")),
-    "اشخاص و شرکت‌ها": (("Customer", "مشتریان"), ("Supplier", "تأمین‌کنندگان"), ("Contact", "مخاطبان")),
-    "کالا و انبار": (("Item", "کالاها"), ("Warehouse", "انبارها"), ("Stock Entry", "ورود و خروج انبار")),
-    "خرید": (("Material Request", "درخواست کالا"), ("Purchase Order", "سفارش خرید"), ("Purchase Invoice", "فاکتور خرید")),
-    "فروش": (("Quotation", "پیش‌فاکتور"), ("Sales Order", "سفارش فروش"), ("Sales Invoice", "فاکتور فروش")),
-    "تنظیمات": (("System Settings", "تنظیمات سامانه"),),
-    "مدیریت کاربران": (("User", "کاربران"),),
-}
+ACTIONS = MEDIUM_ACTIONS  # the legacy matrix; advanced extras travel in the *_advanced keys
 
 
 def _native(code, user=""):
@@ -43,16 +42,14 @@ def _user(name):
 
 
 def _catalog():
-    return [{"module": module, "doctype": dt, "title": title,
-             "actions": ["read"] if dt in {"User", "System Settings"} else list(ACTIONS)}
-            for module, rows in MODULES.items() for dt, title in rows
-            if frappe.db.exists("DocType", dt)]
+    return catalog_rows(lambda dt: bool(frappe.db.exists("DocType", dt)),
+                        lambda dt: bool(frappe.get_meta(dt).is_submittable))
 
 
-def _grants(role, catalog):
+def _grants(role, catalog, actions=ACTIONS):
     return {row["doctype"]: sorted({action for perm in frappe.get_meta(row["doctype"]).permissions
             if perm.role == role and not cint(perm.permlevel) and not cint(perm.if_owner)
-            for action in ACTIONS if perm.get(action)}) for row in catalog}
+            for action in actions if perm.get(action)}) for row in catalog}
 
 
 def _snapshot(code, user=""):
@@ -68,14 +65,21 @@ def _snapshot(code, user=""):
         inherited_roles.update(frappe.get_roles(user))
         inherited_roles.add(_native(code))
     inherited_roles.discard(owned)
-    inherited = {}
+    inherited, inherited_advanced = {}, {}
     for row in catalog:
-        inherited[row["doctype"]] = sorted({a for p in frappe.get_meta(row["doctype"]).permissions
+        perms = frappe.get_meta(row["doctype"]).permissions
+        inherited[row["doctype"]] = sorted({a for p in perms
             if p.role in inherited_roles and not cint(p.permlevel) for a in ACTIONS if p.get(a)})
+        inherited_advanced[row["doctype"]] = sorted({a for p in perms
+            if p.role in inherited_roles and not cint(p.permlevel) for a in ADVANCED_ONLY if p.get(a)})
     grants = _grants(owned, catalog)
-    stamp = [str(definition.modified), str(profile.modified), str(subject.modified) if subject else "", grants, inherited]
+    advanced = _grants(owned, catalog, ADVANCED_ONLY)
+    stamp = [str(definition.modified), str(profile.modified), str(subject.modified) if subject else "", grants,
+             advanced, inherited, inherited_advanced]
     token = hashlib.sha256(json.dumps(stamp, sort_keys=True).encode()).hexdigest()
-    return {"catalog": catalog, "grants": grants, "inherited": inherited, "token": token,
+    return {"catalog": catalog, "grants": grants, "advanced_grants": advanced, "inherited": inherited,
+            "inherited_advanced": inherited_advanced, "token": token,
+            "levels": ["simple", "medium", "advanced"],
             "base_roles": sorted(row.role for row in profile.roles)}
 
 
@@ -118,25 +122,41 @@ def apply(payload):
     if data.get("token") != before["token"]:
         frappe.throw("اطلاعات دسترسی تغییر کرده؛ صفحه را بازخوانی کنید.", frappe.TimestampMismatchError)
     grants = data.get("grants")
+    advanced = data.get("advanced_grants")
     allowed = {row["doctype"]: set(row["actions"]) for row in before["catalog"]}
+    allowed_adv = {row["doctype"]: set(row["actions"]) | set(row["advanced_actions"]) for row in before["catalog"]}
     if not isinstance(grants, dict) or set(grants) != set(allowed):
         frappe.throw("ماتریس دسترسی کامل و معتبر نیست.")
-    for dt, values in grants.items():
-        if not isinstance(values, list) or any(not isinstance(a, str) or a not in allowed[dt] for a in values):
-            frappe.throw("عملیات دسترسی مجاز نیست.")
-        if values and "read" not in values:
-            frappe.throw("ایجاد، ویرایش و حذف نیازمند مشاهده هستند.")
+    if advanced is None:
+        # An older client that knows only the four medium actions: extras stay as they are.
+        advanced = before["advanced_grants"]
+    if not isinstance(advanced, dict) or set(advanced) != set(allowed):
+        frappe.throw("ماتریس دسترسی پیشرفته کامل و معتبر نیست.")
+    wanted = {}
+    for dt in allowed:
+        extras = advanced[dt]
+        if (not isinstance(extras, list) or any(not isinstance(a, str) for a in extras)
+                or set(extras) - (allowed_adv[dt] - set(MEDIUM_ACTIONS))):
+            frappe.throw("عملیات پیشرفته مجاز نیست.")
+        error = validate_grant(grants[dt], allowed[dt])
+        if error:
+            frappe.throw(error)
+        combined = set(grants[dt]) | set(extras)
+        if combined and "read" not in combined:
+            frappe.throw("ایجاد، ویرایش، حذف و عملیات پیشرفته نیازمند مشاهده هستند.")
+        wanted[dt] = combined
     role = _native(code, user)
     if not frappe.db.exists("Role", role):
         frappe.get_doc({"doctype": "Role", "role_name": role, "desk_access": 1}).insert()
-    for dt, values in grants.items():
+    for dt, values in wanted.items():
         exists = frappe.db.exists("Custom DocPerm", {"parent": dt, "role": role, "permlevel": 0, "if_owner": 0})
         if not values and not exists:
             continue
         if not exists:
             add_permission(dt, role)
-        for action in ACTIONS:
-            update_permission_property(dt, role, 0, action, int(action in values), validate=False)
+        for action in ALL_ACTIONS:
+            if action in allowed_adv[dt] or action in values:
+                update_permission_property(dt, role, 0, action, int(action in values), validate=False)
         from frappe.core.doctype.doctype.doctype import validate_permissions_for_doctype
         validate_permissions_for_doctype(dt)
         frappe.clear_cache(doctype=dt)
@@ -153,6 +173,10 @@ def apply(payload):
         frappe.get_doc("User", name).save()
         frappe.clear_cache(user=name)
     _definition(code).add_comment("Info", text=f"Access settings updated by {frappe.session.user}; scope: {user or 'role'}")
+    changed = sorted(dt for dt in wanted if set(before["grants"][dt]) | set(before["advanced_grants"][dt]) != wanted[dt])
+    security_audit.record("role.permission_change", target_type="ASOUD Role Definition", target=code,
+                          details={"user": user or None, "doctypes": changed[:100],
+                                   "affected_users": len(affected)})
     return success({"applied": True, "affected_users": len(affected)})
 
 

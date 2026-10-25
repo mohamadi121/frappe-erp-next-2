@@ -1,0 +1,19 @@
+{
+  "doctype": "DocType",
+  "name": "ASOUD Account State",
+  "module": "ASOUD ERP",
+  "autoname": "field:user",
+  "track_changes": 1,
+  "field_order": ["user", "must_change_password", "temp_password_expires_on", "password_changed_on", "admin_profile_completed_on", "mobile_verified", "email_verified", "activation_pending"],
+  "fields": [
+    {"fieldname": "user", "label": "User", "fieldtype": "Link", "options": "User", "reqd": 1, "unique": 1, "set_only_once": 1},
+    {"fieldname": "must_change_password", "label": "Must Change Password", "fieldtype": "Check", "default": "0", "in_list_view": 1},
+    {"fieldname": "temp_password_expires_on", "label": "Temporary Password Expires On", "fieldtype": "Datetime"},
+    {"fieldname": "password_changed_on", "label": "Password Changed On", "fieldtype": "Datetime"},
+    {"fieldname": "admin_profile_completed_on", "label": "Admin Profile Completed On", "fieldtype": "Datetime"},
+    {"fieldname": "mobile_verified", "label": "Mobile Ownership Verified", "fieldtype": "Check", "default": "0", "read_only": 1},
+    {"fieldname": "email_verified", "label": "Email Ownership Verified", "fieldtype": "Check", "default": "0", "read_only": 1},
+    {"fieldname": "activation_pending", "label": "Activation Pending", "fieldtype": "Check", "default": "0"}
+  ],
+  "permissions": [{"role": "System Manager", "read": 1}]
+}

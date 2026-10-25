@@ -78,12 +78,12 @@ def get_my_profile():
 
 @frappe.whitelist()
 def list_team(query: str | None = None):
-    employee = _employee_for_user()
+    employee, company = _report_actor()
     roles = set(frappe.get_roles(frappe.session.user))
-    filters = {"company": employee.company, "status": "Active"}
+    filters = {"company": company, "status": "Active"}
     if not roles.intersection({"System Manager", "HR Manager", "HR User"}):
         filters["reports_to"] = employee.name
-    if not frappe.has_permission("Employee", ptype="read", doc=employee.name):
+    if employee and not frappe.has_permission("Employee", ptype="read", doc=employee.name):
         frappe.throw(_("Not permitted"), frappe.PermissionError)
     rows = frappe.get_all("Employee", filters=filters, fields=["name"], limit_page_length=100)
     values = [_employee_row(frappe.get_doc("Employee", row.name)) for row in rows]
@@ -100,24 +100,74 @@ def organization_tree(company: str):
     return success(frappe.get_all("Department", filters={"company": company, "disabled": 0}, fields=["name", "department_name", "parent_department", "is_group"], order_by="lft asc", limit_page_length=500))
 
 
+def _active_employee(user: str | None = None):
+    user = user or frappe.session.user
+    name = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "name")
+    return frappe.get_doc("Employee", name) if name else None
+
+
+def _report_actor(company_hint: str | None = None):
+    """(employee or None, company) of the session user.
+
+    A system administrator needs no personnel file to report: the report is then keyed by the
+    login account (``reporter``) in an office the administrator can access. Everybody else must
+    have an active Employee, exactly as before."""
+    from asoud_erp.services.system_admin import is_system_admin
+
+    employee = _active_employee()
+    if employee:
+        return employee, employee.company
+    if not is_system_admin():
+        frappe.throw(_("No active Employee is linked to this user"))
+    company = company_hint or frappe.defaults.get_user_default("company")
+    if not company:
+        company = frappe.db.get_value("ASOUD Company Setup", {"office_saved": 1}, "company",
+                                      order_by="creation asc")
+    if not company:
+        frappe.throw(_("Create the first office before sending work reports"))
+    require_company(company)
+    return None, company
+
+
+def _report_owner_is_me(doc, user: str) -> bool:
+    if doc.get("reporter"):
+        return doc.reporter == user
+    return bool(doc.employee) and frappe.db.get_value("Employee", doc.employee, "user_id") == user
+
+
+def _review_route(employee) -> dict:
+    superior = frappe.db.get_value("Employee", employee.reports_to, ["name", "employee_name", "user_id"],
+                                   as_dict=True) if employee and employee.reports_to else None
+    if superior:
+        return {"route": "direct_manager", "superior": superior.name, "superior_name": superior.employee_name}
+    return {"route": "managers_pool", "superior": None, "superior_name": None,
+            "note": "مافوق مستقیمی تعریف نشده؛ گزارش را مدیر کل سیستم یا مدیر منابع انسانی بررسی می‌کند."}
+
+
 @frappe.whitelist()
 def list_reports(status: str | None = None, limit_start: int = 0, limit_page_length: int = 30):
-    employee = _employee_for_user()
-    filters = {"employee": employee.name}
+    employee, _company = _report_actor()
+    filters = {}
     if status:
         filters["status"] = status
-    return success(frappe.get_all("ASOUD Work Report", filters=filters, fields=["name", "report_date", "status", "total_minutes", "manager_comment", "modified"], order_by="report_date desc", limit_start=int(limit_start), limit_page_length=min(int(limit_page_length), 100)))
+    or_filters = {"reporter": frappe.session.user}
+    if employee:
+        or_filters["employee"] = employee.name
+    return success(frappe.get_all("ASOUD Work Report", filters=filters, or_filters=or_filters, fields=["name", "report_date", "status", "total_minutes", "manager_comment", "modified"], order_by="report_date desc", limit_start=int(limit_start), limit_page_length=min(int(limit_page_length), 100)))
 
 
 @frappe.whitelist(methods=["POST"])
 def save_report(payload):
     data = normalize_report_payload(_payload(payload))
-    employee = _employee_for_user()
+    employee, company = _report_actor(data.get("company"))
     name = data.get("name")
     doc = frappe.get_doc("ASOUD Work Report", name) if name else frappe.new_doc("ASOUD Work Report")
-    if name and doc.employee != employee.name:
+    if name and not _report_owner_is_me(doc, frappe.session.user):
         frappe.throw(_("Not permitted"), frappe.PermissionError)
-    doc.company, doc.employee = employee.company, employee.name
+    if name and doc.status in ("Approved", "Archived"):
+        frappe.throw(_("A reviewed report cannot be edited"), frappe.PermissionError)
+    doc.company, doc.reporter = company, frappe.session.user
+    doc.employee = employee.name if employee else None
     doc.report_date = getdate(data.get("report_date") or nowdate())
     doc.status = data.get("status") or "Draft"
     doc.set("activities", [])
@@ -127,16 +177,21 @@ def save_report(payload):
         doc.append("activities", row)
     doc.total_minutes = total
     doc.save()
-    return success({"name": doc.name, "status": doc.status, "report_date": str(doc.report_date), "total_minutes": total})
+    return success({"name": doc.name, "status": doc.status, "report_date": str(doc.report_date),
+                    "total_minutes": total, "review": _review_route(employee)})
 
 
 @frappe.whitelist(methods=["POST"])
 def review_report(report: str, action: str, comment: str | None = None):
-    reviewer = _employee_for_user()
+    reviewer = _active_employee()
     doc = frappe.get_doc("ASOUD Work Report", report)
-    owner = frappe.get_doc("Employee", doc.employee)
+    if _report_owner_is_me(doc, frappe.session.user):
+        frappe.throw(_("You cannot review your own report"), frappe.PermissionError)
+    owner = frappe.get_doc("Employee", doc.employee) if doc.employee else None
     roles = set(frappe.get_roles(frappe.session.user))
-    if owner.reports_to != reviewer.name and not roles.intersection({"System Manager", "HR Manager"}):
+    require_company(doc.company)
+    direct = bool(owner and reviewer and owner.reports_to == reviewer.name)
+    if not direct and not roles.intersection({"System Manager", "HR Manager"}):
         frappe.throw(_("Not permitted"), frappe.PermissionError)
     states = {"approve": "Approved", "return": "Returned", "review": "Under Review"}
     if action not in states:
@@ -163,9 +218,9 @@ def list_communications(box: str = "inbox", limit_start: int = 0, limit_page_len
 @frappe.whitelist(methods=["POST"])
 def create_communication(payload):
     data = normalize_communication_payload(_payload(payload))
-    employee = _employee_for_user()
+    _employee, company = _report_actor(_payload(payload).get("company"))
     doc = frappe.new_doc("ASOUD Internal Communication")
-    doc.company, doc.sender = employee.company, frappe.session.user
+    doc.company, doc.sender = company, frappe.session.user
     for field in ("communication_type", "subject", "content", "priority", "confidential", "due_date"):
         if field in data:
             setattr(doc, field, data[field])

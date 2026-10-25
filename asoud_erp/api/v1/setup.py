@@ -5,6 +5,8 @@ from frappe import _
 from frappe.utils import getdate
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services import security_audit
+from asoud_erp.services.delegation import OFFICE_CREATOR_ROLE
 from asoud_erp.services.digits import normalize_numeric_text
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.jalali import jalali_fiscal_period
@@ -25,11 +27,23 @@ def _setup(company: str):
     if not company or not frappe.db.exists("Company", company):
         frappe.throw(_("Company does not exist"))
     require_company(company)
-    if not frappe.has_permission("Company", ptype="read", doc=company):
+    if not frappe.has_permission("Company", ptype="read", doc=company) and not _office_scoped_manager_or_user(company):
         frappe.throw(_("You do not have access to this company"), frappe.PermissionError)
     if not frappe.db.exists("ASOUD Company Setup", company):
         frappe.throw(_("ASOUD setup does not exist for this company"))
     return frappe.get_doc("ASOUD Company Setup", company)
+
+
+def _office_scoped_manager(company: str) -> bool:
+    """A manager role held only in this office (per-office assignment) already passed ``require_roles``."""
+    from asoud_erp.services.office_access import office_roles
+
+    return bool({"System Manager", "Accounts Manager"} & office_roles(frappe.session.user, company))
+
+
+def _office_scoped_manager_or_user(company: str) -> bool:
+    return bool(frappe.db.table_exists("ASOUD Office Role Assignment") and frappe.db.exists(
+        "ASOUD Office Role Assignment", {"user": frappe.session.user, "company": company}))
 
 
 def _serialize_setup(doc) -> dict:
@@ -119,11 +133,24 @@ def save_office(
     chart_template: str | None = None,
     description: str | None = None,
 ) -> dict:
-    require_roles(("System Manager", "Accounts Manager"))
-    if company and not frappe.has_permission("Company", ptype="write", doc=company):
-        frappe.throw(_("You cannot edit this company"), frappe.PermissionError)
-    if not company and not frappe.has_permission("Company", ptype="create"):
-        frappe.throw(_("You cannot create a company"), frappe.PermissionError)
+    # «ایجاد دفتر» is an independent permission: System Manager or the dedicated
+    # ``ASOUD Office Creator`` role may create; editing an existing office stays with the managers
+    # and does not follow from the right to create. Creating never elevates the creator.
+    creator_only = False
+    if company:
+        require_roles(("System Manager", "Accounts Manager"), company=company)
+        if not frappe.has_permission("Company", ptype="write", doc=company):
+            if not _office_scoped_manager(company):
+                frappe.throw(_("You cannot edit this company"), frappe.PermissionError)
+            creator_only = True  # authorised by the per-office manager role, not by a global DocPerm
+    else:
+        try:
+            require_roles(("System Manager", OFFICE_CREATOR_ROLE))
+        except frappe.PermissionError:
+            security_audit.record("office.create", result="denied", details={"reason": "no_create_permission"},
+                                  commit=True)
+            frappe.throw(_("You do not have the permission to create an office"), frappe.PermissionError)
+        creator_only = not frappe.has_permission("Company", ptype="create")
     office_type = str(office_type or "").strip()
     title = str(company_name or "").strip()
     if office_type not in ALLOWED_OFFICE_TYPES:
@@ -145,7 +172,7 @@ def save_office(
     if company:
         company_doc = frappe.get_doc("Company", company)
         company_doc.company_name = title
-        company_doc.save()
+        company_doc.save(ignore_permissions=creator_only)
     else:
         duplicate = frappe.db.get_value("Company", {"company_name": title}, "name")
         if duplicate:
@@ -171,7 +198,9 @@ def save_office(
                 "country": "Iran",
             }
         )
-        company_doc.insert()
+        # The explicit gate above authorises the creator; Frappe's DocPerm for Company is not
+        # what grants it (the creator holds no accounting role).
+        company_doc.insert(ignore_permissions=creator_only)
 
     setup_exists = bool(frappe.db.exists("ASOUD Company Setup", company_doc.name))
     setup = (
@@ -201,7 +230,10 @@ def save_office(
     setup.description = str(description or "").strip()
     setup.auto_generate_detail_code = int(bool(auto_generate_detail_code))
     setup.office_saved = 1
-    setup.save() if setup_exists else setup.insert()
+    setup.save(ignore_permissions=creator_only) if setup_exists else setup.insert(ignore_permissions=creator_only)
+    security_audit.record("office.update" if setup_exists else "office.create", target_type="Company",
+                          target=company_doc.name, company=company_doc.name,
+                          details={"office_type": office_type, "created_by_creator_role": creator_only})
     return success(_serialize_setup(setup))
 
 
@@ -245,6 +277,8 @@ def update_company_settings(
     setup.auto_generate_detail_code = int(bool(auto_generate_detail_code))
     setup.accounting_saved = 1
     setup.save()
+    security_audit.record("office.settings_change", target_type="Company", target=company, company=company,
+                          details={"section": "accounting"})
     return success(_serialize_setup(setup))
 
 
@@ -340,6 +374,8 @@ def update_enabled_roles(company: str, roles: str | list[str]) -> dict:
     setup.enabled_roles_json = json.dumps(normalized)
     setup.roles_saved = 1
     setup.save()
+    security_audit.record("office.settings_change", target_type="Company", target=company, company=company,
+                          details={"section": "enabled_roles", "roles": normalized})
     return success(_serialize_setup(setup))
 
 
