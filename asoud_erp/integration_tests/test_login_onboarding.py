@@ -728,6 +728,16 @@ class TestHrOnboarding(LoginOnboardingBase):
         for row in audit("hr.personnel_register"):
             self.assertNotIn(temp, row.details or "")
 
+    def test_system_administrator_registers_personnel_without_an_hr_role(self):
+        # A plain System Manager has no native Employee right; the documented endpoint must still work.
+        self.login(ADMIN)
+        self.assertNotIn("HR Manager", frappe.get_roles(ADMIN))
+        result = self.register(email="asoud.lo-byadmin@example.com", national_id="0013542419",
+                               mobile="09351230000")
+        self.assertTrue(result["account_created"])
+        self.assertEqual(frappe.db.get_value("Employee", result["employee"], "user_id"), result["user"])
+        self.assertEqual(frappe.session.user, ADMIN)
+
     def test_existing_person_is_reused_by_national_id(self):
         self.login(HR_USER)
         first = self.register()

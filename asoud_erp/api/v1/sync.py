@@ -32,6 +32,16 @@ _MUTATION_PREFIXES = (
     "update_",
     "upload_",
 )
+# Directive actions are named after the verb (no ``save_``-style prefix) and carry their own request key;
+# the app sends them through the mutation queue, so they must be accepted by their exact method name.
+_MUTATION_METHODS = frozenset(
+    f"asoud_erp.api.v1.directives.{action}"
+    for action in ("issue", "start", "report", "review", "transfer", "close")
+)
+
+
+def _is_mutation(method: str) -> bool:
+    return method in _MUTATION_METHODS or method.rsplit(".", 1)[-1].startswith(_MUTATION_PREFIXES)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -45,8 +55,7 @@ def execute_mutation(
     method = (target_method or "").strip()
     if not key or len(key) > 140:
         return failure("INVALID_REQUEST_KEY", "شناسه یکتای درخواست معتبر نیست.")
-    action = method.rsplit(".", 1)[-1]
-    if not method.startswith(_ALLOWED_PREFIX) or not action.startswith(_MUTATION_PREFIXES):
+    if not method.startswith(_ALLOWED_PREFIX) or not _is_mutation(method):
         return failure("METHOD_NOT_ALLOWED", "این متد برای همگام‌سازی مجاز نیست.")
     if method == "asoud_erp.api.v1.sync.execute_mutation":
         return failure("METHOD_NOT_ALLOWED", "فراخوانی بازگشتی مجاز نیست.")

@@ -35,6 +35,14 @@ def test_only_password_and_logout_endpoints_pass_while_a_temporary_password_is_a
         assert not module.blocked(path, False)
 
 
+def test_login_request_itself_is_not_blocked_for_a_temporary_password_account(guard):
+    # Frappe authenticates inside init_request, before before_request hooks run, so the
+    # session user of the POST /api/method/login is already the flagged account. Blocking
+    # it answered 403 (with a session cookie) and the forced password change never started.
+    module, _ = guard
+    assert not module.blocked("/api/method/login", True)
+
+
 def test_non_api_paths_are_untouched(guard):
     module, _ = guard
     assert module.method_of("/app/home") is None
