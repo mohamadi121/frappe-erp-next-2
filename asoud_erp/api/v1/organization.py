@@ -104,10 +104,17 @@ def list_employees(company):
 @frappe.whitelist()
 def list_units(company):
     _access(company)
+    from asoud_erp.services.organization_metadata import DESCRIPTION_FIELD
+
+    fields = ["name", "department_name", "parent_department", "is_group", "disabled", "modified"]
+    has_description = frappe.get_meta("Department").has_field(DESCRIPTION_FIELD)
+    if has_description:
+        fields.append(DESCRIPTION_FIELD)
     rows = frappe.get_list("Department", filters={"company": company},
-        fields=["name", "department_name", "parent_department", "is_group", "disabled", "modified"],
+        fields=fields,
         order_by="lft asc", limit_page_length=0)
-    return success({"units": [{**row, "display_name": organization_label(row.department_name)} for row in rows], "can_manage":
+    return success({"units": [{**row, "display_name": organization_label(row.department_name),
+        "description": row.get(DESCRIPTION_FIELD) or ""} for row in rows], "can_manage":
         bool({"System Manager", "HR Manager"}.intersection(frappe.get_roles()))
         and frappe.has_permission("Department", "write")})
 
@@ -131,6 +138,15 @@ def save_unit(company, payload):
     if parent and not frappe.get_doc("Department", parent).is_group:
         frappe.throw("ابتدا گزینه پذیرش زیرواحد را در واحد بالادستی فعال کنید.")
     doc.company, doc.department_name = company, title
+    if "description" in data:
+        from asoud_erp.services.organization_metadata import DESCRIPTION_FIELD, description_value
+
+        if not doc.meta.has_field(DESCRIPTION_FIELD):
+            frappe.throw("برای ذخیرهٔ توضیحات واحد، ابتدا به‌روزرسانی پایگاه دادهٔ سرور را اجرا کنید.")
+        try:
+            doc.set(DESCRIPTION_FIELD, description_value(data["description"]))
+        except ValueError as error:
+            frappe.throw(str(error))
     doc.parent_department = parent or None
     doc.is_group = int(bool(data.get("is_group")))
     if name and not doc.is_group and frappe.db.exists("Department", {"parent_department": name}):

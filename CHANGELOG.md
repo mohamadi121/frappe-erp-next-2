@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Native organizational unit descriptions: optional validated `save_unit.description` and `list_units.description`, persisted as `Department.asoud_description`; omitted updates preserve text. Deployment: `bench migrate` (idempotent patch `v0_18.add_department_description`, install/migrate Custom Field), restart, then release matching inline forms. No unit/position IDs or hierarchy are rewritten; permissions and revisions are unchanged.
+
 - Organization localization: read/preview responses include Persian display names for known standard Department and position titles. Native IDs, raw titles, links and revisions are unchanged; unknown/custom titles are preserved. No new schema or migration for this change. Deploy with the matching Flutter display/fallback dictionary; see `docs/api/organization-localization.md`.
 
 - Account-only first HR lead and final bootstrap confirmation (`docs/api/first-office-bootstrap.md`): native User/HR Manager/Company User Permission, optional email, native username login, 8–128-character temporary password with forced first-login change; no Employee or Party Profile. Internal non-deliverable identities are excluded from email recovery and outgoing mail. Deployment: `bench migrate` (new `first_hr_user` and `bootstrap_completed`, patch `v0_18.add_first_office_bootstrap`), restart workers, then release Flutter. Username login is enabled at provisioning. Marked first offices resume until final confirmation. No tests/site execution performed at user request.

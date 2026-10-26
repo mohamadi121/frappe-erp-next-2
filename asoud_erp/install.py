@@ -4,6 +4,9 @@ from asoud_erp.api.v1.detail_group import DEFAULT_GROUPS
 
 
 def after_install():
+    from asoud_erp.services.organization_metadata import ensure_department_description
+
+    ensure_department_description()
     ensure_security_roles()
     settings = frappe.get_single("ASOUD Settings")
     settings.accounting_basis = "Accrual"
@@ -46,8 +49,10 @@ def ensure_security_roles():
 
 def after_migrate():
     """Keep installation and migration hooks explicitly idempotent."""
+    from asoud_erp.services.organization_metadata import ensure_department_description
     from asoud_erp.services.request_templates.seed import ensure_system_templates
 
+    ensure_department_description()
     ensure_security_roles()
     ensure_system_templates()
     for code, title, party_role in DEFAULT_GROUPS:

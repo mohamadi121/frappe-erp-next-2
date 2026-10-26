@@ -6,6 +6,27 @@ const prefix = 'asoud_erp.api.v1.organization.';
 type Chart = {rows: Array<Record<string, unknown>>; revision: number};
 type Review = {can_delete: boolean; counts: {occupants: number; subordinates: number; history: number}};
 
+test('unit descriptions persist on native units and keep role gates over HTTP', async ({api}) => {
+  const employee = await api.login('employee');
+  const hr = await api.login('hr');
+  const saved = await hr.mutate<{name: string}>(prefix + 'save_unit', {
+    company: state.company, payload: JSON.stringify({title: `توضیحات آزمون ${Date.now()}`, description: 'شرح واحد آزمون', is_group: true}),
+  });
+  type Unit = {name: string; department_name: string; description: string; modified: string; parent_department: string | null};
+  try {
+    const result = await hr.read<{units: Unit[]}>(prefix + 'list_units', {company: state.company});
+    const row = result.units.find(unit => unit.name === saved.name)!;
+    expect(row.description).toBe('شرح واحد آزمون');
+    const payload = JSON.stringify({name: row.name, modified: row.modified, title: row.department_name, description: 'غیرمجاز'});
+    expect((await employee.post(prefix + 'save_unit', {company: state.company, payload})).status).toBe(403);
+    expect((await hr.post(prefix + 'save_unit', {company: state.second_company, payload})).status).toBe(403);
+  } finally {
+    const latest = await hr.read<{units: Unit[]}>(prefix + 'list_units', {company: state.company});
+    const row = latest.units.find(unit => unit.name === saved.name)!;
+    await hr.mutate(prefix + 'delete_unit', {company: state.company, name: row.name, modified: row.modified});
+  }
+});
+
 test('position deletion review enforces roles, company scope and revision over HTTP', async ({ api }) => {
   const admin = await api.login('admin'); // System Manager without Employee
   const employee = await api.login('employee');

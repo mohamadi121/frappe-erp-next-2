@@ -8,6 +8,27 @@ from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER, APITestCase
 
 
 class TestOrganization(APITestCase):
+    def test_unit_description_roundtrip_and_omitted_update_preserves_text(self):
+        from asoud_erp.services.organization_metadata import DESCRIPTION_FIELD
+
+        self.assertTrue(frappe.get_meta("Department").has_field(DESCRIPTION_FIELD))
+        name = organization.save_unit(self.company, dict(title="توضیحات آزمون " + frappe.generate_hash(length=8),
+            description="شرح واقعی واحد", is_group=True))["data"]["name"]
+        try:
+            listed = next(row for row in organization.list_units(self.company)["data"]["units"] if row["name"] == name)
+            self.assertEqual(listed["description"], "شرح واقعی واحد")
+            organization.save_unit(self.company, dict(name=name, modified=str(listed["modified"]),
+                title=listed["department_name"], parent=listed["parent_department"], is_group=True))
+            self.assertEqual(frappe.db.get_value("Department", name, DESCRIPTION_FIELD), "شرح واقعی واحد")
+            frappe.set_user(EMPLOYEE_USER)
+            with self.assertRaises(frappe.PermissionError):
+                organization.save_unit(self.company, dict(name=name, modified=str(listed["modified"]),
+                    title=listed["department_name"], description="غیرمجاز"))
+        finally:
+            frappe.set_user("Administrator")
+            doc = frappe.get_doc("Department", name)
+            organization.delete_unit(self.company, name, str(doc.modified))
+
     def test_persian_labels_preserve_native_names_and_saved_chart_titles(self):
         existing = frappe.db.get_value("Department", {"company": self.company,
             "department_name": "Human Resources"}, "name")
