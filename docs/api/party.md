@@ -66,6 +66,27 @@ the `v0_15_3.normalize_persian_digits` patch.
 
 ### Bank details
 
+### Office identity/contact validation
+
+`setup.save_office` (including `onboarding.create_first_office`, which delegates
+to it) validates nonempty identity/contact values before any Company write.
+Personal national ID: exactly 10 digits and mod-11 checksum. Legal national ID:
+exactly 11 digits, not repeated or zero middle serial; offset = digit 10 + 2,
+weights 29,27,23,19,17 repeated over the first ten digits, sum modulo 11
+(10 becomes 0) must equal the last digit. Algorithm reference:
+https://gist.github.com/MajideND/3edbd6f9b67cb108b66f133be6dd3640
+These are format/checksum checks, not government identity verification.
+`phone` in the office form is a mobile: exactly 11 digits starting with 09;
+`postal_code` is exactly 10 digits. Persian/Arabic digits are accepted and stored
+as ASCII; other characters are rejected, not stripped. All remain optional.
+`website` accepts an HTTP(S) URL with a dotted ASCII hostname (punycode allowed),
+no credentials/whitespace and an optional valid port; a bare domain gets https://.
+Invalid values return Persian validation errors. Existing stored records are not
+migrated. Financial/accounting settings remain separate and are not removed from
+the API or database when their controls are removed from the office form.
+
+### Bank details (continued)
+
 `bank_name`, `iban`, `account_number`, `card_number` and `account_holder` are
 returned **only** to `System Manager` and `Accounts Manager`, the roles that own
 the party master and pay from it. For every other role (`Accounts User`, and all
