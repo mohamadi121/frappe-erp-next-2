@@ -60,15 +60,26 @@ def build(user: str | None = None) -> dict:
     selected = frappe.defaults.get_user_default("company", user=user) if active else None
     exists = first_office_exists()
     complete = admin_profile_complete(user) if admin else True
+    pending_fiscal_office = None
+    if admin:
+        first = frappe.db.get_single_value("ASOUD Settings", "first_office_company")
+        if first and first in {o["id"] for o in offices}:
+            years = frappe.get_all("Fiscal Year Company", filters={"company": first},
+                                   pluck="parent", limit_page_length=0)
+            bootstrap_pending = (frappe.get_meta("ASOUD Company Setup").has_field("bootstrap_completed")
+                and not frappe.db.get_value("ASOUD Company Setup", first, "bootstrap_completed"))
+            if bootstrap_pending or not years or not frappe.db.exists("Fiscal Year", {"name": ["in", years], "disabled": 0}):
+                pending_fiscal_office = first
     nxt = post_login.resolve_next_route(
         active=active, must_change_password=must_change or expired, is_system_admin=admin,
         first_office_exists=exists, admin_profile_complete=complete,
-        office_ids=[o["id"] for o in offices], selected_office=selected)
+        office_ids=[o["id"] for o in offices], selected_office=selected,
+        pending_fiscal_office=pending_fiscal_office)
     held = set(roles)
     return {
         "user": {"id": user, "full_name": (row and row.full_name) or "", "first_name": (row and row.first_name) or "",
                  "last_name": (row and row.last_name) or "", "mobile": (row and row.mobile_no) or "",
-                 "email": (row and row.email) or ""},
+                 "email": "" if row and str(row.email or "").endswith("@users.asoud.invalid") else (row and row.email) or ""},
         "account": {"active": active, "must_change_password": must_change or expired,
                     "temporary_password_expired": expired},
         "roles": roles,

@@ -6,6 +6,7 @@ import frappe
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.organization_contract import validate_rows
 from asoud_erp.services.organization_employees import normalize_assignments
+from asoud_erp.services.organization_labels import localize_position, organization_label
 from asoud_erp.services.organization_units import (
     lock_company,
     references,
@@ -32,7 +33,7 @@ def _snapshot(doc):
         for row in rows:
             if row.get("department_id") in titles:
                 row["department"] = titles[row["department_id"]]
-    return {"rows": rows, "revision": doc.revision or 0}
+    return {"rows": [localize_position(row) for row in rows], "revision": doc.revision or 0}
 
 
 @frappe.whitelist()
@@ -65,7 +66,9 @@ def save_chart(payload):
     doc = frappe.get_doc("ASOUD Organization Chart", name) if name else frappe.new_doc("ASOUD Organization Chart")
     current = _snapshot(doc)
     def intent(items):
-        return [{key: value for key, value in row.items() if key != "assignment_history"} for row in items]
+        return [{key: value for key, value in row.items()
+                 if key not in {"assignment_history", "display_title", "department_display_name"}}
+                for row in items]
     unchanged = intent(current["rows"]) == intent(rows)
     if unchanged and revision != current["revision"]:
         return success(current)
@@ -104,7 +107,7 @@ def list_units(company):
     rows = frappe.get_list("Department", filters={"company": company},
         fields=["name", "department_name", "parent_department", "is_group", "disabled", "modified"],
         order_by="lft asc", limit_page_length=0)
-    return success({"units": rows, "can_manage":
+    return success({"units": [{**row, "display_name": organization_label(row.department_name)} for row in rows], "can_manage":
         bool({"System Manager", "HR Manager"}.intersection(frappe.get_roles()))
         and frappe.has_permission("Department", "write")})
 
@@ -253,6 +256,9 @@ def preview_import(company, payload):
     name = frappe.db.get_value("ASOUD Organization Chart", {"company": company}, "name")
     current = _snapshot(frappe.get_doc("ASOUD Organization Chart", name)) if name else {"rows": [], "revision": 0}
     result = plan(company, payload, current["rows"])
+    result["units"] = [{**row, "display_title": organization_label(row["title"])} for row in result["units"]]
+    result["rows"] = [localize_position(row) for row in result["rows"]]
+    result["additions"] = [localize_position(row) for row in result["additions"]]
     result["revision"] = current["revision"]
     return success(result)
 

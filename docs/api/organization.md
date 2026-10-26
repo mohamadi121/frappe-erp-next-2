@@ -1,5 +1,8 @@
 # Organization units and import
 
+Known standard titles have additive Persian display labels; raw fields and native
+identifiers are unchanged. See [localization contract](organization-localization.md).
+
 `asoud_erp.api.v1.organization` manages native ERPNext `Department` units and the
 organization chart preview/import. Units are the native `Department` DocType: this
 module adds company scoping and Persian messages, and never creates a parallel unit

@@ -6,6 +6,8 @@ controller functions; it adds Iranian localization, company scoping, and a stabl
 contract, never a parallel ledger or master (see `AGENTS.md`).
 
 Module references: [module map](../backend-roadmap.md) ·
+[Persian organization labels](organization-localization.md) ·
+[first-office bootstrap](first-office-bootstrap.md) ·
 [dashboard](dashboard.md) · [selling](selling.md) · [sales pipeline](sales_orders.md) · [payments](payments.md) ·
 [stock](stock.md) · [buying](buying.md) · [HR self-service](hr_self_service.md) · [leave requests](leave_request.md) ·
 [projects](projects.md) · [financial reports](financial_reports.md) · [ledger reports](report.md) · [chart of accounts](account.md) · [parties](party.md) · [payroll](payroll.md) · [POS](pos.md) · [personnel file](personnel_file.md) · [account operations](account_ops.md) · [document templates](document_templates.md) · [organization units and import](organization.md) ·

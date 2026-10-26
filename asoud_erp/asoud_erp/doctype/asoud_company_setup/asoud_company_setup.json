@@ -12,9 +12,11 @@
     "address", "postal_code", "description", "office_saved",
     "accounting_basis", "display_currency", "fiscal_year_start_day", "fiscal_year_start_month", "fiscal_year", "chart_template",
     "auto_generate_account_code", "group_code_digits", "general_code_digits", "ledger_code_digits",
-    "auto_generate_detail_code", "accounting_saved", "enabled_roles_json", "roles_saved", "office_admin"
+    "auto_generate_detail_code", "accounting_saved", "enabled_roles_json", "roles_saved", "office_admin", "first_hr_user", "bootstrap_completed"
   ],
   "fields": [
+    {"fieldname": "first_hr_user", "label": "First HR User", "fieldtype": "Link", "options": "User", "read_only": 1},
+    {"fieldname": "bootstrap_completed", "label": "Bootstrap Completed", "fieldtype": "Check", "default": "0", "read_only": 1},
     {"fieldname": "company", "label": "Company", "fieldtype": "Link", "options": "Company", "reqd": 1, "unique": 1, "in_list_view": 1},
     {"fieldname": "office_type", "label": "Office Type", "fieldtype": "Select", "options": "Personal\nLegal", "reqd": 1},
     {"fieldname": "national_id", "label": "National ID", "fieldtype": "Data"},

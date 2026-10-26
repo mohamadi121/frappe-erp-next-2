@@ -3,6 +3,7 @@
 ROUTE_ACCOUNT_DISABLED = "account-disabled"
 ROUTE_CHANGE_PASSWORD = "change-password"
 ROUTE_CREATE_FIRST_OFFICE = "create-first-office"
+ROUTE_SETUP_FIRST_OFFICE = "setup-first-office"
 ROUTE_COMPLETE_ADMIN_PROFILE = "complete-admin-profile"
 ROUTE_OFFICE_SELECT = "office-select"
 ROUTE_HOME = "home"
@@ -13,7 +14,8 @@ DISABLED_MESSAGE = "حساب کاربری شما غیرفعال است."
 
 
 def resolve_next_route(*, active, must_change_password, is_system_admin, first_office_exists,
-                       admin_profile_complete, office_ids, selected_office=None) -> dict:
+                       admin_profile_complete, office_ids, selected_office=None,
+                       pending_fiscal_office=None) -> dict:
     """``{route, office, message}``.
 
     Order for the system administrator: temporary password, first office, essential
@@ -28,6 +30,8 @@ def resolve_next_route(*, active, must_change_password, is_system_admin, first_o
     if is_system_admin:
         if not first_office_exists:
             return {"route": ROUTE_CREATE_FIRST_OFFICE, "office": None, "message": None}
+        if pending_fiscal_office in offices:
+            return {"route": ROUTE_SETUP_FIRST_OFFICE, "office": pending_fiscal_office, "message": None}
         if not admin_profile_complete:
             return {"route": ROUTE_COMPLETE_ADMIN_PROFILE, "office": None, "message": None}
     if not offices:

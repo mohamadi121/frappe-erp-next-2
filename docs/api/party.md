@@ -64,8 +64,6 @@ whitespace is trimmed. Free text is untouched. The same rule applies to
 `emergency_phone`, record `document_number`). Existing rows are converted once by
 the `v0_15_3.normalize_persian_digits` patch.
 
-### Bank details
-
 ### Office identity/contact validation
 
 `setup.save_office` (including `onboarding.create_first_office`, which delegates
@@ -85,7 +83,7 @@ Invalid values return Persian validation errors. Existing stored records are not
 migrated. Financial/accounting settings remain separate and are not removed from
 the API or database when their controls are removed from the office form.
 
-### Bank details (continued)
+### Bank details
 
 `bank_name`, `iban`, `account_number`, `card_number` and `account_holder` are
 returned **only** to `System Manager` and `Accounts Manager`, the roles that own

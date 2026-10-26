@@ -16,6 +16,12 @@ def company_access(company, user=None):
         except frappe.PermissionError:
             return False
     roles = set(frappe.get_roles(user))
+    # An account-only first HR lead has no Employee yet. Native Company User
+    # Permission is its explicit scope, not membership in every company.
+    if "HR Manager" in roles and frappe.db.exists("User Permission", {
+        "user": user, "allow": "Company", "for_value": company, "apply_to_all_doctypes": 1
+    }):
+        return True
     if frappe.db.exists("ASOUD Office Role Assignment", {"user": user, "company": company}):
         return True
     if not roles.intersection({"System Manager", "HR Manager", "Accounts Manager", "Accounts User"}):

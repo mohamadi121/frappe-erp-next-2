@@ -8,6 +8,43 @@ from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER, APITestCase
 
 
 class TestOrganization(APITestCase):
+    def test_persian_labels_preserve_native_names_and_saved_chart_titles(self):
+        existing = frappe.db.get_value("Department", {"company": self.company,
+            "department_name": "Human Resources"}, "name")
+        name = existing or organization.save_unit(self.company, dict(
+            title="Human Resources", is_group=True))["data"]["name"]
+        before = frappe.db.get_value("Department", name,
+            ["department_name", "parent_department", "modified"], as_dict=True)
+        current = organization.get_chart(self.company)["data"]
+        code = "LABEL-" + frappe.generate_hash(length=10)
+        saved = None
+        try:
+            listed = next(row for row in organization.list_units(self.company)["data"]["units"]
+                          if row["name"] == name)
+            self.assertEqual(listed["department_name"], "Human Resources")
+            self.assertEqual(listed["display_name"], "منابع انسانی")
+            saved = organization.save_chart(dict(company=self.company, revision=current["revision"],
+                rows=[*current["rows"], dict(code=code, title="HR Manager", department_id=name,
+                    capacity=1, occupants=[])]))["data"]
+            row = next(row for row in saved["rows"] if row["code"] == code)
+            self.assertEqual(row["title"], "HR Manager")
+            self.assertEqual(row["display_title"], "مدیر منابع انسانی")
+            self.assertEqual(row["department_display_name"], "منابع انسانی")
+            stored = json.loads(frappe.db.get_value("ASOUD Organization Chart",
+                {"company": self.company}, "structure_json"))
+            raw = next(row for row in stored if row["code"] == code)
+            self.assertNotIn("display_title", raw)
+            self.assertEqual(raw["title"], "HR Manager")
+            after = frappe.db.get_value("Department", name,
+                ["department_name", "parent_department", "modified"], as_dict=True)
+            self.assertEqual(before, after)
+        finally:
+            if saved:
+                organization.save_chart(dict(company=self.company, revision=saved["revision"], rows=current["rows"]))
+            if not existing:
+                doc = frappe.get_doc("Department", name)
+                organization.delete_unit(self.company, name, str(doc.modified))
+
     def test_position_delete_review_and_transactional_recheck(self):
         current = organization.get_chart(self.company)["data"]
         code = "REVIEW-" + frappe.generate_hash(length=10)

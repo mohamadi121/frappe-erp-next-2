@@ -5,18 +5,16 @@ from frappe import _
 from frappe.utils import getdate
 
 from asoud_erp.api.v1.responses import success
-from asoud_erp.services import security_audit
+from asoud_erp.services import office_validation, security_audit
 from asoud_erp.services.delegation import OFFICE_CREATOR_ROLE
 from asoud_erp.services.digits import normalize_numeric_text
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.jalali import jalali_fiscal_period
-from asoud_erp.services.party_validation import is_valid_iranian_legal_id
 from asoud_erp.services.request_access import require_company
 from asoud_erp.services.setup_service import (
     ALLOWED_CHART_TEMPLATES,
     ALLOWED_DISPLAY_CURRENCIES,
     ALLOWED_OFFICE_TYPES,
-    normalize_digits,
     normalize_enabled_roles,
     unique_abbreviation,
     validate_economic_code,
@@ -157,14 +155,11 @@ def save_office(
         frappe.throw(_("Office type must be Personal or Legal"))
     if len(title) < 3:
         frappe.throw(_("Company name must contain at least 3 characters"))
-    normalized_id = normalize_digits(national_id)
-    if (
-        office_type == "Legal"
-        and normalized_id
-        and not is_valid_iranian_legal_id(normalized_id)
-    ):
-        frappe.throw(_("Iranian legal entity ID is not valid"))
     try:
+        normalized_id = office_validation.identity(national_id, legal=office_type == "Legal")
+        phone = office_validation.mobile(phone)
+        postal_code = office_validation.postal_code(postal_code)
+        website = office_validation.website(website)
         normalized_economic_code = validate_economic_code(economic_code)
     except ValueError as exc:
         frappe.throw(_(str(exc)))

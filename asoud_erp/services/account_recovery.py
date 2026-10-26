@@ -110,7 +110,9 @@ def request_reset(identifier) -> dict:
         return answer
     user = find_user(identifier)
     email = frappe.db.get_value("User", user, "email") if user else None
-    if not user or not email:
+    from asoud_erp.services.first_office_setup import internal_email
+
+    if not user or not email or internal_email(email):
         security_audit.record("auth.password_reset_request", result="failure",
                               actor=str(identifier or "")[:140], details={"reason": "unknown_or_unreachable"},
                               commit=True)

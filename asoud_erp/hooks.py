@@ -8,6 +8,7 @@ app_license = "MIT"
 required_apps = ["erpnext", "hrms"]
 
 doc_events = {
+    "Email Queue": {"before_insert": "asoud_erp.services.first_office_setup.block_internal_mail"},
     "*": {
         "validate": "asoud_erp.services.directive_access.guard_write",
         "on_trash": "asoud_erp.services.directive_access.guard_write",
