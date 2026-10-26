@@ -178,3 +178,14 @@ def test_cancel_methods_are_replayable(monkeypatch):
     assert second == first
     assert targets == [method]
     assert calls == [{"name": "INV-1"}]
+
+
+def test_directive_actions_are_accepted_as_queued_mutations(monkeypatch):
+    # Regression: the app queues issue/report/review/transfer/close/start; the allow-list only knew
+    # verb prefixes with an underscore, so the server answered METHOD_NOT_ALLOWED and a directive stayed a draft.
+    sync = _load_module(monkeypatch)
+    for action in ("issue", "start", "report", "review", "transfer", "close"):
+        assert sync._is_mutation(f"asoud_erp.api.v1.directives.{action}")
+    assert sync._is_mutation("asoud_erp.api.v1.directives.save_draft")
+    assert not sync._is_mutation("asoud_erp.api.v1.directives.options")
+    assert not sync._is_mutation("asoud_erp.api.v1.other.issue")

@@ -138,9 +138,11 @@ def register(company, first_name, last_name, mobile, email, *, national_id=None,
     for code in roles or []:
         precheck(code, company)  # escalation / scope refusal happens before anything is written
     frappe.db.savepoint("asoud_register_personnel")
-    # The system administrator holds no native Employee right; creating the very first HR lead is
-    # authorised above (admin-only), so the personnel writes run as the site superuser for this block.
-    elevated = bool(hr_lead and admin)
+    # The system administrator holds no native Employee right. Registration is authorised by the gate
+    # above (System Manager / HR Manager; the first HR lead is admin-only), so for the administrator
+    # the personnel writes run as the site superuser for this block. Role grants are still checked
+    # against the real actor in ``precheck`` before this point.
+    elevated = bool(admin)
     if elevated:
         frappe.set_user("Administrator")
     try:
