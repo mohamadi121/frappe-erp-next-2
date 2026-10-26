@@ -11,6 +11,7 @@ ALLOWED_METHODS = frozenset({
     "asoud_erp.api.v1.session.login_state",
     "asoud_erp.api.v1.session.logout",
     "asoud_erp.api.v1.account_security.change_password",
+    "login",
     "logout",
     "frappe.auth.get_logged_user",
     "frappe.ping",

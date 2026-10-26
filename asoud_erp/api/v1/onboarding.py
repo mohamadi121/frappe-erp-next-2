@@ -60,7 +60,12 @@ def create_first_office(
             description=description)["data"]
         service.mark_first_office(office["company"], user)
     except Exception:
-        frappe.db.rollback(save_point="asoud_first_office")
+        try:
+            frappe.db.rollback(save_point="asoud_first_office")
+        except Exception:
+            # ERPNext commits inside Company creation, which releases the savepoint; the original
+            # error (shown to the user) must not be replaced by «SAVEPOINT does not exist».
+            frappe.log_error("first office rollback skipped: savepoint was released")
         raise
     security_audit.record("office.create_first", target_type="Company", target=office["company"],
                           company=office["company"], details={"office_type": office_type})
