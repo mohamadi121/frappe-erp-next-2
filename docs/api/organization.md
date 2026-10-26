@@ -55,6 +55,14 @@ manage them.
 | `title` | yes | Display title (`department_name`), trimmed. |
 | `parent` | no | Parent unit `name` of the same company. |
 | `is_group` | no | `1` lets the unit have sub-units. |
+| `description` | no | Optional plain text up to 2000 characters, stored on the native Department's `asoud_description` Custom Field. Omission preserves the existing value; empty string clears it. Non-string values are rejected. |
+
+`list_units` adds `description` (string, empty if not set). Run `bench migrate`
+before using description writes: install/migrate hooks and the idempotent
+`v0_18.add_department_description` patch create the native Custom Field without
+rewriting any titles, IDs, hierarchy or existing records. Until migration, older
+reads remain compatible; a description write fails clearly in Persian rather
+than silently discarding text. Access and revision checks are unchanged.
 
 Returns `{"name": "...", "modified": "..."}`.
 
