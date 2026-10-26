@@ -2,14 +2,32 @@
 from copy import deepcopy
 
 
+def deletion_review(rows, code):
+    position = next((row for row in rows if row["code"] == code), None)
+    if position is None:
+        raise ValueError("جایگاه موردنظر در ساختار فعلی وجود ندارد.")
+    occupants = set(position.get("occupants") or [])
+    if position.get("employee"):
+        occupants.add(position["employee"])
+    counts = {
+        "occupants": len(occupants),
+        "subordinates": sum(row.get("parent") == code for row in rows),
+        "history": len(position.get("assignment_history") or []),
+    }
+    labels = {"occupants": "متصدی فعال", "subordinates": "جایگاه زیرمجموعه", "history": "سابقه انتساب"}
+    blockers = [f"جایگاه دارای {count} {labels[key]} است؛ حذف مجاز نیست."
+                for key, count in counts.items() if count]
+    return {"can_delete": not blockers, "blockers": blockers, "counts": counts}
+
+
 def reconcile(rows, previous, timestamp, actor):
     old = {r["code"]: r for r in previous}
     new = {r["code"]: r for r in rows}
     for code, before in old.items():
-        if code not in new and (
-            before.get("employee") or before.get("occupants") or before.get("assignment_history")
-        ):
-            raise ValueError("جایگاه دارای انتساب یا سابقه است؛ حذف آن مجاز نیست.")
+        if code not in new:
+            blockers = deletion_review(previous, code)["blockers"]
+            if blockers:
+                raise ValueError("\n".join(blockers))
     for row in rows:
         before = old.get(row["code"], {})
         if "occupants" in before and "occupants" not in row:

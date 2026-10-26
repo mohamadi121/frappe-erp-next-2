@@ -186,6 +186,32 @@ def preview_delete_unit(company, name, modified):
 
 
 @frappe.whitelist()
+def preview_delete_position(company, code, revision):
+    from asoud_erp.services.organization_assignments import deletion_review
+    from asoud_erp.services.request_access import require_company
+
+    _access(company, write=True)
+    require_company(company)
+    name = frappe.db.get_value("ASOUD Organization Chart", {"company": company}, "name")
+    if not name:
+        frappe.throw("جایگاه موردنظر در ساختار فعلی وجود ندارد.")
+    doc = frappe.get_doc("ASOUD Organization Chart", name)
+    doc.check_permission("write")
+    current = _snapshot(doc)
+    try:
+        expected = int(revision)
+    except (TypeError, ValueError):
+        frappe.throw("نسخه ساختار معتبر نیست.")
+    if expected != current["revision"]:
+        frappe.throw("ساختار تغییر کرده است؛ دوباره بارگذاری کنید.", frappe.TimestampMismatchError)
+    try:
+        result = deletion_review(current["rows"], code)
+    except ValueError as error:
+        frappe.throw(str(error))
+    return success({**result, "revision": current["revision"]})
+
+
+@frappe.whitelist()
 def employee_photo(company, employee):
     _access(company)
     name = str(employee).removeprefix("employee:")
