@@ -127,8 +127,6 @@ def create_hr_lead(company, full_name, username, contact, temporary_password):
 def complete(company):
     doc = _setup(company, lock=True)
     _require_fiscal(company)
-    if not _summary(doc)["hr_ready"]:
-        frappe.throw("حساب فعال مسئول منابع انسانی و دسترسی دفتر باید تأیید شود.")
     doc.flags.first_office_bootstrap = True
     doc.bootstrap_completed = 1
     doc.save(ignore_permissions=True)
