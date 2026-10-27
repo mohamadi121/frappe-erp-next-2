@@ -39,10 +39,13 @@ roll back. Secret never goes in audit, offline storage or response.
 
 ## `complete(company)`
 
-Rechecks active fiscal year, enabled HR user/role, username login and native company
-scope, then stores completion and selects the office. Returns status with
+Rechecks saved office, administrator/company access and active fiscal year, then
+stores completion and selects the office. Creating the first HR account is optional:
+completion does not require `hr_ready` or create/alter any User, role or permission.
+Existing HR accounts remain unchanged. Returns status with
 `completed: true`. Repeat is safe. App enters home only after this acknowledgement.
-Progress is based on saved state, not the sample 100% label before confirmation.
+The Flutter setup flow proceeds from fiscal year directly to final review; HR
+provisioning is no longer a required setup screen. Progress is based on saved state.
 
 ## Deployment / migration
 
