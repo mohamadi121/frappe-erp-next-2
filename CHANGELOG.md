@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- احکام استخدام: چرخه کامل قالب (ذخیره و انتشار پیش‌نویس تغییرناپذیر)، صدور حکم، ثبت پیش‌نویس، بررسی، دریافت و چاپ A4 با نوار پیش‌نویس و سربرگ سازمان افزوده شد. شماره‌گذاری رسمی، نرمال‌سازی جست‌وجو و کنترل مجوز شرکت پیاده‌سازی شدند. استقرار: فقط restart، بدون تغییر schema یا migration.
+
 - منابع دادهٔ حکم استخدام: endpointهای صفحه‌بندی‌شدهٔ انتخاب پرسنل و snapshot حقوق در تاریخ اجرا افزوده شد. مقدار حقوق ناموجود صریحاً «اطلاعات موجود نیست» است و هرگز صفر نمی‌شود. استقرار: فقط restart؛ ثبت، نسخه‌بندی و نهایی‌سازی حکم در این تغییر افزوده نشده است.
 
 - First-office setup can complete without provisioning an HR account. Saved office, administrator/company access and active fiscal year remain required. No existing accounts or permissions change; deploy matching Flutter flow and restart backend workers. No schema migration required. Tests not run at user request.
