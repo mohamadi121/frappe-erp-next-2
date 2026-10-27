@@ -1,6 +1,11 @@
 import pytest
 
-from asoud_erp.services.hiring_orders import default_template, normalize_search, snapshot_payroll, validate_template
+from asoud_erp.services.hiring_orders import (
+    default_template,
+    normalize_search,
+    snapshot_payroll,
+    validate_template,
+)
 
 
 def test_default_hiring_template_has_six_stable_articles_and_payroll_bindings():

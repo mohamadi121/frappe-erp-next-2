@@ -1,9 +1,8 @@
 """Pure validation and snapshots for immutable hiring-order documents."""
 
+import re
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
-import re
-
 
 PERIODS = {"monthly", "yearly", "one_off"}
 MISSING_MESSAGE = "اطلاعات موجود نیست"
