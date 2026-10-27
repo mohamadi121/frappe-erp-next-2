@@ -15,6 +15,9 @@ from asoud_erp.integration_tests.tenancy import (
 from asoud_erp.services.hiring_orders import default_template
 
 
+HR_USER = "asoud.test-hr-user@example.com"
+
+
 class TestHiringOrders(APITestCase):
     @classmethod
     def setUpClass(cls):
@@ -22,6 +25,27 @@ class TestHiringOrders(APITestCase):
         setup_tenancy()
 
         comp = company()
+        if not frappe.db.exists("User", HR_USER):
+            user = frappe.get_doc({
+                "doctype": "User",
+                "email": HR_USER,
+                "first_name": "کارشناس",
+                "last_name": "منابع انسانی",
+                "roles": [{"role": "HR User"}],
+            })
+            user.flags.ignore_permissions = True
+            user.insert()
+
+            perm = frappe.get_doc({
+                "doctype": "User Permission",
+                "user": HR_USER,
+                "allow": "Company",
+                "for_value": comp,
+                "apply_to_all_doctypes": 1,
+            })
+            perm.flags.ignore_permissions = True
+            perm.insert()
+
         if not frappe.db.exists("Employee", {"user_id": EMPLOYEE_A_USER, "company": comp}):
             emp = frappe.get_doc({
                 "doctype": "Employee",
@@ -112,3 +136,25 @@ class TestHiringOrders(APITestCase):
         frappe.set_user(EMPLOYEE_A_USER)
         with self.assertRaises(frappe.PermissionError):
             api.list_hiring_orders(company=comp)
+
+    def test_hiring_order_designer_vs_operational_permissions(self):
+        comp = company()
+
+        # Operational HR User cannot edit/publish template, gets Persian permission error
+        frappe.set_user(HR_USER)
+        with self.assertRaises(frappe.PermissionError) as cm_save:
+            api.save_hiring_order_template(company=comp, revision=0, template=default_template())
+        self.assertIn("شما اجازهٔ ویرایش یا انتشار قالب حکم استخدام را ندارید.", str(cm_save.exception))
+
+        with self.assertRaises(frappe.PermissionError) as cm_pub:
+            api.publish_hiring_order_template(company=comp, revision=0)
+        self.assertIn("شما اجازهٔ ویرایش یا انتشار قالب حکم استخدام را ندارید.", str(cm_pub.exception))
+
+        # Operational HR User CAN issue orders and list orders
+        orders = api.list_hiring_orders(company=comp)
+        self.assertIn("items", orders["data"])
+
+        # HR Manager CAN edit and publish template
+        frappe.set_user(HR_MANAGER_USER)
+        pub = api.publish_hiring_order_template(company=comp, revision=0)
+        self.assertIsNotNone(pub["data"]["template"])

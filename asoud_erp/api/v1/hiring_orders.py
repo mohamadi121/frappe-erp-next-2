@@ -21,8 +21,23 @@ from asoud_erp.services.jalali import gregorian_to_jalali
 from asoud_erp.services.request_access import require_company
 from asoud_erp.services.transaction_lines import paging
 
-HR_ROLES = ("System Manager", "HR Manager")
+TEMPLATE_DESIGNERS = ("System Manager", "HR Manager")
+HR_OPERATIONAL_ROLES = ("System Manager", "HR Manager", "HR User")
 PAYROLL_ROLES = ("System Manager", "Payroll Manager", "Accounts Manager")
+
+
+def _require_template_designer(company: str) -> None:
+    try:
+        erp_documents.require_roles(TEMPLATE_DESIGNERS, company)
+    except frappe.PermissionError:
+        frappe.throw(_("شما اجازهٔ ویرایش یا انتشار قالب حکم استخدام را ندارید."), frappe.PermissionError)
+
+
+def _require_hr_issuer(company: str) -> None:
+    try:
+        erp_documents.require_roles(HR_OPERATIONAL_ROLES, company)
+    except frappe.PermissionError:
+        frappe.throw(_("شما اجازهٔ صدور یا مدیریت احکام استخدام را ندارید."), frappe.PermissionError)
 
 
 def _template_form_name(company: str) -> str | None:
@@ -71,7 +86,7 @@ def _letterhead(company: str) -> str | None:
 
 @frappe.whitelist()
 def get_hiring_order_template(company: str) -> dict:
-    erp_documents.require_roles(HR_ROLES, company)
+    _require_hr_issuer(company)
     require_company(company)
     name = _template_form_name(company)
     if not name or not frappe.db.exists("ASOUD Form", name):
@@ -87,7 +102,7 @@ def get_hiring_order_template(company: str) -> dict:
 
 @frappe.whitelist()
 def save_hiring_order_template(company: str, revision: int = 0, template: Any = None) -> dict:
-    erp_documents.require_roles(HR_ROLES, company)
+    _require_template_designer(company)
     require_company(company)
     if isinstance(template, str):
         template = json.loads(template)
@@ -123,7 +138,7 @@ def save_hiring_order_template(company: str, revision: int = 0, template: Any = 
 
 @frappe.whitelist()
 def publish_hiring_order_template(company: str, revision: int = 0) -> dict:
-    erp_documents.require_roles(HR_ROLES, company)
+    _require_template_designer(company)
     require_company(company)
     name = _template_form_name(company)
     if not name or not frappe.db.exists("ASOUD Form", name):
@@ -157,7 +172,7 @@ def publish_hiring_order_template(company: str, revision: int = 0) -> dict:
 @frappe.whitelist()
 def list_hiring_order_people(company: str, search: str = "", limit_start: int = 0,
                              limit_page_length: int = 20) -> dict:
-    erp_documents.require_roles(HR_ROLES, company)
+    _require_hr_issuer(company)
     require_company(company)
     start, length = paging(limit_start, limit_page_length, maximum=100)
     rows = frappe.get_all("Employee", filters={"company": company, "status": "Active"},
@@ -199,7 +214,7 @@ def get_hiring_order_payroll(company: str, employee: str, effective_date: str) -
 @frappe.whitelist()
 def list_hiring_orders(company: str, search: str = "", status: str = "",
                        limit_start: int = 0, limit_page_length: int = 20) -> dict:
-    erp_documents.require_roles(HR_ROLES, company)
+    _require_hr_issuer(company)
     require_company(company)
     start, length = paging(limit_start, limit_page_length, maximum=100)
 
@@ -263,7 +278,7 @@ def get_hiring_order(name: str) -> dict:
         frappe.throw(_("حکم مورد نظر یافت نشد."), frappe.DoesNotExistError)
     entry = frappe.get_doc("ASOUD Form Entry", name)
     require_company(entry.company)
-    erp_documents.require_roles(HR_ROLES, entry.company)
+    _require_hr_issuer(entry.company)
     data = json.loads(entry.values_json or "{}")
     data["name"] = entry.name
     data["company"] = entry.company
@@ -283,7 +298,7 @@ def save_hiring_order(
     values: Any = None,
     payroll_rows: Any = None,
 ) -> dict:
-    erp_documents.require_roles(HR_ROLES, company)
+    _require_hr_issuer(company)
     require_company(company)
 
     if request_id and not order:
@@ -399,7 +414,7 @@ def send_hiring_order_for_review(name: str, revision: int, request_id: str) -> d
         frappe.throw(_("حکم مورد نظر یافت نشد."), frappe.DoesNotExistError)
     entry = frappe.get_doc("ASOUD Form Entry", name)
     require_company(entry.company)
-    erp_documents.require_roles(HR_ROLES, entry.company)
+    _require_hr_issuer(entry.company)
     data = json.loads(entry.values_json or "{}")
 
     if int(revision) != 0 and data.get("revision") != int(revision):
@@ -420,7 +435,7 @@ def print_hiring_order(name: str) -> dict:
         frappe.throw(_("حکم مورد نظر یافت نشد."), frappe.DoesNotExistError)
     entry = frappe.get_doc("ASOUD Form Entry", name)
     require_company(entry.company)
-    erp_documents.require_roles(HR_ROLES, entry.company)
+    _require_hr_issuer(entry.company)
     data = json.loads(entry.values_json or "{}")
     data["name"] = entry.name
     data["company"] = entry.company
