@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- گواهی اشتغال مستقل: قرارداد قالب نسخه‌دار و صدور/چاپ مستقل از درخواست‌های موجود افزوده شد. استقرار نهایی به migration و restart نیاز دارد.
+
 - First-office setup can complete without provisioning an HR account. Saved office, administrator/company access and active fiscal year remain required. No existing accounts or permissions change; deploy matching Flutter flow and restart backend workers. No schema migration required. Tests not run at user request.
 
 - Native organizational unit descriptions: optional validated `save_unit.description` and `list_units.description`, persisted as `Department.asoud_description`; omitted updates preserve text. Deployment: `bench migrate` (idempotent patch `v0_18.add_department_description`, install/migrate Custom Field), restart, then release matching inline forms. No unit/position IDs or hierarchy are rewritten; permissions and revisions are unchanged.
