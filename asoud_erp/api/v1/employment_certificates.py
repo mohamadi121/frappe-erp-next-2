@@ -298,6 +298,20 @@ def publish_template(company: str, revision: int = 0) -> dict:
 
 
 @frappe.whitelist()
+def get_employee_options(company: str) -> dict:
+    require_company(company)
+    require_roles(HR_OPERATIONAL_ROLES, company=company)
+
+    employees = frappe.get_all(
+        "Employee",
+        filters={"company": company, "status": "Active"},
+        fields=["name", "employee_name", "department", "designation", "date_of_joining"],
+        order_by="employee_name asc",
+    )
+    return success(employees)
+
+
+@frappe.whitelist()
 def list_certificates(
     company: str,
     query: str = "",
