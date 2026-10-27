@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- احکام افزایش یا تغییر حقوق و مزایا (`docs/api/salary_change_orders.md`): چرخه کامل قالب ۶ ماده‌ای با فرم‌ساز موجود و شناسه‌های پایدار، جدول مقایسه اقلام حقوق قبلی و جدید با محاسبه خالص اختلاف و درصد تغییر، عدم تغییر حقوق زنده در زمان پیش‌نویس، کنترل دسترسی تفکیک‌شده (طراح قالب / صادرکننده HR / مجری حقوق)، تأیید دومرحله‌ای و اعمال مجزا بر احکام ساختار حقوقی (`Salary Structure Assignment`) با شناسه عملیات تکرارپذیر (idempotency) و ثبت ردپا (audit trail)، وضعیت تفکیک‌شده تأیید و اعمال حقوقی، و فرمت چاپ A4 با نوار پیش‌نویس.
+
 - First-office setup can complete without provisioning an HR account. Saved office, administrator/company access and active fiscal year remain required. No existing accounts or permissions change; deploy matching Flutter flow and restart backend workers. No schema migration required. Tests not run at user request.
 
 - Native organizational unit descriptions: optional validated `save_unit.description` and `list_units.description`, persisted as `Department.asoud_description`; omitted updates preserve text. Deployment: `bench migrate` (idempotent patch `v0_18.add_department_description`, install/migrate Custom Field), restart, then release matching inline forms. No unit/position IDs or hierarchy are rewritten; permissions and revisions are unchanged.
