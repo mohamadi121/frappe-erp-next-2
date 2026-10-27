@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- گواهی اشتغال مستقل: قرارداد قالب نسخه‌دار و صدور/چاپ مستقل از درخواست‌های موجود افزوده شد. استقرار نهایی به migration و restart نیاز دارد.
+- گواهی اشتغال مستقل: پیاده‌سازی کامل API قالب نسخه‌دار و صدور/فهرست/چاپ گواهی‌های اشتغال به کار با آزمون‌های یکپارچگی افزوده شد. استقرار نهایی به restart نیاز دارد.
 
 - First-office setup can complete without provisioning an HR account. Saved office, administrator/company access and active fiscal year remain required. No existing accounts or permissions change; deploy matching Flutter flow and restart backend workers. No schema migration required. Tests not run at user request.
 

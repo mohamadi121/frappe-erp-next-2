@@ -9,6 +9,80 @@ PERIODS = {"monthly", "yearly", "one_off"}
 _DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 _TOKEN = re.compile(r"{{([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*)}}")
 
+DEFAULT_TEMPLATE = {
+    "clauses": [
+        {
+            "id": "recipient",
+            "title": "مشخصات مخاطب",
+            "body": "به: {{certificate.addressee_name}}\nموضوع: گواهی اشتغال به کار",
+            "enabled": True,
+        },
+        {
+            "id": "main_body",
+            "title": "متن اصلی گواهی",
+            "body": "بدین‌وسیله گواهی می‌شود که خانم/آقای {{employee.employee_name}} با شماره پرسنلی {{employee.employee_number}} و کد ملی {{employee.national_id}} از تاریخ {{employee.date_of_joining}} در شرکت {{company.company_name}} با سمت {{employee.designation}} مشغول به خدمت می‌باشند.",
+            "enabled": True,
+        },
+        {
+            "id": "purpose",
+            "title": "هدف و اعتبار",
+            "body": "این گواهی بنا به درخواست نامبرده جهت {{certificate.purpose}} صادر گردیده و فاقد هرگونه ارزش و تعهد دیگری است.",
+            "enabled": True,
+        },
+        {
+            "id": "salary",
+            "title": "حقوق و مزایا",
+            "body": "میزان ناخالص دریافتی ماهانه نامبرده به شرح جدول زیر است:",
+            "enabled": True,
+        },
+    ],
+    "salary_enabled": False,
+    "salary_rows": [
+        {"id": "base", "title": "حقوق پایه", "field_ref": "payroll.base", "period": "monthly"},
+    ],
+}
+
+
+def build_print_html(
+    rendered_html: str,
+    letterhead_html: str | None = None,
+    number: str = "—",
+    issue_date: str = "—",
+    is_final: bool = False,
+) -> str:
+    draft_banner = (
+        ""
+        if is_final
+        else '<div style="text-align:center; color:#9eacbc; font-weight:700; font-size:12px; margin-bottom:12px;">پیش‌نویس ـ فاقد اعتبار نهایی</div>'
+    )
+    letterhead_section = (
+        f'<div style="margin-bottom:12px;">{letterhead_html}</div>'
+        if letterhead_html
+        else '<div style="font-weight:700; font-size:12px; color:#243f60; margin-bottom:8px;">سربرگ سازمان</div>'
+    )
+
+    return (
+        f'<article dir="rtl" style="font-family: Tahoma, \'Noto Sans Arabic\', sans-serif; padding: 24px; line-height: 2; color: #202f42;">'
+        f'{letterhead_section}'
+        f'<hr style="border: 0; border-top: 1px solid #b8c6d3; margin: 10px 0 16px 0;">'
+        f'<h2 style="text-align: center; font-size: 17px; color: #243f60; margin: 10px 0;">گواهی اشتغال به کار</h2>'
+        f'{draft_banner}'
+        f'<div style="display: flex; justify-content: space-between; font-size: 11px; color: #62768c; margin-bottom: 16px;">'
+        f'<span>شماره: {number}</span>'
+        f'<span>تاریخ: {issue_date}</span>'
+        f'</div>'
+        f'{rendered_html}'
+        f'<div style="display: flex; justify-content: space-between; margin-top: 60px; font-size: 11px; padding: 0 20px;">'
+        f'<span>نام و امضای مقام مجاز</span>'
+        f'<span>مهر شرکت</span>'
+        f'</div>'
+        f'<footer style="margin-top: 50px; text-align: center; font-size: 10px; color: #748398; border-top: 1px solid #b8c6d3; padding-top: 10px;">'
+        f'پابرگ و نشانی شرکت از تنظیمات سازمان'
+        f'</footer>'
+        f'</article>'
+    )
+
+
 
 def normalize_search(value: object) -> str:
     return re.sub(r"\s+", " ", str(value or "").translate(_DIGITS).replace("ي", "ی").replace("ك", "ک")).strip().lower()

@@ -1,7 +1,9 @@
 import pytest
 
 from asoud_erp.services.employment_certificates import (
+    DEFAULT_TEMPLATE,
     MISSING_MESSAGE,
+    build_print_html,
     normalize_search,
     render_snapshot,
     validate_template,
@@ -31,3 +33,23 @@ def test_salary_missing_is_explicit_and_periods_are_not_summed():
 
 def test_search_normalizes_letters_and_all_digit_sets():
     assert normalize_search("ك ي ۱۲۳ ٤٥") == "ک ی 123 45"
+
+
+def test_default_template_is_valid():
+    validated = validate_template(DEFAULT_TEMPLATE)
+    assert len(validated["clauses"]) >= 3
+    assert validated["salary_enabled"] is False
+
+
+def test_build_print_html_shows_draft_mark_and_hides_in_final():
+    draft_html = build_print_html("<p>متن</p>", is_final=False)
+    assert "پیش‌نویس ـ فاقد اعتبار نهایی" in draft_html
+    assert "گواهی اشتغال به کار" in draft_html
+    assert "شماره: —" in draft_html
+
+    final_html = build_print_html("<p>متن</p>", number="CERT-1405-0001", issue_date="1405/01/15", is_final=True)
+    assert "پیش‌نویس ـ فاقد اعتبار نهایی" not in final_html
+    assert "شماره: CERT-1405-0001" in final_html
+    assert "تاریخ: 1405/01/15" in final_html
+
+
