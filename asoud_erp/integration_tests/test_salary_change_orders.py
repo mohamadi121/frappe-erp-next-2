@@ -18,6 +18,27 @@ from asoud_erp.integration_tests.tenancy import (
 from asoud_erp.services.salary_change_orders import default_template
 
 
+def employee_a() -> str:
+    comp = company()
+    name = frappe.db.get_value("Employee", {"user_id": EMPLOYEE_A_USER, "company": comp}, "name")
+    if not name:
+        emp = frappe.get_doc({
+            "doctype": "Employee",
+            "first_name": "پرسنل",
+            "last_name": "حقوقی",
+            "user_id": EMPLOYEE_A_USER,
+            "company": comp,
+            "status": "Active",
+            "gender": "Male",
+            "date_of_birth": "1990-01-01",
+            "date_of_joining": nowdate(),
+        })
+        emp.flags.ignore_permissions = True
+        emp.insert()
+        name = emp.name
+    return name
+
+
 class TestSalaryChangeOrders(APITestCase):
     @classmethod
     def setUpClass(cls):
@@ -404,7 +425,10 @@ class TestSalaryChangeOrders(APITestCase):
             comparison_rows=tampered_rows,
         )
 
-        table = saved["data"]["comparison_table"]
+        order_name = saved["data"]["name"]
+        frappe.set_user(MANAGER_USER)
+        order_data = api.get_salary_change_order(order_name)["data"]
+        table = order_data["comparison_table"]
         base_row = next(r for r in table["rows"] if r["id"] == "base_salary")
         # 1. previous_amount must be taken from server payroll (150000000), NOT client (999999999)
         self.assertEqual(base_row["previous_amount"], 150000000)
