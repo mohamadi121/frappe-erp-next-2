@@ -76,6 +76,8 @@ def _approval_config(spec: TemplateSpec) -> dict:
 
 def _ensure_definition(company: str, abbr: str, spec: TemplateSpec, native: str) -> str:
     """One definition; returns the summary key `created`, `updated` or `skipped`."""
+    # Serialize seeding and adoption for this company until the transaction ends.
+    frappe.db.get_value("Company", company, "name", for_update=True)
     existing = frappe.db.get_value(
         "ASOUD Workflow Definition", {"company": company, "template_key": spec.key},
         ["name", "template_version"], as_dict=True)
@@ -92,11 +94,9 @@ def _ensure_definition(company: str, abbr: str, spec: TemplateSpec, native: str)
     if not stage:
         return "skipped"
     config = json.loads(stage.config_json or "{}")
-    desired_fields = _form_config(spec)["form_fields"]
-    current_fields = config.get("form_fields") or []
-    if (existing.template_version or 0) >= spec.version and current_fields == desired_fields:
+    if (existing.template_version or 0) >= spec.version:
         return "skipped"
-    config["form_fields"] = desired_fields
+    config["form_fields"] = _form_config(spec)["form_fields"]
     frappe.db.set_value("ASOUD Workflow Stage", stage.name, "config_json",
                         json.dumps(config, ensure_ascii=False), update_modified=False)
     frappe.db.set_value("ASOUD Workflow Definition", existing.name, "template_version", spec.version,
@@ -105,6 +105,41 @@ def _ensure_definition(company: str, abbr: str, spec: TemplateSpec, native: str)
 
 
 def _create_definition(company: str, abbr: str, code: str, spec: TemplateSpec, native: str) -> None:
+    frappe.db.savepoint("system_template_adoption")
+    try:
+        _create_or_adopt_definition(company, abbr, code, spec, native)
+    except Exception:
+        frappe.db.rollback(save_point="system_template_adoption")
+        raise
+
+
+def _orphan_rows(doctype: str, code: str, field: str, values: list[str], fields: list[str]) -> list:
+    """Load both linked rows and detached rows identified by the deterministic graph."""
+    linked = frappe.get_all(doctype, filters={"workflow_definition": code},
+                            fields=fields, limit_page_length=0)
+    identified = frappe.get_all(doctype, filters={field: ["in", values]},
+                                fields=fields, limit_page_length=0) if values else []
+    rows = {row.name: row for row in [*linked, *identified]}
+    if any(row.workflow_definition not in (None, "", code) for row in rows.values()):
+        frappe.throw(frappe._("ترمیم الگوی درخواست ممکن نیست؛ برخی مرحله‌ها یا مسیرها متعلق به گردش‌کار دیگری هستند."))
+    return list(rows.values())
+
+
+def _create_or_adopt_definition(company: str, abbr: str, code: str, spec: TemplateSpec, native: str) -> None:
+    slug = re.sub(r"[^a-z0-9]+", "-", abbr.lower()).strip("-") or "co"
+    keys = {part: f"sys-{spec.key}-{slug}-{part}" for part in ("start", "form", "approval", "end")}
+    existing = _orphan_rows("ASOUD Workflow Stage", code, "stage_key", list(keys.values()),
+                            ["name", "workflow_definition", "stage_key", "stage_type"])
+    starts = [row for row in existing if row.stage_type == "Start"]
+    if len(starts) > 1:
+        frappe.throw(frappe._("ترمیم الگوی درخواست ممکن نیست؛ گردش‌کار بیش از یک مرحله شروع دارد."))
+    by_key = {row.stage_key: row for row in existing}
+    transitions = _orphan_rows("ASOUD Workflow Transition", code, "from_stage",
+                               [row.name for row in existing],
+                               ["name", "workflow_definition", "from_stage", "to_stage"])
+    names = {row.name for row in existing}
+    if any(row.from_stage not in names or row.to_stage not in names for row in transitions):
+        frappe.throw(frappe._("ترمیم الگوی درخواست ممکن نیست؛ مرحله مرتبط با یکی از مسیرها موجود نیست."))
     # Seeding runs as the system (migrate or company creation), so the inserts skip user permissions.
     definition = frappe.get_doc({
         "doctype": "ASOUD Workflow Definition", "workflow_code": code, "workflow_title": spec.title,
@@ -115,7 +150,11 @@ def _create_definition(company: str, abbr: str, code: str, spec: TemplateSpec, n
         "color_hex": spec.color_hex, "show_in_request_list": 1, "allow_user_submission": 1,
         "template_key": spec.key, "template_version": spec.version, "is_system_template": 1,
     }).insert(ignore_permissions=True)
-    slug = re.sub(r"[^a-z0-9]+", "-", abbr.lower()).strip("-") or "co"
+    for doctype, rows in (("ASOUD Workflow Stage", existing), ("ASOUD Workflow Transition", transitions)):
+        for row in rows:
+            if row.workflow_definition != definition.name:
+                frappe.db.set_value(doctype, row.name, "workflow_definition", definition.name,
+                                    update_modified=False)
     start = {"trigger_type": "Manual", "initiator_roles": [], "subject_source": "General Subject",
              "pass_mode": "Direct"}
     form, approval = _form_config(spec), _approval_config(spec)
@@ -127,15 +166,25 @@ def _create_definition(company: str, abbr: str, code: str, spec: TemplateSpec, n
     ]
     stages = []
     for sequence, (part, stage_type, title, config) in enumerate(plan):
+        adopted = starts[0] if part == "start" and starts else by_key.get(keys[part])
+        if adopted:
+            if part == "start" and adopted.stage_type != "Start":
+                frappe.throw(frappe._("ترمیم الگوی درخواست ممکن نیست؛ شناسه مرحله شروع برای مرحله دیگری استفاده شده است."))
+            stages.append(adopted)
+            continue
         config = {key: value for key, value in config.items() if key != "title"} if stage_type != "Start" \
             else config
         stages.append(frappe.get_doc({
             "doctype": "ASOUD Workflow Stage", "workflow_definition": definition.name,
-            "stage_key": f"sys-{spec.key}-{slug}-{part}", "stage_type": stage_type, "stage_title": title,
+            "stage_key": keys[part], "stage_type": stage_type, "stage_title": title,
             "sequence_no": sequence, "config_json": json.dumps(config, ensure_ascii=False),
             "configuration_status": "Complete",
         }).insert(ignore_permissions=True))
+    outgoing = {row.from_stage for row in transitions}
     for sequence, (source, target) in enumerate(zip(stages, stages[1:]), start=1):
+        # An edited route may pass through extra user tasks. Never add a bypass.
+        if source.name in outgoing:
+            continue
         approve = source.stage_type == "Approval"
         frappe.get_doc({
             "doctype": "ASOUD Workflow Transition", "workflow_definition": definition.name,
@@ -143,5 +192,6 @@ def _create_definition(company: str, abbr: str, code: str, spec: TemplateSpec, n
             "transition_label": "تأیید" if approve else "",
             "condition_json": json.dumps({"action": "Approve"}) if approve else "{}", "sequence_no": sequence,
         }).insert(ignore_permissions=True)
-    frappe.db.set_value("ASOUD Workflow Definition", definition.name, "steps_count", len(stages) - 1,
+    all_names = names | {row.name for row in stages}
+    frappe.db.set_value("ASOUD Workflow Definition", definition.name, "steps_count", len(all_names) - 1,
                         update_modified=False)

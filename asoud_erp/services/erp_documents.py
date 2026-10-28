@@ -23,7 +23,7 @@ def require_roles(roles, company=None) -> None:
 
         if set(roles) & office_roles(frappe.session.user, company):
             return
-    frappe.throw(_("Not permitted"), frappe.PermissionError)
+    frappe.throw(_("نقش شما اجازهٔ انجام این عملیات را ندارد."), frappe.PermissionError)
 
 
 def load(doctype: str, name: str, ptype: str = "read"):

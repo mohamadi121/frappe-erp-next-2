@@ -12,7 +12,7 @@ Module references: [module map](../backend-roadmap.md) ·
 [stock](stock.md) · [buying](buying.md) · [HR self-service](hr_self_service.md) · [leave requests](leave_request.md) ·
 [projects](projects.md) · [financial reports](financial_reports.md) · [ledger reports](report.md) · [chart of accounts](account.md) · [parties](party.md) · [payroll](payroll.md) · [POS](pos.md) · [personnel file](personnel_file.md) · [account operations](account_ops.md) · [document templates](document_templates.md) · [organization units and import](organization.md) ·
 [support](support.md) · [request types](../workflow-runtime-v1.md#request-types) · [request templates](request_templates.md) ·
-[login, onboarding and roles](login-onboarding.md) · [form execution](form-execution.md) · [form builder](forms.md) · [directives](../directives-implementation.md)
+[login, onboarding and roles](login-onboarding.md) · [form execution](form-execution.md) · [form builder](forms.md) · [employment contracts](employment_contracts.md) · [directives](../directives-implementation.md) · [گواهی‌های اشتغال](employment_certificates.md) · [احکام استخدام](hiring_orders.md) · [personnel introduction letters](personnel_introduction_letters.md) · [salary change orders](salary_change_orders.md)
 
 ## Calling a method
 
@@ -28,6 +28,8 @@ Read methods also accept `GET` with query parameters. List and object parameters
 (`items`, `references`, ...) may be sent as JSON values or JSON-encoded strings.
 
 ## Response envelope
+
+Final HR document prints share the [historical letterhead fallback](hr-document-print.md), including the additive `letterhead_missing` flag.
 
 Frappe wraps the return value in `message`:
 
@@ -54,6 +56,8 @@ only for its own protocol errors (`INVALID_REQUEST_KEY`, `METHOD_NOT_ALLOWED`,
 `REQUEST_KEY_CONFLICT`, `REQUEST_IN_PROGRESS`).
 
 ## Authorization
+
+The shared [HR document role matrix](hr-documents-lifecycle.md) covers document lifecycle permissions and replay semantics.
 
 - ERPNext roles and DocType permissions are the authority. Modules check the
   roles listed in each doc with `services.erp_documents.require_roles` (unlike

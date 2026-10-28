@@ -351,3 +351,38 @@ class TestRequestCompanyScope(APITestCase):
         frappe.set_user(EMPLOYEE_B_USER)
         with self.assertRaises(frappe.PermissionError):
             workflow_request.create_native_document(self.request_b["name"])
+
+
+class TestOrganizationCompanyScope(APITestCase):
+    """Organization chart, units, and positions gate on company scope."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.scope = setup_tenancy()
+        cls.second = cls.scope["second"]
+
+    def test_hr_manager_of_company_a_cannot_access_company_b_organization(self):
+        from asoud_erp.api.v1 import organization
+
+        frappe.set_user(HR_MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            organization.get_chart(self.second)
+        with self.assertRaises(frappe.PermissionError):
+            organization.save_chart({"company": self.second, "revision": 0, "rows": []})
+        with self.assertRaises(frappe.PermissionError):
+            organization.list_units(self.second)
+        with self.assertRaises(frappe.PermissionError):
+            organization.save_unit(self.second, {"title": "Unit B", "is_group": False})
+        with self.assertRaises(frappe.PermissionError):
+            organization.list_employees(self.second)
+
+    def test_hr_manager_can_access_own_company_organization(self):
+        from asoud_erp.api.v1 import organization
+
+        frappe.set_user(HR_MANAGER_USER)
+        res = organization.get_chart(self.company)
+        self.assertIn("rows", res["data"])
+        units = organization.list_units(self.company)
+        self.assertIn("units", units["data"])
+

@@ -1,0 +1,38 @@
+# گواهی‌های اشتغال به کار
+
+این ماژول مستقل از «درخواست گواهی اشتغال» و `certificate_issue` است. تنها مدیر منابع انسانی یا مدیر کلِ دارای دسترسی شرکت می‌تواند قالب و گواهی را ببیند یا تغییر دهد؛ مجوزها در هر فراخوان و برای هر سند کنترل می‌شوند.
+
+## قالب
+
+| method | verb | arguments | result |
+| --- | --- | --- | --- |
+| `employment_certificates.get_template` | GET | `company` | آخرین نسخهٔ منتشرشده یا پیش‌نویس قابل ویرایش: `{name, revision, status, clauses, salary_enabled, salary_rows, workflow}` |
+| `employment_certificates.save_template_draft` | POST | `company`, `revision`, `clauses`, `salary_enabled`, `salary_rows`, `workflow?` | پیش‌نویس نسخهٔ بعدی با `revision` تازه |
+| `employment_certificates.publish_template` | POST | `company`, `revision` | نسخهٔ منتشرشدهٔ immutable |
+
+هر بند `{id, title, body, enabled}` است و جای‌نگهدارها با شناسهٔ پایدار منبع (`{{employee.employee_name}}`، نه برچسب فارسی) ذخیره می‌شوند. `salary_rows` فقط شناسهٔ عددی مجاز حقوق و دورهٔ آن را ذخیره می‌کند. `workflow` شناسهٔ اختیاری گردش‌کار آمادهٔ از نوع `ASOUD Workflow Request` است. حذف یا غیرفعال‌شدن منبع، انتشار را با پیام فارسی متوقف می‌کند. قالب منتشرشده هرگز overwrite نمی‌شود.
+
+## صدور و فهرست
+
+| method | verb | arguments | result |
+| --- | --- | --- | --- |
+| `employment_certificates.list_certificates` | GET | `company`, `query?`, `status?`, `start?`, `page_length?` | `{items, total}`؛ جست‌وجوی سرور نام، کد پرسنلی، شماره و مخاطب را پس از همسان‌سازی ی/ي، ک/ك و رقم‌ها انجام می‌دهد. |
+| `employment_certificates.get_certificate` | GET | `name` | سند، نسخهٔ قالب، snapshot، و HTML چاپی؛ دادهٔ حقوق فقط هنگام مجازبودن برمی‌گردد. |
+| `employment_certificates.save_draft` | POST | `company`, `employee`, `addressee_type?`, `addressee_name`, `addressee_title?`, `purpose?`, `request_key`, `revision?` | پیش‌نویس یا نتیجهٔ همان `request_key`؛ چند گواهی معتبر برای یک شخص/مخاطب ممکن است. |
+| `employment_certificates.finalize_certificate` | POST | `name`, `revision`, `request_key` | سند نهایی با شمارهٔ خدمت شماره‌گذاری، نسخهٔ قالب و snapshot غیرقابل‌تغییر. |
+
+`save_draft` و `finalize_certificate` با `request_key` اجباری idempotent هستند؛ تطابق‌نداشتن payload همان کلید خطای فارسی دارد. `revision` برای optimistic concurrency اجباری است مگر ایجاد تازه. وضعیت‌ها `Draft`، `Pending`، وضعیت‌های واقعی گردش‌کار (`Final` یا `Rejected`) هستند:
+- **مسیر دارای گردش‌کار:** اگر در نسخهٔ قالب گواهی، گردش‌کار تعریف شده باشد، نهایی‌سازی گواهی را به ماژول گردش‌کار موجود (`ASOUD Workflow Request`) ارسال می‌کند، وضعیت به `Pending` درمی‌آید و شمارهٔ رسمی گواهی تا پایان تأیید تخصیص داده نمی‌شود (`number = "—"`). با تأیید نهایی گردش‌کار (`Completed`)، شمارهٔ رسمی سریالی تخصیص داده شده و وضعیت `Final` می‌شود؛ با رد گردش‌کار (`Rejected`) شمارهٔ رسمی تخصیص نمی‌یابد.
+- **سیاست جاری سامانه در نبود گردش‌کار:** در صورتی که گردش‌کاری برای قالب تنظیم نشده باشد (`workflow` خالی)، سیاست صدور مستقیم توسط نقش‌های مجاز منابع انسانی (`HR_OPERATIONAL_ROLES`: System Manager، HR Manager و HR User) اعمال می‌شود؛ گواهی مستقیماً در یک مرحله با شمارهٔ رسمی (`CERT-.YYYY.-.#####`) و تاریخ صدور شمسی نهایی (`Final`) می‌گردد و سربرگ شرکت snapshot می‌شود.
+
+کارمند باید Active باشد مگر سیاست سامانه خلافش را تعیین کرده باشد؛ تاریخ شروع فقط از Employee خوانده می‌شود. بخش حقوق فقط زمانی resolve و snapshot می‌شود که قالب آن را فعال کرده باشد، کاربر مجوز حقوق داشته باشد و سیاست حریم شرکت اجازه دهد. مقدار گم‌شده «اطلاعات موجود نیست» است، نه صفر. در غیر این صورت، API، HTML و چاپ هیچ دادهٔ حقوقی ندارند.
+
+چاپ `print_html`، A4 راست‌به‌چپ با Letter Head/Footer مشترک و شماره صفحه است. چاپ پیش‌نویس عبارت «پیش‌نویس ـ فاقد اعتبار نهایی» دارد؛ امضا یا مهر ساختگی ندارد.
+
+خطاهای اعتبارسنجی 417 و خطاهای مجوز/دامنهٔ شرکت 403 هستند و همگی پیام فارسی دارند. استقرار اولیه نیازمند migration برای DocType `ASOUD Employment Certificate` و restart است.
+
+متن بند و مقادیر جای‌نگهدار در چاپ به‌صورت متن امن escape می‌شوند؛ HTML ورودی اجرا نمی‌شود.
+
+ویرایش با `name` فقط برای پیش‌نویس موجود در همان شرکت و `revision` دقیق مجاز است؛ نسخهٔ صفر یا قدیمی و سند نهایی با خطای فارسی رد می‌شود.
+
+کنترل حقوق در مسیر دریافت، چاپ و پاسخ تکرار درخواست اعمال می‌شود. نقش‌های حقوق: System Manager، Payroll Manager و Accounts Manager؛ HR Manager به‌تنهایی مجوز حقوق نیست. پاسخ بدون این مجوز، snapshot ارقام حقوق را حذف می‌کند.

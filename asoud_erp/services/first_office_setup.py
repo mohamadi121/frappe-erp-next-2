@@ -4,12 +4,7 @@ import re
 from email.utils import parseaddr
 from uuid import uuid4
 
-import frappe
-
-from asoud_erp.services import account_state, security_audit
 from asoud_erp.services.credential_policy import clean_name, normalize_email, normalize_mobile
-from asoud_erp.services.request_access import require_company
-from asoud_erp.services.system_admin import is_system_admin
 
 INTERNAL_SUFFIX = "@users.asoud.invalid"
 
@@ -18,18 +13,51 @@ def internal_email(value):
     return parseaddr(str(value or ""))[1].lower().endswith(INTERNAL_SUFFIX)
 
 
+def validate_lead_inputs(full_name, username, contact, temporary_password):
+    name = clean_name(full_name, "نام و نام خانوادگی")
+    username = str(username or "").strip().lower()
+    if not re.fullmatch(r"[a-z][a-z0-9_]{2,39}", username) or username in {"administrator", "guest", "admin"}:
+        raise ValueError("نام کاربری باید ۳ تا ۴۰ حرف انگلیسی، عدد یا زیرخط باشد و با حرف شروع شود.")
+    contact = str(contact or "").strip()
+    mail = normalize_email(contact) if "@" in contact else None
+    mobile = None if mail else normalize_mobile(contact)
+    if not mail and not mobile:
+        raise ValueError("شماره موبایل یا ایمیل را وارد کنید.")
+    if internal_email(mail):
+        raise ValueError("ایمیل تماس واقعی وارد کنید.")
+    if not isinstance(temporary_password, str) or not 8 <= len(temporary_password) <= 128:
+        raise ValueError("رمز موقت باید بین ۸ تا ۱۲۸ نویسه باشد.")
+    if len(set(temporary_password)) < 4 or temporary_password.isdigit() or temporary_password.isspace():
+        raise ValueError("رمز موقت ضعیف است؛ از حروف و نویسه‌های متنوع استفاده کنید.")
+    return name, username, mail, mobile
+
+
 def block_internal_mail(doc, method=None):
     """An internal User key is never a deliverable/verified contact address."""
+    import frappe
+
     if any(internal_email(row.recipient) for row in doc.get("recipients") or []):
         frappe.throw("این حساب ایمیل تماس ندارد؛ اطلاعات ورود را امن و مستقیم تحویل دهید.")
 
 
 def _setup(company, *, lock=False):
+    import frappe
+
+    from asoud_erp.services.request_access import require_company
+    from asoud_erp.services.system_admin import is_system_admin
+
     if not is_system_admin():
         frappe.throw("این مرحله فقط برای مدیر سیستم مجاز است.", frappe.PermissionError)
     require_company(company)
     if company != frappe.db.get_single_value("ASOUD Settings", "first_office_company"):
         frappe.throw("این مسیر فقط برای راه‌اندازی اولین دفتر است.", frappe.PermissionError)
+    if lock:
+        # A locking current read settles provisioning before either status or retry
+        # reads its pointer. Keep the wait below the client's network timeout.
+        try:
+            frappe.db.sql("SELECT name FROM tabCompany WHERE name=%s FOR UPDATE WAIT 3", (company,))
+        except frappe.QueryTimeoutError:
+            frappe.throw("ثبت مسئول منابع انسانی هنوز در جریان است؛ چند لحظه دیگر وضعیت را دوباره دریافت کنید.")
     if not frappe.get_meta("ASOUD Company Setup").has_field("first_hr_user"):
         frappe.throw("ابتدا به‌روزرسانی ساختار پایگاه دادهٔ سرور را اجرا کنید.")
     if not frappe.db.exists("ASOUD Company Setup", company):
@@ -41,13 +69,17 @@ def _setup(company, *, lock=False):
 
 
 def _require_fiscal(company):
+    import frappe
+
     years = frappe.get_all("Fiscal Year Company", filters={"company": company},
                            pluck="parent", limit_page_length=0)
     if not years or not frappe.db.exists("Fiscal Year", {"name": ["in", years], "disabled": 0}):
         frappe.throw("ابتدا سال مالی فعال این دفتر را ثبت کنید.")
 
 
-def _summary(doc):
+def _summary(doc, *, idempotent_replay=False):
+    import frappe
+
     lead = None
     ready = False
     if doc.first_hr_user:
@@ -62,45 +94,44 @@ def _summary(doc):
                          and frappe.db.exists("User Permission", {"user": doc.first_hr_user,
                              "allow": "Company", "for_value": doc.company, "apply_to_all_doctypes": 1}))
     return {"company": doc.company, "hr_lead": lead, "hr_ready": ready,
-            "completed": bool(doc.bootstrap_completed)}
+            "completed": bool(doc.bootstrap_completed), "idempotent_replay": idempotent_replay}
 
 
 def status(company):
-    return _summary(_setup(company))
+    return _summary(_setup(company, lock=True))
 
 
 def create_hr_lead(company, full_name, username, contact, temporary_password):
+    import frappe
+    from frappe.core.doctype.user.user import test_password_strength
     from frappe.permissions import add_user_permission
     from frappe.utils.password import update_password
+
+    from asoud_erp.services import account_state, security_audit
 
     doc = _setup(company, lock=True)
     _require_fiscal(company)
     if doc.first_hr_user:
-        return _summary(doc)  # Retry never changes an existing password/account.
+        return _summary(doc, idempotent_replay=True)
     try:
-        name = clean_name(full_name, "نام و نام خانوادگی")
-        username = str(username or "").strip().lower()
-        if not re.fullmatch(r"[a-z][a-z0-9_]{2,39}", username) or username in {"administrator", "guest", "admin"}:
-            raise ValueError("نام کاربری باید ۳ تا ۴۰ حرف انگلیسی، عدد یا زیرخط باشد و با حرف شروع شود.")
-        contact = str(contact or "").strip()
-        mail = normalize_email(contact) if "@" in contact else None
-        mobile = None if mail else normalize_mobile(contact)
-        if not mail and not mobile:
-            raise ValueError("شماره موبایل یا ایمیل را وارد کنید.")
-        if internal_email(mail):
-            raise ValueError("ایمیل تماس واقعی وارد کنید.")
-        if not isinstance(temporary_password, str) or not 8 <= len(temporary_password) <= 128:
-            raise ValueError("رمز موقت باید بین ۸ تا ۱۲۸ نویسه باشد.")
+        name, username, mail, mobile = validate_lead_inputs(
+            full_name, username, contact, temporary_password
+        )
     except ValueError as exc:
         frappe.throw(str(exc))
     # Serialise identity checks across simultaneous bootstrap requests.
     frappe.db.sql("select name from tabRole where name='HR Manager' for update")
     if not frappe.db.exists("Role", {"name": "HR Manager", "disabled": 0}):
         frappe.throw("نقش منابع انسانی در سرور فعال نیست.")
-    if (frappe.db.exists("User", {"username": username})
-            or (mail and frappe.db.exists("User", {"email": mail}))
-            or (mobile and frappe.db.exists("User", {"mobile_no": mobile}))):
-        frappe.throw("نام کاربری یا اطلاعات تماس قبلاً برای حساب دیگری ثبت شده است.")
+    if frappe.db.exists("User", {"username": username}):
+        frappe.throw("نام کاربری قبلاً برای حساب دیگری ثبت شده است؛ نام دیگری انتخاب کنید.")
+    if mail and frappe.db.exists("User", {"email": mail}):
+        frappe.throw("ایمیل تماس قبلاً برای حساب دیگری ثبت شده است.")
+    if mobile and frappe.db.exists("User", {"mobile_no": mobile}):
+        frappe.throw("شماره موبایل قبلاً برای حساب دیگری ثبت شده است.")
+    strength = test_password_strength(temporary_password, user_data=(name, username, mail or "", mobile or ""))
+    if strength.get("feedback", {}).get("password_policy_validation_passed") is False:
+        frappe.throw("رمز موقت ضعیف است؛ رمز قوی‌تری با حروف و نویسه‌های متنوع انتخاب کنید.")
     user = frappe.get_doc({"doctype": "User", "email": mail or f"{uuid4().hex}{INTERNAL_SUFFIX}",
         "first_name": name, "username": username, "mobile_no": mobile,
         "enabled": 1, "user_type": "System User", "send_welcome_email": 0,
@@ -125,6 +156,10 @@ def create_hr_lead(company, full_name, username, contact, temporary_password):
 
 
 def complete(company):
+    import frappe
+
+    from asoud_erp.services import security_audit
+
     doc = _setup(company, lock=True)
     _require_fiscal(company)
     doc.flags.first_office_bootstrap = True

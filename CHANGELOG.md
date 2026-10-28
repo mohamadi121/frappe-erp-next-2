@@ -2,6 +2,53 @@
 
 ## Unreleased
 
+- System request seeding adopts orphan stages/transitions when a deterministic SYS definition is missing, preserving row identities, edited forms/routes and extra tasks; only missing default rows are added. Conflicting ownership or duplicate Starts roll back the repair. CI runs the real-site seed regressions. Deployment: run `bench --site <site> migrate`; no new fields or DocTypes, and no stage deletion or reset.
+
+- FLOW-01: HR User/HR Manager grants are reserved for the system administrator, including composite/global/office role definitions and personnel registration. The permission editor remains System Manager-only. Real-site coverage checks refusal before personnel/account writes and all three administrator grant paths. Deployment: restart workers; no migration.
+
+- Added a single real-site lifecycle matrix for five HR documents and five role/scope cases, including approval, existing numbering, frozen print and replay. Shared role/company/task denials now use Persian PermissionErrors without field details. CI includes the matrix. Deployment: restart workers; no migration.
+
+- First-office HR status and provisioning share a company transaction lock with a three-second wait; busy status raises a Persian pending error instead of a false empty lead. Repeated creation explicitly returns `idempotent_replay: true` and the original username without changing credentials. Deployment: restart workers; no migration.
+
+- All five HR final prints flag missing historical letterhead metadata and render legacy finals without a header; they never load the current header. Hiring finalization now freezes letterhead metadata. Deployment: restart workers; no migration or legacy rewrite.
+
+- Hiring payroll preserves native HRMS effective-date formula previews and adds explicit missing-assignment/component reason codes to immutable payroll rows. Deployment: restart workers; no migration.
+
+- Administrator login hints now require the essential profile before office creation and setup; disabled accounts and temporary passwords retain priority. Existing integration assertions now complete the fiscal/bootstrap prerequisites before expecting home. Deployment: restart workers; no migration.
+
+- First HR lead provisioning returns Persian errors naming missing/duplicate fields and weak temporary passwords, checks native password strength before writes, and accepts omitted optional HTTP arguments for validation. Added real-site coverage to CI. Deployment: restart workers; no schema migration.
+
+- Employment certificate workflow routing: templates support workflow binding; certificate finalization submits to the configured request workflow, tracks real workflow lifecycle events, and allocates official certificate numbering only upon final approval. In the absence of a configured workflow, the direct HR operational issuance policy applies immediately with Jalali date and letterhead snapshotting. No schema migration required; restart backend workers.
+- Employment contract workflow finalization, atomic Jalali numbering, introduction letter replay/snapshot lock, Playwright API specs for all five HR documents, and malformed/oversized input validation matrix across document save endpoints. Deployment: restart workers; no migration.
+
+- HR document privacy: hiring/salary-order detail and print mask payroll for HR-only users; certificate reads and retries strip nested payroll values when unauthorized or salary is disabled. HR Manager alone no longer grants certificate payroll access. HTTP privacy coverage is included in the API script (duplicate script key removed). Deployment: restart workers; no migration.
+
+- Certificate updates lock their entry, reject absent/stale revisions and refuse changes to finalized documents or another company’s entry. Deployment: restart workers; no migration.
+
+- Certificate and introduction-letter print rendering escapes literal clause text and certificate metadata. Deployment: restart workers; existing frozen HTML requires a separate explicit migration.
+
+- First-office input validation imports without a Frappe installation; runtime hooks load Frappe only when called. Deployment: restart workers; no migration.
+
+- Employment Contracts template builder and issuance API: versioned contract articles/clauses stored via ASOUD Form/Revision, insert-field drawer catalog from real data sources (personnel, company, contract, payroll gated by payroll permission), repeating salary items calculation with explicit missing state («اطلاعات موجود نیست»), contracts list with server-side Persian/Arabic/digit search, draft saving, finalization with Jalali-year series numbering (CNT-1405-#####), immutable revision snapshots, and A4 RTL print payload with draft banner («پیش‌نویس ـ فاقد اعتبار نهایی»). See `docs/api/employment_contracts.md`. No schema migration required; restart backend workers.
+- گواهی اشتغال مستقل: پیاده‌سازی کامل API قالب نسخه‌دار و صدور/فهرست/چاپ گواهی‌های اشتغال به کار با آزمون‌های یکپارچگی افزوده شد. استقرار نهایی به restart نیاز دارد.
+- اقلام حقوق حکم استخدام، شامل مزایا و کسورات فرمولی، از پیش‌نمایش بومی HRMS در تاریخ اجرا محاسبه می‌شوند؛ فیشی ذخیره نمی‌شود و منبع ناموجود همچنان «اطلاعات موجود نیست» است. بدون migration.
+
+- حکم استخدام از گردش‌کار آمادهٔ متصل به نسخهٔ قالب ارسال می‌شود؛ فقط تکمیل واقعی گردش‌کار حکم را شماره‌دار و نهایی می‌کند. بدون گردش‌کار، سیاست صدور مستقیم منابع انسانی اعمال می‌شود. ارسال با قفل و شناسهٔ یکتا تکرارپذیر است؛ قالب و مبالغ ثبت‌شده حفظ می‌شوند. بدون migration.
+
+- احکام استخدام: کاتالوگ واقعی اقلام حقوق با دسترسی حقوق، کنترل منبع قالب و snapshot سروری ردیف‌های نسخهٔ منتشرشده در تاریخ اجرا؛ مبالغ مشتری نادیده گرفته می‌شوند. تاریخ میلادی چاپ به شمسی تبدیل می‌شود. بدون migration.
+
+- احکام استخدام: چرخه کامل قالب (ذخیره و انتشار پیش‌نویس تغییرناپذیر)، صدور حکم، ثبت پیش‌نویس، بررسی، دریافت و چاپ A4 با نوار پیش‌نویس و سربرگ سازمان افزوده شد. شماره‌گذاری رسمی، نرمال‌سازی جست‌وجو و کنترل مجوز شرکت پیاده‌سازی شدند. استقرار: فقط restart، بدون تغییر schema یا migration.
+
+- منابع دادهٔ حکم استخدام: endpointهای صفحه‌بندی‌شدهٔ انتخاب پرسنل و snapshot حقوق در تاریخ اجرا افزوده شد. مقدار حقوق ناموجود صریحاً «اطلاعات موجود نیست» است و هرگز صفر نمی‌شود. استقرار: فقط restart؛ ثبت، نسخه‌بندی و نهایی‌سازی حکم در این تغییر افزوده نشده است.
+- Introduction-letter workflow submission sends only fields declared by the selected workflow form and retains required-field validation. Request references use the existing company/owner permission policy so operational HR users can submit their own requests without an Employee role.
+
+- Introduction-letter issuance uses the existing request workflow and completion/rejection events when a workflow is configured; without a workflow it follows the current HR direct-issuance policy. Official numbers use the shared Jalali request-numbering pattern. Sent/final snapshots cannot be overwritten, and final print payloads remain frozen. Restart workers to load the lifecycle hook; no schema migration. New workflow code and tests were not run, as requested by the owner.
+
+- Introduction letters use Employee.employee_number for personnel codes in options, snapshots and search, with an empty value when no code exists.
+
+- Personnel introduction letters (`docs/api/personnel_introduction_letters.md`): versioned template builder and HR issuance API (`personnel_introduction_letters.get_template`, `save_template_draft`, `publish_template`, `get_employee_options`, `list_letters`, `get_letter`, `save_draft`, `finalize_letter`) with stable placeholder tags, server-side normalized search, idempotent draft and finalize handling, official document numbering (`INTRO-.YYYY.-.#####`), and immutable snapshotting.
+- احکام افزایش یا تغییر حقوق و مزایا (`docs/api/salary_change_orders.md`): چرخه کامل قالب ۶ ماده‌ای با فرم‌ساز موجود و شناسه‌های پایدار، جدول مقایسه اقلام حقوق قبلی و جدید با محاسبه خالص اختلاف و درصد تغییر، عدم تغییر حقوق زنده در زمان پیش‌نویس، کنترل دسترسی تفکیک‌شده (طراح قالب / صادرکننده HR / مجری حقوق)، تأیید دومرحله‌ای و اعمال مجزا بر احکام ساختار حقوقی (`Salary Structure Assignment`) با شناسه عملیات تکرارپذیر (idempotency) و ثبت ردپا (audit trail)، وضعیت تفکیک‌شده تأیید و اعمال حقوقی، و فرمت چاپ A4 با نوار پیش‌نویس.
+
 - First-office setup can complete without provisioning an HR account. Saved office, administrator/company access and active fiscal year remain required. No existing accounts or permissions change; deploy matching Flutter flow and restart backend workers. No schema migration required. Tests not run at user request.
 
 - Native organizational unit descriptions: optional validated `save_unit.description` and `list_units.description`, persisted as `Department.asoud_description`; omitted updates preserve text. Deployment: `bench migrate` (idempotent patch `v0_18.add_department_description`, install/migrate Custom Field), restart, then release matching inline forms. No unit/position IDs or hierarchy are rewritten; permissions and revisions are unchanged.
