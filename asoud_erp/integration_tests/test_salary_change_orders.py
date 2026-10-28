@@ -169,3 +169,39 @@ class TestSalaryChangeOrders(APITestCase):
         frappe.set_user(HR_MANAGER_USER)
         with self.assertRaises(frappe.PermissionError):
             api.list_salary_change_orders(company=SECOND_COMPANY)
+
+    def test_save_rejects_cross_company_and_invalid_type_order(self):
+        comp = company()
+        frappe.set_user(HR_MANAGER_USER)
+        emp = employee_a()
+        req_id = f"req-{uuid4().hex[:8]}"
+        saved = api.save_salary_change_order(
+            company=comp,
+            request_id=req_id,
+            employee=emp,
+            effective_date=nowdate(),
+            reason="promotion",
+            description="حکم ارتقا",
+        )
+        order_name = saved["data"]["name"]
+
+        with self.assertRaises(frappe.PermissionError):
+            api.save_salary_change_order(
+                company=SECOND_COMPANY,
+                request_id=f"cross-{uuid4().hex[:8]}",
+                order=order_name,
+                revision=saved["data"]["revision"],
+                employee=emp,
+                effective_date=nowdate(),
+            )
+
+        frappe.db.set_value("ASOUD Form Entry", order_name, "reference_doctype", "ASOUD Other Document")
+        with self.assertRaises(frappe.PermissionError):
+            api.save_salary_change_order(
+                company=comp,
+                request_id=f"type-{uuid4().hex[:8]}",
+                order=order_name,
+                revision=saved["data"]["revision"],
+                employee=emp,
+                effective_date=nowdate(),
+            )

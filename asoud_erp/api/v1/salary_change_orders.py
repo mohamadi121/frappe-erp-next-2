@@ -523,6 +523,11 @@ def save_salary_change_order(
         if not frappe.db.exists("ASOUD Form Entry", order):
             frappe.throw(_("حکم مورد نظر یافت نشد."), frappe.DoesNotExistError)
         entry = frappe.get_doc("ASOUD Form Entry", order)
+        if entry.company != company or entry.reference_doctype != "ASOUD Salary Change Order":
+            frappe.throw(
+                _("این حکم متعلق به شرکت یا نوع سند انتخاب‌شده نیست."),
+                frappe.PermissionError,
+            )
         prev_data = json.loads(entry.values_json or "{}")
         if int(revision) != 0 and prev_data.get("revision") != int(revision):
             frappe.throw(
