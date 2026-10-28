@@ -54,7 +54,7 @@ def _finalize(contract, entry, data):
 
     today = nowdate()
     official_number = make_autoname(number_pattern("CNT", getdate(today)))
-    emp_company = contract.company or frappe.db.get_value("Employee", contract.party_name, "company")
+    emp_company = getattr(contract, "company", None) or frappe.db.get_value("Employee", contract.party_name, "company")
 
     data.update(
         contract_number=official_number,

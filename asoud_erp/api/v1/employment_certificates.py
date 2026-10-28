@@ -318,6 +318,7 @@ def list_certificates(
     status: str = "",
     start: int = 0,
     page_length: int = 20,
+    search: str = "",
 ) -> dict:
     require_company(company)
     require_roles(HR_OPERATIONAL_ROLES, company=company)
@@ -330,7 +331,7 @@ def list_certificates(
     )
 
     status_filter = (status or "").strip().lower()
-    norm_query = normalize_search(query)
+    norm_query = normalize_search(query or search)
 
     items = []
     for entry in entries:

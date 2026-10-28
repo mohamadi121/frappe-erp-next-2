@@ -486,6 +486,11 @@ def get_letter(name: str) -> dict:
 
 
 @frappe.whitelist()
+def print_letter(name: str) -> dict:
+    return get_letter(name)
+
+
+@frappe.whitelist()
 def save_draft(
     company: str,
     employee: str,

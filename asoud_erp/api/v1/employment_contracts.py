@@ -627,10 +627,7 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
     snapshot["status"] = "draft"
 
     if existing_entry_name:
-        frappe.db.set_value("ASOUD Form Entry", existing_entry_name, {
-            "values_json": json.dumps(snapshot, ensure_ascii=False),
-            "revision": current_rev,
-        })
+        frappe.db.set_value("ASOUD Form Entry", existing_entry_name, "values_json", json.dumps(snapshot, ensure_ascii=False))
     else:
         entry = frappe.get_doc({
             "doctype": "ASOUD Form Entry",
@@ -641,7 +638,6 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
             "reference_doctype": "Contract",
             "reference_name": contract.name,
             "fingerprint": client_id,
-            "revision": current_rev,
         })
         entry.flags.form_service = True
         entry.flags.ignore_permissions = True
