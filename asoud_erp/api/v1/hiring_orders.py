@@ -267,14 +267,12 @@ def _resolve_payroll(company: str, employee: str, effective_date: str, template_
     )
 
     component_map = {}
-    if assignment and assignment[0].salary_structure:
-        details = frappe.get_all(
-            "Salary Detail",
-            filters={"parent": assignment[0].salary_structure, "parenttype": "Salary Structure"},
-            fields=["salary_component", "amount", "amount_based_on_formula"],
-        )
-        for d in details:
-            component_map[d.salary_component] = None if d.amount_based_on_formula else d.amount
+    if assignment and assignment[0].salary_structure and any(
+        str(row.get("field_ref", "")).startswith("component.") for row in template_rows
+    ):
+        from asoud_erp.services.hiring_order_payroll import component_amounts
+
+        component_map = component_amounts(company, employee, assignment[0], effective)
 
     resolved_rows = []
     for r in template_rows:

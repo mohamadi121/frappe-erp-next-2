@@ -16,6 +16,7 @@ from asoud_erp.integration_tests.tenancy import (
     SECOND_COMPANY,
     setup_tenancy,
 )
+from asoud_erp.integration_tests.test_payroll import STRUCTURE, payroll_employee, setup_payroll
 from asoud_erp.services.hiring_orders import default_template
 
 HR_USER = "asoud.test-hr-user@example.com"
@@ -321,3 +322,45 @@ class TestHiringOrders(APITestCase):
         result = api.get_hiring_order(order["name"])["data"]
         self.assertEqual(result["status"], "draft")
         self.assertFalse(result["number"])
+
+    def test_component_formulas_use_native_payroll_at_effective_date_without_saving_slips(self):
+        from frappe.utils import add_days, get_first_day
+
+        from asoud_erp.api.v1.payroll import create_salary_structure_assignment
+
+        frappe.set_user("Administrator")
+        comp = company()
+        setup_payroll(comp)
+        _, employee, _ = payroll_employee(comp)
+        first = get_first_day(nowdate())
+        changed = str(add_days(first, 14))
+        create_salary_structure_assignment(employee, STRUCTURE, str(first), 30_000_000)
+        create_salary_structure_assignment(employee, STRUCTURE, changed, 50_000_000)
+        absent_component = frappe.get_doc({
+            "doctype": "Salary Component", "salary_component": f"ASOUD Missing {uuid4().hex[:8]}",
+            "salary_component_abbr": f"M{uuid4().hex[:5]}", "type": "Earning",
+        }).insert().name
+        template = default_template()
+        template["payroll_rows"] = [
+            {"id": "computed", "title": "حقوق محاسبه‌شده", "period": "monthly", "field_ref": "component.ASOUD Basic"},
+            {"id": "deduction", "title": "بیمه", "period": "monthly", "field_ref": "component.ASOUD Insurance"},
+            {"id": "missing", "title": "فاقد منبع", "period": "monthly", "field_ref": f"component.{absent_component}"},
+        ]
+        saved = api.save_hiring_order_template(company=comp, template=template)["data"]
+        api.publish_hiring_order_template(company=comp, revision=saved["revision"])
+        before = frappe.db.count("Salary Slip", {"employee": employee})
+        for effective, expected in ((str(first), 30_000_000), (changed, 50_000_000)):
+            payroll = api.get_hiring_order_payroll(comp, employee, effective)["data"]
+            rows = {row["id"]: row for row in payroll["rows"]}
+            self.assertEqual(rows["computed"]["amount"], expected)
+            self.assertEqual(rows["deduction"]["amount"], expected * 7 / 100)
+            self.assertEqual(rows["computed"]["state"], "available")
+            self.assertIsNone(rows["missing"]["amount"])
+            self.assertEqual(rows["missing"]["message"], "اطلاعات موجود نیست")
+        absent = api.get_hiring_order_payroll(comp, employee, str(add_days(first, -1)))["data"]["rows"]
+        self.assertTrue(all(row["amount"] is None for row in absent))
+        self.assertTrue(all(row["message"] == "اطلاعات موجود نیست" for row in absent))
+        issued = api.save_hiring_order(company=comp, employee=employee, effective_date=changed,
+                                      request_id=uuid4().hex)["data"]
+        self.assertEqual(issued["payroll_snapshot"]["rows"][0]["amount"], 50_000_000)
+        self.assertEqual(frappe.db.count("Salary Slip", {"employee": employee}), before)
