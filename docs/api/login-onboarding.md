@@ -134,6 +134,19 @@ requires the office-manager roles. The role is part of the role-management catal
 
 ## hr_onboarding
 
+### HR role grant authority (FLOW-01)
+
+Only Administrator or an enabled System User holding `System Manager` may grant
+`HR User` / `HR Manager` (or a legacy `HR` base role). This applies to global and
+office-scoped role definitions, including composite Role Profiles. Holding the HR
+role and `ASOUD Role Assigner` together does not make it delegable.
+`role_access.assign_role` and the role precheck in `hr_onboarding.register_personnel`
+reject with Persian `PermissionError` (403): «واگذاری نقش منابع انسانی فقط برای مدیر کل سیستم مجاز است.»
+Refusal happens before a User, Employee, Party Profile or assignment is written.
+`user_access.apply` remains System Manager-only at its first server-side gate;
+a personal grant cannot bypass that gate through a profile with HR base roles.
+Reply shapes and ordinary personnel registration without protected role grants are unchanged.
+
 Roles: `System Manager` or `HR Manager` (also an office-scoped HR Manager) with access to the company. Idempotent.
 
 ### `hr_onboarding.register_personnel(company, first_name, last_name, mobile, email, national_id?, gender?, birth_date?, date_of_joining?, job_title?, department?, roles?, activation="invite", detail_groups?, request_id?)` — POST

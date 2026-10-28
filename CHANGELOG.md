@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- FLOW-01: HR User/HR Manager grants are reserved for the system administrator, including composite/global/office role definitions and personnel registration. The permission editor remains System Manager-only. Real-site coverage checks refusal before personnel/account writes and all three administrator grant paths. Deployment: restart workers; no migration.
+
 - Added a single real-site lifecycle matrix for five HR documents and five role/scope cases, including approval, existing numbering, frozen print and replay. Shared role/company/task denials now use Persian PermissionErrors without field details. CI includes the matrix. Deployment: restart workers; no migration.
 
 - First-office HR status and provisioning share a company transaction lock with a three-second wait; busy status raises a Persian pending error instead of a false empty lead. Repeated creation explicitly returns `idempotent_replay: true` and the original username without changing credentials. Deployment: restart workers; no migration.
