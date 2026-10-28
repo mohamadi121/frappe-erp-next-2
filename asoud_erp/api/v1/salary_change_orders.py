@@ -529,9 +529,13 @@ def save_salary_change_order(
                 frappe.PermissionError,
             )
         prev_data = json.loads(entry.values_json or "{}")
-        if int(revision) != 0 and prev_data.get("revision") != int(revision):
+        if not revision or int(revision) <= 0 or prev_data.get("revision") != int(revision):
             frappe.throw(
                 _("این حکم توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید.")
+            )
+        if prev_data.get("status") in ("final", "pending") or prev_data.get("status") != "draft":
+            frappe.throw(
+                _("ویرایش حکم در وضعیت نهایی یا در جریان گردش‌کار مجاز نیست.")
             )
         current_rev = prev_data.get("revision", 1) + 1
         status = prev_data.get("status", "draft")
@@ -630,7 +634,7 @@ def send_salary_change_order_for_review(
     erp_documents.require_roles(HR_ROLES, entry.company)
     data = json.loads(entry.values_json or "{}")
 
-    if int(revision) != 0 and data.get("revision") != int(revision):
+    if not revision or int(revision) <= 0 or data.get("revision") != int(revision):
         frappe.throw(
             _("این حکم توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید.")
         )
@@ -655,7 +659,7 @@ def approve_salary_change_order(name: str, revision: int, request_id: str) -> di
     erp_documents.require_roles(HR_ROLES, entry.company)
     data = json.loads(entry.values_json or "{}")
 
-    if int(revision) != 0 and data.get("revision") != int(revision):
+    if not revision or int(revision) <= 0 or data.get("revision") != int(revision):
         frappe.throw(
             _("این حکم توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید.")
         )
@@ -700,7 +704,7 @@ def reject_salary_change_order(name: str, revision: int, reason: str = "") -> di
     erp_documents.require_roles(HR_ROLES, entry.company)
     data = json.loads(entry.values_json or "{}")
 
-    if int(revision) != 0 and data.get("revision") != int(revision):
+    if not revision or int(revision) <= 0 or data.get("revision") != int(revision):
         frappe.throw(
             _("این حکم توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید.")
         )

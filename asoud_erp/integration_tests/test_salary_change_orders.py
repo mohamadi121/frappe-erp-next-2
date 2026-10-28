@@ -205,3 +205,69 @@ class TestSalaryChangeOrders(APITestCase):
                 employee=emp,
                 effective_date=nowdate(),
             )
+
+    def test_save_requires_real_revision_and_rejects_final_or_pending_edits(self):
+        comp = company()
+        frappe.set_user(HR_MANAGER_USER)
+        emp = employee_a()
+        req_id = f"req-{uuid4().hex[:8]}"
+        saved = api.save_salary_change_order(
+            company=comp,
+            request_id=req_id,
+            employee=emp,
+            effective_date=nowdate(),
+            reason="annual",
+            description="حکم سالانه",
+        )
+        order_name = saved["data"]["name"]
+        rev = saved["data"]["revision"]
+
+        # 1. Revision 0 is rejected on existing order
+        with self.assertRaises(frappe.ValidationError):
+            api.save_salary_change_order(
+                company=comp,
+                request_id=f"r0-{uuid4().hex[:8]}",
+                order=order_name,
+                revision=0,
+                employee=emp,
+                effective_date=nowdate(),
+            )
+
+        # 2. Mismatched revision is rejected
+        with self.assertRaises(frappe.ValidationError):
+            api.save_salary_change_order(
+                company=comp,
+                request_id=f"rwrong-{uuid4().hex[:8]}",
+                order=order_name,
+                revision=rev + 5,
+                employee=emp,
+                effective_date=nowdate(),
+            )
+
+        # 3. Editing in pending state is rejected
+        rev_res = api.send_salary_change_order_for_review(
+            name=order_name, revision=rev, request_id=f"rev-{uuid4().hex[:8]}"
+        )
+        with self.assertRaises(frappe.ValidationError):
+            api.save_salary_change_order(
+                company=comp,
+                request_id=f"edit-pending-{uuid4().hex[:8]}",
+                order=order_name,
+                revision=rev_res["data"]["revision"],
+                employee=emp,
+                effective_date=nowdate(),
+            )
+
+        # 4. Editing in final state is rejected
+        app_res = api.approve_salary_change_order(
+            name=order_name, revision=rev_res["data"]["revision"], request_id=f"app-{uuid4().hex[:8]}"
+        )
+        with self.assertRaises(frappe.ValidationError):
+            api.save_salary_change_order(
+                company=comp,
+                request_id=f"edit-final-{uuid4().hex[:8]}",
+                order=order_name,
+                revision=app_res["data"]["revision"],
+                employee=emp,
+                effective_date=nowdate(),
+            )
