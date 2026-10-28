@@ -12,6 +12,26 @@ from asoud_erp.integration_tests.tenancy import (
 
 
 class TestEmploymentCertificates(APITestCase):
+    def test_finalize_requires_revision_and_replays_only_matching_key(self):
+        from uuid import uuid4
+
+        frappe.set_user(HR_MANAGER_USER)
+        employee = frappe.db.get_value("Employee", {"user_id": EMPLOYEE_A_USER}, "name")
+        draft = api.save_draft(company=company(), employee=employee, addressee_name="بانک",
+                               request_key=uuid4().hex)["data"]
+        key = uuid4().hex
+        for revision in (0, draft["revision"] + 10):
+            with self.assertRaises(frappe.ValidationError):
+                api.finalize_certificate(draft["name"], revision=revision, request_key=key)
+        final = api.finalize_certificate(draft["name"], revision=draft["revision"], request_key=key)["data"]
+        replay = api.finalize_certificate(draft["name"], revision=draft["revision"], request_key=key)["data"]
+        self.assertEqual(replay, final)
+        with self.assertRaises(frappe.ValidationError):
+            api.finalize_certificate(draft["name"], revision=final["revision"], request_key=uuid4().hex)
+        stored = api.get_certificate(draft["name"])["data"]
+        self.assertEqual(stored["number"], final["number"])
+        self.assertEqual(stored["revision"], draft["revision"] + 1)
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
