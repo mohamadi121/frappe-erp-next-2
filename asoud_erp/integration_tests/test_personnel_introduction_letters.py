@@ -34,6 +34,7 @@ class TestPersonnelIntroductionLetters(APITestCase):
         res = api.get_template(company=comp)
         assert res["ok"] is True
         initial_rev = res["data"]["revision"]
+        assert res["data"]["can_manage_template"] is True
 
         draft_clauses = [
             {"id": "recipient", "title": "مخاطب", "body": "به: {{letter.recipient}}", "enabled": True},
@@ -209,6 +210,7 @@ class TestPersonnelIntroductionLetters(APITestCase):
             )
         with self.assertRaises(frappe.PermissionError):
             api.publish_template(company=comp, revision=template["revision"])
+        assert template["can_manage_template"] is False
 
     def test_other_company_letters_are_inaccessible_in_list_search_get_and_print(self):
         frappe.set_user("Administrator")
