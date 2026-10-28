@@ -58,8 +58,10 @@ LO_PERSON_NATIONAL_IDS = ("0013542419",)
 def purge_leftovers():
     """Rows an earlier (possibly interrupted) run committed; keeps every run starting from the same state."""
     frappe.set_user("Administrator")
-    frappe.db.delete("ASOUD Office Role Assignment", {"user": ["like", "asoud.lo-%"]})
-    frappe.db.delete("ASOUD Access Assignment", {"user": ["like", "asoud.lo-%"]})
+    if frappe.db.table_exists("ASOUD Office Role Assignment"):
+        frappe.db.delete("ASOUD Office Role Assignment", {"user": ["like", "asoud.lo-%"]})
+    if frappe.db.table_exists("ASOUD Access Assignment"):
+        frappe.db.delete("ASOUD Access Assignment", {"user": ["like", "asoud.lo-%"]})
     for name in frappe.get_all("ASOUD Role Definition", filters={"name": ["like", "LO%"]}, pluck="name"):
         frappe.delete_doc("ASOUD Role Definition", name, force=True, ignore_permissions=True)
     for name in frappe.get_all("Role Profile", filters={"name": ["like", "ASOUD:LO%"]}, pluck="name"):
