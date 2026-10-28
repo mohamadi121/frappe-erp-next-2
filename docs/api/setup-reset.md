@@ -1,5 +1,10 @@
 # Temporary, administrator-authenticated setup reset
 
+> UNRELEASED DESIGN ONLY. The reset endpoints and login control below are not
+> included in this release. Local drafts need further review of concurrent writes,
+> timeout/recovery semantics and native dependencies. No site flag has been enabled
+> and no server data has been deleted by this work.
+
 Disabled unless site config `asoud_allow_setup_reset` is explicitly true. Never
 guest-accessible. Uses the authenticated enabled System Manager, native password
 verification and no offline/idempotency queue (passwords must never be staged).

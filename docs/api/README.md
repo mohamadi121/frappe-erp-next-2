@@ -99,9 +99,9 @@ payload is rejected with `REQUEST_KEY_CONFLICT`.
 
 ## Tests
 
-- [Temporary setup reset](setup-reset.md)
+- [Temporary setup reset — unreleased design](setup-reset.md)
 
-- [User-task form binding](workflow-stage-form-binding.md)
+- [User-task form binding — superseded, not shipped](workflow-stage-form-binding.md)
 
 - [Independent workflow template copies](workflow-templates.md)
 
