@@ -116,7 +116,7 @@ def render_snapshot(template: dict, values: dict) -> dict:
     blocks = []
     for clause in template["clauses"]:
         if clause["enabled"]:
-            body = _TOKEN.sub(lambda match: _token_value(match.group(1), values), clause["body"])
+            body = _TOKEN.sub(lambda match: _token_value(match.group(1), values), escape(clause["body"]))
             # Format newlines
             formatted_body = body.replace("\n", "<br>")
             blocks.append(f"<section style=\"margin-bottom: 14px;\"><h3 style=\"font-size: 13px; color: #243f60; margin: 0 0 6px 0;\">{escape(clause['title'])}</h3><p style=\"font-size: 12px; line-height: 1.9; margin: 0; color: #37475a;\">{formatted_body}</p></section>")

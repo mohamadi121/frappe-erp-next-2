@@ -104,3 +104,9 @@ def test_build_print_html_draft_and_final_markers():
     assert "شماره: INTRO-1405-00042" in final
     assert "تاریخ: 1405/08/10" in final
     assert "اعتبار تا: 1405/09/30" in final
+
+def test_template_literal_html_is_escaped():
+    snapshot = render_snapshot({"clauses": [{"id": "body", "title": "متن", "body": '<script>alert(1)</script>{{employee.employee_name}}', "enabled": True}]}, {"employee": {"employee_name": '<img src=x onerror=alert(2)>'}})
+    assert '<script>' not in snapshot['html']
+    assert '&lt;script&gt;' in snapshot['html']
+    assert '<img' not in snapshot['html']

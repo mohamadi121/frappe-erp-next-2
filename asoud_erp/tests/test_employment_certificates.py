@@ -53,3 +53,13 @@ def test_build_print_html_shows_draft_mark_and_hides_in_final():
     assert "تاریخ: 1405/01/15" in final_html
 
 
+
+def test_clause_text_and_print_metadata_are_escaped():
+    template = {"clauses": [{"id": "body", "title": "متن", "body": '<script>alert(1)</script>{{employee.employee_name}}'}], "salary_enabled": False, "salary_rows": []}
+    snapshot = render_snapshot(template, {"employee": {"employee_name": '<img src=x onerror=alert(2)>'}})
+    assert '<script>' not in snapshot['html']
+    assert '&lt;script&gt;' in snapshot['html']
+    assert '<img' not in snapshot['html']
+    html = build_print_html(snapshot['html'], number='<svg onload=alert(3)>', issue_date='<script>')
+    assert '<svg' not in html
+    assert '<script>' not in html

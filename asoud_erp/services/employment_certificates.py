@@ -68,8 +68,8 @@ def build_print_html(
         f'<h2 style="text-align: center; font-size: 17px; color: #243f60; margin: 10px 0;">گواهی اشتغال به کار</h2>'
         f'{draft_banner}'
         f'<div style="display: flex; justify-content: space-between; font-size: 11px; color: #62768c; margin-bottom: 16px;">'
-        f'<span>شماره: {number}</span>'
-        f'<span>تاریخ: {issue_date}</span>'
+        f'<span>شماره: {escape(str(number))}</span>'
+        f'<span>تاریخ: {escape(str(issue_date))}</span>'
         f'</div>'
         f'{rendered_html}'
         f'<div style="display: flex; justify-content: space-between; margin-top: 60px; font-size: 11px; padding: 0 20px;">'
@@ -137,7 +137,7 @@ def render_snapshot(template: dict, values: dict, salary_rows: list[dict] | None
     blocks = []
     for clause in template["clauses"]:
         if clause["enabled"]:
-            body = _TOKEN.sub(lambda match: _token_value(match.group(1), values), clause["body"])
+            body = _TOKEN.sub(lambda match: _token_value(match.group(1), values), escape(clause["body"]))
             blocks.append(f"<section><h3>{escape(clause['title'])}</h3><p>{body}</p></section>")
     snapshot_rows = []
     if template["salary_enabled"]:
