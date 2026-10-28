@@ -106,3 +106,95 @@ class TestRequestTemplatesSeed(APITestCase):
         self.assertEqual(sorted(seeded), ["leave", "purchase"])
         self.assertEqual(frappe.db.get_value("ASOUD Workflow Definition", f"SYS-LEAVE-S{token}", "company"),
                          company.name)
+
+    def _orphan_with_user_edits(self):
+        name = self.definitions["leave"]
+        stages = self._stages(name)
+        extra = frappe.get_doc({
+            "doctype": "ASOUD Workflow Stage", "workflow_definition": name,
+            "stage_key": "seed-extra-" + uuid4().hex[:8], "stage_type": "User Task",
+            "stage_title": "بررسی تکمیلی", "sequence_no": 2,
+            "config_json": json.dumps({"instructions": "یادداشت کاربر"}),
+        }).insert(ignore_permissions=True)
+        form = stages["User Task"]
+        config = json.loads(form.config_json)
+        config["form_fields"] = [*config["form_fields"],
+                                 {"key": "custom_note", "label": "یادداشت", "type": "Short Text"}]
+        frappe.db.set_value("ASOUD Workflow Stage", form.name, "config_json", json.dumps(config))
+        transition = frappe.db.get_value("ASOUD Workflow Transition", {
+            "workflow_definition": name, "from_stage": form.name}, "name")
+        frappe.db.set_value("ASOUD Workflow Transition", transition,
+                            {"to_stage": extra.name, "transition_label": "بررسی کاربر"})
+        frappe.get_doc({"doctype": "ASOUD Workflow Transition", "workflow_definition": name,
+                        "from_stage": extra.name, "to_stage": stages["Approval"].name,
+                        "transition_label": "ادامه", "sequence_no": 2}).insert(ignore_permissions=True)
+        frappe.db.delete("ASOUD Workflow Definition", {"name": name})
+        return name, stages, extra.name
+
+    def _snapshot_rows(self, definition):
+        return {table: frappe.get_all(table, filters={"workflow_definition": definition},
+                                      fields=["*"], order_by="name") for table in TABLES[1:]}
+
+    def test_adopts_orphan_stages_and_edited_routes_without_duplicates(self):
+        name, _, extra = self._orphan_with_user_edits()
+        before = self._snapshot_rows(name)
+        self.assertEqual(seed.ensure_system_templates(self.company),
+                         {"created": 1, "updated": 0, "skipped": 1})
+        self.assertEqual(self._snapshot_rows(name), before)
+        self.assertEqual(frappe.db.count("ASOUD Workflow Stage", {
+            "workflow_definition": name, "stage_type": "Start"}), 1)
+        self.assertTrue(frappe.db.exists("ASOUD Workflow Stage", extra))
+        definition = frappe.get_doc("ASOUD Workflow Definition", name).as_dict()
+        self.assertEqual(seed.ensure_system_templates(self.company),
+                         {"created": 0, "updated": 0, "skipped": 2})
+        self.assertEqual(self._snapshot_rows(name), before)
+        self.assertEqual(frappe.get_doc("ASOUD Workflow Definition", name).as_dict(), definition)
+
+    def test_repairs_only_missing_rows_and_relinks_detached_deterministic_rows(self):
+        name, stages, extra = self._orphan_with_user_edits()
+        end = stages["End"].name
+        frappe.db.delete("ASOUD Workflow Transition", {"to_stage": end})
+        frappe.db.delete("ASOUD Workflow Stage", {"name": end})
+        start = stages["Start"].name
+        frappe.db.set_value("ASOUD Workflow Stage", start, "workflow_definition", "")
+        first = frappe.db.get_value("ASOUD Workflow Transition", {"from_stage": start}, "name")
+        frappe.db.set_value("ASOUD Workflow Transition", first, "workflow_definition", "")
+        self.assertEqual(seed.ensure_system_templates(self.company)["created"], 1)
+        self.assertEqual(frappe.db.get_value("ASOUD Workflow Stage", start, "workflow_definition"), name)
+        self.assertEqual(frappe.db.get_value("ASOUD Workflow Transition", first, "workflow_definition"), name)
+        self.assertEqual(frappe.db.count("ASOUD Workflow Stage", {
+            "workflow_definition": name, "stage_type": "Start"}), 1)
+        self.assertEqual(frappe.db.count("ASOUD Workflow Stage", {"workflow_definition": name}), 5)
+        self.assertEqual(frappe.db.count("ASOUD Workflow Transition", {"workflow_definition": name}), 4)
+        self.assertEqual(frappe.db.get_value("ASOUD Workflow Stage", extra, "stage_title"), "بررسی تکمیلی")
+        after = self._snapshot_rows(name)
+        self.assertEqual(seed.ensure_system_templates(self.company)["created"], 0)
+        self.assertEqual(self._snapshot_rows(name), after)
+
+    def test_multiple_orphan_starts_are_rejected_without_changes(self):
+        name, _, extra = self._orphan_with_user_edits()
+        frappe.db.set_value("ASOUD Workflow Stage", extra, "stage_type", "Start")
+        before = self._snapshot_rows(name)
+        with self.assertRaisesRegex(frappe.ValidationError, "بیش از یک مرحله شروع"):
+            seed.ensure_system_templates(self.company)
+        self.assertFalse(frappe.db.exists("ASOUD Workflow Definition", name))
+        self.assertEqual(self._snapshot_rows(name), before)
+
+    def test_a_stage_owned_by_another_definition_is_not_adopted(self):
+        name, stages, _ = self._orphan_with_user_edits()
+        foreign = self.definitions["purchase"]
+        frappe.db.set_value("ASOUD Workflow Stage", stages["End"].name, "workflow_definition", foreign)
+        before = self._snapshot_rows(foreign)
+        with self.assertRaisesRegex(frappe.ValidationError, "متعلق به گردش‌کار دیگری"):
+            seed.ensure_system_templates(self.company)
+        self.assertFalse(frappe.db.exists("ASOUD Workflow Definition", name))
+        self.assertEqual(self._snapshot_rows(foreign), before)
+
+    def test_failed_repair_rolls_back_the_new_parent(self):
+        name, stages, _ = self._orphan_with_user_edits()
+        frappe.db.set_value("ASOUD Workflow Stage", stages["Start"].name, "stage_type", "User Task")
+        before = self._snapshot_rows(name)
+        with self.assertRaisesRegex(frappe.ValidationError, "شناسه مرحله شروع"):
+            seed.ensure_system_templates(self.company)
+        self.assertFalse(frappe.db.exists("ASOUD Workflow Definition", name))
+        self.assertEqual(self._snapshot_rows(name), before)
