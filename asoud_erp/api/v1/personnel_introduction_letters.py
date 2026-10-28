@@ -476,10 +476,18 @@ def get_letter(name: str) -> dict:
     except Exception:
         frappe.throw(_("داده‌های معرفی‌نامه نامعتبر است."))
 
-    if data.get("status") != "Final" or not data.get("print_html"):
+    if data.get("status") == "Final":
+        letterhead_html = data.get("letterhead_snapshot") if "letterhead_snapshot" in data else _letterhead(entry.company)
+        data["print_html"] = _build_print_html(data, letterhead_html, True)
+    else:
         letterhead_html = _letterhead(entry.company)
-        data["print_html"] = _build_print_html(data, letterhead_html, data.get("status") == "Final")
+        data["print_html"] = _build_print_html(data, letterhead_html, False)
     return success(data)
+
+
+@frappe.whitelist()
+def print_letter(name: str) -> dict:
+    return get_letter(name)
 
 
 @frappe.whitelist()
@@ -553,6 +561,9 @@ def save_draft(
     purp_clean = (purpose or "").strip()
     if req_purpose and not purp_clean:
         frappe.throw(_("هدف معرفی‌نامه الزامی است."))
+
+    if len(str(notes or "")) > 10000 or len(str(purpose or "")) > 10000 or len(str(recipient_name or "")) > 1000:
+        frappe.throw(_("طول متن ورودی فراتر از حد مجاز است."))
 
     if rec_type == "bank":
         clean_branch = re.sub(r"^شعبه\s*", "", branch_clean)

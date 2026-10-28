@@ -286,3 +286,97 @@ class TestEmploymentContracts(APITestCase):
         self.assertFalse(final_print["data"]["is_draft"])
         self.assertIsNone(final_print["data"]["draft_banner"])
         self.assertTrue(final_print["data"]["contract_number"].startswith("CNT-"))
+
+    def test_finalize_replay_and_double_finalize_rejected(self):
+        from uuid import uuid4
+
+        frappe.set_user(HR_MANAGER_USER)
+        comp = company()
+        emp_name = frappe.db.get_value("Employee", {"company": comp, "status": "Active"}, "name")
+
+        key = uuid4().hex
+        draft = api.save_contract_draft(
+            company=comp,
+            employee=emp_name,
+            start_date=nowdate(),
+            client_id=f"draft-{key}",
+        )["data"]
+        contract_id = draft["contract_id"]
+
+        # Finalize with request_id
+        final = api.finalize_contract(contract_id, request_id=key)["data"]
+        self.assertEqual(final["status"], "نهایی")
+        self.assertTrue(final["contract_number"].startswith("CNT-"))
+        self.assertEqual(final["docstatus"], 1)
+
+        # Replay with same request_id succeeds idempotently
+        replay = api.finalize_contract(contract_id, request_id=key)["data"]
+        self.assertEqual(replay["contract_number"], final["contract_number"])
+        self.assertEqual(replay["status"], final["status"])
+
+        # Double finalize with another key or without key must be rejected
+        with self.assertRaises(frappe.ValidationError):
+            api.finalize_contract(contract_id, request_id=uuid4().hex)
+
+        with self.assertRaises(frappe.ValidationError):
+            api.finalize_contract(contract_id)
+
+    def test_real_workflow_approval_finalizes_and_rejection_gets_no_number(self):
+        import json
+        from uuid import uuid4
+
+        from asoud_erp.api.v1.workflow_runtime import complete_workflow_task
+        from asoud_erp.integration_tests.request_fixtures import make_definition
+
+        comp = company()
+        frappe.set_user("Administrator")
+        definition, stages = make_definition(comp, approvals=1, fields=[])
+        approval = next(stage for stage in stages.values() if stage.stage_type == "Approval")
+        config = json.loads(approval.config_json)
+        config.update(assignment_type="Role", approver_roles=["System Manager"])
+        frappe.db.set_value("ASOUD Workflow Stage", approval.name, "config_json", json.dumps(config))
+        frappe.db.set_value("ASOUD Workflow Definition", definition, "target_doctype", "Contract")
+
+        emp_name = frappe.db.get_value("Employee", {"company": comp, "status": "Active"}, "name")
+
+        for action, expected_status in [("Reject", "ردشده"), ("Approve", "نهایی")]:
+            frappe.set_user(HR_MANAGER_USER)
+            key = uuid4().hex
+            draft = api.save_contract_draft(
+                company=comp,
+                employee=emp_name,
+                start_date=nowdate(),
+                client_id=f"wf-draft-{key}",
+            )["data"]
+            contract_id = draft["contract_id"]
+
+            pending = api.finalize_contract(contract_id, revision=draft["revision"], request_id=key)["data"]
+            self.assertEqual(pending["status"], "در جریان")
+            self.assertTrue(pending["is_draft"])
+            self.assertEqual(pending["contract_number"], "—")
+
+            # Workflow replay while pending
+            replay_pending = api.finalize_contract(contract_id, revision=draft["revision"], request_id=key)["data"]
+            self.assertEqual(replay_pending["status"], "در جریان")
+            self.assertEqual(replay_pending["workflow_instance"], pending["workflow_instance"])
+
+            # Complete workflow task
+            instance = pending["workflow_instance"]
+            task = frappe.db.get_value(
+                "ASOUD Workflow Task",
+                {"workflow_instance": instance, "status": "Open"},
+                ["name", "assigned_to"],
+                as_dict=True,
+            )
+            self.assertTrue(task)
+            frappe.set_user(task.assigned_to or "Administrator")
+            complete_workflow_task(task.name, action, comment="بررسی قرارداد")
+
+            res = api.get_contract(contract_id)["data"]
+            self.assertEqual(res["status"], expected_status)
+            if action == "Approve":
+                self.assertTrue(res["contract_number"].startswith("CNT-"))
+                self.assertEqual(res["docstatus"], 1)
+            else:
+                self.assertEqual(res["contract_number"], "پیش‌نویس")
+                self.assertEqual(res["docstatus"], 0)

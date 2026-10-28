@@ -114,6 +114,8 @@ def validate_template(template: dict) -> dict:
         seen_articles.add(identifier)
         if not str(article.get("title") or "").strip():
             raise ValueError("عنوان ماده را کامل کنید.")
+        if len(str(article.get("body") or "")) > 10000 or len(str(article.get("title") or "")) > 500:
+            raise ValueError("طول متن مادهٔ حکم فراتر از حد مجاز است.")
 
     if not isinstance(rows, list) or not rows:
         raise ValueError("حداقل یک قلم حقوق و مزایا در جدول مقایسه لازم است.")

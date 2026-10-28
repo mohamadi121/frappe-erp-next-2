@@ -44,18 +44,24 @@ def validate_template(template: dict) -> dict:
         raise ValueError("قالب حکم باید شش ماده داشته باشد.")
     seen = set()
     for article in articles:
-        identifier = article.get("id") if isinstance(article, dict) else None
+        if not isinstance(article, dict):
+            raise ValueError("ساختار مادهٔ حکم معتبر نیست.")
+        identifier = article.get("id")
         if not isinstance(identifier, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,59}", identifier) or identifier in seen:
             raise ValueError("شناسه پایدار ماده معتبر نیست.")
         seen.add(identifier)
         if not str(article.get("title") or "").strip():
             raise ValueError("عنوان ماده را کامل کنید.")
+        if len(str(article.get("body") or "")) > 10000 or len(str(article.get("title") or "")) > 500:
+            raise ValueError("طول متن مادهٔ حکم فراتر از حد مجاز است.")
     if not isinstance(rows, list) or not rows:
         raise ValueError("حداقل یک قلم حقوق و مزایا لازم است.")
     row_ids = set()
     for row in rows:
-        identifier = row.get("id") if isinstance(row, dict) else None
-        field_ref = row.get("field_ref") if isinstance(row, dict) else None
+        if not isinstance(row, dict):
+            raise ValueError("ساختار ردیف حقوق معتبر نیست.")
+        identifier = row.get("id")
+        field_ref = row.get("field_ref")
         if not isinstance(identifier, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,59}", identifier) or identifier in row_ids:
             raise ValueError("شناسه پایدار ردیف حقوق معتبر نیست.")
         if not isinstance(field_ref, str) or not field_ref.strip():

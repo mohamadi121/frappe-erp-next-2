@@ -9,7 +9,6 @@ from typing import Any
 
 import frappe
 from frappe import _
-from frappe.model.naming import make_autoname
 from frappe.utils import cint, getdate, now_datetime, nowdate
 
 from asoud_erp.api.v1.responses import success
@@ -27,7 +26,6 @@ from asoud_erp.services.employment_contract import (
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.jalali import gregorian_to_jalali
 from asoud_erp.services.request_access import require_company
-from asoud_erp.services.request_templates.base import number_pattern
 
 TEMPLATE_DESIGNERS = ("System Manager", "HR Manager")
 HR_OPERATIONAL_ROLES = ("System Manager", "HR Manager", "HR User")
@@ -208,9 +206,15 @@ def save_contract_template(company: str, clauses: Any, salary_rows: Any, title: 
     require_roles(TEMPLATE_DESIGNERS, company=company)
 
     if isinstance(clauses, str):
-        clauses = json.loads(clauses)
+        try:
+            clauses = json.loads(clauses)
+        except Exception:
+            frappe.throw(_("فرمت اطلاعات مواد قرارداد نامعتبر است."))
     if isinstance(salary_rows, str):
-        salary_rows = json.loads(salary_rows)
+        try:
+            salary_rows = json.loads(salary_rows)
+        except Exception:
+            frappe.throw(_("فرمت اطلاعات اقلام حقوقی نامعتبر است."))
 
     try:
         normalized = validate_contract_template(clauses, salary_rows, title)
@@ -508,9 +512,14 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
                         contract_type: str = "مدت‌معین", work_location: str | None = None,
                         subject: str | None = None, notes: str | None = None,
                         salary_values: Any = None, contract_id: str | None = None,
-                        client_id: str | None = None) -> dict:
+                        client_id: str | None = None, revision: int = 0) -> dict:
     require_company(company)
     require_roles(HR_OPERATIONAL_ROLES, company=company)
+
+    if len(str(notes or "")) > 10000:
+        frappe.throw(_("طول یادداشت قرارداد بیش از حد مجاز است."))
+    if len(str(work_location or "")) > 500:
+        frappe.throw(_("طول محل کار بیش از حد مجاز است."))
 
     if not frappe.db.exists("Employee", employee):
         frappe.throw(_("پرسنل مورد نظر در سیستم یافت نشد."))
@@ -616,6 +625,18 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
         {"reference_doctype": "Contract", "reference_name": contract.name},
         "name",
     )
+    current_rev = 1
+    if existing_entry_name:
+        prev_data = json.loads(frappe.db.get_value("ASOUD Form Entry", existing_entry_name, "values_json") or "{}")
+        if prev_data.get("status") in {"final", "pending", "in_progress"}:
+            frappe.throw(_("قرارداد نهایی‌شده قابل ویرایش نیست."))
+        if revision and int(revision) != 0 and prev_data.get("revision", 1) != int(revision):
+            frappe.throw(_("این قرارداد توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید."))
+        current_rev = prev_data.get("revision", 1) + 1
+
+    snapshot["revision"] = current_rev
+    snapshot["status"] = "draft"
+
     if existing_entry_name:
         frappe.db.set_value("ASOUD Form Entry", existing_entry_name, "values_json", json.dumps(snapshot, ensure_ascii=False))
     else:
@@ -642,11 +663,13 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
         "end_date": str(contract.end_date or ""),
         "status": "پیش‌نویس",
         "is_draft": True,
+        "revision": current_rev,
     })
 
 
 @frappe.whitelist()
-def finalize_contract(contract_id: str, client_id: str | None = None) -> dict:
+def finalize_contract(contract_id: str, client_id: str | None = None,
+                      revision: int | None = None, request_id: str | None = None) -> dict:
     if not frappe.db.exists("Contract", contract_id):
         frappe.throw(_("قرارداد مورد نظر یافت نشد."))
 
@@ -655,78 +678,15 @@ def finalize_contract(contract_id: str, client_id: str | None = None) -> dict:
     require_company(emp_company)
     require_roles(HR_OPERATIONAL_ROLES, company=emp_company)
 
-    if contract.docstatus == 1:
-        frappe.throw(_("این قرارداد قبلاً نهایی شده است."))
+    from asoud_erp.services.employment_contract_workflow import submit
 
-    today = nowdate()
-    official_number = make_autoname(number_pattern("CNT", getdate(today)))
+    res = submit(contract_id, revision=revision, request_id=request_id or client_id)
+    return success(res)
 
-    entry_name = frappe.db.get_value(
-        "ASOUD Form Entry",
-        {"reference_doctype": "Contract", "reference_name": contract.name},
-        "name",
-    )
-    snapshot = {}
-    if entry_name:
-        entry = frappe.get_doc("ASOUD Form Entry", entry_name)
-        try:
-            snapshot = json.loads(entry.values_json)
-        except Exception:
-            snapshot = {}
 
-    snapshot["contract_number"] = official_number
-    snapshot["is_draft"] = False
-    snapshot["finalized_on"] = str(now_datetime())
-
-    letterhead_html = _letterhead(emp_company)
-    snapshot.update(letterhead_html=letterhead_html, issue_date=_format_jalali(today),
-                    employee_name=contract.party_full_name)
-    final_print = generate_contract_print_data(
-        is_draft=False,
-        contract_number=official_number,
-        issue_date=_format_jalali(today),
-        employee_name=contract.party_full_name,
-        rendered_clauses=snapshot.get("rendered_clauses", []),
-        salary_table=snapshot.get("salary_table", []),
-        total_monthly_formatted=snapshot.get("formatted_total_monthly", ""),
-        letterhead_html=letterhead_html,
-        company_name=emp_company,
-    )
-
-    contract.contract_terms = final_print["html"]
-    contract.is_signed = 1
-    contract.signee = contract.party_full_name
-    contract.signed_on = now_datetime()
-
-    wf_def = frappe.db.get_value(
-        "ASOUD Workflow Definition",
-        {"target_doctype": "Contract", "company": emp_company, "status": "Active"},
-        "name",
-    )
-
-    if wf_def:
-        contract.status = "In Progress"
-        contract.flags.ignore_permissions = True
-        contract.save()
-        snapshot["status"] = "in_progress"
-    else:
-        contract.status = "Active"
-        contract.flags.ignore_permissions = True
-        contract.submit()
-        snapshot["status"] = "final"
-        if contract.end_date:
-            frappe.db.set_value("Employee", contract.party_name, "contract_end_date", contract.end_date)
-
-    if entry_name:
-        frappe.db.set_value("ASOUD Form Entry", entry_name, "values_json", json.dumps(snapshot, ensure_ascii=False))
-
-    return success({
-        "contract_id": contract.name,
-        "contract_number": official_number,
-        "status": "نهایی" if contract.docstatus == 1 else "در جریان",
-        "docstatus": contract.docstatus,
-        "is_draft": False,
-    })
+@frappe.whitelist()
+def send_contract_for_review(contract_id: str, revision: int | None = None, request_id: str | None = None) -> dict:
+    return finalize_contract(contract_id=contract_id, revision=revision, request_id=request_id)
 
 
 @frappe.whitelist()
@@ -782,6 +742,7 @@ def get_contract(contract_id: str) -> dict:
         "status": "نهایی" if contract.docstatus == 1 else ("در جریان" if contract.status == "In Progress" else "پیش‌نویس"),
         "docstatus": contract.docstatus,
         "is_signed": cint(contract.is_signed),
+        "revision": snapshot.get("revision", 1),
         "template_version": snapshot.get("template_version", 1),
         "rendered_clauses": snapshot.get("rendered_clauses", []),
         "salary_table": snapshot.get("salary_table", []),

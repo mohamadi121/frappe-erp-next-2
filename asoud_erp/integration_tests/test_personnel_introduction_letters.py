@@ -56,6 +56,8 @@ class TestPersonnelIntroductionLetters(APITestCase):
         assert first["print_html"] == retry["print_html"]
         assert not first.get("workflow_instance")
         with self.assertRaises(frappe.ValidationError):
+            api.finalize_letter(draft["name"], draft["revision"], uuid4().hex)
+        with self.assertRaises(frappe.ValidationError):
             api.save_draft(company=company(), employee=draft["employee"], name=draft["name"],
                 revision=first["revision"], bank_name="بانک دیگر", purpose="تغییر پس از صدور",
                 request_key=uuid4().hex)
@@ -421,3 +423,49 @@ class TestPersonnelIntroductionLetters(APITestCase):
         # get_letter is also the server print-payload endpoint.
         with self.assertRaises(frappe.PermissionError):
             api.get_letter(foreign["name"])
+
+    def test_final_print_preserves_stored_letterhead_snapshot_after_letterhead_changes(self):
+        comp = company()
+        frappe.set_user(HR_MANAGER_USER)
+        emp = frappe.db.get_value("Employee", {"user_id": EMPLOYEE_A_USER}, "name")
+
+        # 1. Create initial letter head and assign to company
+        lh_name = f"LH-Intro-{uuid4().hex[:6]}"
+        lh = frappe.get_doc({
+            "doctype": "Letter Head",
+            "letter_head_name": lh_name,
+            "source": "HTML",
+            "content": "<div class='test-intro-lh'>سربرگ اصلی معرفی‌نامه</div>",
+            "disabled": 0,
+        })
+        lh.flags.ignore_permissions = True
+        lh.insert()
+        previous_lh = frappe.db.get_value("Company", comp, "default_letter_head")
+        frappe.db.set_value("Company", comp, "default_letter_head", lh.name)
+        try:
+            # 2. Save draft and finalize
+            draft = api.save_draft(
+                company=comp,
+                employee=emp,
+                recipient_type="bank",
+                bank_name="بانک ملی",
+                purpose="تست حفظ سربرگ معرفی‌نامه",
+                request_key=f"intro-lh-{uuid4().hex[:8]}",
+            )["data"]
+            finalized = api.finalize_letter(draft["name"], draft["revision"], uuid4().hex)["data"]
+            self.assertEqual(finalized["status"], "Final")
+
+            # 3. Print must contain original letterhead
+            print_1 = api.print_letter(name=draft["name"])["data"]
+            self.assertIn("سربرگ اصلی معرفی‌نامه", print_1["print_html"])
+
+            # 4. Mutate company's letter head
+            frappe.db.set_value("Letter Head", lh.name, "content", "<div class='test-intro-lh'>سربرگ دستکاری‌شده</div>")
+
+            # 5. Print on finalized letter must render stored snapshot and NOT mutated letterhead
+            print_2 = api.print_letter(name=draft["name"])["data"]
+            self.assertIn("سربرگ اصلی معرفی‌نامه", print_2["print_html"])
+            self.assertNotIn("سربرگ دستکاری‌شده", print_2["print_html"])
+        finally:
+            frappe.db.set_value("Company", comp, "default_letter_head", previous_lh)
+            frappe.delete_doc("Letter Head", lh.name, ignore_permissions=True)

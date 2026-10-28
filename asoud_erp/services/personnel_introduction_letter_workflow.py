@@ -46,12 +46,18 @@ def _issue(entry, data):
     from asoud_erp.api.v1.personnel_introduction_letters import _build_print_html, _format_jalali, _letterhead
 
     number = make_autoname(number_pattern("INTRO", getdate(nowdate())))
-    data.update(status="Final", number=number, issue_date=_format_jalali(nowdate()))
+    head = _letterhead(entry.company)
+    data.update(
+        status="Final",
+        number=number,
+        issue_date=_format_jalali(nowdate()),
+        letterhead_snapshot=head,
+    )
     values = data.get("values_snapshot", {})
     values.setdefault("letter", {}).update(number=number, issue_date=data["issue_date"])
     rendered = render_snapshot(data["template_snapshot"], values)
     data.update(rendered_html=rendered["html"], values_snapshot=rendered["values"])
-    data["print_html"] = _build_print_html(data, _letterhead(entry.company), True)
+    data["print_html"] = _build_print_html(data, head, True)
 
 
 def submit(entry_name, revision, request_key):
@@ -68,10 +74,11 @@ def submit(entry_name, revision, request_key):
         frappe.throw(_("اطلاعات معرفی‌نامه مخدوش است."))
     if not isinstance(data, dict):
         frappe.throw(_("اطلاعات معرفی‌نامه مخدوش است."))
-    # The entry lock serializes retries, even when the caller supplied another key.
-    if data.get("status") != "Draft":
+    if data.get("send_request_key") == request_key:
         return data
-    if revision and int(revision) != data.get("revision", 1):
+    if data.get("status") != "Draft":
+        frappe.throw(_("این معرفی‌نامه قبلاً نهایی شده است."))
+    if not revision or int(revision) <= 0 or data.get("revision", 1) != int(revision):
         frappe.throw(_("نسخه معرفی‌نامه تغییر کرده است؛ صفحه را تازه‌سازی کنید."))
     workflow = data.get("template_snapshot", {}).get("workflow", "")
     validate_workflow(workflow, entry.company)

@@ -326,6 +326,7 @@ def list_certificates(
     status: str = "",
     start: int = 0,
     page_length: int = 20,
+    search: str = "",
 ) -> dict:
     require_company(company)
     require_roles(HR_OPERATIONAL_ROLES, company=company)
@@ -338,7 +339,7 @@ def list_certificates(
     )
 
     status_filter = (status or "").strip().lower()
-    norm_query = normalize_search(query)
+    norm_query = normalize_search(query or search)
 
     items = []
     for entry in entries:
@@ -489,6 +490,9 @@ def save_draft(
 
     if not (addressee_name or "").strip():
         frappe.throw(_("نام مخاطب گواهی الزامی است."))
+
+    if len(str(notes or "")) > 10000 or len(str(purpose or "")) > 10000 or len(str(addressee_name or "")) > 1000:
+        frappe.throw(_("طول متن ورودی فراتر از حد مجاز است."))
 
     national_id = frappe.db.get_value("ASOUD Party Profile", {"employee": employee}, "national_id") or ""
 
