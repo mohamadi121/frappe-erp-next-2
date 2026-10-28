@@ -29,9 +29,12 @@ def _store(entry, data):
                         json.dumps(data, ensure_ascii=False))
 
 
-def _finalize(data):
+def _finalize(data, company):
+    from asoud_erp.api.v1.hiring_orders import _letterhead
+
     data.update(status="final", status_label="نهایی", issue_date=nowdate(),
-                number=make_autoname(f"HIRE-{current_jalali_year()}-.#####"))
+                number=make_autoname(f"HIRE-{current_jalali_year()}-.#####"),
+                letterhead_snapshot=_letterhead(company))
 
 
 def submit(entry_name, revision, request_id):
@@ -57,7 +60,7 @@ def submit(entry_name, revision, request_id):
                     revision=data["revision"] + 1)
         if not workflow:
             # HR documents without configured approval use the existing direct issuance policy.
-            _finalize(data)
+            _finalize(data, entry.company)
             _store(entry, data)
             return
         _store(entry, data)
@@ -96,7 +99,7 @@ def on_instance_update(instance):
     if request_company != entry.company or data["template_snapshot"].get("workflow") != instance.workflow_definition:
         frappe.throw(_("گردش‌کار با شرکت یا نسخهٔ حکم تطابق ندارد."), frappe.PermissionError)
     if status == "Completed":
-        _finalize(data)
+        _finalize(data, entry.company)
     else:
         key, label = {"Rejected": ("rejected", "ردشده"), "Cancelled": ("cancelled", "لغوشده"),
                       "Failed": ("failed", "ناموفق")}[status]

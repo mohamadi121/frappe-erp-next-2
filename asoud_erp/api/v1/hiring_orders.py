@@ -302,6 +302,7 @@ def _resolve_payroll(company: str, employee: str, effective_date: str, template_
             "period": r.get("period", "monthly"),
             "field_ref": field_ref,
             "amount": amount,
+            "reason_code": "assignment_missing" if not assignment else "component_unavailable",
         })
 
     currency = (
@@ -566,11 +567,15 @@ def print_hiring_order(name: str) -> dict:
     data["company"] = entry.company
     data["company_name"] = frappe.db.get_value("Company", entry.company, "company_name") or entry.company
 
-    head = _letterhead(entry.company)
+    from asoud_erp.services.hr_document_print import final_letterhead
+
+    is_final = data.get("status") == "final"
+    head, missing = final_letterhead(data, "letterhead_snapshot") if is_final else (_letterhead(entry.company), False)
     html = format_hiring_order_print(data, letterhead_html=head)
     return success({
         "html": html,
         "status": data.get("status"),
         "number": data.get("number") or "—",
         "draft_banner": data.get("status") != "final",
+        "letterhead_missing": missing,
     })

@@ -29,6 +29,8 @@ Read methods also accept `GET` with query parameters. List and object parameters
 
 ## Response envelope
 
+Final HR document prints share the [historical letterhead fallback](hr-document-print.md), including the additive `letterhead_missing` flag.
+
 Frappe wraps the return value in `message`:
 
 ```json
@@ -54,6 +56,8 @@ only for its own protocol errors (`INVALID_REQUEST_KEY`, `METHOD_NOT_ALLOWED`,
 `REQUEST_KEY_CONFLICT`, `REQUEST_IN_PROGRESS`).
 
 ## Authorization
+
+The shared [HR document role matrix](hr-documents-lifecycle.md) covers document lifecycle permissions and replay semantics.
 
 - ERPNext roles and DocType permissions are the authority. Modules check the
   roles listed in each doc with `services.erp_documents.require_roles` (unlike

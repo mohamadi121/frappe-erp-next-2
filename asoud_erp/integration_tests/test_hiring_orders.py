@@ -360,9 +360,11 @@ class TestHiringOrders(APITestCase):
             self.assertEqual(rows["computed"]["state"], "available")
             self.assertIsNone(rows["missing"]["amount"])
             self.assertEqual(rows["missing"]["message"], "اطلاعات موجود نیست")
+            self.assertEqual(rows["missing"]["reason_code"], "component_unavailable")
         absent = api.get_hiring_order_payroll(comp, employee, str(add_days(first, -1)))["data"]["rows"]
         self.assertTrue(all(row["amount"] is None for row in absent))
         self.assertTrue(all(row["message"] == "اطلاعات موجود نیست" for row in absent))
+        self.assertTrue(all(row["reason_code"] == "assignment_missing" for row in absent))
         issued = api.save_hiring_order(company=comp, employee=employee, effective_date=changed,
                                       request_id=uuid4().hex)["data"]
         self.assertEqual(issued["payroll_snapshot"]["rows"][0]["amount"], 50_000_000)

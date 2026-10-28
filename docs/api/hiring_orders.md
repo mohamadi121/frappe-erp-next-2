@@ -16,6 +16,8 @@
 
 ## دادهٔ فرم صدور
 
+ردیف ناموجود کلید افزایشی `reason_code` دارد: `assignment_missing` یعنی قرارداد حقوق تأییدشده در تاریخ اجرا وجود ندارد؛ `component_unavailable` یعنی قلم در خروجی پیش‌نمایش بومی HRMS موجود نیست یا پیش‌نیاز محاسبه فراهم نیست. `message` فارسی برای نمایش حفظ می‌شود. ردیف محاسبه‌شده این کد را ندارد. آزمون واقعی قراردادهای قبل و بعد از تاریخ تغییر، مزایای فرمولی و کسورات و عدم ذخیرهٔ فیش در `test_hiring_orders` پوشش داده شده است.
+
 | روش | نوع | ورودی | خروجی |
 | --- | --- | --- | --- |
 | `list_hiring_order_people` | GET | `company`, `search?`, `limit_start?`, `limit_page_length?` | `[{name, display_name, employee_number, department, designation}]` با صفحه‌بندی |

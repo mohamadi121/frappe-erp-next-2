@@ -10,6 +10,7 @@ from frappe.utils.password import check_password
 from asoud_erp.api.v1 import (
     account_security,
     directives,
+    first_office_setup,
     hr,
     hr_onboarding,
     onboarding,
@@ -152,6 +153,7 @@ class TestLoginStateAndFirstRun(LoginOnboardingBase):
 
     def test_admin_is_recognised_by_role_and_routed_to_first_office(self):
         self.login(ADMIN)
+        onboarding.save_admin_profile(first_name="علی", last_name="رضایی", mobile="09123456789")
         state = session.login_state()["data"]
         self.assertTrue(state["is_system_admin"])
         self.assertEqual(state["scope"], "global")
@@ -223,7 +225,24 @@ class TestLoginStateAndFirstRun(LoginOnboardingBase):
         self.assertEqual(frappe.db.count("ASOUD Floating Detail"), details)
         self.assertEqual(frappe.db.get_value("ASOUD Party Profile", person, "user"), ADMIN)
         self.assertNotIn("System Manager", [r.role for r in frappe.get_doc("User", ADMIN).roles if r.role != "System Manager"])
+        self.assertEqual(session.login_state()["data"]["next"]["route"], "setup-first-office")
+        company = frappe.db.get_single_value("ASOUD Settings", "first_office_company")
+        frappe.get_doc({"doctype": "Fiscal Year", "year": "LO " + frappe.generate_hash(length=12),
+                        "year_start_date": "2041-01-01", "year_end_date": "2041-12-31",
+                        "companies": [{"company": company}]}).insert(ignore_permissions=True)
+        first_office_setup.complete(company)
         self.assertEqual(session.login_state()["data"]["next"]["route"], "home")
+
+    def test_profile_precedes_office_and_setup(self):
+        self.login(ADMIN)
+        self.assertEqual(session.login_state()["data"]["next"]["route"], "complete-admin-profile")
+        company = onboarding.create_first_office(
+            office_type="Legal", company_name="ASOUD Profile First LO " + frappe.generate_hash(length=5)
+        )["data"]["office"]["company"]
+        self.assertEqual(session.login_state()["data"]["next"]["route"], "complete-admin-profile")
+        onboarding.save_admin_profile(first_name="علی", last_name="رضایی", mobile="09123456789")
+        self.assertEqual(session.login_state()["data"]["next"], {
+            "route": "setup-first-office", "office": company, "message": None})
 
     def test_mobile_unverified_again_when_changed(self):
         self.login(ADMIN)

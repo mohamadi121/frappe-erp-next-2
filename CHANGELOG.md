@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- FLOW-01: HR User/HR Manager grants are reserved for the system administrator, including composite/global/office role definitions and personnel registration. The permission editor remains System Manager-only. Real-site coverage checks refusal before personnel/account writes and all three administrator grant paths. Deployment: restart workers; no migration.
+
+- Added a single real-site lifecycle matrix for five HR documents and five role/scope cases, including approval, existing numbering, frozen print and replay. Shared role/company/task denials now use Persian PermissionErrors without field details. CI includes the matrix. Deployment: restart workers; no migration.
+
+- First-office HR status and provisioning share a company transaction lock with a three-second wait; busy status raises a Persian pending error instead of a false empty lead. Repeated creation explicitly returns `idempotent_replay: true` and the original username without changing credentials. Deployment: restart workers; no migration.
+
+- All five HR final prints flag missing historical letterhead metadata and render legacy finals without a header; they never load the current header. Hiring finalization now freezes letterhead metadata. Deployment: restart workers; no migration or legacy rewrite.
+
+- Hiring payroll preserves native HRMS effective-date formula previews and adds explicit missing-assignment/component reason codes to immutable payroll rows. Deployment: restart workers; no migration.
+
+- Administrator login hints now require the essential profile before office creation and setup; disabled accounts and temporary passwords retain priority. Existing integration assertions now complete the fiscal/bootstrap prerequisites before expecting home. Deployment: restart workers; no migration.
+
+- First HR lead provisioning returns Persian errors naming missing/duplicate fields and weak temporary passwords, checks native password strength before writes, and accepts omitted optional HTTP arguments for validation. Added real-site coverage to CI. Deployment: restart workers; no schema migration.
+
 - Employment certificate workflow routing: templates support workflow binding; certificate finalization submits to the configured request workflow, tracks real workflow lifecycle events, and allocates official certificate numbering only upon final approval. In the absence of a configured workflow, the direct HR operational issuance policy applies immediately with Jalali date and letterhead snapshotting. No schema migration required; restart backend workers.
 - Employment contract workflow finalization, atomic Jalali numbering, introduction letter replay/snapshot lock, Playwright API specs for all five HR documents, and malformed/oversized input validation matrix across document save endpoints. Deployment: restart workers; no migration.
 

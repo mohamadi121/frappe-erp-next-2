@@ -908,14 +908,15 @@ def print_salary_change_order(name: str) -> dict:
         frappe.db.get_value("Company", entry.company, "company_name") or entry.company
     )
 
-    if data.get("status") == "final" and "letterhead_snapshot" in data:
-        head = data.get("letterhead_snapshot")
-    else:
-        head = _letterhead(entry.company)
+    from asoud_erp.services.hr_document_print import final_letterhead
+
+    is_final = data.get("status") == "final"
+    head, missing = final_letterhead(data, "letterhead_snapshot") if is_final else (_letterhead(entry.company), False)
     html = format_salary_change_order_print(data, letterhead_html=head)
     return success({
         "html": html,
         "status": data.get("status"),
         "number": data.get("number") or "—",
         "draft_banner": data.get("status") != "final",
+        "letterhead_missing": missing,
     })

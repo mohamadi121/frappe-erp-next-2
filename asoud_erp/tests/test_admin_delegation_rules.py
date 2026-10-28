@@ -10,6 +10,16 @@ from asoud_erp.services.system_admin import (
 )
 
 
+def test_hr_roles_are_never_delegable_even_when_the_actor_holds_them():
+    for role in ("HR", "HR User", "HR Manager"):
+        for office_roles in (None, {DELEGATE_ROLE, role}):
+            message = escalation_violation(actor_is_admin=False,
+                actor_roles=[DELEGATE_ROLE, role], granted_roles=["Employee", role],
+                actor_office_roles=office_roles)
+            assert message == "واگذاری نقش منابع انسانی فقط برای مدیر کل سیستم مجاز است."
+        assert escalation_violation(actor_is_admin=True, actor_roles=[], granted_roles=[role]) is None
+
+
 def test_admin_recognised_by_role_enabled_and_user_type_only():
     assert is_active_admin(enabled=1, roles=["System Manager", "Employee"])
     assert not is_active_admin(enabled=0, roles=["System Manager"])

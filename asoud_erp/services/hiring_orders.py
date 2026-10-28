@@ -98,7 +98,8 @@ def snapshot_payroll(rows: list[dict]) -> dict:
         row = {key: raw.get(key) for key in ("id", "title", "period", "field_ref")}
         row["amount"] = float(amount) if amount is not None else None
         if amount is None:
-            row.update({"state": "missing", "message": MISSING_MESSAGE})
+            row.update({"state": "missing", "message": MISSING_MESSAGE,
+                        "reason_code": raw.get("reason_code") or "source_unavailable"})
         else:
             row["state"] = "available"
             if raw["period"] == "monthly":

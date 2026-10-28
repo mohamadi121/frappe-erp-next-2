@@ -12,6 +12,43 @@ from asoud_erp.integration_tests.tenancy import HR_MANAGER_USER, setup_tenancy
 
 
 class TestHRDocumentPrivacy(FrappeTestCase):
+    def test_legacy_final_prints_never_acquire_the_current_letterhead(self):
+        from frappe.utils import nowdate
+
+        from asoud_erp.api.v1 import employment_contracts, personnel_introduction_letters
+
+        frappe.set_user("Administrator")
+        head = frappe.get_doc({"doctype": "Letter Head", "letter_head_name": uuid4().hex,
+                               "source": "HTML", "content": "<p>CURRENT-HEADER-MUST-NOT-LEAK</p>"}).insert()
+        frappe.db.set_value("Company", company(), "default_letter_head", head.name)
+        for kind, endpoint, status, html_key in (
+            ("ASOUD Hiring Order", hiring_orders.print_hiring_order, "final", "html"),
+            ("ASOUD Salary Change Order", salary_change_orders.print_salary_change_order, "final", "html"),
+            ("ASOUD Employment Certificate", employment_certificates.get_certificate, "Final", "print_html"),
+            ("ASOUD Personnel Introduction Letter", personnel_introduction_letters.print_letter, "Final", "print_html"),
+        ):
+            with self.subTest(kind=kind):
+                entry = self._entry(kind, {"status": status, "number": "LEGACY-123", "rendered_html": "متن قدیمی"})
+                original = entry.values_json
+                result = endpoint(entry.name)["data"]
+                self.assertTrue(result["letterhead_missing"])
+                self.assertNotIn("CURRENT-HEADER-MUST-NOT-LEAK", result[html_key])
+                self.assertIn("LEGACY-123", result[html_key].translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")))
+                self.assertEqual(frappe.db.get_value("ASOUD Form Entry", entry.name, "values_json"), original)
+        employee = frappe.db.get_value("Employee", {"company": company(), "status": "Active"}, "name")
+        draft = employment_contracts.save_contract_draft(company(), employee, nowdate(), client_id=uuid4().hex)["data"]
+        name = draft["contract_id"]
+        entry = frappe.db.get_value("ASOUD Form Entry", {"reference_name": name}, "name")
+        data = json.loads(frappe.db.get_value("ASOUD Form Entry", entry, "values_json"))
+        data.update(contract_number="LEGACY-123", status="final")
+        data.pop("letterhead_html", None)
+        data.pop("letterhead_snapshot", None)
+        frappe.db.set_value("ASOUD Form Entry", entry, "values_json", json.dumps(data))
+        frappe.db.set_value("Contract", name, "docstatus", 1)
+        result = employment_contracts.get_contract_print(name)["data"]
+        self.assertTrue(result["letterhead_missing"])
+        self.assertNotIn("CURRENT-HEADER-MUST-NOT-LEAK", result["html"])
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

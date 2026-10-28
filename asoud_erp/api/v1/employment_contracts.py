@@ -728,6 +728,9 @@ def get_contract(contract_id: str) -> dict:
         snapshot = mask_contract_salary(snapshot)
 
     is_draft = contract.docstatus == 0
+    from asoud_erp.services.hr_document_print import final_letterhead
+
+    head, missing = final_letterhead(snapshot, "letterhead_snapshot", "letterhead_html") if not is_draft else (_letterhead(emp_company), False)
     contract_number = snapshot.get("contract_number") if not is_draft else "پیش‌نویس"
 
     print_payload = generate_contract_print_data(
@@ -738,11 +741,13 @@ def get_contract(contract_id: str) -> dict:
         rendered_clauses=snapshot.get("rendered_clauses", []),
         salary_table=snapshot.get("salary_table", []),
         total_monthly_formatted=snapshot.get("formatted_total_monthly", ""),
-        letterhead_html=_letterhead(emp_company) if is_draft else snapshot.get("letterhead_html"),
+        letterhead_html=head,
         company_name=emp_company,
     )
 
+    print_payload["letterhead_missing"] = missing
     return success({
+        "letterhead_missing": missing,
         "contract_id": contract.name,
         "contract_number": contract_number,
         "employee": contract.party_name,

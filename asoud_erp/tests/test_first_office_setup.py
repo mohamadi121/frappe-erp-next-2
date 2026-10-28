@@ -57,3 +57,21 @@ def test_validate_lead_inputs_rejects_internal_email_contact():
         validate_lead_inputs(
             "علی", "ali_user", f"fake{INTERNAL_SUFFIX}", "SecurePass123"
         )
+
+
+@pytest.mark.parametrize("username", [None, "", "ab", "1ali", "ali-x", "نام", "a" * 41])
+def test_username_format_has_field_specific_error(username):
+    with pytest.raises(ValueError, match="نام کاربری"):
+        validate_lead_inputs("علی", username, "09123456789", "SecurePass123")
+
+
+@pytest.mark.parametrize("contact", [None, "", "   "])
+def test_missing_contact_has_field_specific_error(contact):
+    with pytest.raises(ValueError, match="شماره موبایل یا ایمیل"):
+        validate_lead_inputs("علی", "ali_user", contact, "SecurePass123")
+
+
+@pytest.mark.parametrize("password", [None, "", "short", "aaaaaaaa", "12345678"])
+def test_weak_password_has_field_specific_error(password):
+    with pytest.raises(ValueError, match="رمز موقت"):
+        validate_lead_inputs("علی", "ali_user", "09123456789", password)
