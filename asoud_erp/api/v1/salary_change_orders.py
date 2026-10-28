@@ -434,8 +434,17 @@ def get_salary_change_order(name: str) -> dict:
         frappe.throw(_("حکم مورد نظر یافت نشد."), frappe.DoesNotExistError)
     entry = frappe.get_doc("ASOUD Form Entry", name)
     require_company(entry.company)
+    if entry.reference_doctype != "ASOUD Salary Change Order":
+        frappe.throw(_("نوع سند برای این عملیات معتبر نیست."))
     erp_documents.require_roles(VIEW_ROLES, entry.company)
     data = json.loads(entry.values_json or "{}")
+    try:
+        erp_documents.require_roles(PAYROLL_ROLES, entry.company)
+    except frappe.PermissionError:
+        data["comparison_table"] = {}
+        data["values"] = {}
+        if data.get("template_snapshot"):
+            data["template_snapshot"]["comparison_rows"] = []
     data["name"] = entry.name
     data["company"] = entry.company
     return success(data)
@@ -803,8 +812,17 @@ def print_salary_change_order(name: str) -> dict:
         frappe.throw(_("حکم مورد نظر یافت نشد."), frappe.DoesNotExistError)
     entry = frappe.get_doc("ASOUD Form Entry", name)
     require_company(entry.company)
+    if entry.reference_doctype != "ASOUD Salary Change Order":
+        frappe.throw(_("نوع سند برای این عملیات معتبر نیست."))
     erp_documents.require_roles(VIEW_ROLES, entry.company)
     data = json.loads(entry.values_json or "{}")
+    try:
+        erp_documents.require_roles(PAYROLL_ROLES, entry.company)
+    except frappe.PermissionError:
+        data["comparison_table"] = {}
+        data["values"] = {}
+        if data.get("template_snapshot"):
+            data["template_snapshot"]["comparison_rows"] = []
     data["name"] = entry.name
     data["company"] = entry.company
     data["company_name"] = (

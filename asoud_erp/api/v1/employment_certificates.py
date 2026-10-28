@@ -26,7 +26,7 @@ from asoud_erp.services.request_access import require_company
 
 TEMPLATE_DESIGNERS = ("System Manager", "HR Manager")
 HR_OPERATIONAL_ROLES = ("System Manager", "HR Manager", "HR User")
-PAYROLL_ROLES = ("System Manager", "HR Manager", "Accounts Manager")
+PAYROLL_ROLES = ("System Manager", "Payroll Manager", "Accounts Manager")
 CERT_DOCTYPE = "ASOUD Employment Certificate"
 SERIES = "CERT-.YYYY.-.#####"
 
@@ -413,23 +413,28 @@ def get_certificate(name: str) -> dict:
     except Exception:
         frappe.throw(_("اطلاعات گواهی ذخیره‌شده مخدوش است."))
 
-    # Payroll privacy check:
-    has_payroll = _has_payroll_permission(entry.company)
-    if not has_payroll:
+    return _certificate_response(data, entry.company)
+
+
+def _certificate_response(data: dict, company: str) -> dict:
+    # All read/retry/finalize paths apply the same policy to persisted snapshots.
+    if not _has_payroll_permission(company) or not data.get("include_salary"):
         data["salary_rows"] = []
         data["has_salary"] = False
-        # Re-render snapshot without salary
+        data["include_salary"] = False
+        values = data.get("values_snapshot")
+        if isinstance(values, dict):
+            values.pop("payroll", None)
         tmpl = data.get("template_snapshot")
-        vals = data.get("values_snapshot")
-        if tmpl and vals:
-            stripped_tmpl = dict(tmpl)
-            stripped_tmpl["salary_enabled"] = False
-            rendered = render_snapshot(stripped_tmpl, vals, None)
+        if tmpl:
+            stripped = dict(tmpl, salary_enabled=False, salary_rows=[])
+            rendered = render_snapshot(stripped, data.get("values_snapshot") or {}, None)
+            data["template_snapshot"] = rendered["template"]
+            data["values_snapshot"] = rendered["values"]
             data["rendered_html"] = rendered["html"]
-
-    letterhead_html = _letterhead(entry.company)
-    data["print_html"] = _build_print_html(data, letterhead_html, data.get("status") == "Final")
-
+        else:
+            data["rendered_html"] = ""
+    data["print_html"] = _build_print_html(data, _letterhead(company), data.get("status") == "Final")
     return success(data)
 
 
@@ -490,7 +495,7 @@ def save_draft(
             if stored.get("employee") == employee and stored.get("company") == company:
                 letterhead_html = _letterhead(company)
                 stored["print_html"] = _build_print_html(stored, letterhead_html, stored.get("status") == "Final")
-                return success(stored)
+                return _certificate_response(stored, company)
         except Exception:
             pass
         frappe.throw(_("کلید درخواست تکراری با اطلاعات متفاوت ارسال شده است."))
@@ -629,7 +634,7 @@ def save_draft(
         new_entry.flags.ignore_permissions = True
         new_entry.insert()
 
-    return success(cert_data)
+    return _certificate_response(cert_data, company)
 
 
 @frappe.whitelist()
@@ -669,7 +674,7 @@ def finalize_certificate(name: str, revision: int = 0, request_key: str = "") ->
     if data.get("status") == "Final":
         letterhead_html = _letterhead(entry_row.company)
         data["print_html"] = _build_print_html(data, letterhead_html, True)
-        return success(data)
+        return _certificate_response(data, entry_row.company)
 
     if revision and int(revision) != data.get("revision", 1):
         frappe.throw(_("نسخه گواهی تغییر کرده است؛ صفحه را تازه‌سازی کنید."))
@@ -702,4 +707,4 @@ def finalize_certificate(name: str, revision: int = 0, request_key: str = "") ->
         {"values_json": json.dumps(data, ensure_ascii=False, sort_keys=True)},
     )
 
-    return success(data)
+    return _certificate_response(data, entry_row.company)

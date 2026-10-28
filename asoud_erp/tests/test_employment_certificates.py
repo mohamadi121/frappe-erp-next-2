@@ -63,3 +63,11 @@ def test_clause_text_and_print_metadata_are_escaped():
     html = build_print_html(snapshot['html'], number='<svg onload=alert(3)>', issue_date='<script>')
     assert '<svg' not in html
     assert '<script>' not in html
+
+def test_disabled_salary_removes_payroll_tokens_and_values_from_snapshot():
+    template = {"clauses": [{"id": "body", "title": "متن", "body": 'حقوق {{payroll.base}}'}], "salary_enabled": False, "salary_rows": []}
+    values = {"employee": {"employee_name": "مینا"}, "payroll": {"base": 987654321}}
+    snapshot = render_snapshot(template, values)
+    assert "987654321" not in str(snapshot)
+    assert "payroll" not in snapshot["values"]
+    assert values["payroll"]["base"] == 987654321

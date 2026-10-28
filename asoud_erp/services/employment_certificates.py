@@ -133,7 +133,9 @@ def validate_template(template: dict) -> dict:
 def render_snapshot(template: dict, values: dict, salary_rows: list[dict] | None = None) -> dict:
     """Render only the published template; salary is unreachable when disabled."""
     template = validate_template(template)
-    values = values if isinstance(values, dict) else {}
+    values = deepcopy(values) if isinstance(values, dict) else {}
+    if not template["salary_enabled"]:
+        values.pop("payroll", None)
     blocks = []
     for clause in template["clauses"]:
         if clause["enabled"]:

@@ -220,7 +220,9 @@ class TestHiringOrders(APITestCase):
             effective_date="1900-01-01",
             payroll_rows=[{"id": "forged", "title": "دستکاری", "period": "monthly", "amount": 999}],
         )["data"]
-        rows = result["payroll_snapshot"]["rows"]
+        self.assertEqual(result["payroll_snapshot"], {})
+        frappe.set_user("Administrator")
+        rows = api.get_hiring_order(result["name"])["data"]["payroll_snapshot"]["rows"]
         self.assertEqual([row["id"] for row in rows], ["base_salary"])
         self.assertIsNone(rows[0]["amount"])
         self.assertEqual(rows[0]["message"], "اطلاعات موجود نیست")
@@ -284,6 +286,7 @@ class TestHiringOrders(APITestCase):
         frappe.db.set_value("ASOUD Workflow Stage", approval.name, "config_json", json.dumps(config))
         for action, expected in (("Approve", "final"), ("Reject", "rejected")):
             order = self._workflow_order(definition)
+            stored_payroll = json.loads(frappe.db.get_value("ASOUD Form Entry", order["name"], "values_json"))["payroll_snapshot"]
             key = uuid4().hex
             pending = api.send_hiring_order_for_review(order["name"], order["revision"], key)["data"]
             self.assertEqual(pending["status"], "pending")
@@ -301,7 +304,7 @@ class TestHiringOrders(APITestCase):
             self.assertEqual(result["status"], expected)
             self.assertEqual(bool(result["number"]), action == "Approve")
             self.assertEqual(result["template_snapshot"], order["template_snapshot"])
-            self.assertEqual(result["payroll_snapshot"], order["payroll_snapshot"])
+            self.assertEqual(result["payroll_snapshot"], stored_payroll)
 
     def test_workflow_without_approval_completes_through_real_engine(self):
         frappe.set_user("Administrator")

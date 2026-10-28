@@ -372,8 +372,14 @@ def get_hiring_order(name: str) -> dict:
         frappe.throw(_("حکم مورد نظر یافت نشد."), frappe.DoesNotExistError)
     entry = frappe.get_doc("ASOUD Form Entry", name)
     require_company(entry.company)
+    if entry.reference_doctype != "ASOUD Hiring Order":
+        frappe.throw(_("نوع سند برای این عملیات معتبر نیست."))
     _require_hr_issuer(entry.company)
     data = json.loads(entry.values_json or "{}")
+    try:
+        _require_payroll(entry.company)
+    except frappe.PermissionError:
+        data["payroll_snapshot"] = {}
     data["name"] = entry.name
     data["company"] = entry.company
     return success(data)
@@ -534,8 +540,14 @@ def print_hiring_order(name: str) -> dict:
         frappe.throw(_("حکم مورد نظر یافت نشد."), frappe.DoesNotExistError)
     entry = frappe.get_doc("ASOUD Form Entry", name)
     require_company(entry.company)
+    if entry.reference_doctype != "ASOUD Hiring Order":
+        frappe.throw(_("نوع سند برای این عملیات معتبر نیست."))
     _require_hr_issuer(entry.company)
     data = json.loads(entry.values_json or "{}")
+    try:
+        _require_payroll(entry.company)
+    except frappe.PermissionError:
+        data["payroll_snapshot"] = {}
     data["name"] = entry.name
     data["company"] = entry.company
     data["company_name"] = frappe.db.get_value("Company", entry.company, "company_name") or entry.company
