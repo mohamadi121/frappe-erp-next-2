@@ -80,13 +80,13 @@ def submit(entry_name, revision, request_id):
 def on_instance_update(instance):
     if instance.reference_doctype != REQUEST_KIND or not instance.reference_name:
         return
-    status = frappe.db.get_value("ASOUD Workflow Instance", instance.name, "status")
-    if status not in {"Completed", "Rejected", "Cancelled", "Failed"}:
-        return
     name = frappe.db.get_value("ASOUD Form Entry", {
         "reference_doctype": ORDER_KIND, "reference_name": instance.reference_name,
     }, "name")
     if not name:
+        return
+    status = frappe.db.get_value("ASOUD Workflow Instance", instance.name, "status")
+    if status not in {"Completed", "Rejected", "Cancelled", "Failed"}:
         return
     entry = frappe.get_doc("ASOUD Form Entry", name, for_update=True)
     data = json.loads(entry.values_json or "{}")
