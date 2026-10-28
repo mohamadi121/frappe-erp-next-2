@@ -12,7 +12,7 @@ module_key, target_doctype, icon_key, color_hex, steps_count, modified}],
 next_start: int|null}`. Search matches title, not technical IDs. Page size 1–50;
 start is nonnegative. Returns only native-permitted system templates in company.
 
-## `clone(company, source, source_modified, workflow_title,
+## `create_from_template(company, source, source_modified, workflow_title,
 process_description='', icon_key='hub', color_hex='#315CF5')`
 
 Online write. Source modified token must match; stale selection fails explicitly.
