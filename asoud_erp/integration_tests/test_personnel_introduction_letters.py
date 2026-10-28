@@ -1,9 +1,14 @@
 """Integration tests for Personnel Introduction Letters API."""
 
 import frappe
+import json
+from uuid import uuid4
 
 from asoud_erp.api.v1 import personnel_introduction_letters as api
 from asoud_erp.integration_tests.fixtures import APITestCase, company
+from asoud_erp.integration_tests.request_fixtures import make_definition
+from asoud_erp.api.v1 import workflow_request, workflow_runtime
+from asoud_erp.services.request_templates.base import series_key
 from asoud_erp.integration_tests.tenancy import (
     EMPLOYEE_A_USER,
     EMPLOYEE_B_USER,
@@ -14,6 +19,123 @@ from asoud_erp.integration_tests.tenancy import (
 
 
 class TestPersonnelIntroductionLetters(APITestCase):
+    def tearDown(self):
+        super().tearDown()
+        frappe.clear_cache(user=EMPLOYEE_A_USER)
+
+    def _workflow_letter(self, workflow=""):
+        frappe.set_user(HR_MANAGER_USER)
+        template = api.get_template(company=company())["data"]
+        saved = api.save_template_draft(
+            company=company(), revision=template["revision"], clauses=template["clauses"], workflow=workflow,
+        )["data"]
+        api.publish_template(company=company(), revision=saved["revision"])
+        employee = frappe.db.get_value("Employee", {"user_id": EMPLOYEE_A_USER}, "name")
+        return api.save_draft(company=company(), employee=employee, bank_name="بانک ملت",
+            purpose="افتتاح حساب", request_key=uuid4().hex)["data"]
+
+    def _letter_definition(self, approvals=1):
+        frappe.set_user("Administrator")
+        definition, stages = make_definition(company(), approvals=approvals, fields=[])
+        for stage in stages.values():
+            if stage.stage_type == "Approval":
+                config = json.loads(stage.config_json)
+                config.update(assignment_type="Role", approver_roles=["System Manager"])
+                frappe.db.set_value("ASOUD Workflow Stage", stage.name, "config_json", json.dumps(config))
+        return definition
+
+    def test_no_workflow_uses_direct_hr_policy_and_shared_number_once(self):
+        draft = self._workflow_letter()
+        key = uuid4().hex
+        first = api.finalize_letter(draft["name"], draft["revision"], key)["data"]
+        retry = api.finalize_letter(draft["name"], draft["revision"], key)["data"]
+        assert first["status"] == "Final"
+        assert first["number"].startswith(series_key("INTRO"))
+        assert first["number"] == retry["number"]
+        assert first["print_html"] == retry["print_html"]
+        assert not first.get("workflow_instance")
+        with self.assertRaises(frappe.ValidationError):
+            api.save_draft(company=company(), employee=draft["employee"], name=draft["name"],
+                revision=first["revision"], bank_name="بانک دیگر", purpose="تغییر پس از صدور",
+                request_key=uuid4().hex)
+
+    def test_configured_workflow_finalizes_only_after_real_approval(self):
+        definition = self._letter_definition()
+        draft = self._workflow_letter(definition)
+        key = uuid4().hex
+        pending = api.finalize_letter(draft["name"], draft["revision"], key)["data"]
+        assert pending["status"] == "Pending"
+        assert pending["number"] == "—"
+        assert "پیش‌نویس ـ فاقد اعتبار نهایی" in pending["print_html"]
+        retry = api.finalize_letter(draft["name"], draft["revision"], key)["data"]
+        assert retry["workflow_instance"] == pending["workflow_instance"]
+        assert retry["workflow_request"] == pending["workflow_request"]
+        task = frappe.db.get_value("ASOUD Workflow Task", {
+            "workflow_instance": pending["workflow_instance"], "status": "Open",
+            "assigned_to": ["!=", HR_MANAGER_USER],
+        }, ["name", "assigned_to"], as_dict=True)
+        assert task
+        frappe.set_user(task.assigned_to)
+        workflow_runtime.complete_workflow_task(task.name, "Approve", comment="تأیید معرفی‌نامه")
+        final = api.get_letter(draft["name"])["data"]
+        assert final["status"] == "Final"
+        assert final["number"].startswith(series_key("INTRO"))
+        assert final["template_snapshot"] == draft["template_snapshot"]
+        assert "پیش‌نویس ـ فاقد اعتبار نهایی" not in final["print_html"]
+
+    def test_real_rejection_and_cancellation_never_allocate_official_number(self):
+        for action, expected in (("Reject", "Rejected"), ("Cancel", "Cancelled")):
+            definition = self._letter_definition()
+            draft = self._workflow_letter(definition)
+            pending = api.finalize_letter(draft["name"], draft["revision"], uuid4().hex)["data"]
+            if action == "Cancel":
+                workflow_request.cancel_request(pending["workflow_request"], "انصراف از معرفی‌نامه")
+            else:
+                task = frappe.db.get_value("ASOUD Workflow Task", {
+                    "workflow_instance": pending["workflow_instance"], "status": "Open",
+                    "assigned_to": ["!=", HR_MANAGER_USER],
+                }, ["name", "assigned_to"], as_dict=True)
+                assert task
+                frappe.set_user(task.assigned_to)
+                workflow_runtime.complete_workflow_task(task.name, action, comment="درخواست رد شد")
+            frappe.set_user(HR_MANAGER_USER)
+            result = api.get_letter(draft["name"])["data"]
+            assert result["status"] == expected
+            assert result["number"] == "—"
+
+    def test_immediate_workflow_completion_is_observed_after_request_creation(self):
+        definition = self._letter_definition(approvals=0)
+        draft = self._workflow_letter(definition)
+        final = api.finalize_letter(draft["name"], draft["revision"], uuid4().hex)["data"]
+        assert final["status"] == "Final"
+        assert frappe.db.get_value("ASOUD Workflow Instance", final["workflow_instance"], "status") == "Completed"
+        assert final["number"].startswith(series_key("INTRO"))
+
+    def test_unavailable_configured_workflow_does_not_fall_back_to_direct_issue(self):
+        definition = self._letter_definition()
+        draft = self._workflow_letter(definition)
+        frappe.db.set_value("ASOUD Workflow Definition", definition, "status", "Inactive")
+        with self.assertRaises(frappe.ValidationError):
+            api.finalize_letter(draft["name"], draft["revision"], uuid4().hex)
+        current = api.get_letter(draft["name"])["data"]
+        assert current["status"] == "Draft"
+        assert current["number"] == "—"
+        assert not current.get("workflow_request")
+
+    def test_operational_hr_starts_only_own_request_workflows(self):
+        definition = self._letter_definition()
+        draft = self._workflow_letter(definition)
+        frappe.set_user("Administrator")
+        frappe.get_doc("User", EMPLOYEE_A_USER).add_roles("HR User")
+        frappe.get_doc("User", EMPLOYEE_A_USER).remove_roles("Employee")
+        frappe.set_user(EMPLOYEE_A_USER)
+        pending = api.finalize_letter(draft["name"], draft["revision"], uuid4().hex)["data"]
+        assert "Employee" not in frappe.get_roles()
+        assert pending["status"] == "Pending"
+        assert frappe.db.get_value("ASOUD Workflow Request", pending["workflow_request"], "owner") == EMPLOYEE_A_USER
+        with self.assertRaises(frappe.PermissionError):
+            workflow_runtime.start_workflow_instance(definition=definition, subject="گردش بدون درخواست")
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -183,6 +305,11 @@ class TestPersonnelIntroductionLetters(APITestCase):
         assert final["status"] == "Final"
         assert final["values_snapshot"]["employee"]["employee_name"]
         original_print = final["print_html"]
+        head = frappe.get_doc({
+            "doctype": "Letter Head", "letter_head_name": "معرفی‌نامه " + uuid4().hex,
+            "source": "HTML", "content": "<p>سربرگ تغییر یافته پس از صدور</p>",
+        }).insert(ignore_permissions=True)
+        frappe.db.set_value("Company", comp, "default_letter_head", head.name)
         frappe.db.set_value("Employee", employee, "employee_name", "نام تغییر یافته پس از صدور")
         template = api.get_template(company=comp)["data"]
         replacement = api.save_template_draft(
@@ -197,6 +324,7 @@ class TestPersonnelIntroductionLetters(APITestCase):
         assert fetched["values_snapshot"] == final["values_snapshot"]
         assert "قالب تغییر یافته پس از صدور" not in fetched["print_html"]
         assert "نام تغییر یافته پس از صدور" not in fetched["print_html"]
+        assert "سربرگ تغییر یافته پس از صدور" not in fetched["print_html"]
 
     def test_operational_hr_cannot_save_or_publish_templates(self):
         comp = company()

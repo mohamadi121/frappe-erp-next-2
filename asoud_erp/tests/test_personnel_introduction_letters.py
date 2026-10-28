@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 
 from asoud_erp.services.personnel_introduction_letters import (
@@ -7,6 +9,25 @@ from asoud_erp.services.personnel_introduction_letters import (
     render_snapshot,
     validate_template,
 )
+from asoud_erp.services.request_templates.base import number_pattern
+
+
+def test_optional_workflow_reference_is_preserved_in_template_snapshot():
+    template = {**DEFAULT_TEMPLATE, "workflow": "approved-introduction-process"}
+    snapshot = render_snapshot(template, {"employee": {"employee_name": "پرسنل"}})
+    template["workflow"] = "replacement-process"
+    assert snapshot["template"]["workflow"] == "approved-introduction-process"
+    assert validate_template(DEFAULT_TEMPLATE)["workflow"] == ""
+
+
+@pytest.mark.parametrize("workflow", [None, 1, [], {}])
+def test_workflow_reference_rejects_non_string_values(workflow):
+    with pytest.raises(ValueError, match="گردش کار قالب معرفی‌نامه معتبر نیست"):
+        validate_template({**DEFAULT_TEMPLATE, "workflow": workflow})
+
+
+def test_introduction_numbers_use_shared_jalali_numbering_pattern():
+    assert number_pattern("INTRO", date(2025, 3, 21)) == "INTRO-1404-.####"
 
 
 def test_default_template_is_valid():

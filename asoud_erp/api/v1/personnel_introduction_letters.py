@@ -11,11 +11,12 @@ from typing import Any
 import frappe
 from frappe import _
 from frappe.model.naming import make_autoname
-from frappe.utils import getdate, nowdate
+from frappe.utils import getdate
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.jalali import gregorian_to_jalali
+from asoud_erp.services.personnel_introduction_letter_workflow import validate_workflow, workflow_options
 from asoud_erp.services.personnel_introduction_letters import (
     DEFAULT_TEMPLATE,
     build_print_html,
@@ -28,7 +29,6 @@ from asoud_erp.services.request_access import require_company
 TEMPLATE_DESIGNERS = ("System Manager", "HR Manager")
 HR_OPERATIONAL_ROLES = ("System Manager", "HR Manager", "HR User")
 INTRO_DOCTYPE = "ASOUD Personnel Introduction Letter"
-SERIES = "INTRO-.YYYY.-.#####"
 
 
 def _is_designer() -> bool:
@@ -151,6 +151,8 @@ def get_template(company: str) -> dict:
                 "revision": doc.draft_version or 1,
                 "status": "Draft",
                 "can_manage_template": designer,
+                "workflow": data.get("workflow", ""),
+                "workflow_options": workflow_options(company),
                 "clauses": data.get("clauses", []),
                 "required_recipient": data.get("required_recipient", True),
                 "required_purpose": data.get("required_purpose", True),
@@ -168,6 +170,8 @@ def get_template(company: str) -> dict:
                 "revision": rev.version,
                 "status": "Published",
                 "can_manage_template": designer,
+                "workflow": data.get("workflow", ""),
+                "workflow_options": workflow_options(company) if designer else [],
                 "clauses": data.get("clauses", []),
                 "required_recipient": data.get("required_recipient", True),
                 "required_purpose": data.get("required_purpose", True),
@@ -181,6 +185,8 @@ def get_template(company: str) -> dict:
         "revision": 1,
         "status": "Draft",
         "can_manage_template": designer,
+        "workflow": "",
+        "workflow_options": workflow_options(company) if designer else [],
         "clauses": DEFAULT_TEMPLATE["clauses"],
         "required_recipient": DEFAULT_TEMPLATE["required_recipient"],
         "required_purpose": DEFAULT_TEMPLATE["required_purpose"],
@@ -196,6 +202,7 @@ def save_template_draft(
     required_recipient: bool = True,
     required_purpose: bool = True,
     has_expiry: bool = False,
+    workflow: str | None = None,
 ) -> dict:
     require_company(company)
     require_roles(TEMPLATE_DESIGNERS, company=company)
@@ -221,12 +228,14 @@ def save_template_draft(
         "required_recipient": bool(required_recipient),
         "required_purpose": bool(required_purpose),
         "has_expiry": bool(has_expiry),
+        "workflow": workflow if workflow is not None else get_template(company)["data"].get("workflow", ""),
     }
 
     try:
         normalized = validate_template(payload)
     except ValueError as err:
         frappe.throw(str(err))
+    validate_workflow(normalized["workflow"], company)
 
     name = _ensure_template(company)
     doc = frappe.get_doc("ASOUD Form", name)
@@ -252,6 +261,7 @@ def save_template_draft(
         "required_recipient": normalized["required_recipient"],
         "required_purpose": normalized["required_purpose"],
         "has_expiry": normalized["has_expiry"],
+        "workflow": normalized["workflow"],
     })
 
 
@@ -273,6 +283,7 @@ def publish_template(company: str, revision: int = 0) -> dict:
         normalized = validate_template(data)
     except Exception as err:
         frappe.throw(str(err) if isinstance(err, ValueError) else _("پیش‌نویس قالب معتبر نیست."))
+    validate_workflow(normalized["workflow"], company)
 
     if revision and int(revision) != (doc.draft_version or 1):
         frappe.throw(_("نسخهٔ پیش‌نویس قالب تغییر کرده است؛ صفحه را تازه‌سازی کنید."))
@@ -312,6 +323,7 @@ def publish_template(company: str, revision: int = 0) -> dict:
         "required_recipient": normalized["required_recipient"],
         "required_purpose": normalized["required_purpose"],
         "has_expiry": normalized["has_expiry"],
+        "workflow": normalized["workflow"],
     })
 
 
@@ -464,8 +476,9 @@ def get_letter(name: str) -> dict:
     except Exception:
         frappe.throw(_("داده‌های معرفی‌نامه نامعتبر است."))
 
-    letterhead_html = _letterhead(entry.company)
-    data["print_html"] = _build_print_html(data, letterhead_html, data.get("status") == "Final")
+    if data.get("status") != "Final" or not data.get("print_html"):
+        letterhead_html = _letterhead(entry.company)
+        data["print_html"] = _build_print_html(data, letterhead_html, data.get("status") == "Final")
     return success(data)
 
 
@@ -583,6 +596,7 @@ def save_draft(
         "required_recipient": req_recipient,
         "required_purpose": req_purpose,
         "has_expiry": template_data.get("has_expiry", False),
+        "workflow": template_data.get("workflow", ""),
     }
     rendered = render_snapshot(active_template, values)
 
@@ -598,14 +612,16 @@ def save_draft(
             limit_page_length=1,
         )
         if existing:
-            entry_doc = frappe.get_doc("ASOUD Form Entry", existing[0].name)
-            try:
-                prev_data = json.loads(entry_doc.values_json)
-                if revision and int(revision) != prev_data.get("revision", 1):
-                    frappe.throw(_("نسخه پیش‌نویس معرفی‌نامه تغییر کرده است؛ صفحه را تازه‌سازی کنید."))
-                current_rev = prev_data.get("revision", 1) + 1
-            except Exception:
-                pass
+            entry_doc = frappe.get_doc("ASOUD Form Entry", existing[0].name, for_update=True)
+            require_company(entry_doc.company)
+            if entry_doc.company != company:
+                frappe.throw(_("معرفی‌نامه به این شرکت تعلق ندارد."), frappe.PermissionError)
+            prev_data = json.loads(entry_doc.values_json)
+            if prev_data.get("status") != "Draft":
+                frappe.throw(_("معرفی‌نامهٔ ارسال‌شده یا نهایی قابل ویرایش نیست."))
+            if revision and int(revision) != prev_data.get("revision", 1):
+                frappe.throw(_("نسخه پیش‌نویس معرفی‌نامه تغییر کرده است؛ صفحه را تازه‌سازی کنید."))
+            current_rev = prev_data.get("revision", 1) + 1
 
     letter_data = {
         "name": letter_id,
@@ -690,46 +706,6 @@ def finalize_letter(name: str, revision: int = 0, request_key: str = "") -> dict
     require_company(entry_row.company)
     require_roles(HR_OPERATIONAL_ROLES, company=entry_row.company)
 
-    try:
-        data = json.loads(entry_row.values_json)
-    except Exception:
-        frappe.throw(_("اطلاعات معرفی‌نامه مخدوش است."))
+    from asoud_erp.services.personnel_introduction_letter_workflow import submit
 
-    # Idempotent return if already finalized
-    if data.get("status") == "Final":
-        letterhead_html = _letterhead(entry_row.company)
-        data["print_html"] = _build_print_html(data, letterhead_html, True)
-        return success(data)
-
-    if revision and int(revision) != data.get("revision", 1):
-        frappe.throw(_("نسخه معرفی‌نامه تغییر کرده است؛ صفحه را تازه‌سازی کنید."))
-
-    official_number = make_autoname(SERIES)
-    issue_date_str = _format_jalali(nowdate())
-
-    data["status"] = "Final"
-    data["number"] = official_number
-    data["issue_date"] = issue_date_str
-    data["revision"] = data.get("revision", 1) + 1
-
-    # Re-render snapshot with official number and date:
-    vals = data.get("values_snapshot", {})
-    if "letter" in vals:
-        vals["letter"]["number"] = official_number
-        vals["letter"]["issue_date"] = issue_date_str
-
-    template_to_use = data.get("template_snapshot") or DEFAULT_TEMPLATE
-    re_rendered = render_snapshot(template_to_use, vals)
-    data["rendered_html"] = re_rendered["html"]
-    data["values_snapshot"] = re_rendered["values"]
-
-    letterhead_html = _letterhead(entry_row.company)
-    data["print_html"] = _build_print_html(data, letterhead_html, True)
-
-    frappe.db.set_value(
-        "ASOUD Form Entry",
-        entry_row.name,
-        {"values_json": json.dumps(data, ensure_ascii=False)},
-    )
-
-    return success(data)
+    return success(submit(entry_row.name, revision, request_key))

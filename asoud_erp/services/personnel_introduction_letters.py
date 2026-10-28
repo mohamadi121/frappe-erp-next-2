@@ -70,6 +70,9 @@ def validate_template(template: dict) -> dict:
     required_recipient = template.get("required_recipient", True)
     required_purpose = template.get("required_purpose", True)
     has_expiry = template.get("has_expiry", False)
+    workflow = template.get("workflow", "")
+    if not isinstance(workflow, str):
+        raise ValueError("گردش کار قالب معرفی‌نامه معتبر نیست.")
 
     if not isinstance(required_recipient, bool) or not isinstance(required_purpose, bool) or not isinstance(has_expiry, bool):
         raise ValueError("تنظیمات قالب معتبر نیست.")
@@ -103,6 +106,7 @@ def validate_template(template: dict) -> dict:
         "required_recipient": required_recipient,
         "required_purpose": required_purpose,
         "has_expiry": has_expiry,
+        "workflow": workflow.strip(),
     }
 
 
