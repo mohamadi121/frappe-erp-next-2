@@ -28,13 +28,13 @@ def _assert_generic_access(doc):
     from asoud_erp.services.request_access import workflow_record_permission
 
     if workflow_record_permission(doc) is False:
-        frappe.throw("Not permitted to access this request workflow", frappe.PermissionError)
+        frappe.throw("شما به گردش‌کار این درخواست دسترسی ندارید.", frappe.PermissionError)
 
 
 def _assert_task_owner(doc) -> None:
     _assert_generic_access(doc)
     if doc.assigned_to != frappe.session.user:
-        frappe.throw(_("This task is assigned to another user"), frappe.PermissionError)
+        frappe.throw(_("این کار به کاربر دیگری واگذار شده است؛ اجازهٔ تصمیم‌گیری ندارید."), frappe.PermissionError)
 
 
 def _assert_instance_access(instance) -> None:

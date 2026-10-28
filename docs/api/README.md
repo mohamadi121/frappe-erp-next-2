@@ -57,6 +57,8 @@ only for its own protocol errors (`INVALID_REQUEST_KEY`, `METHOD_NOT_ALLOWED`,
 
 ## Authorization
 
+The shared [HR document role matrix](hr-documents-lifecycle.md) covers document lifecycle permissions and replay semantics.
+
 - ERPNext roles and DocType permissions are the authority. Modules check the
   roles listed in each doc with `services.erp_documents.require_roles` (unlike
   `frappe.only_for`, it is also enforced under tests) and create/submit

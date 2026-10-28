@@ -35,7 +35,7 @@ def company_access(company, user=None):
 
 def require_company(company):
     if not company_access(company):
-        frappe.throw("Company access denied", frappe.PermissionError)
+        frappe.throw("شما به اطلاعات این شرکت دسترسی ندارید.", frappe.PermissionError)
 
 
 def request_permission(doc, user=None, permission_type=None):
