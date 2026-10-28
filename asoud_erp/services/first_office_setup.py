@@ -27,6 +27,8 @@ def validate_lead_inputs(full_name, username, contact, temporary_password):
         raise ValueError("ایمیل تماس واقعی وارد کنید.")
     if not isinstance(temporary_password, str) or not 8 <= len(temporary_password) <= 128:
         raise ValueError("رمز موقت باید بین ۸ تا ۱۲۸ نویسه باشد.")
+    if len(set(temporary_password)) < 4 or temporary_password.isdigit() or temporary_password.isspace():
+        raise ValueError("رمز موقت ضعیف است؛ از حروف و نویسه‌های متنوع استفاده کنید.")
     return name, username, mail, mobile
 
 
@@ -94,6 +96,7 @@ def status(company):
 
 def create_hr_lead(company, full_name, username, contact, temporary_password):
     import frappe
+    from frappe.core.doctype.user.user import test_password_strength
     from frappe.permissions import add_user_permission
     from frappe.utils.password import update_password
 
@@ -113,10 +116,15 @@ def create_hr_lead(company, full_name, username, contact, temporary_password):
     frappe.db.sql("select name from tabRole where name='HR Manager' for update")
     if not frappe.db.exists("Role", {"name": "HR Manager", "disabled": 0}):
         frappe.throw("نقش منابع انسانی در سرور فعال نیست.")
-    if (frappe.db.exists("User", {"username": username})
-            or (mail and frappe.db.exists("User", {"email": mail}))
-            or (mobile and frappe.db.exists("User", {"mobile_no": mobile}))):
-        frappe.throw("نام کاربری یا اطلاعات تماس قبلاً برای حساب دیگری ثبت شده است.")
+    if frappe.db.exists("User", {"username": username}):
+        frappe.throw("نام کاربری قبلاً برای حساب دیگری ثبت شده است؛ نام دیگری انتخاب کنید.")
+    if mail and frappe.db.exists("User", {"email": mail}):
+        frappe.throw("ایمیل تماس قبلاً برای حساب دیگری ثبت شده است.")
+    if mobile and frappe.db.exists("User", {"mobile_no": mobile}):
+        frappe.throw("شماره موبایل قبلاً برای حساب دیگری ثبت شده است.")
+    strength = test_password_strength(temporary_password, user_data=(name, username, mail or "", mobile or ""))
+    if strength.get("feedback", {}).get("password_policy_validation_passed") is False:
+        frappe.throw("رمز موقت ضعیف است؛ رمز قوی‌تری با حروف و نویسه‌های متنوع انتخاب کنید.")
     user = frappe.get_doc({"doctype": "User", "email": mail or f"{uuid4().hex}{INTERNAL_SUFFIX}",
         "first_name": name, "username": username, "mobile_no": mobile,
         "enabled": 1, "user_type": "System User", "send_welcome_email": 0,

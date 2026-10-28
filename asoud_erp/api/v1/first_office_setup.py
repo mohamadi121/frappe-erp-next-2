@@ -12,7 +12,8 @@ def status(company: str):
 
 
 @frappe.whitelist(methods=["POST"])
-def create_hr_lead(company: str, full_name: str, username: str, contact: str, temporary_password: str):
+def create_hr_lead(company: str, full_name: str = None, username: str = None,
+                   contact: str = None, temporary_password: str = None):
     return success(service.create_hr_lead(company, full_name, username, contact, temporary_password))
 
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- First HR lead provisioning returns Persian errors naming missing/duplicate fields and weak temporary passwords, checks native password strength before writes, and accepts omitted optional HTTP arguments for validation. Added real-site coverage to CI. Deployment: restart workers; no schema migration.
+
 - Employment certificate workflow routing: templates support workflow binding; certificate finalization submits to the configured request workflow, tracks real workflow lifecycle events, and allocates official certificate numbering only upon final approval. In the absence of a configured workflow, the direct HR operational issuance policy applies immediately with Jalali date and letterhead snapshotting. No schema migration required; restart backend workers.
 - Employment contract workflow finalization, atomic Jalali numbering, introduction letter replay/snapshot lock, Playwright API specs for all five HR documents, and malformed/oversized input validation matrix across document save endpoints. Deployment: restart workers; no migration.
 

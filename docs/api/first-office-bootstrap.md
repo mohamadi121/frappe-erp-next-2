@@ -21,6 +21,13 @@ starts with a letter and is case-insensitive. Contact is either an Iranian mobil
 or a real email, not both required. Password is 8–128 characters, not trimmed.
 Only creates a new native System User; never upgrades, overwrites or resets an
 existing account. Duplicate identity and protected usernames are rejected.
+Missing name, username, contact or password arguments receive the same Persian
+field validation as empty values. Numeric-only/repeated-character passwords are
+rejected, and the native site password-strength policy is also enforced before writes.
+Validation errors name the field: «نام کاربری قبلاً برای حساب دیگری ثبت شده است؛ نام دیگری انتخاب کنید.»,
+«ایمیل تماس قبلاً برای حساب دیگری ثبت شده است.»,
+«شماره موبایل قبلاً برای حساب دیگری ثبت شده است.»,
+«شماره موبایل یا ایمیل را وارد کنید.» and «رمز موقت ضعیف است؛ از حروف و نویسه‌های متنوع استفاده کنید.».
 
 Mobile-only accounts use a random internal `@users.asoud.invalid` native User ID;
 it is not a contact email, verified identity or deliverable address. Outgoing mail
