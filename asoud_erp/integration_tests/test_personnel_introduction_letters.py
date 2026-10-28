@@ -136,6 +136,39 @@ class TestPersonnelIntroductionLetters(APITestCase):
         with self.assertRaises(frappe.PermissionError):
             workflow_runtime.start_workflow_instance(definition=definition, subject="گردش بدون درخواست")
 
+    def test_foreign_workflow_is_not_selectable_or_saved_in_own_template(self):
+        frappe.set_user("Administrator")
+        foreign, _ = make_definition(SECOND_COMPANY, fields=[])
+        frappe.set_user(HR_MANAGER_USER)
+        template = api.get_template(company=company())["data"]
+        assert foreign not in {option["name"] for option in template["workflow_options"]}
+        with self.assertRaises(frappe.ValidationError):
+            api.save_template_draft(company=company(), revision=template["revision"],
+                clauses=template["clauses"], workflow=foreign)
+
+    def test_real_failed_workflow_never_issues_letter(self):
+        definition = self._letter_definition(approvals=0)
+        end = frappe.db.get_value("ASOUD Workflow Stage", {
+            "workflow_definition": definition, "stage_type": "End",
+        }, "name")
+        # The runtime treats an unknown End outcome as Failed, never Completed.
+        frappe.db.set_value("ASOUD Workflow Stage", end, "config_json", json.dumps({"outcome": "Invalid"}))
+        draft = self._workflow_letter(definition)
+        failed = api.finalize_letter(draft["name"], draft["revision"], uuid4().hex)["data"]
+        assert failed["status"] == "Failed"
+        assert failed["number"] == "—"
+        assert frappe.db.get_value("ASOUD Workflow Instance", failed["workflow_instance"], "status") == "Failed"
+
+    def test_scoped_manager_without_employee_can_submit_letter_workflow(self):
+        definition = self._letter_definition(approvals=0)
+        draft = self._workflow_letter(definition)
+        own_employee = frappe.db.get_value("Employee", {"user_id": HR_MANAGER_USER}, "name")
+        frappe.db.set_value("Employee", own_employee, "user_id", None)
+        assert not frappe.db.exists("Employee", {"user_id": HR_MANAGER_USER})
+        final = api.finalize_letter(draft["name"], draft["revision"], uuid4().hex)["data"]
+        assert final["status"] == "Final"
+        assert final["employee"] == draft["employee"]
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
