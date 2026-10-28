@@ -302,6 +302,7 @@ def _resolve_payroll(company: str, employee: str, effective_date: str, template_
             "period": r.get("period", "monthly"),
             "field_ref": field_ref,
             "amount": amount,
+            "reason_code": "assignment_missing" if not assignment else "component_unavailable",
         })
 
     currency = (

@@ -10,6 +10,16 @@ from asoud_erp.services.hiring_orders import (
 )
 
 
+def test_missing_payroll_reason_survives_snapshot_without_inventing_an_amount():
+    row = snapshot_payroll([{
+        "id": "formula", "period": "monthly", "amount": None,
+        "reason_code": "component_unavailable",
+    }])["rows"][0]
+    assert row["reason_code"] == "component_unavailable"
+    assert row["amount"] is None
+    assert row["message"] == "اطلاعات موجود نیست"
+
+
 def test_default_hiring_template_has_six_stable_articles_and_payroll_bindings():
     template = default_template()
     assert [article["id"] for article in template["articles"]] == [

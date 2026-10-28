@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Hiring payroll preserves native HRMS effective-date formula previews and adds explicit missing-assignment/component reason codes to immutable payroll rows. Deployment: restart workers; no migration.
+
 - Administrator login hints now require the essential profile before office creation and setup; disabled accounts and temporary passwords retain priority. Existing integration assertions now complete the fiscal/bootstrap prerequisites before expecting home. Deployment: restart workers; no migration.
 
 - First HR lead provisioning returns Persian errors naming missing/duplicate fields and weak temporary passwords, checks native password strength before writes, and accepts omitted optional HTTP arguments for validation. Added real-site coverage to CI. Deployment: restart workers; no schema migration.
