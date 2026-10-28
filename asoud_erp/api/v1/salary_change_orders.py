@@ -107,6 +107,9 @@ def save_salary_change_order_template(
         template = json.loads(template)
     template = template or default_template()
     validated = validate_template(template)
+    from asoud_erp.services.salary_change_order_workflow import validate_workflow
+
+    validate_workflow(validated.get("workflow"), company)
     name = _template_form_name(company)
     encoded = json.dumps(validated, ensure_ascii=False)
 
@@ -511,11 +514,89 @@ def save_salary_change_order(
         values = json.loads(values)
     values = values or {}
 
-    if isinstance(comparison_rows, str):
-        comparison_rows = json.loads(comparison_rows)
+    effective = getdate(effective_date) if effective_date else getdate(nowdate())
+    assignment = frappe.get_all(
+        "Salary Structure Assignment",
+        filters={
+            "employee": employee,
+            "company": company,
+            "docstatus": 1,
+            "from_date": ["<=", effective],
+        },
+        fields=["name", "base", "variable", "currency", "salary_structure"],
+        order_by="from_date desc, creation desc",
+        limit_page_length=1,
+    )
+    payroll_prev_map = {}
+    if assignment:
+        row = assignment[0]
+        if row.base is not None:
+            payroll_prev_map["base_salary"] = int(row.base)
+            payroll_prev_map["payroll.base_salary"] = int(row.base)
+        if row.variable is not None:
+            payroll_prev_map["variable"] = int(row.variable)
+            payroll_prev_map["variable_pay"] = int(row.variable)
+            payroll_prev_map["payroll.variable"] = int(row.variable)
+        try:
+            from asoud_erp.services.hiring_order_payroll import component_amounts
+            comp_amounts = component_amounts(company, employee, row, effective)
+            for c_name, c_amt in comp_amounts.items():
+                payroll_prev_map[c_name] = int(c_amt)
+                payroll_prev_map[f"component.{c_name}"] = int(c_amt)
+                payroll_prev_map[f"payroll.{c_name}"] = int(c_amt)
+        except Exception:
+            pass
 
-    comparison_rows = comparison_rows or template_snapshot.get("comparison_rows") or []
-    comparison_table = calculate_comparison_table(comparison_rows)
+    client_proposed = {}
+    if comparison_rows:
+        if isinstance(comparison_rows, str):
+            comparison_rows = json.loads(comparison_rows)
+        for cr in comparison_rows:
+            if isinstance(cr, dict):
+                rid = cr.get("id") or cr.get("new_ref") or cr.get("old_ref") or ""
+                val = cr.get("new_amount") if "new_amount" in cr else cr.get("new")
+                if rid and val is not None:
+                    client_proposed[rid] = val
+
+    canonical_rows = template_snapshot.get("comparison_rows") or []
+    if not canonical_rows and comparison_rows:
+        canonical_rows = comparison_rows
+
+    resolved_rows = []
+    for r in canonical_rows:
+        rid = r.get("id") or ""
+        old_ref = r.get("old_ref") or ""
+        new_ref = r.get("new_ref") or ""
+
+        server_prev = payroll_prev_map.get(rid)
+        if server_prev is None and old_ref:
+            server_prev = payroll_prev_map.get(old_ref)
+        if server_prev is None and ("base" in old_ref or rid == "base_salary"):
+            server_prev = payroll_prev_map.get("base_salary")
+        if server_prev is None and ("variable" in old_ref or rid in ("variable", "variable_pay")):
+            server_prev = payroll_prev_map.get("variable")
+
+        proposed = client_proposed.get(rid)
+        if proposed is None and new_ref:
+            proposed = client_proposed.get(new_ref)
+        if proposed is None and old_ref:
+            proposed = client_proposed.get(old_ref)
+        if proposed is None and "new_amount" in r:
+            proposed = r.get("new_amount")
+        elif proposed is None and "new" in r:
+            proposed = r.get("new")
+
+        resolved_rows.append({
+            "id": rid,
+            "title": r.get("title") or rid,
+            "period": r.get("period", "monthly"),
+            "old_ref": old_ref,
+            "new_ref": new_ref,
+            "previous_amount": server_prev,
+            "new_amount": proposed,
+        })
+
+    comparison_table = calculate_comparison_table(resolved_rows)
 
     today_jalali = _format_jalali(nowdate())
 
@@ -523,10 +604,19 @@ def save_salary_change_order(
         if not frappe.db.exists("ASOUD Form Entry", order):
             frappe.throw(_("حکم مورد نظر یافت نشد."), frappe.DoesNotExistError)
         entry = frappe.get_doc("ASOUD Form Entry", order)
+        if entry.company != company or entry.reference_doctype != "ASOUD Salary Change Order":
+            frappe.throw(
+                _("این حکم متعلق به شرکت یا نوع سند انتخاب‌شده نیست."),
+                frappe.PermissionError,
+            )
         prev_data = json.loads(entry.values_json or "{}")
-        if int(revision) != 0 and prev_data.get("revision") != int(revision):
+        if not revision or int(revision) <= 0 or prev_data.get("revision") != int(revision):
             frappe.throw(
                 _("این حکم توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید.")
+            )
+        if prev_data.get("status") in ("final", "pending") or prev_data.get("status") != "draft":
+            frappe.throw(
+                _("ویرایش حکم در وضعیت نهایی یا در جریان گردش‌کار مجاز نیست.")
             )
         current_rev = prev_data.get("revision", 1) + 1
         status = prev_data.get("status", "draft")
@@ -623,21 +713,10 @@ def send_salary_change_order_for_review(
     entry = frappe.get_doc("ASOUD Form Entry", name)
     require_company(entry.company)
     erp_documents.require_roles(HR_ROLES, entry.company)
-    data = json.loads(entry.values_json or "{}")
 
-    if int(revision) != 0 and data.get("revision") != int(revision):
-        frappe.throw(
-            _("این حکم توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید.")
-        )
-    if data.get("status") != "draft":
-        frappe.throw(_("وضعیت یا نسخهٔ حکم برای این اقدام معتبر نیست."))
+    from asoud_erp.services.salary_change_order_workflow import submit
 
-    data["status"] = "pending"
-    data["status_label"] = "در جریان"
-    data["revision"] = data.get("revision", 1) + 1
-    frappe.db.set_value(
-        "ASOUD Form Entry", entry.name, "values_json", json.dumps(data, ensure_ascii=False)
-    )
+    submit(entry.name, revision, request_id)
     return get_salary_change_order(entry.name)
 
 
@@ -650,35 +729,19 @@ def approve_salary_change_order(name: str, revision: int, request_id: str) -> di
     erp_documents.require_roles(HR_ROLES, entry.company)
     data = json.loads(entry.values_json or "{}")
 
-    if int(revision) != 0 and data.get("revision") != int(revision):
+    if not revision or int(revision) <= 0 or data.get("revision") != int(revision):
         frappe.throw(
             _("این حکم توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید.")
         )
     if data.get("status") != "pending":
         frappe.throw(_("تنها احکام در جریان بررسی قابل تأیید نهایی هستند."))
 
-    if not data.get("number"):
-        count = (
-            frappe.db.count(
-                "ASOUD Form Entry",
-                {
-                    "reference_doctype": "ASOUD Salary Change Order",
-                    "company": entry.company,
-                },
-            )
-            + 1
-        )
-        try:
-            jy, _, _ = gregorian_to_jalali(now_datetime())
-        except Exception:
-            jy = 1405
-        data["number"] = f"SAL-{jy:04d}-{count:03d}"
+    if data.get("workflow_instance"):
+        frappe.throw(_("تأیید نهایی حکم دارای گردش‌کار تنها از طریق تکمیل رویداد گردش‌کار امکان‌پذیر است."))
 
-    data["status"] = "final"
-    data["status_label"] = "نهایی"
-    data["issue_date"] = _format_jalali(nowdate())
-    data["approved_by"] = frappe.session.user
-    data["approved_on"] = str(now_datetime())
+    from asoud_erp.services.salary_change_order_workflow import _finalize
+
+    _finalize(data, entry)
     data["revision"] = data.get("revision", 1) + 1
     frappe.db.set_value(
         "ASOUD Form Entry", entry.name, "values_json", json.dumps(data, ensure_ascii=False)
@@ -695,7 +758,7 @@ def reject_salary_change_order(name: str, revision: int, reason: str = "") -> di
     erp_documents.require_roles(HR_ROLES, entry.company)
     data = json.loads(entry.values_json or "{}")
 
-    if int(revision) != 0 and data.get("revision") != int(revision):
+    if not revision or int(revision) <= 0 or data.get("revision") != int(revision):
         frappe.throw(
             _("این حکم توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید.")
         )
@@ -829,7 +892,10 @@ def print_salary_change_order(name: str) -> dict:
         frappe.db.get_value("Company", entry.company, "company_name") or entry.company
     )
 
-    head = _letterhead(entry.company)
+    if data.get("status") == "final" and "letterhead_snapshot" in data:
+        head = data.get("letterhead_snapshot")
+    else:
+        head = _letterhead(entry.company)
     html = format_salary_change_order_print(data, letterhead_html=head)
     return success({
         "html": html,

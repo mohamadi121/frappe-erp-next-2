@@ -41,6 +41,9 @@ def on_instance_update(doc, method=None) -> None:
     from asoud_erp.services.hiring_order_workflow import on_instance_update as update_hiring_order
 
     update_hiring_order(doc)
+    from asoud_erp.services.salary_change_order_workflow import on_instance_update as update_salary_change_order
+
+    update_salary_change_order(doc)
     if doc.reference_doctype != REQUEST_DOCTYPE or not doc.reference_name:
         return
     request = frappe.db.get_value(
