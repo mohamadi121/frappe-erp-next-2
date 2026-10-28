@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Employment Contracts template builder and issuance API: versioned contract articles/clauses stored via ASOUD Form/Revision, insert-field drawer catalog from real data sources (personnel, company, contract, payroll gated by payroll permission), repeating salary items calculation with explicit missing state («اطلاعات موجود نیست»), contracts list with server-side Persian/Arabic/digit search, draft saving, finalization with Jalali-year series numbering (CNT-1405-#####), immutable revision snapshots, and A4 RTL print payload with draft banner («پیش‌نویس ـ فاقد اعتبار نهایی»). See `docs/api/employment_contracts.md`. No schema migration required; restart backend workers.
+- گواهی اشتغال مستقل: پیاده‌سازی کامل API قالب نسخه‌دار و صدور/فهرست/چاپ گواهی‌های اشتغال به کار با آزمون‌های یکپارچگی افزوده شد. استقرار نهایی به restart نیاز دارد.
 
 - First-office setup can complete without provisioning an HR account. Saved office, administrator/company access and active fiscal year remain required. No existing accounts or permissions change; deploy matching Flutter flow and restart backend workers. No schema migration required. Tests not run at user request.
 
