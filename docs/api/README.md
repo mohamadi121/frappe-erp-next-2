@@ -95,6 +95,8 @@ payload is rejected with `REQUEST_KEY_CONFLICT`.
 
 ## Tests
 
+- [Independent workflow template copies](workflow-templates.md)
+
 - `asoud_erp/tests/` — pure unit tests, run anywhere:
   `uvx --with pytest pytest -q asoud_erp/tests`.
 - `asoud_erp/integration_tests/` (API modules) and `asoud_erp/asoud_erp/doctype/*/test_*.py`
