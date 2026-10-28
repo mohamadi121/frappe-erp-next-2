@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Workflow template catalog and independent draft copies: native company/permission checks, source revision check, fresh graph identities, inactive unpublished copies and unchanged source history. Deploy/restart this backend before the matching Flutter release; no schema migration. Tests added/registered but not run at the owner's request. Task form embedding and temporary server reset are not part of this release; their earlier contracts are marked superseded/unreleased.
+
 - System request seeding adopts orphan stages/transitions when a deterministic SYS definition is missing, preserving row identities, edited forms/routes and extra tasks; only missing default rows are added. Conflicting ownership or duplicate Starts roll back the repair. CI runs the real-site seed regressions. Deployment: run `bench --site <site> migrate`; no new fields or DocTypes, and no stage deletion or reset.
 
 - FLOW-01: HR User/HR Manager grants are reserved for the system administrator, including composite/global/office role definitions and personnel registration. The permission editor remains System Manager-only. Real-site coverage checks refusal before personnel/account writes and all three administrator grant paths. Deployment: restart workers; no migration.

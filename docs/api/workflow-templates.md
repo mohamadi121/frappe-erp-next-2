@@ -19,7 +19,9 @@ Online write. Source modified token must match; stale selection fails explicitly
 Returns the serialized workflow definition used by `workflow.create_workflow_draft`.
 Copies design only: stage types/configurations, coordinates and remapped routes,
 with fresh definition/stage/key/transition identities. Exact graph references in
-JSON are rebound to copied graph IDs. Only same-company links are retained.
+JSON are rebound to copied graph IDs. Existing non-graph template configuration
+is retained; the copy cannot be activated until existing readiness and permission
+checks succeed. Template selection is scoped to the same company.
 The new definition is Inactive/Pending, version 1, has no native Frappe Workflow
 link, template key/flag, execution instances, tasks, history or execution results.
 Stages require review before activation; original records are never changed.
