@@ -38,6 +38,9 @@ def request_status_key(instance, request_status: str | None = None) -> str:
 
 def on_instance_update(doc, method=None) -> None:
     """`ASOUD Workflow Instance` `on_update` hook."""
+    from asoud_erp.services.hiring_order_workflow import on_instance_update as update_hiring_order
+
+    update_hiring_order(doc)
     if doc.reference_doctype != REQUEST_DOCTYPE or not doc.reference_name:
         return
     request = frappe.db.get_value(

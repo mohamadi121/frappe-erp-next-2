@@ -114,6 +114,9 @@ def save_hiring_order_template(company: str, revision: int = 0, template: Any = 
         template = json.loads(template)
     template = template or default_template()
     validated = validate_template(template)
+    from asoud_erp.services.hiring_order_workflow import validate_workflow
+
+    validate_workflow(validated.get("workflow"), company)
     allowed_refs = {"base", "variable"}
     allowed_refs.update(
         f"component.{name}" for name in frappe.get_all(
@@ -521,17 +524,9 @@ def send_hiring_order_for_review(name: str, revision: int, request_id: str) -> d
     entry = frappe.get_doc("ASOUD Form Entry", name)
     require_company(entry.company)
     _require_hr_issuer(entry.company)
-    data = json.loads(entry.values_json or "{}")
+    from asoud_erp.services.hiring_order_workflow import submit
 
-    if data.get("revision") != int(revision):
-        frappe.throw(_("این حکم توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید."))
-    if data.get("status") != "draft":
-        frappe.throw(_("وضعیت یا نسخهٔ حکم برای این اقدام معتبر نیست."))
-
-    data["status"] = "pending"
-    data["status_label"] = "در جریان"
-    data["revision"] = data.get("revision", 1) + 1
-    frappe.db.set_value("ASOUD Form Entry", entry.name, "values_json", json.dumps(data, ensure_ascii=False))
+    submit(entry.name, revision, request_id)
     return get_hiring_order(entry.name)
 
 

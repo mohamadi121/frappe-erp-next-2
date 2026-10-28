@@ -1,5 +1,6 @@
 """Integration tests for Hiring Orders API (template builder and issuance)."""
 
+import json
 from uuid import uuid4
 
 import frappe
@@ -7,6 +8,7 @@ from frappe.utils import nowdate
 
 from asoud_erp.api.v1 import hiring_orders as api
 from asoud_erp.integration_tests.fixtures import APITestCase, company
+from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.tenancy import (
     EMPLOYEE_A_USER,
     HR_MANAGER_USER,
@@ -123,13 +125,13 @@ class TestHiringOrders(APITestCase):
 
         # Send for review
         reviewed = api.send_hiring_order_for_review(name=order_name, revision=saved["data"]["revision"], request_id=f"rev-{req_id}")
-        self.assertEqual(reviewed["data"]["status"], "pending")
-        self.assertEqual(reviewed["data"]["status_label"], "در جریان")
+        self.assertEqual(reviewed["data"]["status"], "final")
+        self.assertEqual(reviewed["data"]["status_label"], "نهایی")
 
         # Print
         print_data = api.print_hiring_order(name=order_name)
-        self.assertTrue(print_data["data"]["draft_banner"])
-        self.assertIn("پیش‌نویس ـ فاقد اعتبار نهایی", print_data["data"]["html"])
+        self.assertFalse(print_data["data"]["draft_banner"])
+        self.assertNotIn("پیش‌نویس ـ فاقد اعتبار نهایی", print_data["data"]["html"])
         self.assertIn("حکم استخدام", print_data["data"]["html"])
 
     def test_hiring_order_employee_access_denied(self):
@@ -242,3 +244,80 @@ class TestHiringOrders(APITestCase):
         with self.assertRaises(frappe.PermissionError):
             api.save_hiring_order(request_id=uuid4().hex, order=saved["name"], revision=saved["revision"], **args)
         self.assertEqual(frappe.db.get_value("ASOUD Form Entry", saved["name"], "values_json"), before)
+
+    def _workflow_order(self, workflow=None):
+        frappe.set_user(HR_MANAGER_USER)
+        template = default_template()
+        if workflow:
+            template["workflow"] = workflow
+        saved = api.save_hiring_order_template(company=company(), template=template)["data"]
+        api.publish_hiring_order_template(company=company(), revision=saved["revision"])
+        employee = api.list_hiring_order_people(company=company())["data"][0]["name"]
+        return api.save_hiring_order(company=company(), request_id=uuid4().hex,
+                                     employee=employee, effective_date=nowdate())["data"]
+
+    def test_no_workflow_uses_hr_direct_issuance_policy_once(self):
+        order = self._workflow_order()
+        frappe.set_user(HR_USER)
+        key = uuid4().hex
+        final = api.send_hiring_order_for_review(order["name"], order["revision"], key)["data"]
+        self.assertEqual(final["status"], "final")
+        self.assertTrue(final["number"].startswith("HIRE-"))
+        self.assertEqual(final["issue_date"], nowdate())
+        self.assertEqual(final["template_snapshot"], order["template_snapshot"])
+        self.assertEqual(final["payroll_snapshot"], order["payroll_snapshot"])
+        self.assertFalse(api.print_hiring_order(order["name"])["data"]["draft_banner"])
+        retry = api.send_hiring_order_for_review(order["name"], order["revision"], key)["data"]
+        self.assertEqual((retry["number"], retry["revision"]), (final["number"], final["revision"]))
+        with self.assertRaises(frappe.ValidationError):
+            api.send_hiring_order_for_review(order["name"], final["revision"], uuid4().hex)
+
+    def test_real_workflow_approval_finalizes_but_rejection_does_not(self):
+        from asoud_erp.api.v1.workflow_runtime import complete_workflow_task
+
+        frappe.set_user("Administrator")
+        definition, stages = make_definition(company(), fields=[])
+        approval = next(stage for stage in stages.values() if stage.stage_type == "Approval")
+        config = json.loads(approval.config_json)
+        config.update(assignment_type="Role", approver_roles=["System Manager"])
+        frappe.db.set_value("ASOUD Workflow Stage", approval.name, "config_json", json.dumps(config))
+        for action, expected in (("Approve", "final"), ("Reject", "rejected")):
+            order = self._workflow_order(definition)
+            key = uuid4().hex
+            pending = api.send_hiring_order_for_review(order["name"], order["revision"], key)["data"]
+            self.assertEqual(pending["status"], "pending")
+            self.assertFalse(pending["number"])
+            instance = pending["workflow_instance"]
+            retry = api.send_hiring_order_for_review(order["name"], order["revision"], key)["data"]
+            self.assertEqual(retry["workflow_instance"], instance)
+            task = frappe.db.get_value("ASOUD Workflow Task", {
+                "workflow_instance": instance, "status": "Open", "assigned_to": ["!=", HR_MANAGER_USER],
+            }, ["name", "assigned_to"], as_dict=True)
+            self.assertTrue(task)
+            frappe.set_user(task.assigned_to)
+            complete_workflow_task(task.name, action, comment="بررسی انجام شد")
+            result = api.get_hiring_order(order["name"])["data"]
+            self.assertEqual(result["status"], expected)
+            self.assertEqual(bool(result["number"]), action == "Approve")
+            self.assertEqual(result["template_snapshot"], order["template_snapshot"])
+            self.assertEqual(result["payroll_snapshot"], order["payroll_snapshot"])
+
+    def test_workflow_without_approval_completes_through_real_engine(self):
+        frappe.set_user("Administrator")
+        definition, _ = make_definition(company(), approvals=0, fields=[])
+        order = self._workflow_order(definition)
+        result = api.send_hiring_order_for_review(order["name"], order["revision"], uuid4().hex)["data"]
+        self.assertEqual(result["status"], "final")
+        self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", result["workflow_instance"], "status"), "Completed")
+        self.assertTrue(result["number"])
+
+    def test_configured_unavailable_workflow_never_falls_back_to_direct_issue(self):
+        frappe.set_user("Administrator")
+        definition, _ = make_definition(company(), fields=[])
+        order = self._workflow_order(definition)
+        frappe.db.set_value("ASOUD Workflow Definition", definition, "status", "Draft")
+        with self.assertRaises(frappe.ValidationError):
+            api.send_hiring_order_for_review(order["name"], order["revision"], uuid4().hex)
+        result = api.get_hiring_order(order["name"])["data"]
+        self.assertEqual(result["status"], "draft")
+        self.assertFalse(result["number"])
