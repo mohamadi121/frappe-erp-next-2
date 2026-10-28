@@ -16,6 +16,29 @@ from asoud_erp.services.employment_contract import DEFAULT_CLAUSES, DEFAULT_SALA
 
 
 class TestEmploymentContracts(APITestCase):
+    def test_final_print_preserves_letterhead_snapshot(self):
+        from uuid import uuid4
+
+        frappe.set_user("Administrator")
+        comp = company()
+        previous = frappe.db.get_value("Company", comp, "default_letter_head")
+        head = frappe.get_doc({"doctype": "Letter Head", "letter_head_name": uuid4().hex,
+                               "source": "HTML", "content": "<p>ORIGINAL-LETTERHEAD</p>"}).insert()
+        try:
+            frappe.db.set_value("Company", comp, "default_letter_head", head.name)
+            employee = frappe.db.get_value("Employee", {"company": comp, "status": "Active"}, "name")
+            draft = api.save_contract_draft(comp, employee, nowdate(), client_id=uuid4().hex)["data"]
+            api.finalize_contract(draft["contract_id"])
+            before = api.get_contract_print(draft["contract_id"])["data"]
+            frappe.db.set_value("Letter Head", head.name, "content", "<p>CHANGED-LETTERHEAD</p>")
+            after = api.get_contract_print(draft["contract_id"])["data"]
+            self.assertEqual(before, after)
+            self.assertIn("ORIGINAL-LETTERHEAD", after["html"])
+            self.assertNotIn("CHANGED-LETTERHEAD", after["html"])
+        finally:
+            frappe.db.set_value("Company", comp, "default_letter_head", previous)
+            frappe.delete_doc("Letter Head", head.name, ignore_permissions=True)
+
     def test_client_salary_tampering_is_ignored(self):
         import json
         from uuid import uuid4

@@ -679,6 +679,8 @@ def finalize_contract(contract_id: str, client_id: str | None = None) -> dict:
     snapshot["finalized_on"] = str(now_datetime())
 
     letterhead_html = _letterhead(emp_company)
+    snapshot.update(letterhead_html=letterhead_html, issue_date=_format_jalali(today),
+                    employee_name=contract.party_full_name)
     final_print = generate_contract_print_data(
         is_draft=False,
         contract_number=official_number,
@@ -758,12 +760,12 @@ def get_contract(contract_id: str) -> dict:
     print_payload = generate_contract_print_data(
         is_draft=is_draft,
         contract_number=contract_number,
-        issue_date=_format_jalali(contract.creation),
-        employee_name=contract.party_full_name,
+        issue_date=snapshot.get("issue_date", _format_jalali(contract.creation)),
+        employee_name=snapshot.get("employee_name", contract.party_full_name),
         rendered_clauses=snapshot.get("rendered_clauses", []),
         salary_table=snapshot.get("salary_table", []),
         total_monthly_formatted=snapshot.get("formatted_total_monthly", ""),
-        letterhead_html=_letterhead(emp_company),
+        letterhead_html=_letterhead(emp_company) if is_draft else snapshot.get("letterhead_html"),
         company_name=emp_company,
     )
 

@@ -22,6 +22,7 @@ def mask_contract_salary(snapshot: dict) -> dict:
     return dict(snapshot, salary_values={}, salary_table=[], total_monthly=0,
                 formatted_total_monthly="")
 
+
 DEFAULT_CLAUSES = [
     {
         "id": "clause_1",

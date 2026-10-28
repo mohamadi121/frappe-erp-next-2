@@ -434,7 +434,9 @@ def _certificate_response(data: dict, company: str) -> dict:
             data["rendered_html"] = rendered["html"]
         else:
             data["rendered_html"] = ""
-    data["print_html"] = _build_print_html(data, _letterhead(company), data.get("status") == "Final")
+    is_final = data.get("status") == "Final"
+    head = data.get("letterhead_html") if is_final else _letterhead(company)
+    data["print_html"] = _build_print_html(data, head, is_final)
     return success(data)
 
 
@@ -710,6 +712,7 @@ def finalize_certificate(name: str, revision: int = 0, request_key: str = "") ->
     data["rendered_html"] = rendered["html"]
 
     letterhead_html = _letterhead(entry_row.company)
+    data["letterhead_html"] = letterhead_html
     data["print_html"] = _build_print_html(data, letterhead_html, True)
 
     frappe.db.set_value(
