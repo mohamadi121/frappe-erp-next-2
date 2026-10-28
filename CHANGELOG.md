@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- First-office input validation imports without a Frappe installation; runtime hooks load Frappe only when called. Deployment: restart workers; no migration.
+
 - Employment Contracts template builder and issuance API: versioned contract articles/clauses stored via ASOUD Form/Revision, insert-field drawer catalog from real data sources (personnel, company, contract, payroll gated by payroll permission), repeating salary items calculation with explicit missing state («اطلاعات موجود نیست»), contracts list with server-side Persian/Arabic/digit search, draft saving, finalization with Jalali-year series numbering (CNT-1405-#####), immutable revision snapshots, and A4 RTL print payload with draft banner («پیش‌نویس ـ فاقد اعتبار نهایی»). See `docs/api/employment_contracts.md`. No schema migration required; restart backend workers.
 - گواهی اشتغال مستقل: پیاده‌سازی کامل API قالب نسخه‌دار و صدور/فهرست/چاپ گواهی‌های اشتغال به کار با آزمون‌های یکپارچگی افزوده شد. استقرار نهایی به restart نیاز دارد.
 - اقلام حقوق حکم استخدام، شامل مزایا و کسورات فرمولی، از پیش‌نمایش بومی HRMS در تاریخ اجرا محاسبه می‌شوند؛ فیشی ذخیره نمی‌شود و منبع ناموجود همچنان «اطلاعات موجود نیست» است. بدون migration.

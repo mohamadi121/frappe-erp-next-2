@@ -4,8 +4,6 @@ import re
 from email.utils import parseaddr
 from uuid import uuid4
 
-import frappe
-
 from asoud_erp.services.credential_policy import clean_name, normalize_email, normalize_mobile
 
 INTERNAL_SUFFIX = "@users.asoud.invalid"
@@ -34,11 +32,15 @@ def validate_lead_inputs(full_name, username, contact, temporary_password):
 
 def block_internal_mail(doc, method=None):
     """An internal User key is never a deliverable/verified contact address."""
+    import frappe
+
     if any(internal_email(row.recipient) for row in doc.get("recipients") or []):
         frappe.throw("این حساب ایمیل تماس ندارد؛ اطلاعات ورود را امن و مستقیم تحویل دهید.")
 
 
 def _setup(company, *, lock=False):
+    import frappe
+
     from asoud_erp.services.request_access import require_company
     from asoud_erp.services.system_admin import is_system_admin
 
@@ -58,6 +60,8 @@ def _setup(company, *, lock=False):
 
 
 def _require_fiscal(company):
+    import frappe
+
     years = frappe.get_all("Fiscal Year Company", filters={"company": company},
                            pluck="parent", limit_page_length=0)
     if not years or not frappe.db.exists("Fiscal Year", {"name": ["in", years], "disabled": 0}):
@@ -65,6 +69,8 @@ def _require_fiscal(company):
 
 
 def _summary(doc):
+    import frappe
+
     lead = None
     ready = False
     if doc.first_hr_user:
@@ -87,6 +93,7 @@ def status(company):
 
 
 def create_hr_lead(company, full_name, username, contact, temporary_password):
+    import frappe
     from frappe.permissions import add_user_permission
     from frappe.utils.password import update_password
 
@@ -134,6 +141,8 @@ def create_hr_lead(company, full_name, username, contact, temporary_password):
 
 
 def complete(company):
+    import frappe
+
     from asoud_erp.services import security_audit
 
     doc = _setup(company, lock=True)
