@@ -444,7 +444,10 @@ def _certificate_response(data: dict, company: str) -> dict:
         else:
             data["rendered_html"] = ""
     is_final = data.get("status") == "Final"
-    head = data.get("letterhead_html") if is_final else _letterhead(company)
+    from asoud_erp.services.hr_document_print import final_letterhead
+
+    head, missing = final_letterhead(data, "letterhead_html") if is_final else (_letterhead(company), False)
+    data["letterhead_missing"] = missing
     data["print_html"] = _build_print_html(data, head, is_final)
     return success(data)
 

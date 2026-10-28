@@ -29,6 +29,8 @@ Read methods also accept `GET` with query parameters. List and object parameters
 
 ## Response envelope
 
+Final HR document prints share the [historical letterhead fallback](hr-document-print.md), including the additive `letterhead_missing` flag.
+
 Frappe wraps the return value in `message`:
 
 ```json

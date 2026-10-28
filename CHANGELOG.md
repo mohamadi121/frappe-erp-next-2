@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- All five HR final prints flag missing historical letterhead metadata and render legacy finals without a header; they never load the current header. Hiring finalization now freezes letterhead metadata. Deployment: restart workers; no migration or legacy rewrite.
+
 - Hiring payroll preserves native HRMS effective-date formula previews and adds explicit missing-assignment/component reason codes to immutable payroll rows. Deployment: restart workers; no migration.
 
 - Administrator login hints now require the essential profile before office creation and setup; disabled accounts and temporary passwords retain priority. Existing integration assertions now complete the fiscal/bootstrap prerequisites before expecting home. Deployment: restart workers; no migration.

@@ -477,9 +477,12 @@ def get_letter(name: str) -> dict:
         frappe.throw(_("داده‌های معرفی‌نامه نامعتبر است."))
 
     if data.get("status") == "Final":
-        letterhead_html = data.get("letterhead_snapshot") if "letterhead_snapshot" in data else _letterhead(entry.company)
+        from asoud_erp.services.hr_document_print import final_letterhead
+
+        letterhead_html, data["letterhead_missing"] = final_letterhead(data, "letterhead_snapshot")
         data["print_html"] = _build_print_html(data, letterhead_html, True)
     else:
+        data["letterhead_missing"] = False
         letterhead_html = _letterhead(entry.company)
         data["print_html"] = _build_print_html(data, letterhead_html, False)
     return success(data)
