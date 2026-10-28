@@ -22,6 +22,8 @@ use existing `forms.open_builtin` to materialize their existing trusted identity
 no request/document transaction is created. Request/Document tabs and module/search
 filters affect selection only. Unsupported/unpublished or forbidden forms fail
 explicitly, preserving previous selection. No schema migration is required.
+`forms.get_form` adds `stage_binding_version: 1`; the picker requires it, so an
+older backend cannot silently discard an unsupported binding on stage save.
 
 Deploy the matching backend before Flutter. Existing workflow stages remain on
 their legacy path unless a binding is explicitly chosen. Tests are not executed
