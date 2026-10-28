@@ -268,18 +268,22 @@ Creates or updates a contract draft.
   - Saves rendered snapshot in `values_json`.
 
 ### 4.5 `finalize_contract`
-Finalizes or submits an employment contract.
+Finalizes or submits an employment contract through direct issuance or a configured approval workflow.
 
 - **Method**: `POST`
 - **Path**: `asoud_erp.api.v1.employment_contracts.finalize_contract`
 - **Arguments**:
   - `contract_id` (str, required)
-  - `client_id` (str, optional)
+  - `client_id` (str, optional): Idempotent request replay key.
+  - `revision` (int, optional): Current revision for optimistic concurrency lock.
+  - `request_id` (str, optional): Idempotent request replay key.
 - **Behavior**:
-  - Generates official document number using Jalali series (`CNT-1405-#####`).
-  - Takes final immutable snapshot of rendered articles and payroll values.
-  - If a workflow definition is attached to `Contract`, triggers workflow instance (status `در جریان`).
-  - If no workflow is attached, submits contract (`docstatus = 1`, status `نهایی`) and synchronizes `Employee.contract_end_date`.
+  - Requires row lock (`for_update`) and revision match.
+  - Replays existing result if matching request key is re-submitted; double finalize with a different key is rejected with Persian error.
+  - If a workflow definition is configured for `Contract`, starts a real workflow instance with status `در جریان`; no official number is issued.
+  - Official document number (`CNT-1405-#####`) is assigned only at the real final event (workflow completion or direct issuance policy).
+  - A rejected workflow transitions contract to `ردشده` and issues no official number.
+  - If no workflow is configured, follows direct issuance policy: submits contract (`docstatus = 1`, status `نهایی`), assigns official number, and synchronizes `Employee.contract_end_date`.
 
 ### 4.6 `get_contract_print`
 Returns A4 RTL print payload including company letterhead and draft banner.
