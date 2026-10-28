@@ -112,11 +112,15 @@ def validate_contract_template(clauses: list[dict], salary_rows: list[dict], tit
     normalized_clauses = []
     seen_clause_ids = set()
     for index, raw in enumerate(clauses):
+        if not isinstance(raw, dict):
+            raise ValueError("ساختار مواد قرارداد معتبر نیست.")
         c_id = str(raw.get("id") or f"clause_{index + 1}").strip()
         c_title = str(raw.get("title") or "").strip()
         c_body = str(raw.get("body") or "").strip()
         if not c_title or not c_body:
             raise ValueError("عنوان و متن تمام مواد قرارداد باید تکمیل شده باشد.")
+        if len(c_body) > 10000 or len(c_title) > 500:
+            raise ValueError("طول متن مادهٔ قرارداد فراتر از حد مجاز است.")
         order = int(raw.get("order") or (index + 1))
         seen_clause_ids.add(c_id)
         normalized_clauses.append({
@@ -135,6 +139,8 @@ def validate_contract_template(clauses: list[dict], salary_rows: list[dict], tit
     seen_row_ids = set()
     if isinstance(salary_rows, list):
         for index, raw in enumerate(salary_rows):
+            if not isinstance(raw, dict):
+                raise ValueError("ساختار ردیف حقوق و مزایا معتبر نیست.")
             r_id = str(raw.get("id") or f"row_{index + 1}").strip()
             r_name = str(raw.get("name") or "").strip()
             period = str(raw.get("period") or "monthly").strip().lower()

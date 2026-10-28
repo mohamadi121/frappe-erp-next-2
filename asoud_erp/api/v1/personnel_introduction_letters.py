@@ -562,6 +562,9 @@ def save_draft(
     if req_purpose and not purp_clean:
         frappe.throw(_("هدف معرفی‌نامه الزامی است."))
 
+    if len(str(notes or "")) > 10000 or len(str(purpose or "")) > 10000 or len(str(recipient_name or "")) > 1000:
+        frappe.throw(_("طول متن ورودی فراتر از حد مجاز است."))
+
     if rec_type == "bank":
         clean_branch = re.sub(r"^شعبه\s*", "", branch_clean)
         recipient_display = f"{bank_clean} ـ شعبه {clean_branch}" if clean_branch else bank_clean

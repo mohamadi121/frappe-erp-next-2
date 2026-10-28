@@ -206,9 +206,15 @@ def save_contract_template(company: str, clauses: Any, salary_rows: Any, title: 
     require_roles(TEMPLATE_DESIGNERS, company=company)
 
     if isinstance(clauses, str):
-        clauses = json.loads(clauses)
+        try:
+            clauses = json.loads(clauses)
+        except Exception:
+            frappe.throw(_("فرمت اطلاعات مواد قرارداد نامعتبر است."))
     if isinstance(salary_rows, str):
-        salary_rows = json.loads(salary_rows)
+        try:
+            salary_rows = json.loads(salary_rows)
+        except Exception:
+            frappe.throw(_("فرمت اطلاعات اقلام حقوقی نامعتبر است."))
 
     try:
         normalized = validate_contract_template(clauses, salary_rows, title)
@@ -509,6 +515,11 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
                         client_id: str | None = None, revision: int = 0) -> dict:
     require_company(company)
     require_roles(HR_OPERATIONAL_ROLES, company=company)
+
+    if len(str(notes or "")) > 10000:
+        frappe.throw(_("طول یادداشت قرارداد بیش از حد مجاز است."))
+    if len(str(work_location or "")) > 500:
+        frappe.throw(_("طول محل کار بیش از حد مجاز است."))
 
     if not frappe.db.exists("Employee", employee):
         frappe.throw(_("پرسنل مورد نظر در سیستم یافت نشد."))

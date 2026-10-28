@@ -111,9 +111,15 @@ def save_hiring_order_template(company: str, revision: int = 0, template: Any = 
     _require_template_designer(company)
     require_company(company)
     if isinstance(template, str):
-        template = json.loads(template)
+        try:
+            template = json.loads(template)
+        except Exception:
+            frappe.throw(_("فرمت اطلاعات قالب حکم استخدام نامعتبر است."))
     template = template or default_template()
-    validated = validate_template(template)
+    try:
+        validated = validate_template(template)
+    except ValueError as err:
+        frappe.throw(str(err))
     from asoud_erp.services.hiring_order_workflow import validate_workflow
 
     validate_workflow(validated.get("workflow"), company)
@@ -449,8 +455,16 @@ def save_hiring_order(
         template_snapshot = previous["template_snapshot"]
 
     if isinstance(values, str):
-        values = json.loads(values)
+        try:
+            values = json.loads(values)
+        except Exception:
+            frappe.throw(_("فرمت اطلاعات مقادیر حکم استخدام نامعتبر است."))
     values = values or {}
+    if isinstance(payroll_rows, str):
+        try:
+            payroll_rows = json.loads(payroll_rows)
+        except Exception:
+            frappe.throw(_("فرمت اطلاعات اقلام حقوق حکم استخدام نامعتبر است."))
 
     payroll_snapshot = _resolve_payroll(
         company, employee, effective_date, template_snapshot["payroll_rows"]

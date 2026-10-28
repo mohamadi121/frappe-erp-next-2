@@ -104,9 +104,15 @@ def save_salary_change_order_template(
     erp_documents.require_roles(HR_ROLES, company)
     require_company(company)
     if isinstance(template, str):
-        template = json.loads(template)
+        try:
+            template = json.loads(template)
+        except Exception:
+            frappe.throw(_("فرمت اطلاعات قالب حکم افزایش حقوق نامعتبر است."))
     template = template or default_template()
-    validated = validate_template(template)
+    try:
+        validated = validate_template(template)
+    except ValueError as err:
+        frappe.throw(str(err))
     from asoud_erp.services.salary_change_order_workflow import validate_workflow
 
     validate_workflow(validated.get("workflow"), company)
@@ -511,8 +517,18 @@ def save_salary_change_order(
         template_snapshot["revision"] = 1
 
     if isinstance(values, str):
-        values = json.loads(values)
+        try:
+            values = json.loads(values)
+        except Exception:
+            frappe.throw(_("فرمت اطلاعات مقادیر حکم نامعتبر است."))
     values = values or {}
+    if isinstance(comparison_rows, str):
+        try:
+            comparison_rows = json.loads(comparison_rows)
+        except Exception:
+            frappe.throw(_("فرمت اطلاعات ردیف‌های مقایسه نامعتبر است."))
+    if len(str(description or "")) > 10000:
+        frappe.throw(_("طول شرح حکم بیش از حد مجاز است."))
 
     effective = getdate(effective_date) if effective_date else getdate(nowdate())
     assignment = frappe.get_all(

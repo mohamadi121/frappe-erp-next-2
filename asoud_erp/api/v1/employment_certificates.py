@@ -483,6 +483,9 @@ def save_draft(
     if not (addressee_name or "").strip():
         frappe.throw(_("نام مخاطب گواهی الزامی است."))
 
+    if len(str(notes or "")) > 10000 or len(str(purpose or "")) > 10000 or len(str(addressee_name or "")) > 1000:
+        frappe.throw(_("طول متن ورودی فراتر از حد مجاز است."))
+
     national_id = frappe.db.get_value("ASOUD Party Profile", {"employee": employee}, "national_id") or ""
 
     # Idempotency check on request_key:

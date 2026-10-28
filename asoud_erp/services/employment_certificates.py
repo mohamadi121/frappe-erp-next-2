@@ -111,6 +111,8 @@ def validate_template(template: dict) -> dict:
         body = clause.get("body")
         if not isinstance(clause.get("title"), str) or not clause["title"].strip() or not isinstance(body, str):
             raise ValueError("عنوان و متن بند را کامل کنید.")
+        if len(body) > 10000 or len(clause["title"].strip()) > 500:
+            raise ValueError("طول متن بند گواهی فراتر از حد مجاز است.")
         for raw in re.findall(r"{{(.*?)}}", body):
             if not _TOKEN.fullmatch("{{" + raw + "}}"):
                 raise ValueError("شناسه فیلد در متن بند معتبر نیست.")
