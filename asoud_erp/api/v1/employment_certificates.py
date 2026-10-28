@@ -563,15 +563,20 @@ def save_draft(
             fields=["name", "values_json"],
             limit_page_length=1,
         )
-        if existing:
-            entry_doc = frappe.get_doc("ASOUD Form Entry", existing[0].name)
-            try:
-                prev_data = json.loads(entry_doc.values_json)
-                if revision and int(revision) != prev_data.get("revision", 1):
-                    frappe.throw(_("نسخه پیش‌نویس گواهی تغییر کرده است؛ صفحه را تازه‌سازی کنید."))
-                current_rev = prev_data.get("revision", 1) + 1
-            except Exception:
-                pass
+        if not existing:
+            frappe.throw(_("گواهی مورد نظر یافت نشد."))
+        entry_doc = frappe.get_doc("ASOUD Form Entry", existing[0].name, for_update=True)
+        if entry_doc.company != company:
+            frappe.throw(_("این گواهی متعلق به شرکت انتخاب‌شده نیست."), frappe.PermissionError)
+        try:
+            prev_data = json.loads(entry_doc.values_json)
+        except (ValueError, TypeError):
+            frappe.throw(_("اطلاعات گواهی ذخیره‌شده مخدوش است."))
+        if prev_data.get("status") != "Draft":
+            frappe.throw(_("فقط پیش‌نویس گواهی قابل ویرایش است."))
+        if not revision or int(revision) != prev_data.get("revision", 1):
+            frappe.throw(_("نسخه پیش‌نویس گواهی تغییر کرده است؛ صفحه را تازه‌سازی کنید."))
+        current_rev = prev_data.get("revision", 1) + 1
 
     cert_data = {
         "name": cert_id,

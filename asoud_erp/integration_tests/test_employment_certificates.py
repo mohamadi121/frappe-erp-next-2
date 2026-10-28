@@ -142,3 +142,21 @@ class TestEmploymentCertificates(APITestCase):
                 request_key="test-inactive-key",
             )
 
+    def test_updates_reject_stale_revisions_and_final_documents(self):
+        from uuid import uuid4
+
+        comp = company()
+        frappe.set_user(HR_MANAGER_USER)
+        employee = frappe.db.get_value("Employee", {"user_id": EMPLOYEE_A_USER}, "name")
+        original = api.save_draft(company=comp, employee=employee, addressee_name="بانک",
+                                  request_key=uuid4().hex)["data"]
+        for revision in (0, original["revision"] + 10):
+            with self.assertRaises(frappe.ValidationError):
+                api.save_draft(company=comp, employee=employee, addressee_name="تغییر غیرمجاز",
+                               name=original["name"], revision=revision, request_key=uuid4().hex)
+            self.assertEqual(api.get_certificate(original["name"])["data"]["revision"], original["revision"])
+        final = api.finalize_certificate(original["name"], revision=original["revision"], request_key=uuid4().hex)["data"]
+        with self.assertRaises(frappe.ValidationError):
+            api.save_draft(company=comp, employee=employee, addressee_name="تغییر غیرمجاز",
+                           name=original["name"], revision=final["revision"], request_key=uuid4().hex)
+        self.assertEqual(api.get_certificate(original["name"])["data"]["number"], final["number"])

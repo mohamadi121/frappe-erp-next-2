@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Certificate updates lock their entry, reject absent/stale revisions and refuse changes to finalized documents or another company’s entry. Deployment: restart workers; no migration.
+
 - Certificate and introduction-letter print rendering escapes literal clause text and certificate metadata. Deployment: restart workers; existing frozen HTML requires a separate explicit migration.
 
 - First-office input validation imports without a Frappe installation; runtime hooks load Frappe only when called. Deployment: restart workers; no migration.
