@@ -32,6 +32,8 @@ class TestHRDocumentsLifecycle(APITestCase):
     def _actors(self):
         actors = {}
         token = uuid4().hex[:10]
+        if not frappe.db.exists("Role", "Payroll Manager"):
+            frappe.get_doc({"doctype": "Role", "role_name": "Payroll Manager", "desk_access": 1}).insert()
         for label, roles in (
             ("operational", ["HR User"]), ("designer", ["HR Manager"]),
             ("payroll", ["Payroll Manager"]), ("employee", ["Employee"]),

@@ -33,7 +33,7 @@ class TestHRDocumentPrivacy(FrappeTestCase):
                 result = endpoint(entry.name)["data"]
                 self.assertTrue(result["letterhead_missing"])
                 self.assertNotIn("CURRENT-HEADER-MUST-NOT-LEAK", result[html_key])
-                self.assertIn("LEGACY-123", result[html_key])
+                self.assertIn("LEGACY-123", result[html_key].translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")))
                 self.assertEqual(frappe.db.get_value("ASOUD Form Entry", entry.name, "values_json"), original)
         employee = frappe.db.get_value("Employee", {"company": company(), "status": "Active"}, "name")
         draft = employment_contracts.save_contract_draft(company(), employee, nowdate(), client_id=uuid4().hex)["data"]
