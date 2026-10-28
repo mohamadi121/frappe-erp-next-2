@@ -22,6 +22,7 @@ def validate_workflow(name, company):
         {
             "name": name,
             "company": company,
+            "target_doctype": REQUEST_KIND,
             "status": "Active",
             "readiness_status": "Ready",
         },
@@ -37,12 +38,15 @@ def _store(entry, data, fingerprint=None):
 
 
 def _build_response(contract, data):
+    is_final = contract.docstatus == 1 or data.get("status") == "final"
+    is_pending = data.get("status") in {"pending", "in_progress"}
+    num = "—" if is_pending else (data.get("contract_number") or ("—" if contract.docstatus == 0 else contract.name))
     return {
         "contract_id": contract.name,
-        "contract_number": data.get("contract_number") or ("—" if contract.docstatus == 0 else contract.name),
-        "status": "نهایی" if contract.docstatus == 1 else data.get("status_label", "در جریان"),
+        "contract_number": num,
+        "status": "نهایی" if is_final else data.get("status_label", "در جریان"),
         "docstatus": contract.docstatus,
-        "is_draft": False if contract.docstatus == 1 else bool(data.get("is_draft", True)),
+        "is_draft": False if is_final else bool(data.get("is_draft", True)),
         "revision": data.get("revision", 1),
         "workflow_instance": data.get("workflow_instance"),
     }
@@ -123,14 +127,13 @@ def submit(contract_id: str, revision: int | None = None, request_id: str | None
 
     # Check for active workflow
     workflow = data.get("template_snapshot", {}).get("workflow") or data.get("workflow")
-    if not workflow:
-        workflow = frappe.db.get_value(
-            "ASOUD Workflow Definition",
-            {"target_doctype": "Contract", "company": emp_company, "status": "Active"},
-            "name",
-        )
-    if workflow:
-        validate_workflow(workflow, emp_company)
+    validate_workflow(workflow, emp_company)
+    # Legacy document-target definitions cannot be run by the request engine.
+    if not workflow and frappe.db.exists(
+        "ASOUD Workflow Definition",
+        {"target_doctype": CONTRACT_KIND, "company": emp_company, "status": "Active"},
+    ):
+        frappe.throw(_("گردش‌کار قرارداد باید از نوع درخواست باشد و به نسخهٔ قالب متصل شود."))
 
     frappe.db.savepoint("contract_finalize")
     try:

@@ -201,7 +201,8 @@ def get_contract_template(company: str, template_id: str | None = None) -> dict:
 
 @frappe.whitelist()
 def save_contract_template(company: str, clauses: Any, salary_rows: Any, title: str = "قالب قرارداد کار",
-                           expected_version: int = 0, client_id: str | None = None) -> dict:
+                           expected_version: int = 0, client_id: str | None = None,
+                           workflow: str | None = None) -> dict:
     require_company(company)
     require_roles(TEMPLATE_DESIGNERS, company=company)
 
@@ -216,8 +217,12 @@ def save_contract_template(company: str, clauses: Any, salary_rows: Any, title: 
         except Exception:
             frappe.throw(_("فرمت اطلاعات اقلام حقوقی نامعتبر است."))
 
+    if workflow:
+        from asoud_erp.services.employment_contract_workflow import validate_workflow
+        validate_workflow(workflow, company)
+
     try:
-        normalized = validate_contract_template(clauses, salary_rows, title)
+        normalized = validate_contract_template(clauses, salary_rows, title, workflow=workflow)
     except ValueError as err:
         frappe.throw(str(err))
 
@@ -512,7 +517,8 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
                         contract_type: str = "مدت‌معین", work_location: str | None = None,
                         subject: str | None = None, notes: str | None = None,
                         salary_values: Any = None, contract_id: str | None = None,
-                        client_id: str | None = None, revision: int = 0) -> dict:
+                        client_id: str | None = None, revision: int = 0,
+                        workflow: str | None = None) -> dict:
     require_company(company)
     require_roles(HR_OPERATIONAL_ROLES, company=company)
 
@@ -604,6 +610,11 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
     contract.flags.ignore_permissions = True
     contract.save()
 
+    contract_wf = workflow or template_data.get("workflow", "")
+    if contract_wf:
+        from asoud_erp.services.employment_contract_workflow import validate_workflow
+        validate_workflow(contract_wf, company)
+
     snapshot = {
         "contract_id": contract.name,
         "contract_number": "پیش‌نویس",
@@ -611,6 +622,8 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
         "work_location": work_location or company,
         "notes": notes or "",
         "template_version": template_data.get("version", 1),
+        "template_snapshot": {"workflow": contract_wf},
+        "workflow": contract_wf,
         "rendered_clauses": rendered_clauses,
         "salary_table": salary_calc["items"],
         "total_monthly": salary_calc["total_monthly"],
@@ -739,7 +752,7 @@ def get_contract(contract_id: str) -> dict:
         "end_date": str(contract.end_date or ""),
         "jalali_start_date": _format_jalali(contract.start_date),
         "jalali_end_date": _format_jalali(contract.end_date),
-        "status": "نهایی" if contract.docstatus == 1 else ("در جریان" if contract.status == "In Progress" else "پیش‌نویس"),
+        "status": "نهایی" if contract.docstatus == 1 else (snapshot.get("status_label") or ("در جریان" if contract.status == "In Progress" else ("ردشده" if contract.status == "Rejected" else "پیش‌نویس"))),
         "docstatus": contract.docstatus,
         "is_signed": cint(contract.is_signed),
         "revision": snapshot.get("revision", 1),

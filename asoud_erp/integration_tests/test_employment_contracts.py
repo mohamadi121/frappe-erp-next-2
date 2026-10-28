@@ -335,7 +335,10 @@ class TestEmploymentContracts(APITestCase):
         config = json.loads(approval.config_json)
         config.update(assignment_type="Role", approver_roles=["System Manager"])
         frappe.db.set_value("ASOUD Workflow Stage", approval.name, "config_json", json.dumps(config))
-        frappe.db.set_value("ASOUD Workflow Definition", definition, "target_doctype", "Contract")
+
+        frappe.set_user(HR_MANAGER_USER)
+        api.save_contract_template(comp, DEFAULT_CLAUSES, DEFAULT_SALARY_ROWS, workflow=definition)
+        api.publish_contract_template(comp)
 
         emp_name = frappe.db.get_value("Employee", {"company": comp, "status": "Active"}, "name")
 
@@ -380,3 +383,8 @@ class TestEmploymentContracts(APITestCase):
             else:
                 self.assertEqual(res["contract_number"], "پیش‌نویس")
                 self.assertEqual(res["docstatus"], 0)
+
+        # Reset template back to no workflow for subsequent tests
+        frappe.set_user(HR_MANAGER_USER)
+        api.save_contract_template(comp, DEFAULT_CLAUSES, DEFAULT_SALARY_ROWS, workflow="")
+        api.publish_contract_template(comp)

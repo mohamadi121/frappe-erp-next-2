@@ -93,7 +93,8 @@ def normalize_search_term(term: Any) -> str:
     return text.lower()
 
 
-def validate_contract_template(clauses: list[dict], salary_rows: list[dict], title: str = "قالب قرارداد کار") -> dict[str, Any]:
+def validate_contract_template(clauses: list[dict], salary_rows: list[dict], title: str = "قالب قرارداد کار",
+                               workflow: str | None = None) -> dict[str, Any]:
     """Validates and normalizes clauses and salary rows.
 
     - Title is required.
@@ -157,7 +158,7 @@ def validate_contract_template(clauses: list[dict], salary_rows: list[dict], tit
                 "fieldRef": field_ref,
             })
 
-    return {
+    res = {
         "title": clean_title,
         "clauses": normalized_clauses,
         "salary_rows": normalized_rows,
@@ -165,6 +166,9 @@ def validate_contract_template(clauses: list[dict], salary_rows: list[dict], tit
             {"id": "total_monthly", "name": "مجموع ناخالص ماهانه", "period": "monthly"}
         ],
     }
+    if workflow is not None:
+        res["workflow"] = str(workflow or "")
+    return res
 
 
 def render_contract_articles(clauses: list[dict], context: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
