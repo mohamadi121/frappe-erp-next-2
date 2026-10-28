@@ -19,9 +19,12 @@
 | روش | نوع | ورودی | خروجی |
 | --- | --- | --- | --- |
 | `list_hiring_order_people` | GET | `company`, `search?`, `limit_start?`, `limit_page_length?` | `[{name, display_name, employee_number, department, designation}]` با صفحه‌بندی |
+| `get_hiring_order_payroll_catalog` | GET | `company` | `{items: [{field_id, label, type, group}]}` کاتالوگ اقلام حقوق و دستمزد |
 | `get_hiring_order_payroll` | GET | `company`, `employee`, `effective_date` | `{currency, rows}`؛ مقدار ناموجود `amount: null, state: "missing", message: "اطلاعات موجود نیست"` |
 
 `effective_date` از `issue_date` و `drafted_on` مستقل است. مبالغ در زمان ذخیره snapshot می‌شوند؛ صفر جانشین مقدار ناموجود نیست.
+
+کاتالوگ فقط برای نقش‌های حقوق قابل دریافت است. `field_id` منبع یکی از `base`، `variable` یا `component.<Salary Component.name>` فعال است؛ ذخیرهٔ قالب منبع ناشناخته را رد می‌کند. شناسهٔ `id` ردیف قالب مستقل از منبع و عنوان می‌ماند. صدور فقط ردیف‌های نسخهٔ منتشرشده را از آخرین قرارداد تأییدشده با `from_date <= effective_date` حل می‌کند؛ `payroll_rows` ارسالی مشتری مبنای مبلغ نیست. اقلام فرمولی که مقدار محاسبه‌شده ندارند ناموجود می‌مانند. تاریخ‌های میلادی ISO در چاپ با تبدیل واقعی شمسی نمایش داده می‌شوند؛ تاریخ شمسی قبلی حفظ می‌شود.
 
 ## احکام
 

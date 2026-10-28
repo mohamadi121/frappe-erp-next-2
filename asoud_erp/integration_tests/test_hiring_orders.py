@@ -10,10 +10,10 @@ from asoud_erp.integration_tests.fixtures import APITestCase, company
 from asoud_erp.integration_tests.tenancy import (
     EMPLOYEE_A_USER,
     HR_MANAGER_USER,
+    PERSONNEL_USER,
     setup_tenancy,
 )
 from asoud_erp.services.hiring_orders import default_template
-
 
 HR_USER = "asoud.test-hr-user@example.com"
 
@@ -158,3 +158,65 @@ class TestHiringOrders(APITestCase):
         frappe.set_user(HR_MANAGER_USER)
         pub = api.publish_hiring_order_template(company=comp, revision=0)
         self.assertIsNotNone(pub["data"]["template"])
+
+    def test_hiring_order_payroll_resolution_with_components(self):
+        comp = company()
+        frappe.set_user(PERSONNEL_USER)
+
+        # 1. Test catalog endpoint
+        catalog = api.get_hiring_order_payroll_catalog(company=comp)
+        self.assertIn("items", catalog["data"])
+        field_ids = [item["field_id"] for item in catalog["data"]["items"]]
+        self.assertIn("base", field_ids)
+        self.assertIn("variable", field_ids)
+
+        # Non-payroll user gets PermissionError
+        frappe.set_user(EMPLOYEE_A_USER)
+        with self.assertRaises(frappe.PermissionError) as cm:
+            api.get_hiring_order_payroll_catalog(company=comp)
+        self.assertIn("شما اجازهٔ مشاهدهٔ اطلاعات حقوق را ندارید.", str(cm.exception))
+
+        # 2. Setup template with component binding
+        frappe.set_user(PERSONNEL_USER)
+        components = [item for item in catalog["data"]["items"] if item["field_id"].startswith("component.")]
+        self.assertTrue(components)
+        component_ref = components[0]["field_id"]
+        tpl = {
+            "articles": default_template()["articles"],
+            "payroll_rows": [
+                {"id": "base_salary", "title": "حقوق پایه", "period": "monthly", "field_ref": "base"},
+                {"id": "housing", "title": "حق مسکن", "period": "monthly", "field_ref": component_ref},
+                {"id": "unassigned", "title": "پاداش", "period": "yearly", "field_ref": component_ref},
+            ],
+        }
+        saved = api.save_hiring_order_template(company=comp, revision=0, template=tpl)
+        api.publish_hiring_order_template(company=comp, revision=saved["data"]["revision"])
+
+        people = api.list_hiring_order_people(company=comp)
+        emp_id = people["data"][0]["name"]
+
+        # Call get_hiring_order_payroll
+        res = api.get_hiring_order_payroll(company=comp, employee=emp_id, effective_date=nowdate())
+        rows = {r["id"]: r for r in res["data"]["rows"]}
+        self.assertIn("base_salary", rows)
+        self.assertIn("housing", rows)
+        self.assertIn("unassigned", rows)
+        # Unassigned component row has state="missing", amount=None, message="اطلاعات موجود نیست", never 0
+        self.assertEqual(rows["unassigned"]["state"], "missing")
+        self.assertIsNone(rows["unassigned"]["amount"])
+        self.assertEqual(rows["unassigned"]["message"], "اطلاعات موجود نیست")
+
+    def test_issue_resolves_only_template_rows_and_ignores_client_amounts(self):
+        comp = company()
+        frappe.set_user(HR_MANAGER_USER)
+        api.publish_hiring_order_template(company=comp, revision=0)
+        employee = api.list_hiring_order_people(company=comp)["data"][0]["name"]
+        result = api.save_hiring_order(
+            company=comp, request_id=uuid4().hex, employee=employee,
+            effective_date="1900-01-01",
+            payroll_rows=[{"id": "forged", "title": "دستکاری", "period": "monthly", "amount": 999}],
+        )["data"]
+        rows = result["payroll_snapshot"]["rows"]
+        self.assertEqual([row["id"] for row in rows], ["base_salary"])
+        self.assertIsNone(rows[0]["amount"])
+        self.assertEqual(rows[0]["message"], "اطلاعات موجود نیست")

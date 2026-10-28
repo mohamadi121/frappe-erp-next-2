@@ -10,7 +10,6 @@ from frappe.utils import getdate, now_datetime, nowdate
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services import erp_documents
 from asoud_erp.services.hiring_orders import (
-    MISSING_MESSAGE,
     default_template,
     format_hiring_order_print,
     normalize_search,
@@ -38,6 +37,13 @@ def _require_hr_issuer(company: str) -> None:
         erp_documents.require_roles(HR_OPERATIONAL_ROLES, company)
     except frappe.PermissionError:
         frappe.throw(_("شما اجازهٔ صدور یا مدیریت احکام استخدام را ندارید."), frappe.PermissionError)
+
+
+def _require_payroll(company: str) -> None:
+    try:
+        erp_documents.require_roles(PAYROLL_ROLES, company)
+    except frappe.PermissionError:
+        frappe.throw(_("شما اجازهٔ مشاهدهٔ اطلاعات حقوق را ندارید."), frappe.PermissionError)
 
 
 def _template_form_name(company: str) -> str | None:
@@ -108,6 +114,14 @@ def save_hiring_order_template(company: str, revision: int = 0, template: Any = 
         template = json.loads(template)
     template = template or default_template()
     validated = validate_template(template)
+    allowed_refs = {"base", "variable"}
+    allowed_refs.update(
+        f"component.{name}" for name in frappe.get_all(
+            "Salary Component", filters={"disabled": 0}, pluck="name"
+        )
+    )
+    if any(row["field_ref"] not in allowed_refs for row in validated["payroll_rows"]):
+        frappe.throw(_("قلم حقوق را از فهرست معتبر حقوق و دستمزد انتخاب کنید."))
     name = _template_form_name(company)
     encoded = json.dumps(validated, ensure_ascii=False)
 
@@ -190,25 +204,104 @@ def list_hiring_order_people(company: str, search: str = "", limit_start: int = 
 
 
 @frappe.whitelist()
+def get_hiring_order_payroll_catalog(company: str) -> dict:
+    _require_payroll(company)
+    require_company(company)
+    items = [
+        {"field_id": "base", "label": "حقوق پایه (قرارداد)", "type": "Currency", "group": "حقوق"},
+        {"field_id": "variable", "label": "مزایای متغیر (قرارداد)", "type": "Currency", "group": "مزایا"},
+    ]
+    if frappe.db.table_exists("Salary Component"):
+        components = frappe.get_all(
+            "Salary Component",
+            filters={"disabled": 0},
+            fields=["name", "salary_component", "type"],
+            order_by="salary_component asc",
+        )
+        for comp_row in components:
+            items.append({
+                "field_id": f"component.{comp_row.name}",
+                "label": comp_row.salary_component or comp_row.name,
+                "type": "Currency",
+                "group": "اقلام ساختار حقوق" if comp_row.type == "Earning" else "کسورات",
+            })
+    return success({"items": items})
+
+
+@frappe.whitelist()
 def get_hiring_order_payroll(company: str, employee: str, effective_date: str) -> dict:
-    erp_documents.require_roles(PAYROLL_ROLES, company)
+    _require_payroll(company)
     require_company(company)
     if not frappe.db.exists("Employee", {"name": employee, "company": company}):
         frappe.throw(_("پرسنل انتخاب‌شده در این شرکت یافت نشد."), frappe.DoesNotExistError)
+    return success(_resolve_payroll(company, employee, effective_date))
+
+
+def _resolve_payroll(company: str, employee: str, effective_date: str, template_rows=None) -> dict:
+
+    t_name = _template_form_name(company)
+    if template_rows is None and t_name and frappe.db.exists("ASOUD Form", t_name):
+        doc = frappe.get_doc("ASOUD Form", t_name)
+        if doc.active_revision:
+            rev = frappe.get_doc("ASOUD Form Revision", doc.active_revision)
+            schema = json.loads(rev.schema_json or "{}")
+            template_rows = schema.get("payroll_rows")
+    if not template_rows:
+        template_rows = default_template().get("payroll_rows") or []
+
     effective = getdate(effective_date)
-    assignment = frappe.get_all("Salary Structure Assignment", filters={
-        "employee": employee, "company": company, "docstatus": 1, "from_date": ["<=", effective]},
-        fields=["name", "base", "variable", "currency"], order_by="from_date desc, creation desc", limit_page_length=1)
-    if not assignment:
-        return success({"currency": frappe.db.get_value("Company", company, "default_currency"),
-                        "rows": snapshot_payroll([{"id": "base_salary", "title": "حقوق پایه", "period": "monthly", "field_ref": "base", "amount": None}])["rows"],
-                        "message": MISSING_MESSAGE})
-    row = assignment[0]
-    payroll = snapshot_payroll([
-        {"id": "base_salary", "title": "حقوق پایه", "period": "monthly", "field_ref": "base", "amount": row.base},
-        {"id": "variable_pay", "title": "مزایای متغیر", "period": "monthly", "field_ref": "variable", "amount": row.variable},
-    ])
-    return success({"currency": row.currency or frappe.db.get_value("Company", company, "default_currency"), **payroll})
+    assignment = frappe.get_all(
+        "Salary Structure Assignment",
+        filters={
+            "employee": employee,
+            "company": company,
+            "docstatus": 1,
+            "from_date": ["<=", effective],
+        },
+        fields=["name", "base", "variable", "currency", "salary_structure"],
+        order_by="from_date desc, creation desc",
+        limit_page_length=1,
+    )
+
+    component_map = {}
+    if assignment and assignment[0].salary_structure:
+        details = frappe.get_all(
+            "Salary Detail",
+            filters={"parent": assignment[0].salary_structure, "parenttype": "Salary Structure"},
+            fields=["salary_component", "amount", "amount_based_on_formula"],
+        )
+        for d in details:
+            component_map[d.salary_component] = None if d.amount_based_on_formula else d.amount
+
+    resolved_rows = []
+    for r in template_rows:
+        field_ref = r.get("field_ref") or r.get("id") or ""
+        amount = None
+        if assignment:
+            asg = assignment[0]
+            if field_ref in ("base", "assignment.base"):
+                amount = asg.base
+            elif field_ref in ("variable", "assignment.variable"):
+                amount = asg.variable
+            elif field_ref.startswith("component."):
+                comp_key = field_ref.split(".", 1)[1]
+                amount = component_map.get(comp_key)
+            elif field_ref in component_map:
+                amount = component_map.get(field_ref)
+
+        resolved_rows.append({
+            "id": r.get("id"),
+            "title": r.get("title"),
+            "period": r.get("period", "monthly"),
+            "field_ref": field_ref,
+            "amount": amount,
+        })
+
+    currency = (
+        (assignment[0].currency if assignment else None)
+        or frappe.db.get_value("Company", company, "default_currency")
+    )
+    return {"currency": currency, **snapshot_payroll(resolved_rows)}
 
 
 @frappe.whitelist()
@@ -334,14 +427,9 @@ def save_hiring_order(
         values = json.loads(values)
     values = values or {}
 
-    if isinstance(payroll_rows, str):
-        payroll_rows = json.loads(payroll_rows)
-
-    if payroll_rows:
-        payroll_snapshot = snapshot_payroll(payroll_rows)
-    else:
-        p_res = get_hiring_order_payroll(company, employee, effective_date)
-        payroll_snapshot = p_res.get("data") or {}
+    payroll_snapshot = _resolve_payroll(
+        company, employee, effective_date, template_snapshot["payroll_rows"]
+    )
 
     today_jalali = _format_jalali(nowdate())
 
