@@ -16,6 +16,13 @@ from asoud_erp.services.digits import to_ascii_digits, to_persian_digits
 MISSING_PAYROLL_TEXT = "اطلاعات موجود نیست"
 CURRENCY_LABEL = "ریال"
 
+
+def mask_contract_salary(snapshot: dict) -> dict:
+    """Remove persisted payroll from a response without changing its source."""
+    return dict(snapshot, salary_values={}, salary_table=[], total_monthly=0,
+                formatted_total_monthly="")
+
+
 DEFAULT_CLAUSES = [
     {
         "id": "clause_1",

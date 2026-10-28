@@ -19,6 +19,7 @@ from asoud_erp.services.employment_contract import (
     calculate_salary_items,
     generate_contract_print_data,
     get_field_catalog,
+    mask_contract_salary,
     normalize_search_term,
     render_contract_articles,
     validate_contract_template,
@@ -30,7 +31,7 @@ from asoud_erp.services.request_templates.base import number_pattern
 
 TEMPLATE_DESIGNERS = ("System Manager", "HR Manager")
 HR_OPERATIONAL_ROLES = ("System Manager", "HR Manager", "HR User")
-PAYROLL_ROLES = ("System Manager", "HR Manager", "Accounts Manager")
+PAYROLL_ROLES = ("System Manager", "Payroll Manager", "Accounts Manager")
 
 
 def _is_designer() -> bool:
@@ -357,7 +358,7 @@ def prepare_contract(company: str, employee: str, template_version: int | None =
         if assignments and assignments[0].base:
             salary_values["payroll.base_salary"] = assignments[0].base
 
-    salary_calc = calculate_salary_items(salary_rows, salary_values)
+    salary_calc = calculate_salary_items(salary_rows if has_payroll else [], salary_values)
 
     context = {
         "personnel": {
@@ -527,9 +528,14 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
         if existing_entry and frappe.db.exists("Contract", existing_entry.reference_name):
             return get_contract(existing_entry.reference_name)
 
-    if isinstance(salary_values, str):
-        salary_values = json.loads(salary_values)
-    salary_values = salary_values or {}
+    # Stored amounts are resolved at the effective date; client amounts are never authoritative.
+    assignments = frappe.get_all(
+        "Salary Structure Assignment",
+        filters={"employee": employee, "company": company, "docstatus": 1,
+                 "from_date": ["<=", getdate(start_date)]},
+        fields=["base"], order_by="from_date desc, creation desc", limit_page_length=1,
+    )
+    salary_values = {"payroll.base_salary": assignments[0].base} if assignments else {}
 
     template_data = _get_active_template_data(company)
     clauses = template_data.get("clauses", DEFAULT_CLAUSES)
@@ -673,6 +679,8 @@ def finalize_contract(contract_id: str, client_id: str | None = None) -> dict:
     snapshot["finalized_on"] = str(now_datetime())
 
     letterhead_html = _letterhead(emp_company)
+    snapshot.update(letterhead_html=letterhead_html, issue_date=_format_jalali(today),
+                    employee_name=contract.party_full_name)
     final_print = generate_contract_print_data(
         is_draft=False,
         contract_number=official_number,
@@ -743,18 +751,21 @@ def get_contract(contract_id: str) -> dict:
         except Exception:
             snapshot = {}
 
+    if not _has_payroll_permission(emp_company):
+        snapshot = mask_contract_salary(snapshot)
+
     is_draft = contract.docstatus == 0
     contract_number = snapshot.get("contract_number") if not is_draft else "پیش‌نویس"
 
     print_payload = generate_contract_print_data(
         is_draft=is_draft,
         contract_number=contract_number,
-        issue_date=_format_jalali(contract.creation),
-        employee_name=contract.party_full_name,
+        issue_date=snapshot.get("issue_date", _format_jalali(contract.creation)),
+        employee_name=snapshot.get("employee_name", contract.party_full_name),
         rendered_clauses=snapshot.get("rendered_clauses", []),
         salary_table=snapshot.get("salary_table", []),
         total_monthly_formatted=snapshot.get("formatted_total_monthly", ""),
-        letterhead_html=_letterhead(emp_company),
+        letterhead_html=_letterhead(emp_company) if is_draft else snapshot.get("letterhead_html"),
         company_name=emp_company,
     )
 

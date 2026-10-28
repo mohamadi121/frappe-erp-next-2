@@ -12,6 +12,49 @@ from asoud_erp.integration_tests.tenancy import (
 
 
 class TestEmploymentCertificates(APITestCase):
+    def test_final_print_preserves_letterhead_snapshot(self):
+        from uuid import uuid4
+
+        frappe.set_user("Administrator")
+        comp = company()
+        previous = frappe.db.get_value("Company", comp, "default_letter_head")
+        head = frappe.get_doc({"doctype": "Letter Head", "letter_head_name": uuid4().hex,
+                               "source": "HTML", "content": "<p>ORIGINAL-CERTIFICATE-HEAD</p>"}).insert()
+        try:
+            frappe.db.set_value("Company", comp, "default_letter_head", head.name)
+            employee = frappe.db.get_value("Employee", {"user_id": EMPLOYEE_A_USER}, "name")
+            draft = api.save_draft(company=comp, employee=employee, addressee_name="بانک",
+                                   request_key=uuid4().hex)["data"]
+            final = api.finalize_certificate(draft["name"], revision=draft["revision"],
+                                              request_key=uuid4().hex)["data"]
+            frappe.db.set_value("Letter Head", head.name, "content", "<p>CHANGED-CERTIFICATE-HEAD</p>")
+            after = api.get_certificate(draft["name"])["data"]
+            self.assertEqual(final["print_html"], after["print_html"])
+            self.assertIn("ORIGINAL-CERTIFICATE-HEAD", after["print_html"])
+        finally:
+            frappe.db.set_value("Company", comp, "default_letter_head", previous)
+            frappe.delete_doc("Letter Head", head.name, ignore_permissions=True)
+
+    def test_finalize_requires_revision_and_replays_only_matching_key(self):
+        from uuid import uuid4
+
+        frappe.set_user(HR_MANAGER_USER)
+        employee = frappe.db.get_value("Employee", {"user_id": EMPLOYEE_A_USER}, "name")
+        draft = api.save_draft(company=company(), employee=employee, addressee_name="بانک",
+                               request_key=uuid4().hex)["data"]
+        key = uuid4().hex
+        for revision in (0, draft["revision"] + 10):
+            with self.assertRaises(frappe.ValidationError):
+                api.finalize_certificate(draft["name"], revision=revision, request_key=key)
+        final = api.finalize_certificate(draft["name"], revision=draft["revision"], request_key=key)["data"]
+        replay = api.finalize_certificate(draft["name"], revision=draft["revision"], request_key=key)["data"]
+        self.assertEqual(replay, final)
+        with self.assertRaises(frappe.ValidationError):
+            api.finalize_certificate(draft["name"], revision=final["revision"], request_key=uuid4().hex)
+        stored = api.get_certificate(draft["name"])["data"]
+        self.assertEqual(stored["number"], final["number"])
+        self.assertEqual(stored["revision"], draft["revision"] + 1)
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

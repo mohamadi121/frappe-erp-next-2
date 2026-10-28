@@ -6,10 +6,23 @@ from asoud_erp.services.employment_contract import (
     calculate_salary_items,
     generate_contract_print_data,
     get_field_catalog,
+    mask_contract_salary,
     normalize_search_term,
     render_contract_articles,
     validate_contract_template,
 )
+
+
+def test_mask_contract_salary_preserves_stored_snapshot():
+    stored = {"salary_table": [{"amount": 987654321}], "salary_values": {"payroll.base_salary": 987654321},
+              "total_monthly": 987654321, "formatted_total_monthly": "۹۸۷۶۵۴۳۲۱", "contract_number": "CNT-1"}
+    masked = mask_contract_salary(stored)
+    assert masked["salary_table"] == []
+    assert masked["salary_values"] == {}
+    assert masked["total_monthly"] == 0
+    assert masked["formatted_total_monthly"] == ""
+    assert stored["salary_table"][0]["amount"] == 987654321
+    assert masked["contract_number"] == "CNT-1"
 
 
 def test_default_clauses_and_salary_rows():

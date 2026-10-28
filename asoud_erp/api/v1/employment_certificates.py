@@ -434,7 +434,9 @@ def _certificate_response(data: dict, company: str) -> dict:
             data["rendered_html"] = rendered["html"]
         else:
             data["rendered_html"] = ""
-    data["print_html"] = _build_print_html(data, _letterhead(company), data.get("status") == "Final")
+    is_final = data.get("status") == "Final"
+    head = data.get("letterhead_html") if is_final else _letterhead(company)
+    data["print_html"] = _build_print_html(data, head, is_final)
     return success(data)
 
 
@@ -665,19 +667,29 @@ def finalize_certificate(name: str, revision: int = 0, request_key: str = "") ->
     require_company(entry_row.company)
     require_roles(HR_OPERATIONAL_ROLES, company=entry_row.company)
 
+    # Reload after locking: the list result may predate another finalization.
+    locked = frappe.get_doc("ASOUD Form Entry", entry_row.name, for_update=True)
     try:
-        data = json.loads(entry_row.values_json)
-    except Exception:
+        data = json.loads(locked.values_json)
+    except (TypeError, ValueError):
         frappe.throw(_("اطلاعات گواهی مخدوش است."))
 
-    # Idempotent return if already finalized
-    if data.get("status") == "Final":
-        letterhead_html = _letterhead(entry_row.company)
-        data["print_html"] = _build_print_html(data, letterhead_html, True)
+    if data.get("finalize_request_key") == request_key:
         return _certificate_response(data, entry_row.company)
-
-    if revision and int(revision) != data.get("revision", 1):
+    try:
+        matching_revision = int(revision) > 0 and int(revision) == data.get("revision", 1)
+    except (TypeError, ValueError):
+        matching_revision = False
+    if not matching_revision:
         frappe.throw(_("نسخه گواهی تغییر کرده است؛ صفحه را تازه‌سازی کنید."))
+    if data.get("status") != "Draft":
+        frappe.throw(_("این گواهی در وضعیت پیش‌نویس نیست و دوباره نهایی نمی‌شود."))
+
+    workflow = frappe.db.get_value("ASOUD Workflow Definition", {
+        "company": entry_row.company, "target_doctype": CERT_DOCTYPE, "status": "Active",
+    }, "name")
+    if workflow:
+        frappe.throw(_("برای این گواهی گردش‌کار فعال است؛ صدور مستقیم مجاز نیست و تأیید گردش‌کار الزامی است."))
 
     official_number = make_autoname(SERIES)
     issue_date_str = _format_jalali(nowdate())
@@ -686,6 +698,7 @@ def finalize_certificate(name: str, revision: int = 0, request_key: str = "") ->
     data["number"] = official_number
     data["issue_date"] = issue_date_str
     data["revision"] = data.get("revision", 1) + 1
+    data["finalize_request_key"] = request_key
 
     # Re-render snapshot with official number and date:
     vals = data.get("values_snapshot", {})
@@ -699,6 +712,7 @@ def finalize_certificate(name: str, revision: int = 0, request_key: str = "") ->
     data["rendered_html"] = rendered["html"]
 
     letterhead_html = _letterhead(entry_row.company)
+    data["letterhead_html"] = letterhead_html
     data["print_html"] = _build_print_html(data, letterhead_html, True)
 
     frappe.db.set_value(

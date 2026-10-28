@@ -16,6 +16,78 @@ from asoud_erp.services.employment_contract import DEFAULT_CLAUSES, DEFAULT_SALA
 
 
 class TestEmploymentContracts(APITestCase):
+    def test_final_print_preserves_letterhead_snapshot(self):
+        from uuid import uuid4
+
+        frappe.set_user("Administrator")
+        comp = company()
+        previous = frappe.db.get_value("Company", comp, "default_letter_head")
+        head = frappe.get_doc({"doctype": "Letter Head", "letter_head_name": uuid4().hex,
+                               "source": "HTML", "content": "<p>ORIGINAL-LETTERHEAD</p>"}).insert()
+        try:
+            frappe.db.set_value("Company", comp, "default_letter_head", head.name)
+            employee = frappe.db.get_value("Employee", {"company": comp, "status": "Active"}, "name")
+            draft = api.save_contract_draft(comp, employee, nowdate(), client_id=uuid4().hex)["data"]
+            api.finalize_contract(draft["contract_id"])
+            before = api.get_contract_print(draft["contract_id"])["data"]
+            frappe.db.set_value("Letter Head", head.name, "content", "<p>CHANGED-LETTERHEAD</p>")
+            after = api.get_contract_print(draft["contract_id"])["data"]
+            self.assertEqual(before, after)
+            self.assertIn("ORIGINAL-LETTERHEAD", after["html"])
+            self.assertNotIn("CHANGED-LETTERHEAD", after["html"])
+        finally:
+            frappe.db.set_value("Company", comp, "default_letter_head", previous)
+            frappe.delete_doc("Letter Head", head.name, ignore_permissions=True)
+
+    def test_client_salary_tampering_is_ignored(self):
+        import json
+        from uuid import uuid4
+
+        frappe.set_user(HR_MANAGER_USER)
+        comp = company()
+        employee = frappe.db.get_value("Employee", {"company": comp, "status": "Active"}, "name")
+        draft = api.save_contract_draft(comp, employee, "2020-01-01",
+                                        salary_values={"payroll.base_salary": 999999999999,
+                                                       "payroll.housing": 888888888888},
+                                        client_id=uuid4().hex)["data"]
+        encoded = frappe.db.get_value("ASOUD Form Entry", {"reference_name": draft["contract_id"]}, "values_json")
+        values = json.loads(encoded)["salary_values"]
+        self.assertNotIn(999999999999, values.values())
+        self.assertNotIn("payroll.housing", values)
+        assignments = frappe.get_all("Salary Structure Assignment",
+                                      filters={"employee": employee, "company": comp, "docstatus": 1,
+                                               "from_date": ["<=", "2020-01-01"]},
+                                      fields=["base"], order_by="from_date desc, creation desc", limit_page_length=1)
+        self.assertEqual(values, {"payroll.base_salary": assignments[0].base} if assignments else {})
+
+    def test_salary_is_masked_in_detail_and_print(self):
+        import json
+        from uuid import uuid4
+
+        frappe.set_user("Administrator")
+        comp = company()
+        employee = frappe.db.get_value("Employee", {"company": comp, "status": "Active"}, "name")
+        draft = api.save_contract_draft(comp, employee, nowdate(), client_id=uuid4().hex)["data"]
+        entry = frappe.db.get_value("ASOUD Form Entry", {"reference_name": draft["contract_id"]}, "name")
+        snapshot = json.loads(frappe.db.get_value("ASOUD Form Entry", entry, "values_json"))
+        snapshot.update(salary_table=[{"name": "حقوق", "formatted_amount": "SECRET-SALARY"}],
+                        total_monthly=987654321, formatted_total_monthly="SECRET-SALARY")
+        frappe.db.set_value("ASOUD Form Entry", entry, "values_json", json.dumps(snapshot))
+        frappe.set_user(HR_MANAGER_USER)
+        detail = api.get_contract(draft["contract_id"])["data"]
+        self.assertEqual(detail["salary_table"], [])
+        self.assertEqual(detail["total_monthly"], 0)
+        self.assertNotIn("SECRET-SALARY", json.dumps(detail))
+        self.assertNotIn("SECRET-SALARY", json.dumps(api.get_contract_print(draft["contract_id"])))
+        self.assertNotIn("SECRET-SALARY", json.dumps(api.list_contracts(comp)))
+
+    def test_hr_manager_has_no_implicit_payroll_permission(self):
+        frappe.set_user(HR_MANAGER_USER)
+        self.assertFalse(api._has_payroll_permission(company()))
+        catalog = api.get_contract_field_catalog(company())["data"]
+        payroll = next(row for row in catalog["categories"] if row["key"] == "payroll")
+        self.assertFalse(payroll["authorized"])
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
