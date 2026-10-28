@@ -417,3 +417,51 @@ class TestSalaryChangeOrders(APITestCase):
         self.assertEqual(table["monthly_previous_total"], 150000000)
         self.assertEqual(table["monthly_new_total"], 180000000)
         self.assertEqual(table["monthly_difference"], 30000000)
+
+    def test_final_print_preserves_stored_letterhead_snapshot_after_letterhead_changes(self):
+        comp = company()
+        frappe.set_user(HR_MANAGER_USER)
+        emp = employee_a()
+
+        # 1. Create initial letter head and assign to company
+        lh_name = f"LH-Original-{uuid4().hex[:6]}"
+        lh = frappe.get_doc({
+            "doctype": "Letter Head",
+            "letter_head_name": lh_name,
+            "source": "HTML",
+            "content": "<div class='test-lh'>سربرگ اصلی شرکت</div>",
+            "disabled": 0,
+        })
+        lh.flags.ignore_permissions = True
+        lh.insert()
+        frappe.db.set_value("Company", comp, "default_letter_head", lh.name)
+
+        # 2. Save order and finalize
+        saved = api.save_salary_change_order(
+            company=comp,
+            request_id=f"lh-test-{uuid4().hex[:8]}",
+            employee=emp,
+            effective_date=nowdate(),
+            reason="annual",
+            description="تست چاپ سربرگ",
+        )
+        order_name = saved["data"]["name"]
+        rev = api.send_salary_change_order_for_review(
+            name=order_name, revision=saved["data"]["revision"], request_id=f"rev-{uuid4().hex[:8]}"
+        )
+        finalized = api.approve_salary_change_order(
+            name=order_name, revision=rev["data"]["revision"], request_id=f"app-{uuid4().hex[:8]}"
+        )
+        self.assertEqual(finalized["data"]["status"], "final")
+
+        # 3. Print must contain original letterhead
+        print_1 = api.print_salary_change_order(name=order_name)
+        self.assertIn("سربرگ اصلی شرکت", print_1["data"]["html"])
+
+        # 4. Mutate company's letter head
+        frappe.db.set_value("Letter Head", lh.name, "content", "<div class='test-lh'>سربرگ جدید تغییریافته</div>")
+
+        # 5. Print on finalized order must render the stored snapshot and NOT the mutated letterhead
+        print_2 = api.print_salary_change_order(name=order_name)
+        self.assertIn("سربرگ اصلی شرکت", print_2["data"]["html"])
+        self.assertNotIn("سربرگ جدید تغییریافته", print_2["data"]["html"])

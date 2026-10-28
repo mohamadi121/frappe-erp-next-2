@@ -892,7 +892,10 @@ def print_salary_change_order(name: str) -> dict:
         frappe.db.get_value("Company", entry.company, "company_name") or entry.company
     )
 
-    head = _letterhead(entry.company)
+    if data.get("status") == "final" and "letterhead_snapshot" in data:
+        head = data.get("letterhead_snapshot")
+    else:
+        head = _letterhead(entry.company)
     html = format_salary_change_order_print(data, letterhead_html=head)
     return success({
         "html": html,
