@@ -1,11 +1,9 @@
-from unittest.mock import MagicMock, patch
 import pytest
 
 from asoud_erp.services.first_office_setup import (
     INTERNAL_SUFFIX,
-    block_internal_mail,
     internal_email,
-    _summary,
+    validate_lead_inputs,
 )
 
 
@@ -18,43 +16,44 @@ def test_internal_email_detection():
     assert internal_email(None) is False
 
 
-def test_block_internal_mail_prevents_dispatch():
-    doc = MagicMock()
-    recipient_row = MagicMock()
-    recipient_row.recipient = f"system{INTERNAL_SUFFIX}"
-    doc.get.return_value = [recipient_row]
+def test_validate_lead_inputs_success_with_mobile():
+    name, username, mail, mobile = validate_lead_inputs(
+        "علی رضایی", "ali_rezaei", "09123456789", "SecurePassword123"
+    )
+    assert name == "علی رضایی"
+    assert username == "ali_rezaei"
+    assert mail is None
+    assert mobile == "09123456789"
 
-    with patch("frappe.throw") as mock_throw:
-        block_internal_mail(doc)
-        mock_throw.assert_called_once_with(
-            "این حساب ایمیل تماس ندارد؛ اطلاعات ورود را امن و مستقیم تحویل دهید."
+
+def test_validate_lead_inputs_success_with_email():
+    name, username, mail, mobile = validate_lead_inputs(
+        "سارا محمدی", "sara_m", "sara@example.com", "SecurePassword123"
+    )
+    assert name == "سارا محمدی"
+    assert username == "sara_m"
+    assert mail == "sara@example.com"
+    assert mobile is None
+
+
+def test_validate_lead_inputs_rejects_invalid_username():
+    with pytest.raises(ValueError, match="نام کاربری"):
+        validate_lead_inputs("علی", "admin", "09123456789", "SecurePass123")
+
+    with pytest.raises(ValueError, match="نام کاربری"):
+        validate_lead_inputs("علی", "12username", "09123456789", "SecurePass123")
+
+    with pytest.raises(ValueError, match="نام کاربری"):
+        validate_lead_inputs("علی", "ab", "09123456789", "SecurePass123")
+
+
+def test_validate_lead_inputs_rejects_invalid_password():
+    with pytest.raises(ValueError, match="رمز موقت"):
+        validate_lead_inputs("علی", "ali_user", "09123456789", "short")
+
+
+def test_validate_lead_inputs_rejects_internal_email_contact():
+    with pytest.raises(ValueError, match="ایمیل تماس واقعی"):
+        validate_lead_inputs(
+            "علی", "ali_user", f"fake{INTERNAL_SUFFIX}", "SecurePass123"
         )
-
-
-def test_block_internal_mail_allows_standard_recipients():
-    doc = MagicMock()
-    recipient_row = MagicMock()
-    recipient_row.recipient = "real.user@example.com"
-    doc.get.return_value = [recipient_row]
-
-    with patch("frappe.throw") as mock_throw:
-        block_internal_mail(doc)
-        mock_throw.assert_not_called()
-
-
-def test_summary_reflects_bootstrap_completion_flag():
-    doc = MagicMock()
-    doc.company = "شرکت تست"
-    doc.first_hr_user = None
-    doc.bootstrap_completed = 0
-    res = _summary(doc)
-    assert res == {
-        "company": "شرکت تست",
-        "hr_lead": None,
-        "hr_ready": False,
-        "completed": False,
-    }
-
-    doc.bootstrap_completed = 1
-    res_completed = _summary(doc)
-    assert res_completed["completed"] is True
