@@ -95,6 +95,8 @@ payload is rejected with `REQUEST_KEY_CONFLICT`.
 
 ## Tests
 
+- [User-task form binding](workflow-stage-form-binding.md)
+
 - [Independent workflow template copies](workflow-templates.md)
 
 - `asoud_erp/tests/` — pure unit tests, run anywhere:
