@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Employment contract workflow finalization, atomic Jalali numbering, introduction letter replay/snapshot lock, Playwright API specs for all five HR documents, and malformed/oversized input validation matrix across document save endpoints. Deployment: restart workers; no migration.
+
 - HR document privacy: hiring/salary-order detail and print mask payroll for HR-only users; certificate reads and retries strip nested payroll values when unauthorized or salary is disabled. HR Manager alone no longer grants certificate payroll access. HTTP privacy coverage is included in the API script (duplicate script key removed). Deployment: restart workers; no migration.
 
 - Certificate updates lock their entry, reject absent/stale revisions and refuse changes to finalized documents or another company’s entry. Deployment: restart workers; no migration.
