@@ -10,8 +10,8 @@ required_apps = ["erpnext", "hrms"]
 doc_events = {
     "Email Queue": {"before_insert": "asoud_erp.services.first_office_setup.block_internal_mail"},
     "*": {
-        "validate": "asoud_erp.services.directive_access.guard_write",
-        "on_trash": "asoud_erp.services.directive_access.guard_write",
+        "validate": ["asoud_erp.services.setup_reset.guard_write", "asoud_erp.services.directive_access.guard_write"],
+        "on_trash": ["asoud_erp.services.setup_reset.guard_write", "asoud_erp.services.directive_access.guard_write"],
     },
     "Employee": {"on_update": "asoud_erp.services.personnel_employee.refresh_profile_cache"},
     "Department": {
@@ -42,8 +42,9 @@ doc_events = {
     "Leave Application": {"validate": "asoud_erp.services.leave_balance.validate_leave_application"},
 }
 
-before_request = ["asoud_erp.services.session_guard.enforce_password_change"]
+before_request = ["asoud_erp.services.setup_reset.guard_request", "asoud_erp.services.session_guard.enforce_password_change"]
 on_login = ["asoud_erp.services.session_guard.on_login"]
+before_job = ["asoud_erp.services.setup_reset.guard_job"]
 
 after_install = "asoud_erp.install.after_install"
 after_migrate = "asoud_erp.install.after_migrate"

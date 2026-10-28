@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-- Workflow template catalog and independent draft copies: native company/permission checks, source revision check, fresh graph identities, inactive unpublished copies and unchanged source history. Deploy/restart this backend before the matching Flutter release; no schema migration. Tests added/registered but not run at the owner's request. Task form embedding and temporary server reset are not part of this release; their earlier contracts are marked superseded/unreleased.
+- Submitted-form workflow routing replaces the superseded task-form draft: published Request/Document identities are pinned to a workflow, original entries/native documents enter the existing runtime once, and assignees view sanitized read-only data without re-entering forms. Native permission/company checks, revision changes and duplicate routes are guarded. Deployment: `bench migrate` (definition source links/index), restart workers, then matching Flutter.
+- Temporary server setup reset: authenticated system administrator, explicit site flag, fresh password/rate limit, owned-office preview, typed confirmation and backup acknowledgment. Password-free tracked background job with transactional durable receipt, write barrier, rollback/native dependency guards, and current administrator credentials preserved. No live reset or tests executed. Enable `asoud_allow_setup_reset` only deliberately on the target site; long queue required, disable after use.
+
+- Workflow template catalog and independent draft copies: native company/permission checks, source revision check, fresh graph identities, inactive unpublished copies and unchanged source history. Deploy/restart this backend before the matching Flutter release; no schema migration. Tests added/registered but not run at the owner's request. Task form embedding remains superseded; submitted-record routing and guarded reset are documented in the newer entries above.
 
 - System request seeding adopts orphan stages/transitions when a deterministic SYS definition is missing, preserving row identities, edited forms/routes and extra tasks; only missing default rows are added. Conflicting ownership or duplicate Starts roll back the repair. CI runs the real-site seed regressions. Deployment: run `bench --site <site> migrate`; no new fields or DocTypes, and no stage deletion or reset.
 

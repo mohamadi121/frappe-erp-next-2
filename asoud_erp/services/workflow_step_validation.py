@@ -16,6 +16,10 @@ def _number(value, label):
 
 
 def request_values_for_instance(frappe, instance):
+    if instance.reference_doctype == 'ASOUD Form Entry' and instance.reference_name:
+        from asoud_erp.services.workflow_submission_source import entry_for_instance, values
+
+        return values(entry_for_instance(instance))[1]
     if instance.reference_doctype != "ASOUD Workflow Request" or not instance.reference_name:
         return {}
     raw = frappe.db.get_value("ASOUD Workflow Request", instance.reference_name, "values_json") or "{}"

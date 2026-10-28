@@ -538,6 +538,12 @@ def workflow_condition_fields(definition: str, stage: str | None = None) -> dict
                     "fieldtype": field.get("type"),
                     "source": "Form",
                 })
+    from asoud_erp.services.workflow_submission_source import condition_fields
+
+    source_fields = condition_fields(definition)
+    if frappe.db.get_value('ASOUD Workflow Definition', definition, 'source_form'):
+        fields = [item for item in fields if item['source'] != 'Document']
+    fields.extend(source_fields)
     fields = list({(item["source"], item["fieldname"]): item for item in fields}.values())
     return success({"doctype": target_doctype, "fields": fields})
 
@@ -621,6 +627,10 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
     raw = json.loads(config) if isinstance(config, str) else config
     if not isinstance(raw, dict):
         frappe.throw(_("Stage configuration must be an object"))
+    if doc.stage_type == 'User Task' and 'submission_source' not in raw:
+        previous_source = json.loads(doc.config_json or '{}').get('submission_source')
+        if previous_source:
+            raw = {**raw, 'submission_source': previous_source}
     try:
         normalized = normalize_stage_config(doc.stage_type, raw)
         if normalized.get('form_fields'):
@@ -632,6 +642,9 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
 
     role_field = ROLE_BASED_TYPES.get(doc.stage_type)
     if doc.stage_type == "User Task":
+        from asoud_erp.services.workflow_submission_source import bind
+
+        bind(definition, doc.name, normalized)
         from asoud_erp.services.user_task_output import validate_target
         validate_target(definition, normalized)
     roles = normalized.get(role_field, []) if role_field else normalized.get("target_roles", [])
@@ -682,6 +695,9 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
                 for config in configs
                 for field in json.loads(config or "{}").get("form_fields", [])
             }
+            from asoud_erp.services.workflow_submission_source import condition_fields
+
+            form_keys.update(item['fieldname'] for item in condition_fields(definition))
             if normalized["source_field"] not in form_keys:
                 frappe.throw(_("The selected form field does not exist in this workflow"))
 

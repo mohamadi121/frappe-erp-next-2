@@ -271,6 +271,10 @@ def _latest_form_value(instance, fieldname: str, source_task=None):
     if instance.reference_doctype == "ASOUD Workflow Request" and instance.reference_name:
         data = frappe.db.get_value("ASOUD Workflow Request", instance.reference_name, "values_json")
         return json.loads(data or "{}").get(fieldname)
+    if instance.reference_doctype == 'ASOUD Form Entry':
+        from asoud_erp.services.workflow_step_validation import request_values_for_instance
+
+        return request_values_for_instance(frappe, instance).get(fieldname)
     return None
 
 
@@ -461,6 +465,10 @@ def _action_context(instance) -> dict:
     """Values a system action can read: request, people, company and system."""
     request = None
     values = {}
+    if instance.reference_doctype == 'ASOUD Form Entry':
+        from asoud_erp.services.workflow_submission_source import task_snapshot
+
+        values = task_snapshot(instance)['values']
     if instance.reference_doctype == "ASOUD Workflow Request" and instance.reference_name:
         request = frappe.db.get_value(
             "ASOUD Workflow Request",
@@ -624,19 +632,12 @@ def start_workflow_instance(
     reference_doctype: str | None = None,
     reference_name: str | None = None,
 ) -> dict:
-    require_roles(
-        (
-            "System Manager",
-            "HR Manager",
-            "HR User",
-            "Accounts Manager",
-            "Accounts User",
-            "Purchase Manager",
-            "Purchase User",
-            "Employee",
-        )
-    )
+    if reference_doctype != 'ASOUD Form Entry':
+        require_roles(("System Manager", "HR Manager", "HR User", "Accounts Manager",
+            "Accounts User", "Purchase Manager", "Purchase User", "Employee"))
     workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
+    if workflow.get('source_form') and reference_doctype != 'ASOUD Form Entry':
+        frappe.throw('این گردش‌کار فقط با ارسال فرم اصلی متصل به آن شروع می‌شود.')
     from asoud_erp.services.request_access import require_company
 
     if workflow.company:
@@ -644,7 +645,13 @@ def start_workflow_instance(
     requester_only = bool({"Employee", "HR User"}.intersection(frappe.get_roles())) and not {
         "System Manager", "HR Manager", "Accounts Manager", "Accounts User", "Purchase Manager", "Purchase User",
     }.intersection(frappe.get_roles())
-    if requester_only:
+    submitted_entry = None
+    if reference_doctype == 'ASOUD Form Entry':
+        from asoud_erp.services.workflow_submission_source import assert_reference
+
+        submitted_entry = assert_reference(workflow, reference_name)
+        subject = submitted_entry.subject
+    if requester_only and not submitted_entry:
         if reference_doctype != "ASOUD Workflow Request" or not reference_name:
             frappe.throw("Employees must start workflows through their own request", frappe.PermissionError)
     if workflow.status != "Active" or workflow.readiness_status != "Ready":
@@ -652,7 +659,7 @@ def start_workflow_instance(
     if len((subject or "").strip()) < 3:
         frappe.throw(_("Workflow subject must contain at least 3 characters"))
     if reference_name:
-        if reference_doctype != workflow.target_doctype:
+        if not submitted_entry and reference_doctype != workflow.target_doctype:
             frappe.throw(_("Reference DocType does not match the workflow"))
         if not frappe.db.exists(reference_doctype, reference_name):
             frappe.throw(_("Referenced document does not exist"))
@@ -660,10 +667,18 @@ def start_workflow_instance(
             from asoud_erp.services.request_access import request_permission
 
             readable = request_permission(frappe.get_doc(reference_doctype, reference_name))
+        elif submitted_entry:
+            readable = True  # Explicit owner/form/company/route checks above.
         else:
             readable = frappe.has_permission(reference_doctype, "read", reference_name)
         if not readable:
             frappe.throw(_("Not permitted to use the referenced document"), frappe.PermissionError)
+    if submitted_entry:
+        existing = frappe.db.get_value('ASOUD Workflow Instance', {
+            'reference_doctype': 'ASOUD Form Entry', 'reference_name': reference_name},
+            ['name', 'status'], as_dict=True)
+        if existing:
+            return success(dict(existing))
     if reference_doctype == "ASOUD Workflow Request" and reference_name:
         request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
         if requester_only and request.owner != frappe.session.user:
@@ -942,7 +957,10 @@ def get_workflow_task(task: str) -> dict:
         limit_page_length=0,
     )
     document_context = {}
-    if instance.reference_doctype and instance.reference_name:
+    from asoud_erp.services.workflow_submission_source import task_snapshot
+
+    submitted_form = task_snapshot(instance)
+    if not submitted_form and instance.reference_doctype and instance.reference_name:
         if not frappe.has_permission(
             instance.reference_doctype,
             "read",
@@ -1006,7 +1024,8 @@ def get_workflow_task(task: str) -> dict:
             "history": history,
             "previous_data": _previous_task_data(instance, exclude_task=doc.name),
             "document": document_context,
-            "request_values": request_values_for_instance(frappe, instance),
+            "submitted_form": submitted_form,
+            "request_values": submitted_form['values'] if submitted_form else request_values_for_instance(frappe, instance),
         }
     )
 

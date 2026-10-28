@@ -301,12 +301,15 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
         raise ValueError("Stage title is required")
 
     if stage_type == "User Task":
+        from asoud_erp.services.workflow_submission_policy import normalize
+
+        source = normalize(raw.get('submission_source'))
         activity_type = raw.get("activity_type")
         if activity_type not in {"Data Entry", "Review", "Correction", "Task"}:
             raise ValueError("Invalid user task activity")
         assignment = _normalize_assignment(raw, "assignee")
         fields = _normalize_form_fields(raw.get("form_fields"))
-        purpose = raw.get("task_purpose") or "Existing"
+        purpose = 'Existing' if source else raw.get("task_purpose") or "Existing"
         if purpose not in {"Existing", "Create Request", "Create Document"}:
             raise ValueError("Invalid task purpose")
         target_key = {"Create Request": "request_definition", "Create Document": "document_template"}.get(purpose)
@@ -317,6 +320,7 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
             "title": title,
             "activity_type": activity_type,
             "task_purpose": purpose,
+            **({'submission_source': source} if source else {}),
             **({target_key: target} if target_key else {}),
             **({"transfer_values": raw.get("transfer_values") is not False,
                 "document_remark": str(raw.get("document_remark") or "")[:500]}

@@ -4,8 +4,8 @@
 > or document selects the submitted record type whose workflow should run, not
 > a schema to fill out again inside a task. The design below does not implement
 > that requirement. No `form_binding` runtime or `stage_binding_version` capability
-> is released with the template-copy changes. Preserve legacy runtime behavior
-> until a submission-trigger contract, permissions and record linkage are complete.
+> is released. The implemented replacement is documented in
+> [submitted-record routing](workflow-submission-source.md); legacy stages remain supported.
 
 Additive user-task config: `form_binding: {form: string, revision: string}`.
 `workflow.save_stage_settings` verifies a published, enabled ASOUD Form and its

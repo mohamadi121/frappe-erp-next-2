@@ -159,7 +159,9 @@ def get_form(name, manage=0, revision_name=None):
     for field in fields(schema):
         if field.get('default_source'):
             field['default'] = default_value(field, doc.company)
-    return success({'name': doc.name, 'company': doc.company, 'schema': schema, 'revision': rev.name, 'version': rev.version})
+    return success({'name': doc.name, 'company': doc.company, 'schema': schema, 'revision': rev.name, 'version': rev.version,
+        'active_revision': doc.active_revision, 'disabled': bool(doc.disabled),
+        'submission_source_version': int(frappe.get_meta('ASOUD Workflow Definition').has_field('source_form'))})
 
 
 @frappe.whitelist(methods=['POST'])
@@ -596,6 +598,11 @@ def submit_form(name, revision_name, subject, values, request_key):
     checked = validate_values(schema, raw, doc.company)
     _validate_shift_request(schema, checked, doc.company)
     _validate_execution_submit(schema, checked, doc.company)
+    from asoud_erp.services.workflow_submission_source import route, start
+
+    source_workflow = route(doc, rev)
+    if source_workflow and schema.get('workflow'):
+        fail('این فرم دو مسیر گردش‌کار دارد؛ مدیر سیستم باید اتصال را اصلاح کند.')
     reference_type = reference_name = ''
     if schema['kind'] == 'Request' and schema.get('workflow'):
         from asoud_erp.api.v1.workflow_request import create_request
@@ -630,6 +637,7 @@ def submit_form(name, revision_name, subject, values, request_key):
     entry = store(frappe.get_doc({'doctype': 'ASOUD Form Entry', 'form': doc.name, 'revision': rev.name, 'company': doc.company,
         'subject': subject.strip(), 'values_json': json.dumps(checked, ensure_ascii=False) if schema['kind'] == 'Request' else '{}',
         'reference_doctype': reference_type, 'reference_name': reference_name, 'request_key': key, 'fingerprint': fingerprint}))
+    instance_name = start(entry, source_workflow) if source_workflow else None
     if reference_type == 'ASOUD Workflow Request':
         from asoud_erp.api.v1.workflow_request import refresh_search_text
 
@@ -638,7 +646,8 @@ def submit_form(name, revision_name, subject, values, request_key):
         from asoud_erp.services.request_templates.lifecycle import dispatch_native_document
 
         dispatch_native_document(reference_name)
-    return success({'name': entry.name, 'reference_name': reference_name, 'reference_doctype': reference_type})
+    return success({'name': entry.name, 'reference_name': reference_name, 'reference_doctype': reference_type,
+        'workflow_instance': instance_name})
 
 
 @frappe.whitelist()
