@@ -4,6 +4,15 @@
 
 - Employment Contracts template builder and issuance API: versioned contract articles/clauses stored via ASOUD Form/Revision, insert-field drawer catalog from real data sources (personnel, company, contract, payroll gated by payroll permission), repeating salary items calculation with explicit missing state («اطلاعات موجود نیست»), contracts list with server-side Persian/Arabic/digit search, draft saving, finalization with Jalali-year series numbering (CNT-1405-#####), immutable revision snapshots, and A4 RTL print payload with draft banner («پیش‌نویس ـ فاقد اعتبار نهایی»). See `docs/api/employment_contracts.md`. No schema migration required; restart backend workers.
 - گواهی اشتغال مستقل: پیاده‌سازی کامل API قالب نسخه‌دار و صدور/فهرست/چاپ گواهی‌های اشتغال به کار با آزمون‌های یکپارچگی افزوده شد. استقرار نهایی به restart نیاز دارد.
+- اقلام حقوق حکم استخدام، شامل مزایا و کسورات فرمولی، از پیش‌نمایش بومی HRMS در تاریخ اجرا محاسبه می‌شوند؛ فیشی ذخیره نمی‌شود و منبع ناموجود همچنان «اطلاعات موجود نیست» است. بدون migration.
+
+- حکم استخدام از گردش‌کار آمادهٔ متصل به نسخهٔ قالب ارسال می‌شود؛ فقط تکمیل واقعی گردش‌کار حکم را شماره‌دار و نهایی می‌کند. بدون گردش‌کار، سیاست صدور مستقیم منابع انسانی اعمال می‌شود. ارسال با قفل و شناسهٔ یکتا تکرارپذیر است؛ قالب و مبالغ ثبت‌شده حفظ می‌شوند. بدون migration.
+
+- احکام استخدام: کاتالوگ واقعی اقلام حقوق با دسترسی حقوق، کنترل منبع قالب و snapshot سروری ردیف‌های نسخهٔ منتشرشده در تاریخ اجرا؛ مبالغ مشتری نادیده گرفته می‌شوند. تاریخ میلادی چاپ به شمسی تبدیل می‌شود. بدون migration.
+
+- احکام استخدام: چرخه کامل قالب (ذخیره و انتشار پیش‌نویس تغییرناپذیر)، صدور حکم، ثبت پیش‌نویس، بررسی، دریافت و چاپ A4 با نوار پیش‌نویس و سربرگ سازمان افزوده شد. شماره‌گذاری رسمی، نرمال‌سازی جست‌وجو و کنترل مجوز شرکت پیاده‌سازی شدند. استقرار: فقط restart، بدون تغییر schema یا migration.
+
+- منابع دادهٔ حکم استخدام: endpointهای صفحه‌بندی‌شدهٔ انتخاب پرسنل و snapshot حقوق در تاریخ اجرا افزوده شد. مقدار حقوق ناموجود صریحاً «اطلاعات موجود نیست» است و هرگز صفر نمی‌شود. استقرار: فقط restart؛ ثبت، نسخه‌بندی و نهایی‌سازی حکم در این تغییر افزوده نشده است.
 
 - First-office setup can complete without provisioning an HR account. Saved office, administrator/company access and active fiscal year remain required. No existing accounts or permissions change; deploy matching Flutter flow and restart backend workers. No schema migration required. Tests not run at user request.
 
