@@ -339,6 +339,7 @@ def get_employee_options(company: str) -> dict:
         fields=[
             "name as employee",
             "employee_name",
+            "employee_number",
             "department",
             "designation",
             "date_of_joining",
@@ -347,7 +348,7 @@ def get_employee_options(company: str) -> dict:
         limit_page_length=200,
     )
     for emp in employees:
-        emp["employee_number"] = emp["employee"]
+        emp["employee_number"] = emp.get("employee_number") or ""
         emp["date_of_joining"] = _format_jalali(emp.get("date_of_joining"))
         nat_id, loc = _get_employee_extra(emp["employee"])
         emp["national_id"] = nat_id
@@ -504,7 +505,7 @@ def save_draft(
     emp = frappe.db.get_value(
         "Employee",
         employee,
-        ["name", "employee_name", "department", "designation", "status", "company", "date_of_joining"],
+        ["name", "employee_name", "employee_number", "department", "designation", "status", "company", "date_of_joining"],
         as_dict=True,
     )
     if not emp:
@@ -549,7 +550,7 @@ def save_draft(
     values = {
         "employee": {
             "employee_name": emp.employee_name or "",
-            "employee_number": emp.name or "",
+            "employee_number": emp.employee_number or "",
             "national_id": national_id or "",
             "department": emp.department or "",
             "designation": emp.designation or "",
@@ -609,7 +610,7 @@ def save_draft(
         "company": company,
         "employee": employee,
         "employee_name": emp.employee_name or "",
-        "employee_number": emp.name or "",
+        "employee_number": emp.employee_number or "",
         "recipient_type": rec_type,
         "recipient_name": rec_clean,
         "bank_name": bank_clean,

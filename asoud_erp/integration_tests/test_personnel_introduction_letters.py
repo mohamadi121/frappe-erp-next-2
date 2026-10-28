@@ -120,6 +120,23 @@ class TestPersonnelIntroductionLetters(APITestCase):
         assert final_data["number"] != "—"
         assert "پیش‌نویس ـ فاقد اعتبار نهایی" not in final_data["print_html"]
 
+    def test_personnel_code_is_used_in_options_snapshot_and_search(self):
+        comp = company()
+        employee = frappe.db.get_value("Employee", {"user_id": EMPLOYEE_A_USER}, "name")
+        code = "975310"
+        frappe.db.set_value("Employee", employee, "employee_number", code)
+        frappe.set_user(HR_MANAGER_USER)
+        options = api.get_employee_options(company=comp)["data"]
+        assert next(row for row in options if row["employee"] == employee)["employee_number"] == code
+        draft = api.save_draft(
+            company=comp, employee=employee, bank_name="بانک ملت",
+            purpose="افتتاح حساب", request_key="personnel-code-search",
+        )["data"]
+        assert draft["employee_number"] == code
+        assert draft["values_snapshot"]["employee"]["employee_number"] == code
+        results = api.list_letters(company=comp, query="۹۷۵۳۱۰")["data"]["items"]
+        assert any(row["name"] == draft["name"] for row in results)
+
     def test_inactive_employee_cannot_be_issued_letter(self):
         comp = company()
         frappe.set_user(HR_MANAGER_USER)
