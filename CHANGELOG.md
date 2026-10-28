@@ -20,6 +20,7 @@
 - Introduction letters use Employee.employee_number for personnel codes in options, snapshots and search, with an empty value when no code exists.
 
 - Personnel introduction letters (`docs/api/personnel_introduction_letters.md`): versioned template builder and HR issuance API (`personnel_introduction_letters.get_template`, `save_template_draft`, `publish_template`, `get_employee_options`, `list_letters`, `get_letter`, `save_draft`, `finalize_letter`) with stable placeholder tags, server-side normalized search, idempotent draft and finalize handling, official document numbering (`INTRO-.YYYY.-.#####`), and immutable snapshotting.
+- احکام افزایش یا تغییر حقوق و مزایا (`docs/api/salary_change_orders.md`): چرخه کامل قالب ۶ ماده‌ای با فرم‌ساز موجود و شناسه‌های پایدار، جدول مقایسه اقلام حقوق قبلی و جدید با محاسبه خالص اختلاف و درصد تغییر، عدم تغییر حقوق زنده در زمان پیش‌نویس، کنترل دسترسی تفکیک‌شده (طراح قالب / صادرکننده HR / مجری حقوق)، تأیید دومرحله‌ای و اعمال مجزا بر احکام ساختار حقوقی (`Salary Structure Assignment`) با شناسه عملیات تکرارپذیر (idempotency) و ثبت ردپا (audit trail)، وضعیت تفکیک‌شده تأیید و اعمال حقوقی، و فرمت چاپ A4 با نوار پیش‌نویس.
 
 - First-office setup can complete without provisioning an HR account. Saved office, administrator/company access and active fiscal year remain required. No existing accounts or permissions change; deploy matching Flutter flow and restart backend workers. No schema migration required. Tests not run at user request.
 
