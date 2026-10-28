@@ -7,6 +7,7 @@ from html import escape
 from typing import Any
 
 from asoud_erp.services.digits import to_persian_digits
+from asoud_erp.services.jalali import gregorian_to_jalali
 
 PERIODS = {"monthly", "yearly", "one_off"}
 PERIOD_LABELS = {
@@ -133,6 +134,18 @@ def render_article_body(body: str, context: dict[str, Any]) -> str:
     return re.sub(r"\{\{\s*([A-Za-z0-9_\.]+)\s*\}\}", _sub, text)
 
 
+def _print_date(value: object) -> str:
+    if not value:
+        return "—"
+    raw = str(value).translate(_DIGITS)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw) and int(raw[:4]) >= 1700:
+        from datetime import date
+
+        year, month, day = gregorian_to_jalali(date.fromisoformat(raw))
+        raw = f"{year:04d}/{month:02d}/{day:02d}"
+    return to_persian_digits(raw)
+
+
 def format_hiring_order_print(order: dict, letterhead_html: str | None = None) -> str:
     """Produces self-contained A4 RTL HTML matching the ASOUD hiring order print specification."""
     status = order.get("status") or "draft"
@@ -140,7 +153,7 @@ def format_hiring_order_print(order: dict, letterhead_html: str | None = None) -
     raw_number = order.get("number") or ""
     number_display = to_persian_digits(raw_number) if (is_final and raw_number) else "—"
     raw_issued = order.get("issue_date") or ""
-    issue_display = to_persian_digits(raw_issued) if raw_issued else "—"
+    issue_display = _print_date(raw_issued)
 
     watermark = (
         ""
@@ -159,7 +172,7 @@ def format_hiring_order_print(order: dict, letterhead_html: str | None = None) -
         "employee_name": order.get("employee_name") or "",
         "employee_number": order.get("employee_number") or "",
         "employment_type": order.get("employment_type") or order.get("values", {}).get("employment") or "",
-        "effective_date": order.get("effective_date") or "",
+        "effective_date": _print_date(order.get("effective_date")),
         "department": order.get("department") or order.get("values", {}).get("unit") or "",
         "designation": order.get("designation") or order.get("values", {}).get("position") or "",
         "location": order.get("location") or order.get("values", {}).get("location") or "",

@@ -37,6 +37,19 @@ def test_payroll_snapshot_keeps_missing_explicit_and_only_sums_monthly():
     assert rows["rows"][2]["message"] == "اطلاعات موجود نیست"
 
 
+def test_payroll_snapshot_with_component_binding():
+    rows = snapshot_payroll([
+        {"id": "base", "title": "حقوق پایه", "period": "monthly", "field_ref": "base", "amount": 250000000},
+        {"id": "housing", "title": "حق مسکن", "period": "monthly", "field_ref": "component.Housing", "amount": 9000000},
+        {"id": "attract", "title": "حق جذب", "period": "monthly", "field_ref": "component.Attraction", "amount": None},
+    ])
+    assert rows["monthly_total"] == 259000000
+    assert rows["rows"][1]["amount"] == 9000000
+    assert rows["rows"][1]["state"] == "available"
+    assert rows["rows"][2]["state"] == "missing"
+    assert rows["rows"][2]["message"] == "اطلاعات موجود نیست"
+
+
 @pytest.mark.parametrize("raw", ["علي كد ۱۲۳", "علی کد ١٢٣", "علی کد 123"])
 def test_search_normalization_equates_persian_arabic_and_latin_forms(raw):
     assert normalize_search(raw) == "علی کد 123"
@@ -88,4 +101,14 @@ def test_format_hiring_order_print_omits_watermark_when_final():
     assert "پیش‌نویس ـ فاقد اعتبار نهایی" not in html
     assert "ORD-۱۴۰۵-۰۰۷" in html
     assert "۱۴۰۵/۰۱/۱۵" in html
+
+
+def test_print_converts_gregorian_issue_and_effective_dates_to_jalali():
+    html = format_hiring_order_print({
+        "status": "final", "issue_date": "2024-03-20",
+        "effective_date": "2024-03-21", "template_snapshot": default_template(),
+    })
+    assert "۱۴۰۳/۰۱/۰۱" in html
+    assert "۱۴۰۳/۰۱/۰۲" in html
+    assert "2024-03" not in html
 
