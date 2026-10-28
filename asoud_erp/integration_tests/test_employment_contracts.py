@@ -171,6 +171,12 @@ class TestEmploymentContracts(APITestCase):
         frappe.set_user(HR_MANAGER_USER)
         comp = company()
 
+        # Clean slate for template versioning isolation
+        tpl_name = api._template_name(comp)
+        frappe.db.delete("ASOUD Form Revision", {"form": tpl_name})
+        if frappe.db.exists("ASOUD Form", tpl_name):
+            frappe.delete_doc("ASOUD Form", tpl_name, ignore_permissions=True)
+
         # 1. Designer saves template draft and publishes revision 1
         save_res = api.save_contract_template(comp, DEFAULT_CLAUSES, DEFAULT_SALARY_ROWS)
         self.assertTrue(save_res["ok"])
