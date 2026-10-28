@@ -19,6 +19,7 @@ from asoud_erp.services.employment_contract import (
     calculate_salary_items,
     generate_contract_print_data,
     get_field_catalog,
+    mask_contract_salary,
     normalize_search_term,
     render_contract_articles,
     validate_contract_template,
@@ -357,7 +358,7 @@ def prepare_contract(company: str, employee: str, template_version: int | None =
         if assignments and assignments[0].base:
             salary_values["payroll.base_salary"] = assignments[0].base
 
-    salary_calc = calculate_salary_items(salary_rows, salary_values)
+    salary_calc = calculate_salary_items(salary_rows if has_payroll else [], salary_values)
 
     context = {
         "personnel": {
@@ -742,6 +743,9 @@ def get_contract(contract_id: str) -> dict:
             snapshot = json.loads(frappe.db.get_value("ASOUD Form Entry", entry_name, "values_json") or "{}")
         except Exception:
             snapshot = {}
+
+    if not _has_payroll_permission(emp_company):
+        snapshot = mask_contract_salary(snapshot)
 
     is_draft = contract.docstatus == 0
     contract_number = snapshot.get("contract_number") if not is_draft else "پیش‌نویس"

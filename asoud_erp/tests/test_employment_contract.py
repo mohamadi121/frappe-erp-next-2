@@ -1,5 +1,19 @@
 import pytest
 
+
+def test_mask_contract_salary_preserves_stored_snapshot():
+    from asoud_erp.services.employment_contract import mask_contract_salary
+
+    stored = {"salary_table": [{"amount": 987654321}], "salary_values": {"payroll.base_salary": 987654321},
+              "total_monthly": 987654321, "formatted_total_monthly": "۹۸۷۶۵۴۳۲۱", "contract_number": "CNT-1"}
+    masked = mask_contract_salary(stored)
+    assert masked["salary_table"] == []
+    assert masked["salary_values"] == {}
+    assert masked["total_monthly"] == 0
+    assert masked["formatted_total_monthly"] == ""
+    assert stored["salary_table"][0]["amount"] == 987654321
+    assert masked["contract_number"] == "CNT-1"
+
 from asoud_erp.services.employment_contract import (
     DEFAULT_CLAUSES,
     DEFAULT_SALARY_ROWS,

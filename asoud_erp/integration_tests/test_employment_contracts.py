@@ -16,6 +16,27 @@ from asoud_erp.services.employment_contract import DEFAULT_CLAUSES, DEFAULT_SALA
 
 
 class TestEmploymentContracts(APITestCase):
+    def test_salary_is_masked_in_detail_and_print(self):
+        import json
+        from uuid import uuid4
+
+        frappe.set_user("Administrator")
+        comp = company()
+        employee = frappe.db.get_value("Employee", {"company": comp, "status": "Active"}, "name")
+        draft = api.save_contract_draft(comp, employee, nowdate(), client_id=uuid4().hex)["data"]
+        entry = frappe.db.get_value("ASOUD Form Entry", {"reference_name": draft["contract_id"]}, "name")
+        snapshot = json.loads(frappe.db.get_value("ASOUD Form Entry", entry, "values_json"))
+        snapshot.update(salary_table=[{"name": "حقوق", "formatted_amount": "SECRET-SALARY"}],
+                        total_monthly=987654321, formatted_total_monthly="SECRET-SALARY")
+        frappe.db.set_value("ASOUD Form Entry", entry, "values_json", json.dumps(snapshot))
+        frappe.set_user(HR_MANAGER_USER)
+        detail = api.get_contract(draft["contract_id"])["data"]
+        self.assertEqual(detail["salary_table"], [])
+        self.assertEqual(detail["total_monthly"], 0)
+        self.assertNotIn("SECRET-SALARY", json.dumps(detail))
+        self.assertNotIn("SECRET-SALARY", json.dumps(api.get_contract_print(draft["contract_id"])))
+        self.assertNotIn("SECRET-SALARY", json.dumps(api.list_contracts(comp)))
+
     def test_hr_manager_has_no_implicit_payroll_permission(self):
         frappe.set_user(HR_MANAGER_USER)
         self.assertFalse(api._has_payroll_permission(company()))
