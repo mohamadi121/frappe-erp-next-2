@@ -11,6 +11,7 @@ from asoud_erp.integration_tests.tenancy import (
     EMPLOYEE_A_USER,
     HR_MANAGER_USER,
     PERSONNEL_USER,
+    SECOND_COMPANY,
     setup_tenancy,
 )
 from asoud_erp.services.hiring_orders import default_template
@@ -220,3 +221,24 @@ class TestHiringOrders(APITestCase):
         self.assertEqual([row["id"] for row in rows], ["base_salary"])
         self.assertIsNone(rows[0]["amount"])
         self.assertEqual(rows[0]["message"], "اطلاعات موجود نیست")
+
+    def test_order_conflict_scope_and_snapshot_after_republish(self):
+        comp = company()
+        frappe.set_user(HR_MANAGER_USER)
+        api.publish_hiring_order_template(company=comp, revision=0)
+        employee = api.list_hiring_order_people(company=comp)["data"][0]["name"]
+        args = dict(company=comp, employee=employee, effective_date=nowdate())
+        saved = api.save_hiring_order(request_id=uuid4().hex, **args)["data"]
+        with self.assertRaises(frappe.ValidationError):
+            api.save_hiring_order(request_id=uuid4().hex, order=saved["name"], revision=999, **args)
+        original = saved["template_snapshot"]
+        changed = default_template()
+        changed["articles"][0]["body"] = "متن نسخه جدید"
+        draft = api.save_hiring_order_template(company=comp, template=changed)["data"]
+        api.publish_hiring_order_template(company=comp, revision=draft["revision"])
+        self.assertEqual(api.get_hiring_order(saved["name"])["data"]["template_snapshot"], original)
+        frappe.db.set_value("ASOUD Form Entry", saved["name"], "company", SECOND_COMPANY)
+        before = frappe.db.get_value("ASOUD Form Entry", saved["name"], "values_json")
+        with self.assertRaises(frappe.PermissionError):
+            api.save_hiring_order(request_id=uuid4().hex, order=saved["name"], revision=saved["revision"], **args)
+        self.assertEqual(frappe.db.get_value("ASOUD Form Entry", saved["name"], "values_json"), before)

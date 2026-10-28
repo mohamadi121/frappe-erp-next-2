@@ -403,6 +403,22 @@ def save_hiring_order(
         if existing:
             return get_hiring_order(existing)
 
+    previous = None
+    if order:
+        entry = frappe.db.get_value(
+            "ASOUD Form Entry", order,
+            ["company", "reference_doctype", "values_json"], as_dict=True,
+        )
+        if not entry:
+            frappe.throw(_("حکم مورد نظر یافت نشد."), frappe.DoesNotExistError)
+        if entry.company != company or entry.reference_doctype != "ASOUD Hiring Order":
+            frappe.throw(_("این حکم متعلق به شرکت انتخاب‌شده نیست."), frappe.PermissionError)
+        previous = json.loads(entry.values_json or "{}")
+        if previous.get("revision") != int(revision):
+            frappe.throw(_("این حکم توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید."))
+        if previous.get("status") != "draft":
+            frappe.throw(_("وضعیت یا نسخهٔ حکم برای این اقدام معتبر نیست."))
+
     emp = frappe.db.get_value(
         "Employee",
         {"name": employee, "company": company},
@@ -422,6 +438,8 @@ def save_hiring_order(
     rev_doc = frappe.get_doc("ASOUD Form Revision", form_doc.active_revision)
     template_snapshot = json.loads(rev_doc.schema_json)
     template_snapshot["revision"] = rev_doc.version
+    if previous:
+        template_snapshot = previous["template_snapshot"]
 
     if isinstance(values, str):
         values = json.loads(values)
@@ -505,7 +523,7 @@ def send_hiring_order_for_review(name: str, revision: int, request_id: str) -> d
     _require_hr_issuer(entry.company)
     data = json.loads(entry.values_json or "{}")
 
-    if int(revision) != 0 and data.get("revision") != int(revision):
+    if data.get("revision") != int(revision):
         frappe.throw(_("این حکم توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید."))
     if data.get("status") != "draft":
         frappe.throw(_("وضعیت یا نسخهٔ حکم برای این اقدام معتبر نیست."))
