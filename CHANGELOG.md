@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- First-office HR status and provisioning share a company transaction lock with a three-second wait; busy status raises a Persian pending error instead of a false empty lead. Repeated creation explicitly returns `idempotent_replay: true` and the original username without changing credentials. Deployment: restart workers; no migration.
+
 - All five HR final prints flag missing historical letterhead metadata and render legacy finals without a header; they never load the current header. Hiring finalization now freezes letterhead metadata. Deployment: restart workers; no migration or legacy rewrite.
 
 - Hiring payroll preserves native HRMS effective-date formula previews and adds explicit missing-assignment/component reason codes to immutable payroll rows. Deployment: restart workers; no migration.

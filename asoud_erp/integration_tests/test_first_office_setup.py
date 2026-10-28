@@ -48,7 +48,34 @@ class TestFirstOfficeSetup(fixtures.APITestCase):
         }))
         self.assertEqual(frappe.db.count("Employee"), employees)
         self.assertEqual(frappe.db.count("ASOUD Party Profile"), people)
-        self.assertEqual(self.create(temporary_password="ignored"), result)
+        self.assertFalse(result["idempotent_replay"])
+        self.assertEqual(self.create(temporary_password="ignored"), dict(result, idempotent_replay=True))
+        self.assertEqual(check_password(self.contact, "Secure-Lead-Password-42"), self.contact)
+
+    def test_status_during_provisioning_lock_never_reports_a_false_empty_lead(self):
+        # A separate native connection represents a provisioning transaction holding
+        # the shared company lock. No fixture state needs to be committed.
+        connection = frappe.db.get_connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("START TRANSACTION")
+                cursor.execute("SELECT name FROM tabCompany WHERE name=%s FOR UPDATE", (self.company,))
+            with self.assertRaisesRegex(frappe.ValidationError, "ثبت مسئول منابع انسانی هنوز در جریان است"):
+                first_office_setup.status(self.company)
+        finally:
+            connection.rollback()
+            connection.close()
+        self.assertIsNone(first_office_setup.status(self.company)["data"]["hr_lead"])
+        created = self.create()
+        status = first_office_setup.status(self.company)["data"]
+        self.assertEqual(status["hr_lead"]["username"], self.username)
+        changed_username = "changed_" + frappe.generate_hash(length=10).lower()
+        retry = self.create(username=changed_username, contact="changed_" + self.contact,
+                            temporary_password="Changed-Password-42")
+        self.assertTrue(retry["idempotent_replay"])
+        self.assertEqual(retry["hr_lead"], created["hr_lead"])
+        self.assertEqual(retry["hr_lead"]["username"], self.username)
+        self.assertFalse(frappe.db.exists("User", {"username": changed_username}))
         self.assertEqual(check_password(self.contact, "Secure-Lead-Password-42"), self.contact)
 
     def test_duplicate_username_names_the_field(self):

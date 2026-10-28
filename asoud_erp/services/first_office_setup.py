@@ -51,6 +51,13 @@ def _setup(company, *, lock=False):
     require_company(company)
     if company != frappe.db.get_single_value("ASOUD Settings", "first_office_company"):
         frappe.throw("این مسیر فقط برای راه‌اندازی اولین دفتر است.", frappe.PermissionError)
+    if lock:
+        # A locking current read settles provisioning before either status or retry
+        # reads its pointer. Keep the wait below the client's network timeout.
+        try:
+            frappe.db.sql("SELECT name FROM tabCompany WHERE name=%s FOR UPDATE WAIT 3", (company,))
+        except frappe.QueryTimeoutError:
+            frappe.throw("ثبت مسئول منابع انسانی هنوز در جریان است؛ چند لحظه دیگر وضعیت را دوباره دریافت کنید.")
     if not frappe.get_meta("ASOUD Company Setup").has_field("first_hr_user"):
         frappe.throw("ابتدا به‌روزرسانی ساختار پایگاه دادهٔ سرور را اجرا کنید.")
     if not frappe.db.exists("ASOUD Company Setup", company):
@@ -70,7 +77,7 @@ def _require_fiscal(company):
         frappe.throw("ابتدا سال مالی فعال این دفتر را ثبت کنید.")
 
 
-def _summary(doc):
+def _summary(doc, *, idempotent_replay=False):
     import frappe
 
     lead = None
@@ -87,11 +94,11 @@ def _summary(doc):
                          and frappe.db.exists("User Permission", {"user": doc.first_hr_user,
                              "allow": "Company", "for_value": doc.company, "apply_to_all_doctypes": 1}))
     return {"company": doc.company, "hr_lead": lead, "hr_ready": ready,
-            "completed": bool(doc.bootstrap_completed)}
+            "completed": bool(doc.bootstrap_completed), "idempotent_replay": idempotent_replay}
 
 
 def status(company):
-    return _summary(_setup(company))
+    return _summary(_setup(company, lock=True))
 
 
 def create_hr_lead(company, full_name, username, contact, temporary_password):
@@ -105,7 +112,7 @@ def create_hr_lead(company, full_name, username, contact, temporary_password):
     doc = _setup(company, lock=True)
     _require_fiscal(company)
     if doc.first_hr_user:
-        return _summary(doc)  # Retry never changes an existing password/account.
+        return _summary(doc, idempotent_replay=True)
     try:
         name, username, mail, mobile = validate_lead_inputs(
             full_name, username, contact, temporary_password

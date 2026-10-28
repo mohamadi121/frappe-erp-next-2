@@ -10,8 +10,14 @@ active System Manager, company access, and the company recorded in
 ## `status(company)`
 
 Returns `{company, hr_lead: null | {full_name, username, role_title},
-hr_ready: bool, completed: bool}`. No password or technical email is returned.
+hr_ready: bool, completed: bool, idempotent_replay: false}`. No password or technical email is returned.
 Read-only, online; no offline write queue.
+Status and provisioning take the same company row lock until the request transaction
+ends. Status waits up to three seconds for an in-progress creation to commit or roll
+back. If the lock remains busy it raises a Persian ValidationError (417):
+«ثبت مسئول منابع انسانی هنوز در جریان است؛ چند لحظه دیگر وضعیت را دوباره دریافت کنید.»
+It never reports `hr_lead: null` merely because creation is still uncommitted;
+clients retain their pending form state and retry status on this error.
 
 ## `create_hr_lead(company, full_name, username, contact, temporary_password)`
 
@@ -39,7 +45,11 @@ must be changed at first login, and expires after 72 hours. Permanent password
 policy is unchanged. Hand the initial credentials to the recipient securely;
 there is no demo invitation code or claim of SMS/email delivery.
 
-Locks the setup row; an existing lead returns status, never a new password. An
+Locks the company and setup rows; an existing lead returns status with
+`idempotent_replay: true` and the **original** `hr_lead.username`, including when
+the retry supplies changed credentials. Initial creation returns
+`idempotent_replay: false`. Clients must show the returned original username and
+must not claim that the newly entered password or identity was applied. An
 ambiguous network response is resolved by reloading status before retrying.
 User creation, permissions and setup pointer are one transaction; exceptions
 roll back. Secret never goes in audit, offline storage or response.
