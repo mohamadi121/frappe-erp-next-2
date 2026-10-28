@@ -1,5 +1,6 @@
 """Integration tests for Salary Change Orders API (template builder, issuance, workflow, and payroll application)."""
 
+import json
 from uuid import uuid4
 
 import frappe
@@ -271,3 +272,76 @@ class TestSalaryChangeOrders(APITestCase):
                 employee=emp,
                 effective_date=nowdate(),
             )
+
+    def test_approval_without_workflow_event_cannot_finalize(self):
+        from asoud_erp.api.v1.workflow_runtime import complete_workflow_task
+        from asoud_erp.integration_tests.request_fixtures import make_definition
+
+        comp = company()
+        frappe.set_user("Administrator")
+        definition, stages = make_definition(comp, fields=[])
+        approval = next(stage for stage in stages.values() if stage.stage_type == "Approval")
+        config = json.loads(approval.config_json)
+        config.update(assignment_type="Role", approver_roles=["System Manager"])
+        frappe.db.set_value("ASOUD Workflow Stage", approval.name, "config_json", json.dumps(config))
+
+        frappe.set_user(HR_MANAGER_USER)
+        template = default_template()
+        template["workflow"] = definition
+        api.save_salary_change_order_template(comp, 0, template)
+        api.publish_salary_change_order_template(comp, 0)
+
+        emp = employee_a()
+        req_id = f"wf-order-{uuid4().hex[:8]}"
+        saved = api.save_salary_change_order(
+            company=comp,
+            request_id=req_id,
+            employee=emp,
+            effective_date=nowdate(),
+            reason="promotion",
+            description="حکم ارتقا با گردش کار",
+        )
+        order_name = saved["data"]["name"]
+        pending = api.send_salary_change_order_for_review(
+            name=order_name, revision=saved["data"]["revision"], request_id=f"send-{uuid4().hex[:8]}"
+        )
+        self.assertEqual(pending["data"]["status"], "pending")
+        self.assertTrue(pending["data"].get("workflow_instance"))
+
+        # Direct approval without completing the workflow event MUST FAIL and cannot finalize
+        with self.assertRaises(frappe.ValidationError):
+            api.approve_salary_change_order(
+                name=order_name, revision=pending["data"]["revision"], request_id=f"app-{uuid4().hex[:8]}"
+            )
+        order_check = api.get_salary_change_order(order_name)["data"]
+        self.assertEqual(order_check["status"], "pending")
+        self.assertFalse(order_check.get("number"))
+
+        # Real workflow completion triggers on_instance_update and finalizes the order
+        instance = pending["data"]["workflow_instance"]
+        task = frappe.db.get_value(
+            "ASOUD Workflow Task",
+            {"workflow_instance": instance, "status": "Open"},
+            ["name", "assigned_to"],
+            as_dict=True,
+        )
+        self.assertTrue(task)
+        frappe.set_user(task.assigned_to or "Administrator")
+        complete_workflow_task(task.name, "Approve", comment="تأیید شد")
+
+        finalized = api.get_salary_change_order(order_name)["data"]
+        self.assertEqual(finalized["status"], "final")
+        self.assertTrue(finalized["number"].startswith("SAL-"))
+
+    def test_concurrent_finalizations_never_share_a_number(self):
+        from asoud_erp.services.salary_change_order_workflow import _finalize
+
+        comp = company()
+        order_data_1 = {"company": comp, "status": "pending"}
+        order_data_2 = {"company": comp, "status": "pending"}
+        _finalize(order_data_1)
+        _finalize(order_data_2)
+
+        self.assertTrue(order_data_1["number"].startswith("SAL-"))
+        self.assertTrue(order_data_2["number"].startswith("SAL-"))
+        self.assertNotEqual(order_data_1["number"], order_data_2["number"])

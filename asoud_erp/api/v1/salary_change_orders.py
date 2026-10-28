@@ -107,6 +107,9 @@ def save_salary_change_order_template(
         template = json.loads(template)
     template = template or default_template()
     validated = validate_template(template)
+    from asoud_erp.services.salary_change_order_workflow import validate_workflow
+
+    validate_workflow(validated.get("workflow"), company)
     name = _template_form_name(company)
     encoded = json.dumps(validated, ensure_ascii=False)
 
@@ -632,21 +635,10 @@ def send_salary_change_order_for_review(
     entry = frappe.get_doc("ASOUD Form Entry", name)
     require_company(entry.company)
     erp_documents.require_roles(HR_ROLES, entry.company)
-    data = json.loads(entry.values_json or "{}")
 
-    if not revision or int(revision) <= 0 or data.get("revision") != int(revision):
-        frappe.throw(
-            _("این حکم توسط کاربر دیگری تغییر کرده است؛ اطلاعات را تازه کنید.")
-        )
-    if data.get("status") != "draft":
-        frappe.throw(_("وضعیت یا نسخهٔ حکم برای این اقدام معتبر نیست."))
+    from asoud_erp.services.salary_change_order_workflow import submit
 
-    data["status"] = "pending"
-    data["status_label"] = "در جریان"
-    data["revision"] = data.get("revision", 1) + 1
-    frappe.db.set_value(
-        "ASOUD Form Entry", entry.name, "values_json", json.dumps(data, ensure_ascii=False)
-    )
+    submit(entry.name, revision, request_id)
     return get_salary_change_order(entry.name)
 
 
@@ -666,28 +658,12 @@ def approve_salary_change_order(name: str, revision: int, request_id: str) -> di
     if data.get("status") != "pending":
         frappe.throw(_("تنها احکام در جریان بررسی قابل تأیید نهایی هستند."))
 
-    if not data.get("number"):
-        count = (
-            frappe.db.count(
-                "ASOUD Form Entry",
-                {
-                    "reference_doctype": "ASOUD Salary Change Order",
-                    "company": entry.company,
-                },
-            )
-            + 1
-        )
-        try:
-            jy, _, _ = gregorian_to_jalali(now_datetime())
-        except Exception:
-            jy = 1405
-        data["number"] = f"SAL-{jy:04d}-{count:03d}"
+    if data.get("workflow_instance"):
+        frappe.throw(_("تأیید نهایی حکم دارای گردش‌کار تنها از طریق تکمیل رویداد گردش‌کار امکان‌پذیر است."))
 
-    data["status"] = "final"
-    data["status_label"] = "نهایی"
-    data["issue_date"] = _format_jalali(nowdate())
-    data["approved_by"] = frappe.session.user
-    data["approved_on"] = str(now_datetime())
+    from asoud_erp.services.salary_change_order_workflow import _finalize
+
+    _finalize(data, entry)
     data["revision"] = data.get("revision", 1) + 1
     frappe.db.set_value(
         "ASOUD Form Entry", entry.name, "values_json", json.dumps(data, ensure_ascii=False)
