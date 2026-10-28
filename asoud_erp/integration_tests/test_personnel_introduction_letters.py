@@ -163,3 +163,34 @@ class TestPersonnelIntroductionLetters(APITestCase):
                 purpose="افتتاح حساب",
                 request_key="test-inactive-intro-key",
             )
+
+    def test_final_print_survives_template_republication_and_employee_edit(self):
+        comp = company()
+        employee = frappe.db.get_value("Employee", {"user_id": EMPLOYEE_A_USER}, "name")
+        frappe.set_user(HR_MANAGER_USER)
+        template = api.get_template(company=comp)["data"]
+        api.publish_template(company=comp, revision=template["revision"])
+        draft = api.save_draft(
+            company=comp, employee=employee, bank_name="بانک ملت",
+            purpose="افتتاح حساب", request_key="snapshot-before-master-edit",
+        )["data"]
+        final = api.finalize_letter(
+            name=draft["name"], revision=draft["revision"], request_key="snapshot-final",
+        )["data"]
+        assert final["status"] == "Final"
+        assert final["values_snapshot"]["employee"]["employee_name"]
+        original_print = final["print_html"]
+        frappe.db.set_value("Employee", employee, "employee_name", "نام تغییر یافته پس از صدور")
+        template = api.get_template(company=comp)["data"]
+        replacement = api.save_template_draft(
+            company=comp, revision=template["revision"], clauses=[{
+                "id": "replaced", "title": "متن جدید", "body": "قالب تغییر یافته پس از صدور",
+                "enabled": True,
+            }],
+        )["data"]
+        api.publish_template(company=comp, revision=replacement["revision"])
+        fetched = api.get_letter(final["name"])["data"]
+        assert fetched["print_html"] == original_print
+        assert fetched["values_snapshot"] == final["values_snapshot"]
+        assert "قالب تغییر یافته پس از صدور" not in fetched["print_html"]
+        assert "نام تغییر یافته پس از صدور" not in fetched["print_html"]
