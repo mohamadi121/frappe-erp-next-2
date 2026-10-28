@@ -122,6 +122,39 @@ def test_seeding_twice_changes_nothing(env):
     assert len(env.site.table("Workflow")) == 1
 
 
+def test_orphan_adoption_keeps_custom_form_and_extra_task_idempotently(env):
+    site = env.site
+    env.seed.ensure_system_templates("Wind Power LLC")
+    name = "SYS-LEAVE-WP"
+    stages = [row for row in site.table("ASOUD Workflow Stage").values()
+              if row["workflow_definition"] == name]
+    form = next(row for row in stages if row["stage_type"] == "User Task")
+    form["config_json"] = json.dumps({"form_fields": [], "instructions": "ویرایش کاربر"})
+    site.add("ASOUD Workflow Stage", "EXTRA", workflow_definition=name, stage_key="extra-task",
+             stage_type="User Task", config_json='{"instructions":"custom"}')
+    site.table("ASOUD Workflow Definition").pop(name)
+    before = snapshot(site)
+    assert env.seed.ensure_system_templates("Wind Power LLC") == {"created": 1, "updated": 0, "skipped": 1}
+    after = snapshot(site)
+    for table in ("ASOUD Workflow Stage", "ASOUD Workflow Transition"):
+        assert after[table] == before[table]
+    assert env.seed.ensure_system_templates("Wind Power LLC") == {"created": 0, "updated": 0, "skipped": 2}
+    assert snapshot(site) == after
+
+
+def test_orphan_ownership_conflict_is_rejected(env):
+    site = env.site
+    env.seed.ensure_system_templates("Wind Power LLC")
+    site.table("ASOUD Workflow Definition").pop("SYS-LEAVE-WP")
+    end = next(row for row in site.table("ASOUD Workflow Stage").values()
+               if row["stage_key"] == "sys-leave-wp-end")
+    end["workflow_definition"] = "SYS-PURCHASE-WP"
+    before = snapshot(site)
+    with pytest.raises(fake.ValidationError, match="متعلق به گردش‌کار دیگری"):
+        env.seed.ensure_system_templates("Wind Power LLC")
+    assert snapshot(site) == before
+
+
 def test_a_version_bump_rewrites_only_the_form_fields(env):
     env.seed.ensure_system_templates()
     site = env.site

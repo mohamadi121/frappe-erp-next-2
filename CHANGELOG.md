@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- System request seeding adopts orphan stages/transitions when a deterministic SYS definition is missing, preserving row identities, edited forms/routes and extra tasks; only missing default rows are added. Conflicting ownership or duplicate Starts roll back the repair. CI runs the real-site seed regressions. Deployment: run `bench --site <site> migrate`; no new fields or DocTypes, and no stage deletion or reset.
+
 - FLOW-01: HR User/HR Manager grants are reserved for the system administrator, including composite/global/office role definitions and personnel registration. The permission editor remains System Manager-only. Real-site coverage checks refusal before personnel/account writes and all three administrator grant paths. Deployment: restart workers; no migration.
 
 - Added a single real-site lifecycle matrix for five HR documents and five role/scope cases, including approval, existing numbering, frozen print and replay. Shared role/company/task denials now use Persian PermissionErrors without field details. CI includes the matrix. Deployment: restart workers; no migration.
