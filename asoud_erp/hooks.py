@@ -35,6 +35,7 @@ doc_events = {
     "ASOUD Workflow Instance": {"on_update": [
         "asoud_erp.services.request_templates.lifecycle.on_instance_update",
         "asoud_erp.services.personnel_introduction_letter_workflow.on_instance_update",
+        "asoud_erp.services.employment_certificate_workflow.on_instance_update",
     ]},
     "Asset Movement": {"on_cancel": "asoud_erp.services.request_followup_runtime.cancel_open_tasks",
                        "on_trash": "asoud_erp.services.request_followup_runtime.cancel_open_tasks"},

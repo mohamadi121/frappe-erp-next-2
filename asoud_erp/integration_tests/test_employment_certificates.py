@@ -12,6 +12,91 @@ from asoud_erp.integration_tests.tenancy import (
 
 
 class TestEmploymentCertificates(APITestCase):
+    def _workflow_certificate(self, workflow=""):
+        from uuid import uuid4
+
+        from asoud_erp.services.employment_certificates import DEFAULT_TEMPLATE
+
+        frappe.set_user(HR_MANAGER_USER)
+        template = api.get_template(company())["data"]
+        saved = api.save_template_draft(company(), revision=template["revision"],
+            clauses=DEFAULT_TEMPLATE["clauses"], salary_enabled=False, salary_rows=[], workflow=workflow)["data"]
+        api.publish_template(company(), revision=saved["revision"])
+        employee = frappe.db.get_value("Employee", {"user_id": EMPLOYEE_A_USER}, "name")
+        return api.save_draft(company=company(), employee=employee, addressee_name="بانک",
+                              request_key=uuid4().hex)["data"]
+
+    def test_certificate_routes_to_real_workflow_and_finalizes_only_on_approval(self):
+        import json
+        from uuid import uuid4
+
+        from asoud_erp.api.v1.workflow_runtime import complete_workflow_task
+        from asoud_erp.integration_tests.request_fixtures import make_definition
+
+        frappe.set_user("Administrator")
+        definition, stages = make_definition(company(), fields=[])
+        approval = next(stage for stage in stages.values() if stage.stage_type == "Approval")
+        config = json.loads(approval.config_json)
+        config.update(assignment_type="Role", approver_roles=["System Manager"])
+        frappe.db.set_value("ASOUD Workflow Stage", approval.name, "config_json", json.dumps(config))
+        for action, expected in (("Approve", "Final"), ("Reject", "Rejected")):
+            draft = self._workflow_certificate(definition)
+            key = uuid4().hex
+            pending = api.finalize_certificate(draft["name"], revision=draft["revision"], request_key=key)["data"]
+            self.assertEqual(pending["status"], "Pending")
+            self.assertEqual(pending["number"], "—")
+            request = frappe.get_doc("ASOUD Workflow Request", pending["workflow_request"])
+            self.assertEqual(request.workflow_definition, definition)
+            self.assertEqual(request.company, company())
+            replay = api.finalize_certificate(draft["name"], revision=draft["revision"], request_key=key)["data"]
+            self.assertEqual(replay["workflow_instance"], pending["workflow_instance"])
+            task = frappe.db.get_value("ASOUD Workflow Task", {
+                "workflow_instance": pending["workflow_instance"], "status": "Open",
+                "assigned_to": ["!=", HR_MANAGER_USER]}, ["name", "assigned_to"], as_dict=True)
+            self.assertTrue(task)
+            frappe.set_user(task.assigned_to)
+            complete_workflow_task(task.name, action, comment="بررسی گواهی انجام شد")
+            result = api.get_certificate(draft["name"])["data"]
+            self.assertEqual(result["status"], expected)
+            self.assertEqual(result["number"] != "—", action == "Approve")
+            instance = frappe.get_doc("ASOUD Workflow Instance", pending["workflow_instance"])
+            instance.save()
+            again = api.get_certificate(draft["name"])["data"]
+            self.assertEqual(again["number"], result["number"])
+            self.assertEqual(again["revision"], result["revision"])
+            self.assertEqual(again["template_snapshot"], draft["template_snapshot"])
+
+    def test_certificate_without_workflow_uses_direct_hr_policy(self):
+        from uuid import uuid4
+
+        draft = self._workflow_certificate()
+        key = uuid4().hex
+        final = api.finalize_certificate(draft["name"], revision=draft["revision"], request_key=key)["data"]
+        self.assertEqual(final["status"], "Final")
+        self.assertTrue(final["number"].startswith("CERT-"))
+        self.assertNotIn("workflow_instance", final)
+        self.assertEqual(api.finalize_certificate(draft["name"], revision=draft["revision"],
+                                                   request_key=key)["data"]["number"], final["number"])
+
+    def test_certificate_immediate_workflow_and_unavailable_workflow(self):
+        from uuid import uuid4
+
+        from asoud_erp.integration_tests.request_fixtures import make_definition
+
+        frappe.set_user("Administrator")
+        definition, _ = make_definition(company(), approvals=0, fields=[])
+        draft = self._workflow_certificate(definition)
+        result = api.finalize_certificate(draft["name"], revision=draft["revision"], request_key=uuid4().hex)["data"]
+        self.assertEqual(result["status"], "Final")
+        self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", result["workflow_instance"], "status"), "Completed")
+        draft = self._workflow_certificate(definition)
+        frappe.db.set_value("ASOUD Workflow Definition", definition, "status", "Draft")
+        with self.assertRaises(frappe.ValidationError):
+            api.finalize_certificate(draft["name"], revision=draft["revision"], request_key=uuid4().hex)
+        unchanged = api.get_certificate(draft["name"])["data"]
+        self.assertEqual(unchanged["status"], "Draft")
+        self.assertEqual(unchanged["number"], "—")
+
     def test_final_print_preserves_letterhead_snapshot(self):
         from uuid import uuid4
 

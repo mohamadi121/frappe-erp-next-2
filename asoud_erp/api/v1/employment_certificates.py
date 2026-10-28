@@ -13,6 +13,7 @@ from frappe.model.naming import make_autoname
 from frappe.utils import getdate, now_datetime, nowdate
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.employment_certificate_workflow import submit, validate_workflow
 from asoud_erp.services.employment_certificates import (
     DEFAULT_TEMPLATE,
     build_print_html,
@@ -163,6 +164,7 @@ def get_template(company: str) -> dict:
                 "clauses": data.get("clauses", []),
                 "salary_enabled": data.get("salary_enabled", False),
                 "salary_rows": data.get("salary_rows", []),
+                "workflow": data.get("workflow", ""),
             })
         except Exception:
             pass
@@ -178,6 +180,7 @@ def get_template(company: str) -> dict:
                 "clauses": data.get("clauses", []),
                 "salary_enabled": data.get("salary_enabled", False),
                 "salary_rows": data.get("salary_rows", []),
+                "workflow": data.get("workflow", ""),
             })
         except Exception:
             pass
@@ -190,6 +193,7 @@ def get_template(company: str) -> dict:
         "clauses": data.get("clauses", []),
         "salary_enabled": data.get("salary_enabled", False),
         "salary_rows": data.get("salary_rows", []),
+        "workflow": data.get("workflow", ""),
     })
 
 
@@ -200,6 +204,7 @@ def save_template_draft(
     clauses: Any = None,
     salary_enabled: bool = False,
     salary_rows: Any = None,
+    workflow: str = "",
 ) -> dict:
     require_company(company)
     require_roles(TEMPLATE_DESIGNERS, company=company)
@@ -214,10 +219,12 @@ def save_template_draft(
             "clauses": clauses or [],
             "salary_enabled": bool(salary_enabled),
             "salary_rows": salary_rows or [],
+            "workflow": workflow,
         })
     except ValueError as err:
         frappe.throw(str(err))
 
+    validate_workflow(normalized["workflow"], company)
     name = _ensure_template(company)
     doc = frappe.get_doc("ASOUD Form", name)
     if doc.company != company:
@@ -239,6 +246,7 @@ def save_template_draft(
         "clauses": normalized["clauses"],
         "salary_enabled": normalized["salary_enabled"],
         "salary_rows": normalized["salary_rows"],
+        "workflow": normalized["workflow"],
     })
 
 
@@ -556,6 +564,7 @@ def save_draft(
         "clauses": tmpl_clauses,
         "salary_enabled": should_include_salary,
         "salary_rows": tmpl_salary_rows if should_include_salary else [],
+        "workflow": template_data.get("workflow", ""),
     }
     rendered = render_snapshot(active_template, values, salary_source_rows if should_include_salary else None)
 
@@ -667,58 +676,5 @@ def finalize_certificate(name: str, revision: int = 0, request_key: str = "") ->
     require_company(entry_row.company)
     require_roles(HR_OPERATIONAL_ROLES, company=entry_row.company)
 
-    # Reload after locking: the list result may predate another finalization.
-    locked = frappe.get_doc("ASOUD Form Entry", entry_row.name, for_update=True)
-    try:
-        data = json.loads(locked.values_json)
-    except (TypeError, ValueError):
-        frappe.throw(_("اطلاعات گواهی مخدوش است."))
-
-    if data.get("finalize_request_key") == request_key:
-        return _certificate_response(data, entry_row.company)
-    try:
-        matching_revision = int(revision) > 0 and int(revision) == data.get("revision", 1)
-    except (TypeError, ValueError):
-        matching_revision = False
-    if not matching_revision:
-        frappe.throw(_("نسخه گواهی تغییر کرده است؛ صفحه را تازه‌سازی کنید."))
-    if data.get("status") != "Draft":
-        frappe.throw(_("این گواهی در وضعیت پیش‌نویس نیست و دوباره نهایی نمی‌شود."))
-
-    workflow = frappe.db.get_value("ASOUD Workflow Definition", {
-        "company": entry_row.company, "target_doctype": CERT_DOCTYPE, "status": "Active",
-    }, "name")
-    if workflow:
-        frappe.throw(_("برای این گواهی گردش‌کار فعال است؛ صدور مستقیم مجاز نیست و تأیید گردش‌کار الزامی است."))
-
-    official_number = make_autoname(SERIES)
-    issue_date_str = _format_jalali(nowdate())
-
-    data["status"] = "Final"
-    data["number"] = official_number
-    data["issue_date"] = issue_date_str
-    data["revision"] = data.get("revision", 1) + 1
-    data["finalize_request_key"] = request_key
-
-    # Re-render snapshot with official number and date:
-    vals = data.get("values_snapshot", {})
-    if "certificate" in vals:
-        vals["certificate"]["number"] = official_number
-        vals["certificate"]["date"] = issue_date_str
-
-    tmpl = data.get("template_snapshot", DEFAULT_TEMPLATE)
-    salary_rows = data.get("salary_rows")
-    rendered = render_snapshot(tmpl, vals, salary_rows)
-    data["rendered_html"] = rendered["html"]
-
-    letterhead_html = _letterhead(entry_row.company)
-    data["letterhead_html"] = letterhead_html
-    data["print_html"] = _build_print_html(data, letterhead_html, True)
-
-    frappe.db.set_value(
-        "ASOUD Form Entry",
-        entry_row.name,
-        {"values_json": json.dumps(data, ensure_ascii=False, sort_keys=True)},
-    )
-
+    data = submit(entry_row.name, revision=revision, request_key=request_key)
     return _certificate_response(data, entry_row.company)

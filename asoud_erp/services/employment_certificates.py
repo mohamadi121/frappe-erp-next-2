@@ -40,6 +40,7 @@ DEFAULT_TEMPLATE = {
     "salary_rows": [
         {"id": "base", "title": "حقوق پایه", "field_ref": "payroll.base", "period": "monthly"},
     ],
+    "workflow": "",
 }
 
 
@@ -127,7 +128,10 @@ def validate_template(template: dict) -> dict:
         rows.append({key: row[key] for key in ("id", "title", "field_ref", "period")})
     if enabled and not rows:
         raise ValueError("برای بخش حقوق حداقل یک قلم لازم است.")
-    return {"clauses": clauses, "salary_enabled": enabled, "salary_rows": rows}
+    workflow = template.get("workflow", "")
+    if not isinstance(workflow, str) or len(workflow) > 140:
+        raise ValueError("شناسهٔ گردش‌کار گواهی معتبر نیست.")
+    return {"clauses": clauses, "salary_enabled": enabled, "salary_rows": rows, "workflow": workflow.strip()}
 
 
 def render_snapshot(template: dict, values: dict, salary_rows: list[dict] | None = None) -> dict:
