@@ -17,6 +17,9 @@ from asoud_erp.services.organization_units import (
 
 
 def _access(company, write=False):
+    from asoud_erp.services.request_access import require_company
+
+    require_company(company)
     frappe.get_doc("Company", company).check_permission("read")
     allowed = {"System Manager", "HR Manager"} if write else {"System Manager", "HR Manager", "HR User"}
     if not allowed.intersection(frappe.get_roles()):
