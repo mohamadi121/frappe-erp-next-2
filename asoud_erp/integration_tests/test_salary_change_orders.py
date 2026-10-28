@@ -345,3 +345,75 @@ class TestSalaryChangeOrders(APITestCase):
         self.assertTrue(order_data_1["number"].startswith("SAL-"))
         self.assertTrue(order_data_2["number"].startswith("SAL-"))
         self.assertNotEqual(order_data_1["number"], order_data_2["number"])
+
+    def test_tampered_client_amounts_are_ignored_and_recomputed_server_side(self):
+        comp = company()
+        frappe.set_user(HR_MANAGER_USER)
+        emp = employee_a()
+
+        # Seed an active salary assignment
+        struct = frappe.db.get_value("Salary Structure", {"company": comp, "docstatus": 1}, "name")
+        if not struct:
+            st = frappe.get_doc({
+                "doctype": "Salary Structure",
+                "name": f"Test-Struct-{uuid4().hex[:6]}",
+                "company": comp,
+                "payroll_frequency": "Monthly",
+                "is_active": "Yes",
+                "docstatus": 1,
+            })
+            st.flags.ignore_permissions = True
+            st.insert()
+            struct = st.name
+
+        assign = frappe.get_doc({
+            "doctype": "Salary Structure Assignment",
+            "employee": emp,
+            "company": comp,
+            "salary_structure": struct,
+            "from_date": "2020-01-01",
+            "base": 150000000,
+            "variable": 0,
+            "docstatus": 1,
+        })
+        assign.flags.ignore_permissions = True
+        assign.insert()
+
+        # Client sends maliciously tampered previous_amount, difference, percent, and totals
+        tampered_rows = [
+            {
+                "id": "base_salary",
+                "title": "حقوق پایه",
+                "period": "monthly",
+                "old_ref": "payroll.base_salary",
+                "new_ref": "document.new.base_salary",
+                "previous_amount": 999999999,
+                "new_amount": 180000000,
+                "difference": 111,
+                "percent_change": 1.0,
+                "percent_label": "+1.0%",
+            }
+        ]
+        saved = api.save_salary_change_order(
+            company=comp,
+            request_id=f"tamper-{uuid4().hex[:8]}",
+            employee=emp,
+            effective_date=nowdate(),
+            reason="annual",
+            description="تست ارقام جعلی کاربر",
+            comparison_rows=tampered_rows,
+        )
+
+        table = saved["data"]["comparison_table"]
+        base_row = next(r for r in table["rows"] if r["id"] == "base_salary")
+        # 1. previous_amount must be taken from server payroll (150000000), NOT client (999999999)
+        self.assertEqual(base_row["previous_amount"], 150000000)
+        self.assertEqual(base_row["new_amount"], 180000000)
+        # 2. difference must be recomputed on server (180000000 - 150000000 = 30000000), NOT 111
+        self.assertEqual(base_row["difference"], 30000000)
+        # 3. percent_change must be recomputed on server ((30000000 / 150000000) * 100 = 20.0), NOT 1.0
+        self.assertEqual(base_row["percent_change"], 20.0)
+        # 4. Totals must be recomputed on server
+        self.assertEqual(table["monthly_previous_total"], 150000000)
+        self.assertEqual(table["monthly_new_total"], 180000000)
+        self.assertEqual(table["monthly_difference"], 30000000)

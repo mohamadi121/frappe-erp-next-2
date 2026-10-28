@@ -514,11 +514,89 @@ def save_salary_change_order(
         values = json.loads(values)
     values = values or {}
 
-    if isinstance(comparison_rows, str):
-        comparison_rows = json.loads(comparison_rows)
+    effective = getdate(effective_date) if effective_date else getdate(nowdate())
+    assignment = frappe.get_all(
+        "Salary Structure Assignment",
+        filters={
+            "employee": employee,
+            "company": company,
+            "docstatus": 1,
+            "from_date": ["<=", effective],
+        },
+        fields=["name", "base", "variable", "currency", "salary_structure"],
+        order_by="from_date desc, creation desc",
+        limit_page_length=1,
+    )
+    payroll_prev_map = {}
+    if assignment:
+        row = assignment[0]
+        if row.base is not None:
+            payroll_prev_map["base_salary"] = int(row.base)
+            payroll_prev_map["payroll.base_salary"] = int(row.base)
+        if row.variable is not None:
+            payroll_prev_map["variable"] = int(row.variable)
+            payroll_prev_map["variable_pay"] = int(row.variable)
+            payroll_prev_map["payroll.variable"] = int(row.variable)
+        try:
+            from asoud_erp.services.hiring_order_payroll import component_amounts
+            comp_amounts = component_amounts(company, employee, row, effective)
+            for c_name, c_amt in comp_amounts.items():
+                payroll_prev_map[c_name] = int(c_amt)
+                payroll_prev_map[f"component.{c_name}"] = int(c_amt)
+                payroll_prev_map[f"payroll.{c_name}"] = int(c_amt)
+        except Exception:
+            pass
 
-    comparison_rows = comparison_rows or template_snapshot.get("comparison_rows") or []
-    comparison_table = calculate_comparison_table(comparison_rows)
+    client_proposed = {}
+    if comparison_rows:
+        if isinstance(comparison_rows, str):
+            comparison_rows = json.loads(comparison_rows)
+        for cr in comparison_rows:
+            if isinstance(cr, dict):
+                rid = cr.get("id") or cr.get("new_ref") or cr.get("old_ref") or ""
+                val = cr.get("new_amount") if "new_amount" in cr else cr.get("new")
+                if rid and val is not None:
+                    client_proposed[rid] = val
+
+    canonical_rows = template_snapshot.get("comparison_rows") or []
+    if not canonical_rows and comparison_rows:
+        canonical_rows = comparison_rows
+
+    resolved_rows = []
+    for r in canonical_rows:
+        rid = r.get("id") or ""
+        old_ref = r.get("old_ref") or ""
+        new_ref = r.get("new_ref") or ""
+
+        server_prev = payroll_prev_map.get(rid)
+        if server_prev is None and old_ref:
+            server_prev = payroll_prev_map.get(old_ref)
+        if server_prev is None and ("base" in old_ref or rid == "base_salary"):
+            server_prev = payroll_prev_map.get("base_salary")
+        if server_prev is None and ("variable" in old_ref or rid in ("variable", "variable_pay")):
+            server_prev = payroll_prev_map.get("variable")
+
+        proposed = client_proposed.get(rid)
+        if proposed is None and new_ref:
+            proposed = client_proposed.get(new_ref)
+        if proposed is None and old_ref:
+            proposed = client_proposed.get(old_ref)
+        if proposed is None and "new_amount" in r:
+            proposed = r.get("new_amount")
+        elif proposed is None and "new" in r:
+            proposed = r.get("new")
+
+        resolved_rows.append({
+            "id": rid,
+            "title": r.get("title") or rid,
+            "period": r.get("period", "monthly"),
+            "old_ref": old_ref,
+            "new_ref": new_ref,
+            "previous_amount": server_prev,
+            "new_amount": proposed,
+        })
+
+    comparison_table = calculate_comparison_table(resolved_rows)
 
     today_jalali = _format_jalali(nowdate())
 
