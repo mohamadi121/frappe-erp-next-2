@@ -528,9 +528,14 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
         if existing_entry and frappe.db.exists("Contract", existing_entry.reference_name):
             return get_contract(existing_entry.reference_name)
 
-    if isinstance(salary_values, str):
-        salary_values = json.loads(salary_values)
-    salary_values = salary_values or {}
+    # Stored amounts are resolved at the effective date; client amounts are never authoritative.
+    assignments = frappe.get_all(
+        "Salary Structure Assignment",
+        filters={"employee": employee, "company": company, "docstatus": 1,
+                 "from_date": ["<=", getdate(start_date)]},
+        fields=["base"], order_by="from_date desc, creation desc", limit_page_length=1,
+    )
+    salary_values = {"payroll.base_salary": assignments[0].base} if assignments else {}
 
     template_data = _get_active_template_data(company)
     clauses = template_data.get("clauses", DEFAULT_CLAUSES)

@@ -16,6 +16,27 @@ from asoud_erp.services.employment_contract import DEFAULT_CLAUSES, DEFAULT_SALA
 
 
 class TestEmploymentContracts(APITestCase):
+    def test_client_salary_tampering_is_ignored(self):
+        import json
+        from uuid import uuid4
+
+        frappe.set_user(HR_MANAGER_USER)
+        comp = company()
+        employee = frappe.db.get_value("Employee", {"company": comp, "status": "Active"}, "name")
+        draft = api.save_contract_draft(comp, employee, "2020-01-01",
+                                        salary_values={"payroll.base_salary": 999999999999,
+                                                       "payroll.housing": 888888888888},
+                                        client_id=uuid4().hex)["data"]
+        encoded = frappe.db.get_value("ASOUD Form Entry", {"reference_name": draft["contract_id"]}, "values_json")
+        values = json.loads(encoded)["salary_values"]
+        self.assertNotIn(999999999999, values.values())
+        self.assertNotIn("payroll.housing", values)
+        assignments = frappe.get_all("Salary Structure Assignment",
+                                      filters={"employee": employee, "company": comp, "docstatus": 1,
+                                               "from_date": ["<=", "2020-01-01"]},
+                                      fields=["base"], order_by="from_date desc, creation desc", limit_page_length=1)
+        self.assertEqual(values, {"payroll.base_salary": assignments[0].base} if assignments else {})
+
     def test_salary_is_masked_in_detail_and_print(self):
         import json
         from uuid import uuid4
