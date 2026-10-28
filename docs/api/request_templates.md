@@ -177,6 +177,15 @@ inactive workflow `ASOUD-SYSTEM-REQUEST-NATIVE`. A second run changes nothing. W
 spec's `version` is higher, only the form fields and `template_version` are rewritten.
 `save_stage_settings` refuses the form stage of a system template.
 
+If a `SYS-<KEY>-<ABBR>` definition is missing, seeding adopts its existing stages
+and transitions instead of inserting another Start. Existing row identities,
+configuration, titles and edited routes (including extra user tasks) are preserved.
+Only missing default stages and missing routes without an existing outgoing route
+are created. A repeated run at the same template version changes nothing.
+Conflicting ownership or multiple existing Start stages fail with a Persian error;
+the repair is rolled back rather than guessing which records belong together.
+Deployment: run `bench --site <site> migrate`; no new fields or DocTypes.
+
 ## Post-approval native documents
 
 When a template request's instance becomes `Completed`, the hook calls
