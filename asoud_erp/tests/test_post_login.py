@@ -51,3 +51,24 @@ def test_disabled_account():
 
 def test_admin_with_no_accessible_office_after_setup():
     assert route(is_system_admin=True, office_ids=[])["route"] == "no-office"
+
+
+def test_admin_profile_precedes_first_office_and_pending_setup():
+    for exists, offices, pending in [(False, [], None), (True, ["A"], "A")]:
+        assert route(is_system_admin=True, admin_profile_complete=False,
+                     first_office_exists=exists, office_ids=offices,
+                     pending_fiscal_office=pending) == {
+                         "route": "complete-admin-profile", "office": None, "message": None}
+
+
+def test_completed_profile_proceeds_to_office_then_setup():
+    assert route(is_system_admin=True, first_office_exists=False, office_ids=[])["route"] == "create-first-office"
+    assert route(is_system_admin=True, pending_fiscal_office="A") == {
+        "route": "setup-first-office", "office": "A", "message": None}
+
+
+def test_password_and_disabled_state_precede_incomplete_profile():
+    assert route(is_system_admin=True, admin_profile_complete=False,
+                 must_change_password=True)["route"] == "change-password"
+    assert route(is_system_admin=True, admin_profile_complete=False,
+                 active=False)["route"] == "account-disabled"

@@ -35,15 +35,17 @@ data: {
 `next.route` is one of `account-disabled`, `change-password`, `create-first-office`, `setup-first-office`, `complete-admin-profile`,
 `office-select`, `home` (with `next.office`), `no-office` (with the Persian `message`
 «هنوز دسترسی به دفتر کاری برای شما تعیین نشده است.»). Priority: disabled, change password, admin bootstrap
-(first office, then profile), no office, one office goes home, several offices use `selected_office` or ask.
+(essential profile, then first office, then office setup), no office, one office goes home,
+several offices use `selected_office` or ask. An incomplete administrator profile always
+returns `complete-admin-profile`, including before any office exists and during unfinished setup.
 A non-admin never gets `create-first-office`.
 
 `setup-first-office` returns `next.office` for the persisted
 `ASOUD Settings.first_office_company` when it is accessible to the system
 administrator but has no enabled native Fiscal Year linked through Fiscal Year
-Company. It comes immediately after office creation, before the admin profile,
+Company, or has not explicitly completed bootstrap. It comes after profile completion and office creation,
 and resumes after sign-out/restart. Legacy sites without that bootstrap marker
-are not redirected. No new local completion flag or database field is used.
+are not redirected. Completion uses the existing server-side `bootstrap_completed` marker.
 `setup.list_fiscal_years(company)` returns [{name, year, year_start_date,
 year_end_date, disabled}]. `setup.create_fiscal_year(company, fiscal_year,
 start_month, start_day)` persists a native year and its company link and returns

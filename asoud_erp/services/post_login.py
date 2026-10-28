@@ -18,8 +18,8 @@ def resolve_next_route(*, active, must_change_password, is_system_admin, first_o
                        pending_fiscal_office=None) -> dict:
     """``{route, office, message}``.
 
-    Order for the system administrator: temporary password, first office, essential
-    profile, then the ordinary office logic. Every other account never reaches the
+    Order for the system administrator: temporary password, essential profile,
+    first office, setup, then the ordinary office logic. Every other account never reaches the
     first-office or admin-profile steps, whatever the deployment state is.
     """
     offices = list(dict.fromkeys(office_ids or ()))
@@ -28,12 +28,12 @@ def resolve_next_route(*, active, must_change_password, is_system_admin, first_o
     if must_change_password:
         return {"route": ROUTE_CHANGE_PASSWORD, "office": None, "message": None}
     if is_system_admin:
+        if not admin_profile_complete:
+            return {"route": ROUTE_COMPLETE_ADMIN_PROFILE, "office": None, "message": None}
         if not first_office_exists:
             return {"route": ROUTE_CREATE_FIRST_OFFICE, "office": None, "message": None}
         if pending_fiscal_office in offices:
             return {"route": ROUTE_SETUP_FIRST_OFFICE, "office": pending_fiscal_office, "message": None}
-        if not admin_profile_complete:
-            return {"route": ROUTE_COMPLETE_ADMIN_PROFILE, "office": None, "message": None}
     if not offices:
         return {"route": ROUTE_NO_OFFICE, "office": None, "message": NO_OFFICE_MESSAGE}
     if len(offices) == 1:
