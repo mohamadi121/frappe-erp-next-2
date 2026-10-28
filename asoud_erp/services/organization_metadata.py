@@ -4,6 +4,8 @@ DESCRIPTION_FIELD = "asoud_description"
 
 
 def description_value(value):
+    if value is None:
+        return ""
     if not isinstance(value, str):
         raise ValueError("توضیحات واحد باید متن باشد.")
     if len(value) > 2000:

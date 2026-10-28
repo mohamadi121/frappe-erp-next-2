@@ -8,6 +8,13 @@ from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER, APITestCase
 
 
 class TestOrganization(APITestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from asoud_erp.services.organization_metadata import ensure_department_description
+
+        ensure_department_description()
+
     def test_unit_description_roundtrip_and_omitted_update_preserves_text(self):
         from asoud_erp.services.organization_metadata import DESCRIPTION_FIELD
 
@@ -24,6 +31,38 @@ class TestOrganization(APITestCase):
             with self.assertRaises(frappe.PermissionError):
                 organization.save_unit(self.company, dict(name=name, modified=str(listed["modified"]),
                     title=listed["department_name"], description="غیرمجاز"))
+        finally:
+            frappe.set_user("Administrator")
+            doc = frappe.get_doc("Department", name)
+            organization.delete_unit(self.company, name, str(doc.modified))
+
+    def test_unit_description_clear_with_null_and_empty(self):
+        from asoud_erp.services.organization_metadata import DESCRIPTION_FIELD
+
+        name = organization.save_unit(self.company, dict(
+            title="واحد آزمون پاک‌کردن " + frappe.generate_hash(length=8),
+            description="شرح اولیه", is_group=True))["data"]["name"]
+        try:
+            self.assertEqual(frappe.db.get_value("Department", name, DESCRIPTION_FIELD), "شرح اولیه")
+            # Clear with null
+            doc = frappe.get_doc("Department", name)
+            organization.save_unit(self.company, dict(
+                name=name, modified=str(doc.modified),
+                title=doc.department_name, description=None, is_group=True))
+            self.assertEqual(frappe.db.get_value("Department", name, DESCRIPTION_FIELD) or "", "")
+
+            # Set again and clear with empty string
+            doc = frappe.get_doc("Department", name)
+            organization.save_unit(self.company, dict(
+                name=name, modified=str(doc.modified),
+                title=doc.department_name, description="شرح مجدد", is_group=True))
+            self.assertEqual(frappe.db.get_value("Department", name, DESCRIPTION_FIELD), "شرح مجدد")
+
+            doc = frappe.get_doc("Department", name)
+            organization.save_unit(self.company, dict(
+                name=name, modified=str(doc.modified),
+                title=doc.department_name, description="", is_group=True))
+            self.assertEqual(frappe.db.get_value("Department", name, DESCRIPTION_FIELD) or "", "")
         finally:
             frappe.set_user("Administrator")
             doc = frappe.get_doc("Department", name)
