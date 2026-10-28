@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Introduction-letter workflow submission sends only fields declared by the selected workflow form and retains required-field validation. Request references use the existing company/owner permission policy so operational HR users can submit their own requests without an Employee role.
+
 - Introduction-letter issuance uses the existing request workflow and completion/rejection events when a workflow is configured; without a workflow it follows the current HR direct-issuance policy. Official numbers use the shared Jalali request-numbering pattern. Sent/final snapshots cannot be overwritten, and final print payloads remain frozen. Restart workers to load the lifecycle hook; no schema migration. New workflow code and tests were not run, as requested by the owner.
 
 - Introduction letters use Employee.employee_number for personnel codes in options, snapshots and search, with an empty value when no code exists.

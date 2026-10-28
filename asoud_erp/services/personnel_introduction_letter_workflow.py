@@ -55,7 +55,7 @@ def _issue(entry, data):
 
 
 def submit(entry_name, revision, request_key):
-    from asoud_erp.api.v1.workflow_request import create_request
+    from asoud_erp.api.v1.workflow_request import _fields_by_name, create_request
 
     if not isinstance(request_key, str) or not request_key.strip():
         frappe.throw(_("شناسهٔ یکتای ارسال معرفی‌نامه معتبر نیست."))
@@ -86,9 +86,11 @@ def submit(entry_name, revision, request_key):
         # Keep reference_name stable so existing public letter URLs keep working.
         fingerprint = hashlib.sha256(f"introduction:{entry.name}:{request_key}".encode()).hexdigest()
         _store(entry, data, fingerprint)
+        declared = {field["key"] for field in _fields_by_name(workflow)
+                    if field.get("key") and field.get("type") != "Auto"}
         request_values = {key: data.get(key, "") for key in (
             "employee", "employee_name", "employee_number", "recipient_text", "purpose", "notes", "validity_date",
-        )}
+        ) if key in declared}
         request = create_request(company=entry.company, workflow_definition=workflow,
             subject=entry.subject, values=request_values, request_id=fingerprint)["data"]
         data.update(workflow_request=request["name"], workflow_instance=request["workflow_instance"])

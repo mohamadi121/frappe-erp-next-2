@@ -656,7 +656,13 @@ def start_workflow_instance(
             frappe.throw(_("Reference DocType does not match the workflow"))
         if not frappe.db.exists(reference_doctype, reference_name):
             frappe.throw(_("Referenced document does not exist"))
-        if not frappe.has_permission(reference_doctype, "read", reference_name):
+        if reference_doctype == "ASOUD Workflow Request":
+            from asoud_erp.services.request_access import request_permission
+
+            readable = request_permission(frappe.get_doc(reference_doctype, reference_name))
+        else:
+            readable = frappe.has_permission(reference_doctype, "read", reference_name)
+        if not readable:
             frappe.throw(_("Not permitted to use the referenced document"), frappe.PermissionError)
     if reference_doctype == "ASOUD Workflow Request" and reference_name:
         request = frappe.get_doc(reference_doctype, reference_name, for_update=True)

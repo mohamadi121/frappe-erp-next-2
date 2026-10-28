@@ -1,14 +1,14 @@
 """Integration tests for Personnel Introduction Letters API."""
 
-import frappe
 import json
 from uuid import uuid4
 
+import frappe
+
 from asoud_erp.api.v1 import personnel_introduction_letters as api
+from asoud_erp.api.v1 import workflow_request, workflow_runtime
 from asoud_erp.integration_tests.fixtures import APITestCase, company
 from asoud_erp.integration_tests.request_fixtures import make_definition
-from asoud_erp.api.v1 import workflow_request, workflow_runtime
-from asoud_erp.services.request_templates.base import series_key
 from asoud_erp.integration_tests.tenancy import (
     EMPLOYEE_A_USER,
     EMPLOYEE_B_USER,
@@ -16,6 +16,7 @@ from asoud_erp.integration_tests.tenancy import (
     SECOND_COMPANY,
     setup_tenancy,
 )
+from asoud_erp.services.request_templates.base import series_key
 
 
 class TestPersonnelIntroductionLetters(APITestCase):
@@ -34,9 +35,9 @@ class TestPersonnelIntroductionLetters(APITestCase):
         return api.save_draft(company=company(), employee=employee, bank_name="بانک ملت",
             purpose="افتتاح حساب", request_key=uuid4().hex)["data"]
 
-    def _letter_definition(self, approvals=1):
+    def _letter_definition(self, approvals=1, fields=None):
         frappe.set_user("Administrator")
-        definition, stages = make_definition(company(), approvals=approvals, fields=[])
+        definition, stages = make_definition(company(), approvals=approvals, fields=fields if fields is not None else [])
         for stage in stages.values():
             if stage.stage_type == "Approval":
                 config = json.loads(stage.config_json)
@@ -58,6 +59,28 @@ class TestPersonnelIntroductionLetters(APITestCase):
             api.save_draft(company=company(), employee=draft["employee"], name=draft["name"],
                 revision=first["revision"], bank_name="بانک دیگر", purpose="تغییر پس از صدور",
                 request_key=uuid4().hex)
+
+    def test_workflow_receives_only_declared_letter_fields(self):
+        definition = self._letter_definition(fields=[
+            {"key": "purpose", "label": "هدف", "type": "Text", "required": True},
+            {"key": "employee_number", "label": "کد پرسنلی", "type": "Text"},
+        ])
+        draft = self._workflow_letter(definition)
+        pending = api.finalize_letter(draft["name"], draft["revision"], uuid4().hex)["data"]
+        values = json.loads(frappe.db.get_value("ASOUD Workflow Request", pending["workflow_request"], "values_json"))
+        assert values == {"purpose": draft["purpose"], "employee_number": draft["employee_number"] or None}
+        assert pending["status"] == "Pending"
+
+    def test_unmapped_required_workflow_field_still_rejects_submission(self):
+        definition = self._letter_definition(fields=[
+            {"key": "review_reason", "label": "دلیل بررسی", "type": "Text", "required": True},
+        ])
+        draft = self._workflow_letter(definition)
+        with self.assertRaises(frappe.ValidationError):
+            api.finalize_letter(draft["name"], draft["revision"], uuid4().hex)
+        current = api.get_letter(draft["name"])["data"]
+        assert current["status"] == "Draft"
+        assert not current.get("workflow_request")
 
     def test_configured_workflow_finalizes_only_after_real_approval(self):
         definition = self._letter_definition()
@@ -135,6 +158,12 @@ class TestPersonnelIntroductionLetters(APITestCase):
         assert frappe.db.get_value("ASOUD Workflow Request", pending["workflow_request"], "owner") == EMPLOYEE_A_USER
         with self.assertRaises(frappe.PermissionError):
             workflow_runtime.start_workflow_instance(definition=definition, subject="گردش بدون درخواست")
+        other_draft = self._workflow_letter(definition)
+        other = api.finalize_letter(other_draft["name"], other_draft["revision"], uuid4().hex)["data"]
+        frappe.set_user(EMPLOYEE_A_USER)
+        with self.assertRaises(frappe.PermissionError):
+            workflow_runtime.start_workflow_instance(definition=definition, subject="درخواست کاربر دیگر",
+                reference_doctype="ASOUD Workflow Request", reference_name=other["workflow_request"])
 
     def test_foreign_workflow_is_not_selectable_or_saved_in_own_template(self):
         frappe.set_user("Administrator")
