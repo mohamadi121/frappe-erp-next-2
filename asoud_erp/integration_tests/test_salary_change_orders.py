@@ -11,6 +11,7 @@ from asoud_erp.integration_tests.tenancy import (
     EMPLOYEE_A_USER,
     HR_MANAGER_USER,
     MANAGER_USER,
+    SECOND_COMPANY,
     setup_tenancy,
 )
 from asoud_erp.services.salary_change_orders import default_template
@@ -163,3 +164,8 @@ class TestSalaryChangeOrders(APITestCase):
         frappe.set_user(EMPLOYEE_A_USER)
         with self.assertRaises(frappe.PermissionError):
             api.list_salary_change_orders(company=comp)
+
+    def test_cross_office_access_denied(self):
+        frappe.set_user(HR_MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            api.list_salary_change_orders(company=SECOND_COMPANY)
