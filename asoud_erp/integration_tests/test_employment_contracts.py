@@ -16,6 +16,13 @@ from asoud_erp.services.employment_contract import DEFAULT_CLAUSES, DEFAULT_SALA
 
 
 class TestEmploymentContracts(APITestCase):
+    def test_hr_manager_has_no_implicit_payroll_permission(self):
+        frappe.set_user(HR_MANAGER_USER)
+        self.assertFalse(api._has_payroll_permission(company()))
+        catalog = api.get_contract_field_catalog(company())["data"]
+        payroll = next(row for row in catalog["categories"] if row["key"] == "payroll")
+        self.assertFalse(payroll["authorized"])
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

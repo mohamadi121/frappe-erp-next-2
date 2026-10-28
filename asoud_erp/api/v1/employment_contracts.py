@@ -30,7 +30,7 @@ from asoud_erp.services.request_templates.base import number_pattern
 
 TEMPLATE_DESIGNERS = ("System Manager", "HR Manager")
 HR_OPERATIONAL_ROLES = ("System Manager", "HR Manager", "HR User")
-PAYROLL_ROLES = ("System Manager", "HR Manager", "Accounts Manager")
+PAYROLL_ROLES = ("System Manager", "Payroll Manager", "Accounts Manager")
 
 
 def _is_designer() -> bool:
