@@ -6,7 +6,9 @@ from asoud_erp.api.v1 import personnel_introduction_letters as api
 from asoud_erp.integration_tests.fixtures import APITestCase, company
 from asoud_erp.integration_tests.tenancy import (
     EMPLOYEE_A_USER,
+    EMPLOYEE_B_USER,
     HR_MANAGER_USER,
+    SECOND_COMPANY,
     setup_tenancy,
 )
 
@@ -194,3 +196,36 @@ class TestPersonnelIntroductionLetters(APITestCase):
         assert fetched["values_snapshot"] == final["values_snapshot"]
         assert "قالب تغییر یافته پس از صدور" not in fetched["print_html"]
         assert "نام تغییر یافته پس از صدور" not in fetched["print_html"]
+
+    def test_operational_hr_cannot_save_or_publish_templates(self):
+        comp = company()
+        frappe.set_user("Administrator")
+        frappe.get_doc("User", EMPLOYEE_A_USER).add_roles("HR User")
+        frappe.set_user(EMPLOYEE_A_USER)
+        template = api.get_template(company=comp)["data"]
+        with self.assertRaises(frappe.PermissionError):
+            api.save_template_draft(
+                company=comp, revision=template["revision"], clauses=template["clauses"],
+            )
+        with self.assertRaises(frappe.PermissionError):
+            api.publish_template(company=comp, revision=template["revision"])
+
+    def test_other_company_letters_are_inaccessible_in_list_search_get_and_print(self):
+        frappe.set_user("Administrator")
+        employee_b = frappe.db.get_value("Employee", {"user_id": EMPLOYEE_B_USER}, "name")
+        foreign = api.save_draft(
+            company=SECOND_COMPANY, employee=employee_b, bank_name="بانک خصوصی شرکت دوم",
+            purpose="اطلاعات محرمانه شرکت دوم", request_key="foreign-company-letter",
+        )["data"]
+        frappe.get_doc("User", EMPLOYEE_A_USER).add_roles("HR User")
+        frappe.set_user(EMPLOYEE_A_USER)
+        for query in ("", "اطلاعات محرمانه شرکت دوم", foreign["name"]):
+            own = api.list_letters(company=company(), query=query)["data"]["items"]
+            assert all(row["name"] != foreign["name"] for row in own)
+            with self.assertRaises(frappe.PermissionError):
+                api.list_letters(company=SECOND_COMPANY, query=query)
+        with self.assertRaises(frappe.PermissionError):
+            api.get_employee_options(company=SECOND_COMPANY)
+        # get_letter is also the server print-payload endpoint.
+        with self.assertRaises(frappe.PermissionError):
+            api.get_letter(foreign["name"])
