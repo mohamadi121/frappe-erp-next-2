@@ -32,7 +32,10 @@ doc_events = {
     "ASOUD Role Definition": {"on_update": "asoud_erp.services.user_audit.on_role_definition_update"},
     "Activity Log": {"after_insert": "asoud_erp.services.user_audit.mirror_activity_log"},
     "Company": {"after_insert": "asoud_erp.services.request_templates.seed.on_company_insert"},
-    "ASOUD Workflow Instance": {"on_update": "asoud_erp.services.request_templates.lifecycle.on_instance_update"},
+    "ASOUD Workflow Instance": {"on_update": [
+        "asoud_erp.services.request_templates.lifecycle.on_instance_update",
+        "asoud_erp.services.personnel_introduction_letter_workflow.on_instance_update",
+    ]},
     "Asset Movement": {"on_cancel": "asoud_erp.services.request_followup_runtime.cancel_open_tasks",
                        "on_trash": "asoud_erp.services.request_followup_runtime.cancel_open_tasks"},
     "Leave Application": {"validate": "asoud_erp.services.leave_balance.validate_leave_application"},

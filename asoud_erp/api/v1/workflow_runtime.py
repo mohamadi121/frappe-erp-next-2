@@ -628,6 +628,7 @@ def start_workflow_instance(
         (
             "System Manager",
             "HR Manager",
+            "HR User",
             "Accounts Manager",
             "Accounts User",
             "Purchase Manager",
@@ -640,7 +641,10 @@ def start_workflow_instance(
 
     if workflow.company:
         require_company(workflow.company)
-    if "Employee" in frappe.get_roles() and not {"System Manager", "HR Manager", "Accounts Manager", "Accounts User", "Purchase Manager", "Purchase User"}.intersection(frappe.get_roles()):
+    requester_only = bool({"Employee", "HR User"}.intersection(frappe.get_roles())) and not {
+        "System Manager", "HR Manager", "Accounts Manager", "Accounts User", "Purchase Manager", "Purchase User",
+    }.intersection(frappe.get_roles())
+    if requester_only:
         if reference_doctype != "ASOUD Workflow Request" or not reference_name:
             frappe.throw("Employees must start workflows through their own request", frappe.PermissionError)
     if workflow.status != "Active" or workflow.readiness_status != "Ready":
@@ -652,10 +656,18 @@ def start_workflow_instance(
             frappe.throw(_("Reference DocType does not match the workflow"))
         if not frappe.db.exists(reference_doctype, reference_name):
             frappe.throw(_("Referenced document does not exist"))
-        if not frappe.has_permission(reference_doctype, "read", reference_name):
+        if reference_doctype == "ASOUD Workflow Request":
+            from asoud_erp.services.request_access import request_permission
+
+            readable = request_permission(frappe.get_doc(reference_doctype, reference_name))
+        else:
+            readable = frappe.has_permission(reference_doctype, "read", reference_name)
+        if not readable:
             frappe.throw(_("Not permitted to use the referenced document"), frappe.PermissionError)
     if reference_doctype == "ASOUD Workflow Request" and reference_name:
         request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
+        if requester_only and request.owner != frappe.session.user:
+            frappe.throw(_("شروع گردش کار فقط برای درخواست خودتان مجاز است."), frappe.PermissionError)
         if request.workflow_definition != definition:
             frappe.throw("Request workflow does not match")
         existing = frappe.db.get_value("ASOUD Workflow Instance", {

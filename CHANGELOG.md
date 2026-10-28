@@ -13,6 +13,13 @@
 - احکام استخدام: چرخه کامل قالب (ذخیره و انتشار پیش‌نویس تغییرناپذیر)، صدور حکم، ثبت پیش‌نویس، بررسی، دریافت و چاپ A4 با نوار پیش‌نویس و سربرگ سازمان افزوده شد. شماره‌گذاری رسمی، نرمال‌سازی جست‌وجو و کنترل مجوز شرکت پیاده‌سازی شدند. استقرار: فقط restart، بدون تغییر schema یا migration.
 
 - منابع دادهٔ حکم استخدام: endpointهای صفحه‌بندی‌شدهٔ انتخاب پرسنل و snapshot حقوق در تاریخ اجرا افزوده شد. مقدار حقوق ناموجود صریحاً «اطلاعات موجود نیست» است و هرگز صفر نمی‌شود. استقرار: فقط restart؛ ثبت، نسخه‌بندی و نهایی‌سازی حکم در این تغییر افزوده نشده است.
+- Introduction-letter workflow submission sends only fields declared by the selected workflow form and retains required-field validation. Request references use the existing company/owner permission policy so operational HR users can submit their own requests without an Employee role.
+
+- Introduction-letter issuance uses the existing request workflow and completion/rejection events when a workflow is configured; without a workflow it follows the current HR direct-issuance policy. Official numbers use the shared Jalali request-numbering pattern. Sent/final snapshots cannot be overwritten, and final print payloads remain frozen. Restart workers to load the lifecycle hook; no schema migration. New workflow code and tests were not run, as requested by the owner.
+
+- Introduction letters use Employee.employee_number for personnel codes in options, snapshots and search, with an empty value when no code exists.
+
+- Personnel introduction letters (`docs/api/personnel_introduction_letters.md`): versioned template builder and HR issuance API (`personnel_introduction_letters.get_template`, `save_template_draft`, `publish_template`, `get_employee_options`, `list_letters`, `get_letter`, `save_draft`, `finalize_letter`) with stable placeholder tags, server-side normalized search, idempotent draft and finalize handling, official document numbering (`INTRO-.YYYY.-.#####`), and immutable snapshotting.
 
 - First-office setup can complete without provisioning an HR account. Saved office, administrator/company access and active fiscal year remain required. No existing accounts or permissions change; deploy matching Flutter flow and restart backend workers. No schema migration required. Tests not run at user request.
 
