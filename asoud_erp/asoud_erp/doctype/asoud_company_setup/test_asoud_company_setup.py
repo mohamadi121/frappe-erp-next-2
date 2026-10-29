@@ -58,7 +58,7 @@ class TestASOUDCompanySetup(FrappeTestCase):
             "Personal",
             self.company_name,
             postal_code="۹۸۷۷۶۶۶۶۶۶",
-            phone="۰۲۱۸۸۸۸۸۸۸۸",
+            phone="۰۹۱۲۱۲۳۴۵۶۷",
             fiscal_year="۱۴۰۵",
         )
         stored = frappe.db.get_value(
@@ -69,6 +69,6 @@ class TestASOUDCompanySetup(FrappeTestCase):
         )
         self.assertEqual(
             (stored.postal_code, stored.phone, stored.fiscal_year),
-            ("9877666666", "02188888888", "1405"),
+            ("9877666666", "09121234567", "1405"),
         )
         self.assertEqual(office["data"]["fiscal_year"], 1405)

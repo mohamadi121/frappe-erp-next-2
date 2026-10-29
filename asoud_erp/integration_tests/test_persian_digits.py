@@ -47,7 +47,7 @@ class TestPersianDigits(FrappeTestCase):
             "Personal",
             f"ASOUD Digits Office {frappe.generate_hash(length=6)}",
             postal_code="۹۸۷۷۶۶۶۶۶۶",
-            phone="۰۲۱۸۸۸۸۸۸۸۸",
+            phone="۰۹۱۲۱۲۳۴۵۶۷",
             fiscal_year="۱۴۰۵",
         )["data"]
         stored = frappe.db.get_value(
@@ -59,7 +59,7 @@ class TestPersianDigits(FrappeTestCase):
         )
         self.assertEqual(
             (stored.postal_code, stored.phone, stored.fiscal_year),
-            ("9877666666", "02188888888", "1405"),
+            ("9877666666", "09121234567", "1405"),
         )
         self.assertEqual(result["fiscal_year"], 1405)
 
