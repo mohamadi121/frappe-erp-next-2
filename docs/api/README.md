@@ -1,5 +1,7 @@
 # ASOUD ERP API v1 — conventions
 
+Workflow card operations: [status and safe native deletion](workflow-card-actions.md).
+
 The Flutter client talks to this app only through whitelisted methods under
 `asoud_erp.api.v1.*`. Each module wraps standard ERPNext/HRMS DocTypes and
 controller functions; it adds Iranian localization, company scoping, and a stable
