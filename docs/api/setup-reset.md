@@ -1,5 +1,33 @@
 # Temporary, administrator-authenticated setup reset
 
+## Complete first-entry reset correction
+
+The existing `preview`/`perform`/`status` flow deletes the authenticated owner's
+offices, organization charts/positions/units, personnel and custom roles. Login
+identity/password/System Manager authority, native essential roles, other owners'
+offices and security audit are preserved. Operational/posted dependencies still
+block deletion; this is not a site-wide accounting purge.
+
+Only the authenticated, queued reset worker may remove the previewed offices'
+system workflow definitions and their technical edit history. Its in-process
+capability includes actor, job and the exact freshly verified document scope;
+ordinary workflow deletion remains protected, and native dependency checks are
+never forced or skipped. Owned form/revision/source cycles are broken within
+the same rollback-capable transaction. Any remaining relationship aborts all
+changes. Counts include technical edit history affected by native deletion.
+
+Completed `status` adds `companies: string[]`, recovered from the mandatory durable
+receipt (also after lost Redis state). The client clears only that user's related
+organization drafts/caches and custom role drafts on the same server **after**
+durable server success; failure/queued/running never clear them. Credentials and
+pending writes/other users' drafts are not cleared. Cache-cleanup failure does not
+repeat server deletion or falsely report that the committed reset failed.
+
+The reset still requires the explicitly enabled server flag, admin sign-in, fresh
+password, preview, backup acknowledgment and typed confirmation. No SSH interaction
+is part of the app's button. The next sign-in loads server-authoritative first-entry
+state; deploying this code does not itself delete production data.
+
 Implementation requires explicit site config activation; no site flag is enabled
 and no live deletion is performed by development. The UI authenticates first.
 
