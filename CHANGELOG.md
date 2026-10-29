@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Correct office digit-normalization test fixtures to use a valid Persian-digit mobile number under the existing office mobile validation contract; retain ASCII persistence assertions and party landline coverage. No runtime or deployment changes.
+
 - Submitted-form workflow routing replaces the superseded task-form draft: published Request/Document identities are pinned to a workflow, original entries/native documents enter the existing runtime once, and assignees view sanitized read-only data without re-entering forms. Native permission/company checks, revision changes and duplicate routes are guarded. Deployment: `bench migrate` (definition source links/index), restart workers, then matching Flutter.
 - Temporary server setup reset: authenticated system administrator, explicit site flag, fresh password/rate limit, owned-office preview, typed confirmation and backup acknowledgment. Password-free tracked background job with transactional durable receipt, write barrier, rollback/native dependency guards, and current administrator credentials preserved. No live reset or tests executed. Enable `asoud_allow_setup_reset` only deliberately on the target site; long queue required, disable after use.
 
