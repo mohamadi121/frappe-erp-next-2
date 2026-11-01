@@ -127,6 +127,10 @@ def _notify_user(
 
 def _users_for_stage(stage, instance) -> list[str]:
     config = json.loads(stage.config_json or "{}")
+    if stage.stage_type == 'User Task' and config.get('action_contract_version') == 1:
+        from asoud_erp.services.workflow_user_action import users_for
+
+        return users_for(stage, instance)
     assignment_type, values = assignment_values(config, stage.stage_type)
     if assignment_type == "Initiator":
         users = [instance.started_by]
@@ -299,6 +303,7 @@ def _completed_task_rows(instance, exclude_task: str | None = None) -> list[dict
                 "stage_type": stage.stage_type,
                 "has_form_fields": bool(config.get("form_fields")),
                 "form_fields": config.get("form_fields", []),
+                "action_schema": config.get('result_schema') if config.get('action_contract_version') == 1 else None,
             }
         )
     return result
@@ -310,9 +315,18 @@ def _previous_task_data(instance, exclude_task: str | None = None) -> list[dict]
         response = json.loads(row.get("response_json") or "{}")
         if not response:
             continue
+        action_schema = row.get('action_schema')
+        if action_schema:
+            from asoud_erp.services.form_schema import fields as schema_fields
+            from asoud_erp.services.workflow_submission_source import sanitized
+
+            action_schema, response = sanitized(action_schema, response)
+            fields = list(schema_fields(action_schema))
+        else:
+            fields = row.get('form_fields', [])
         labels = {
             field.get("key"): field.get("label") or field.get("key")
-            for field in row.get("form_fields", [])
+            for field in fields
             if isinstance(field, dict)
         }
         sections.append(
@@ -443,14 +457,19 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
                 "task_title": stage.stage_title,
                 "assigned_to": user,
                 "status": "Open",
+                "action": 'Awaiting Claim' if config.get('action_contract_version') == 1 and
+                    config.get('assignment_rule', {}).get('delivery') == 'Shared' else None,
                 "assigned_on": now_datetime(),
                 "due_on": due_on,
                 "reminder_on": reminder_on,
                 "draft_json": json.dumps(draft_values, ensure_ascii=False)
-                if config.get("form_fields")
+                if config.get("form_fields") and config.get('action_contract_version') != 1
                 else "{}",
             }
         ).insert(ignore_permissions=True)
+        if config.get('action_contract_version') == 1:
+            _record_activity(task, 'Assigned', 'ارجاع اقدام به مسئول مجاز ثبت شد.',
+                reference_doctype='User', reference_name=user)
         _notify_user(
             user,
             _("New workflow task: {0}").format(stage.stage_title),
@@ -481,10 +500,11 @@ def _action_context(instance) -> dict:
     values.update(merge_completed_responses(list(reversed(rows))))
     # Notifications and documents are read by people who may not see the request: confidential values are masked.
     from asoud_erp.api.v1.workflow_request import request_fields
-    from asoud_erp.services.request_serializer import mask_sensitive_values
+    from asoud_erp.services.request_serializer import mask_sensitive_values, schema_fields
 
     fields = (request_fields(request.name) if request else []) + [
         field for row in rows for field in row["form_fields"] if isinstance(field, dict)]
+    fields.extend(field for row in rows for field in schema_fields(row.get('action_schema') or {}))
     values = mask_sensitive_values(values, fields, False)
     employee = frappe.db.get_value(
         "Employee", {"user_id": instance.started_by}, ["employee_name", "department"], as_dict=True
@@ -849,7 +869,7 @@ def list_my_workflow_tasks(status: str = "Open", start=0, paged=False) -> dict:
     params = {"user": frappe.session.user, "status": status}
     start = max(0, int(start))
     rows = frappe.db.sql(
-        "SELECT name, workflow_instance, workflow_stage, task_title, status, assigned_on, completed_on, "
+        "SELECT name, workflow_instance, workflow_stage, task_title, status, action, assigned_on, completed_on, "
         "due_on, reminder_sent_on, escalated_on, draft_json LIKE '{\"followup\":%%' AS is_followup "
         "FROM `tabASOUD Workflow Task` WHERE " + where +
         " ORDER BY assigned_on DESC, name DESC LIMIT %(start)s, %(limit)s",
@@ -1058,14 +1078,21 @@ def get_workflow_task(task: str) -> dict:
     draft = json.loads(doc.draft_json or "{}")
     from asoud_erp.services.workflow_step_validation import project_request_rows, request_values_for_instance
     try:
-        draft = project_request_rows(config.get("form_fields", []), request_values_for_instance(frappe, instance), draft)
+        if config.get('action_contract_version') != 1:
+            draft = project_request_rows(config.get("form_fields", []), request_values_for_instance(frappe, instance), draft)
     except ValueError as error:
         frappe.throw(_(str(error)))
     request_row = frappe.db.get_value(
         "ASOUD Workflow Request", {"workflow_instance": doc.workflow_instance}, ["name", "company"], as_dict=True
     ) or {}
+    action_data = {}
+    if stage.stage_type == 'User Task' and config.get('action_contract_version') == 1:
+        from asoud_erp.services.workflow_user_action import prepare
+
+        action_data = prepare(doc, config)
     return success(
         {
+            **action_data,
             "name": doc.name,
             "workflow_instance": doc.workflow_instance,
             "workflow_stage": doc.workflow_stage,
@@ -1073,6 +1100,7 @@ def get_workflow_task(task: str) -> dict:
             "request_company": request_row.get("company", ""),
             "task_title": doc.task_title,
             "status": doc.status,
+            'action': doc.action,
             "assigned_on": doc.assigned_on,
             "due_on": doc.due_on,
             "reminder_sent_on": doc.reminder_sent_on,
@@ -1103,6 +1131,20 @@ def save_workflow_task_draft(task: str, response: str | dict) -> dict:
         frappe.throw(_("Workflow draft must be an object"))
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
     stage_config = json.loads(stage.config_json or "{}")
+    if stage_config.get('action_contract_version') == 1:
+        from asoud_erp.services.workflow_user_action import assert_writable, prepare
+
+        frappe.get_doc('ASOUD Workflow Instance', doc.workflow_instance, for_update=True)
+        doc = frappe.get_doc('ASOUD Workflow Task', task, for_update=True)
+        _assert_task_owner(doc)
+        assert_writable(doc, stage_config)
+        if not stage_config.get('allow_draft', True):
+            frappe.throw('ذخیرهٔ پیش‌نویس برای این اقدام مجاز نیست.')
+        values = prepare(doc, stage_config, draft=True, values=values)
+        doc.draft_json = json.dumps(values, ensure_ascii=False)
+        doc.save(ignore_permissions=True)
+        _record_activity(doc, 'Draft Saved', 'پیش‌نویس اقدام ذخیره شد.')
+        return success({'task': doc.name, 'saved': True})
     if not stage_config.get("allow_draft", True):
         frappe.throw(_("Drafts are disabled for this workflow stage"))
     fields = stage_config.get("form_fields", [])
@@ -1121,10 +1163,23 @@ def upload_workflow_attachment(task: str, filename: str, content_base64: str) ->
     from asoud_erp.services.directive_access import reject_generic
     reject_generic(doc)
     _assert_task_owner(doc)
+    stage_config = json.loads(frappe.db.get_value('ASOUD Workflow Stage', doc.workflow_stage, 'config_json') or '{}')
+    if stage_config.get('action_contract_version') == 1:
+        from asoud_erp.services.workflow_user_action import assert_writable
+
+        frappe.get_doc('ASOUD Workflow Instance', doc.workflow_instance, for_update=True)
+        doc = frappe.get_doc('ASOUD Workflow Task', task, for_update=True)
+        assert_writable(doc, stage_config)
+        _assert_task_owner(doc)
+        if not stage_config.get('allow_add_attachments'):
+            frappe.throw('افزودن پیوست جدید برای این اقدام مجاز نیست.')
     if doc.status != "Open":
         frappe.throw(_("Only an open workflow task can receive attachments"))
+    if not isinstance(filename, str) or not isinstance(content_base64, str) or len(content_base64) > 14 * 1024 * 1024:
+        frappe.throw('فایل معتبر نیست یا حجم آن بیش از حد مجاز است.')
     safe_name = Path(filename or "").name
-    if Path(safe_name).suffix.lower() not in ALLOWED_ATTACHMENT_EXTENSIONS:
+    extensions = ALLOWED_ATTACHMENT_EXTENSIONS | ({'.csv'} if stage_config.get('action_contract_version') == 1 else set())
+    if Path(safe_name).suffix.lower() not in extensions:
         frappe.throw(_("Unsupported workflow attachment type"))
     try:
         content = base64.b64decode(content_base64, validate=True)
@@ -1142,7 +1197,7 @@ def upload_workflow_attachment(task: str, filename: str, content_base64: str) ->
             "is_private": 1,
         }
     ).insert(ignore_permissions=True)
-    return success({"file_url": file_doc.file_url, "file_name": file_doc.file_name})
+    return success({"file_url": file_doc.file_url, "file_name": file_doc.file_name, 'name': file_doc.name})
 
 
 def _validate_response_attachments(fields, values):
@@ -1166,7 +1221,19 @@ def complete_workflow_task(
     response: str | dict | None = None,
 ) -> dict:
     from asoud_erp.services.directive_access import reject_generic
-    reject_generic(frappe.get_doc("ASOUD Workflow Task", task))
+    original = frappe.get_doc("ASOUD Workflow Task", task)
+    reject_generic(original)
+    _assert_task_owner(original)
+    original_config = json.loads(frappe.db.get_value('ASOUD Workflow Stage', original.workflow_stage, 'config_json') or '{}')
+    versioned_action = original_config.get('action_contract_version') == 1
+    if versioned_action:
+        from asoud_erp.services.workflow_user_action import assert_writable, handle, prepare
+
+        if action in ('Claim', 'Follow Up', 'Blocked'):
+            return success(handle(task, action, response, comment))
+        if action != 'Complete':
+            frappe.throw('برای این اقدام فقط ثبت نتیجه و تکمیل مجاز است؛ رد درخواست اصلی از این بخش انجام نمی‌شود.')
+        frappe.get_doc('ASOUD Workflow Instance', original.workflow_instance, for_update=True)
     if action not in {"Complete", "Approve", "Reject", "Return"}:
         frappe.throw(_("Invalid workflow task action"))
     frappe.db.sql("select name from `tabASOUD Workflow Task` where name = %s for update", task)
@@ -1176,6 +1243,8 @@ def complete_workflow_task(
         frappe.throw(_("Workflow task has already been completed"))
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
     config = json.loads(stage.config_json or "{}")
+    if versioned_action:
+        assert_writable(doc, config)
     allowed_actions = (
         {"Approve", "Reject", "Return"}
         if stage.stage_type == "Approval"
@@ -1186,7 +1255,7 @@ def complete_workflow_task(
     instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
     if stage.stage_type == "Approval" and instance.started_by == frappe.session.user:
         frappe.throw(_("تأیید درخواست خودتان مجاز نیست."), frappe.PermissionError)
-    if config.get("comment_required") and not (comment or "").strip():
+    if not versioned_action and config.get("comment_required") and not (comment or "").strip():
         frappe.throw(_("A decision comment is required"))
     if action in {"Reject", "Return"} and not (comment or "").strip():
         frappe.throw(_("ثبت دلیل رد یا بازگشت الزامی است."))
@@ -1205,27 +1274,31 @@ def complete_workflow_task(
                 fields = [{**field, "required": True} for field in fields if isinstance(field, dict)]
             # A draft carries Auto values the server computed earlier; they are ignored here
             # and recomputed by the template validation below.
-            normalized_response = normalize_form_response(fields, raw_response, allow_auto=True)
+            normalized_response = prepare(doc, config, values=raw_response) if versioned_action else normalize_form_response(fields, raw_response, allow_auto=True)
+            if versioned_action and config['result_mode'] == 'Simple' and normalized_response.get('action_result') != 'done':
+                frappe.throw('برای پیگیری یا ثبت مانع، از دکمهٔ ثبت وضعیت اقدام استفاده کنید.')
         except ValueError as error:
             frappe.throw(_(str(error)))
-        validate_link_values(
-            config.get("form_fields", []), normalized_response, workflow_company(doc.workflow_instance)
-        )
+        if not versioned_action:
+            validate_link_values(
+                config.get("form_fields", []), normalized_response, workflow_company(doc.workflow_instance)
+            )
         from asoud_erp.services.workflow_step_validation import (
             request_values_for_instance,
             validate_request_bounds,
         )
         try:
             instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
-            normalized_response = validate_request_bounds(
+            normalized_response = normalized_response if versioned_action else validate_request_bounds(
                 config.get("form_fields", []), request_values_for_instance(frappe, instance), normalized_response)
         except ValueError as error:
             frappe.throw(_(str(error)))
-        if stage.stage_type == "User Task":
+        if stage.stage_type == "User Task" and not versioned_action:
             normalized_response = validate_form_stage_response(
                 frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance), stage, normalized_response
             )
-    _validate_response_attachments(config.get("form_fields", []), normalized_response)
+    if not versioned_action:
+        _validate_response_attachments(config.get("form_fields", []), normalized_response)
     # Serialize the final assignee's output with other completions in this instance.
     # Native inserts and task completion share this POST transaction.
     if action == "Complete" and config.get("task_purpose", "Existing") != "Existing":
@@ -1372,6 +1445,11 @@ def process_workflow_deadlines() -> None:
             continue
         stage = frappe.get_doc("ASOUD Workflow Stage", task.workflow_stage)
         config = json.loads(stage.config_json or "{}")
+        if config.get('action_contract_version') == 1:
+            from asoud_erp.services.workflow_user_action import escalate
+
+            escalate(name, current)
+            continue
         instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)
         _notify_user(
             task.assigned_to,

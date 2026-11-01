@@ -65,10 +65,15 @@ def revision(doc, name=None):
 
 def allowed(schema, company):
     require_company(company)
+    department = frappe.db.get_value('Employee', {'user_id': frappe.session.user, 'company': company, 'status': 'Active'}, 'department')
+    return matches_access(schema, frappe.get_roles(), department)
+
+
+def matches_access(schema, user_roles, department):
+    """One native form-access rule, shared by reads and assignment filtering."""
     access = schema.get('access', {})
     mode = access.get('mode', 'all')
-    roles = bool(set(access.get('roles', [])) & set(frappe.get_roles()))
-    department = frappe.db.get_value('Employee', {'user_id': frappe.session.user, 'company': company, 'status': 'Active'}, 'department')
+    roles = bool(set(access.get('roles', [])) & set(user_roles))
     unit = bool(department and department in access.get('departments', []))
     return {'all': True, 'roles': roles, 'departments': unit, 'and': roles and unit, 'or': roles or unit}.get(mode, False)
 
@@ -370,13 +375,18 @@ def get_options(company):
 
 
 @frappe.whitelist()
-def get_link_options(company, source, query='', form=None, filter_field=None, filter_value=None, exclude_self=0):
+def get_link_options(company, source, query='', form=None, filter_field=None, filter_value=None, exclude_self=0, task=None):
     require_company(company)
     if source not in SOURCES:
         fail('منبع اطلاعات مجاز نیست.')
     if not designer():
         doc = load(form)
-        schema = json.loads(revision(doc).schema_json)
+        if task:
+            from asoud_erp.services.workflow_user_action import link_schema
+
+            schema = link_schema(task, form, company)
+        else:
+            schema = json.loads(revision(doc).schema_json)
         sources = {f.get('source') for f in fields(schema)} | {c.get('source') for f in fields(schema) for c in f.get('columns', [])}
         if doc.company != company or doc.disabled or not allowed(schema, company) or source not in sources:
             frappe.throw('دسترسی مجاز نیست.', frappe.PermissionError)

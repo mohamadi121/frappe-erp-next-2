@@ -6,8 +6,8 @@ from asoud_erp.services import workflow_templates as service
 
 
 @frappe.whitelist()
-def catalog(company, search="", module_key="", start=0, page_length=20):
-    return success(service.catalog(company, search, module_key, start, page_length))
+def catalog(company, search="", module_key="", start=0, page_length=20, include_user=0):
+    return success(service.catalog(company, search, module_key, start, page_length, include_user=include_user))
 
 
 @frappe.whitelist(methods=["POST"])
