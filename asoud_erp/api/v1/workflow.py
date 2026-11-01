@@ -11,6 +11,7 @@ from asoud_erp.services.jalali import current_jalali_year
 from asoud_erp.services.request_access import require_company
 from asoud_erp.services.workflow_contract import (
     ALLOWED_WORKFLOW_STATUSES,
+    design_details_summary,
     serialize_workflow,
 )
 from asoud_erp.services.workflow_stage_policy import (
@@ -73,6 +74,7 @@ def _design_payload(definition: str) -> dict:
         "workflow": serialize_workflow(workflow.as_dict()),
         "stages": [_stage_dict(row) for row in stages],
         "transitions": [_transition_dict(row) for row in transitions],
+        "details_summary": design_details_summary(stages, transitions),
     }
 
 
@@ -112,11 +114,16 @@ def list_workflows(
             "frappe_workflow", "status", "readiness_status", "pending_reason",
             "missing_requirements_json", "version_no", "steps_count", "icon_key",
             "color_hex", "short_title", "request_category", "show_in_request_list",
-            "allow_user_submission", "modified", "modified_by",
+            "allow_user_submission", "modified", "modified_by", "is_system_template", "template_key",
         ],
         order_by=allowed_order.get(order_by, "modified desc"),
         limit_page_length=200,
     )
+    from asoud_erp.services.workflow_contract import is_system_workflow
+
+    can_delete = bool(frappe.has_permission('ASOUD Workflow Definition', 'delete'))
+    for row in rows:
+        row['can_delete'] = can_delete and not is_system_workflow(row)
     return success([serialize_workflow(row) for row in rows], meta={"total": len(rows)})
 
 
@@ -248,6 +255,7 @@ def save_start_settings(
     pass_mode: str = "Direct",
 ) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
+    frappe.db.sql('select name from `tabASOUD Workflow Definition` where name=%s for update', (definition,))
     if trigger_type not in {"Manual", "Document Event", "System", "API"}:
         frappe.throw(_("Invalid start trigger"))
     if subject_source not in {"Referenced Document", "ASOUD Record", "General Subject"}:
@@ -618,6 +626,7 @@ def _assert_form_is_editable(definition: str, stage) -> None:
 @frappe.whitelist(methods=["POST"])
 def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
+    frappe.db.sql('select name from `tabASOUD Workflow Definition` where name=%s for update', (definition,))
     doc = frappe.get_doc("ASOUD Workflow Stage", stage)
     if doc.workflow_definition != definition:
         frappe.throw(_("Stage does not belong to the selected workflow"))
@@ -846,18 +855,27 @@ def update_request_type_info(
 @frappe.whitelist(methods=["POST"])
 def set_workflow_status(name: str, status: str) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
-    if status == "Active":
-        from asoud_erp.api.v1.automatic_actions import require_execution_ready
+    if not isinstance(status, str) or status not in ALLOWED_STATUSES:
+        frappe.throw('وضعیت انتخاب‌شده برای گردش‌کار معتبر نیست.')
+    if not isinstance(name, str) or not name.strip() or len(name) > 140:
+        frappe.throw('گردش‌کار انتخاب‌شده معتبر نیست.')
+    if not frappe.db.exists('ASOUD Workflow Definition', name):
+        frappe.throw('گردش‌کار انتخاب‌شده دیگر در دسترس نیست.')
+    doc = frappe.get_doc("ASOUD Workflow Definition", name, for_update=True)
+    require_company(doc.company)
+    doc.check_permission('write')
+    if status == 'Active':
+        from asoud_erp.services.workflow_lifecycle import require_activation_ready
 
-        require_execution_ready(name)
-    if status not in ALLOWED_STATUSES:
-        frappe.throw(_("Invalid workflow status"))
-    doc = frappe.get_doc("ASOUD Workflow Definition", name)
-    if status == "Active" and doc.readiness_status != "Ready":
-        frappe.throw(_("Complete the pending requirements before activation"))
-    if status == "Active" and not doc.frappe_workflow:
-        frappe.throw(_("Link a valid Frappe Workflow before activation"))
+        require_activation_ready(doc)
+        doc.readiness_status = 'Ready'
+        doc.pending_reason = ''
+        doc.missing_requirements_json = '[]'
     doc.status = status
     doc.archived_on = now_datetime() if status == "Archived" else None
     doc.save()
-    return success(serialize_workflow(doc.as_dict()))
+    from asoud_erp.services.workflow_contract import is_system_workflow
+
+    row = doc.as_dict()
+    row['can_delete'] = bool(doc.has_permission('delete')) and not is_system_workflow(row)
+    return success(serialize_workflow(row))

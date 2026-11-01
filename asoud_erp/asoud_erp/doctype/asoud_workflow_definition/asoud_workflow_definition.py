@@ -17,6 +17,13 @@ class ASOUDWorkflowDefinition(Document):
                 'where workflow_definition=%s and status=%s limit 1 for update', (self.name, 'Running')):
             frappe.throw('تا پایان گردش‌های در حال اجرا، تغییر منبع این گردش‌کار مجاز نیست.')
         activating = bool(before and before.status != 'Active' and self.status == 'Active')
+        if activating:
+            from asoud_erp.services.workflow_lifecycle import require_activation_ready
+
+            require_activation_ready(self)
+            self.readiness_status = 'Ready'
+            self.pending_reason = ''
+            self.missing_requirements_json = '[]'
         if self.get('source_form') and self.status != 'Archived' and (changed_source or activating):
             form = frappe.get_doc('ASOUD Form', self.source_form, for_update=True)
             if form.company != self.company or form.disabled or form.active_revision != self.source_revision:
@@ -26,8 +33,6 @@ class ASOUDWorkflowDefinition(Document):
                 frappe.throw('این فرم قبلاً به گردش‌کار دیگری متصل شده است.')
         if self.status == "Active" and self.readiness_status != "Ready":
             frappe.throw(_("A workflow with incomplete prerequisites cannot be activated"))
-        if self.status == "Active" and not self.frappe_workflow:
-            frappe.throw(_("An active definition must be linked to a Frappe Workflow"))
         if self.template_key and frappe.db.exists("ASOUD Workflow Definition", {
                 "company": self.company, "template_key": self.template_key, "name": ["!=", self.name]}):
             frappe.throw(_("This company already has a request type for template {0}").format(self.template_key))
@@ -38,6 +43,11 @@ class ASOUDWorkflowDefinition(Document):
         self.missing_requirements_json = json.dumps(
             _parse_requirements(self.missing_requirements_json), ensure_ascii=False
         )
+
+    def on_trash(self):
+        from asoud_erp.services.workflow_lifecycle import delete_definition
+
+        delete_definition(self)
 
 
 def _parse_requirements(value: str | list[str] | None) -> list[str]:

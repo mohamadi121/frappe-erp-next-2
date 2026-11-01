@@ -635,7 +635,7 @@ def start_workflow_instance(
     if reference_doctype != 'ASOUD Form Entry':
         require_roles(("System Manager", "HR Manager", "HR User", "Accounts Manager",
             "Accounts User", "Purchase Manager", "Purchase User", "Employee"))
-    workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
+    workflow = frappe.get_doc("ASOUD Workflow Definition", definition, for_update=True)
     if workflow.get('source_form') and reference_doctype != 'ASOUD Form Entry':
         frappe.throw('این گردش‌کار فقط با ارسال فرم اصلی متصل به آن شروع می‌شود.')
     from asoud_erp.services.request_access import require_company

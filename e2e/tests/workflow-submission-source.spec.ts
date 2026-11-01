@@ -1,5 +1,5 @@
 import { expect, test } from '../support/fixtures';
-import { loadState } from '../support/state';
+import { loadState, sitePrep } from '../support/state';
 
 const state = loadState();
 const workflow = 'asoud_erp.api.v1.workflow.';
@@ -13,7 +13,7 @@ test('submission source is routing metadata and employee cannot change it', asyn
     'asoud_erp.api.v1.forms.open_builtin', {company: state.company, key: 'leave'});
   expect(source.submission_source_version).toBe(1);
   const draft = await admin.mutate<{name: string}>(workflow + 'create_workflow_draft', {
-    company: state.company, workflow_title: `اتصال ثبت اصلی ${Date.now()}`, module_key: 'HR',
+    company: state.company, workflow_title: `E2E-اتصال ثبت اصلی ${Date.now()}`, module_key: 'HR',
     target_doctype: 'ASOUD Workflow Request'});
   try {
     const initial = await admin.read<Design>(workflow + 'get_workflow_design', {definition: draft.name});
@@ -39,12 +39,8 @@ test('submission source is routing metadata and employee cannot change it', asyn
       values: '{}', request_key: `source-${Date.now()}`});
     expect(attempt.status).toBe(417);
   } finally {
-    const design = await admin.read<Design>(workflow + 'get_workflow_design', {definition: draft.name});
-    const headers = {'X-Frappe-CSRF-Token': await admin.csrf()};
-    for (const [doctype, rows] of [['ASOUD Workflow Transition', design.transitions], ['ASOUD Workflow Stage', design.stages]] as const) {
-      for (const row of rows) expect((await admin.context.delete(
-        `/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(row.name)}`, {headers})).status()).toBe(200);
-    }
-    expect((await admin.context.delete(`/api/resource/ASOUD%20Workflow%20Definition/${encodeURIComponent(draft.name)}`, {headers})).status()).toBe(200);
+    // Deliberate version-history protection now refuses production deletion of
+    // edited definitions. Only the guarded bench fixture helper may clean these.
+    sitePrep('drop-definition', {definition: draft.name});
   }
 });
