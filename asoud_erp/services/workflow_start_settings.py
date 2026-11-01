@@ -66,3 +66,38 @@ def save(definition, settings):
         frappe.db.rollback(save_point='workflow_start_settings')
         raise
     return start
+
+
+def restart_allowed(instance):
+    """Read-only eligibility; the existing runtime rechecks under its locks."""
+    if instance.status == 'Running' or not instance.reference_doctype or not instance.reference_name:
+        return False
+    try:
+        workflow = frappe.get_doc('ASOUD Workflow Definition', instance.workflow_definition)
+        require_company(workflow.company)
+        if workflow.status != 'Active' or workflow.readiness_status != 'Ready' or not (
+                {'System Manager', 'Accounts Manager'} & set(frappe.get_roles())) or not workflow.has_permission('write'):
+            return False
+        config = json.loads(frappe.db.get_value('ASOUD Workflow Stage',
+            {'workflow_definition': workflow.name, 'stage_type': 'Start'}, 'config_json') or '{}')
+        if not isinstance(config, dict) or config.get('start_settings_version') != 1 or not config.get('allow_manager_restart'):
+            return False
+        if frappe.db.exists('ASOUD Workflow Instance', {'workflow_definition': workflow.name,
+                'reference_doctype': instance.reference_doctype, 'reference_name': instance.reference_name, 'status': 'Running'}):
+            return False
+        if instance.reference_doctype == 'ASOUD Form Entry':
+            from asoud_erp.services.workflow_submission_source import assert_reference
+
+            assert_reference(workflow, instance.reference_name, lock=False)
+            return True
+        if instance.reference_doctype != workflow.target_doctype or not frappe.db.exists(
+                instance.reference_doctype, instance.reference_name):
+            return False
+        if instance.reference_doctype == 'ASOUD Workflow Request':
+            from asoud_erp.services.request_access import request_permission
+
+            request = frappe.get_doc(instance.reference_doctype, instance.reference_name)
+            return bool(request.workflow_definition == workflow.name and request_permission(request))
+        return bool(frappe.has_permission(instance.reference_doctype, 'read', instance.reference_name))
+    except (frappe.PermissionError, frappe.DoesNotExistError, frappe.ValidationError, ValueError, TypeError):
+        return False

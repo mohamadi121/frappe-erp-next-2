@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Workflow instance detail adds read-only `can_restart` eligibility for configured native-manager exceptions; runtime rechecks company, original reference authority and duplicate-running protection. No ownership/read permission changes or migration. Paired client exposes explicit restart with a fresh reason and preserves prior execution history.
+
 - Additive v1 Start settings on the existing save_start_settings API: Manual role/reason gates, published-form submission routing owned by Start, explicit legacy source-metadata transfer, and running-instance edit protection. Existing runtime records reason/actor/time, preserves idempotent record replays, and permits explicit closed-record restart only with configured native-manager authority. Legacy execution paths remain unchanged until an explicit v1 save. No schema migration beyond existing source-link fields; deploy backend/client together and restart workers. Bench/HTTP verification required before production use.
 
 - Full setup reset correction: the verified reset worker can delete only its freshly previewed offices' seeded workflow definitions/edit history without weakening ordinary workflow deletion. Execution history and native links still block and roll back all changes. Durable completion includes actor/office scope for safe client cache cleanup; preserves login credentials and other owners' data. No new schema/endpoint; deploy backend and client together, restart long workers, explicitly enable the temporary flag only on a backed-up site. No production reset performed.

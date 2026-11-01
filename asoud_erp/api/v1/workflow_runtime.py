@@ -926,7 +926,9 @@ def get_workflow_instance(instance: str) -> dict:
         "User", filters={"name": ["in", actors]}, fields=["name", "full_name"])} if actors else {}
     for activity in activities:
         activity["actor_name"] = names.get(activity.actor) or activity.actor or ""
-    return success({**_instance_summary(doc), "activities": activities})
+    from asoud_erp.services.workflow_start_settings import restart_allowed
+
+    return success({**_instance_summary(doc), "activities": activities, "can_restart": restart_allowed(doc)})
 
 
 @frappe.whitelist()

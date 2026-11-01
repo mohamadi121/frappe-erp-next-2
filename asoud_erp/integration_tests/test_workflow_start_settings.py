@@ -5,7 +5,7 @@ from uuid import uuid4
 import frappe
 
 from asoud_erp.api.v1 import forms, workflow, workflow_runtime
-from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER, APITestCase
+from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER, APITestCase, _user
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.tenancy import MANAGER_USER, setup_tenancy
 
@@ -20,6 +20,8 @@ class TestWorkflowStartSettings(APITestCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.second = setup_tenancy()['second']
+        cls.initiator = _user('asoud.start-manager@example.com', ['System Manager'])
+        frappe.db.commit()
 
     def test_selected_employee_role_can_start_only_within_its_company(self):
         definition, _ = make_definition(self.company, approvals=0, fields=[])
@@ -45,13 +47,14 @@ class TestWorkflowStartSettings(APITestCase):
         frappe.set_user(EMPLOYEE_USER)
         with self.assertRaises(frappe.PermissionError):
             workflow_runtime.start_workflow_instance(definition, 'شروع امروز', reason='بررسی')
-        frappe.set_user('Administrator')
+        frappe.set_user(self.initiator)
+        self.assertFalse(frappe.db.exists('Employee', {'user_id': self.initiator}))
         result = workflow_runtime.start_workflow_instance(definition, 'شروع امروز', reason='بررسی اطلاعات')['data']
         instance = frappe.get_doc('ASOUD Workflow Instance', result['name'])
-        self.assertEqual(instance.started_by, 'Administrator')
+        self.assertEqual(instance.started_by, self.initiator)
         activity = frappe.get_doc('ASOUD Workflow Activity', {'workflow_instance': instance.name, 'action': 'Workflow Started'})
         self.assertEqual(activity.comment, 'بررسی اطلاعات')
-        self.assertEqual(activity.actor, 'Administrator')
+        self.assertEqual(activity.actor, self.initiator)
         with self.assertRaises(frappe.ValidationError):
             configure(definition, {'trigger_type': 'Manual', 'initiator_roles': ['System Manager'], 'allow_manager_restart': True})
         self.assertEqual(configure(definition, {'trigger_type': 'Manual',
@@ -75,16 +78,20 @@ class TestWorkflowStartSettings(APITestCase):
         self.assertNotIn('submission_source', json.loads(frappe.db.get_value('ASOUD Workflow Stage', task.name, 'config_json')))
         with self.assertRaises(frappe.ValidationError):
             workflow_runtime.start_workflow_instance(definition, 'ارسال نامعتبر', reason='علت')
+        frappe.set_user(self.initiator)
         entry = forms.submit_form(form['name'], form['revision'], 'درخواست اصلی', {'note': 'اطلاعات'}, uuid4().hex)['data']
         first = entry['workflow_instance']
+        self.assertFalse(workflow_runtime.get_workflow_instance(first)['data']['can_restart'])
         self.assertEqual(workflow_runtime.start_workflow_instance(definition, 'بازپخش', 'ASOUD Form Entry', entry['name'])['data']['name'], first)
         with self.assertRaises(frappe.ValidationError):
             workflow_runtime.start_workflow_instance(definition, 'تکرار', 'ASOUD Form Entry', entry['name'], reason='علت', restart=1)
         task_id = frappe.db.get_value('ASOUD Workflow Task', {'workflow_instance': first}, 'name')
         workflow_runtime.complete_workflow_task(task_id, 'Complete', response={})
+        self.assertTrue(workflow_runtime.get_workflow_instance(first)['data']['can_restart'])
         second = workflow_runtime.start_workflow_instance(definition, 'بازبینی', 'ASOUD Form Entry', entry['name'],
             reason='بازبینی مدیریتی', restart=1)['data']['name']
         self.assertNotEqual(second, first)
+        self.assertFalse(workflow_runtime.get_workflow_instance(first)['data']['can_restart'])
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', first, 'status'), 'Completed')
         self.assertEqual(frappe.db.count('ASOUD Workflow Activity', {'workflow_instance': second, 'action': 'Workflow Started'}), 1)
 
