@@ -1,5 +1,7 @@
 # ASOUD ERP API v1 — conventions
 
+Workflow user actions: [result forms and shared assignment](workflow-user-actions.md).
+
 Workflow card operations: [status and safe native deletion](workflow-card-actions.md).
 
 The Flutter client talks to this app only through whitelisted methods under
