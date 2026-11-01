@@ -926,7 +926,7 @@ def validate_values(schema, raw, company, _file_budget=None):
                 fail(f"{label}: فایل معتبر نیست.")
             file = frappe.get_doc('File', value)
             file.check_permission('read')
-            if not file.is_private or file.owner != frappe.session.user:
+            if not file.is_private or (file.owner != frappe.session.user and file.name not in file_budget.get('trusted_names', set())):
                 fail(f"{label}: فایل خصوصی خود را انتخاب کنید.")
             if int(file.file_size or 0) > min(int(field.get('max_mb', 10)), 10) * 1024 * 1024:
                 fail(f"{label}: فایل بیش از حد بزرگ است.")

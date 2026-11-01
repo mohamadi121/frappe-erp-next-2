@@ -1,4 +1,6 @@
 """Guards for existing definition operations; no alternative workflow engine."""
+import json
+
 import frappe
 
 from asoud_erp.services.erp_documents import require_roles
@@ -21,6 +23,10 @@ def require_activation_ready(doc):
     if errors:
         frappe.throw('فعال‌سازی ممکن نیست: ' + ' '.join(errors))
     from asoud_erp.api.v1.automatic_actions import require_execution_ready
+    from asoud_erp.services.workflow_user_action import validate_design
+    for stage in stages:
+        if stage.stage_type == 'User Task':
+            validate_design(doc.name, json.loads(stage.config_json or '{}'))
 
     require_execution_ready(doc.name)
 

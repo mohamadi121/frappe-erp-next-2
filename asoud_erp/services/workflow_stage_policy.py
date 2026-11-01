@@ -302,6 +302,7 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
 
     if stage_type == "User Task":
         from asoud_erp.services.workflow_submission_policy import normalize
+        from asoud_erp.services.workflow_user_action_policy import normalize_action
 
         source = normalize(raw.get('submission_source'))
         activity_type = raw.get("activity_type")
@@ -341,6 +342,7 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
             "allow_edit_after_submit": bool(raw.get("allow_edit_after_submit", False)),
             "description": _description(raw),
             **_deadline_policy(raw),
+            **normalize_action(raw),
         }
 
     if stage_type == "Approval":

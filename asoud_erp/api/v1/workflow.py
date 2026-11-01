@@ -19,6 +19,7 @@ from asoud_erp.services.workflow_stage_policy import (
     ROLE_BASED_TYPES,
     normalize_stage_config,
 )
+from asoud_erp.services.workflow_user_action_policy import condition_fields as action_condition_fields
 
 ALLOWED_STATUSES = ALLOWED_WORKFLOW_STATUSES
 MODULE_DOCTYPES = {
@@ -30,7 +31,7 @@ MODULE_DOCTYPES = {
     "HR": ("Leave Application", "Job Applicant"),
 }
 STAGE_TITLES = {
-    "User Task": "وظیفه کاربر",
+    "User Task": "اقدام کاربر",
     "Approval": "تأیید یا رد",
     "Condition": "شرط و مسیر",
     "System Action": "اقدام خودکار",
@@ -558,6 +559,7 @@ def workflow_condition_fields(definition: str, stage: str | None = None) -> dict
         limit_page_length=0,
     )
     for row in stage_rows:
+        fields.extend(action_condition_fields(json.loads(row.config_json or '{}')))
         for field in json.loads(row.config_json or "{}").get("form_fields", []):
             if field.get("type") in {
                 "Short Text", "Long Text", "Number", "Currency", "Date", "Choice", "Checkbox",
@@ -679,6 +681,10 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
 
     role_field = ROLE_BASED_TYPES.get(doc.stage_type)
     if doc.stage_type == "User Task":
+        if normalized.get('action_contract_version') == 1:
+            from asoud_erp.services.workflow_user_action import validate_design
+
+            validate_design(definition, normalized)
         from asoud_erp.services.workflow_submission_source import bind
 
         bind(definition, doc.name, normalized)
@@ -732,6 +738,8 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
                 for config in configs
                 for field in json.loads(config or "{}").get("form_fields", [])
             }
+            for config in configs:
+                form_keys.update(item['fieldname'] for item in action_condition_fields(json.loads(config or '{}')))
             from asoud_erp.services.workflow_submission_source import condition_fields
 
             form_keys.update(item['fieldname'] for item in condition_fields(definition))

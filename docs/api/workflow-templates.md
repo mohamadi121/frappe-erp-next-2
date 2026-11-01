@@ -2,15 +2,16 @@
 
 POST RPCs under `asoud_erp.api.v1.workflow_templates`; standard `success(data)`
 envelope. Requires System Manager or Accounts Manager, company access and native
-Definition/Stage/Transition read/create permissions. Source templates must belong
-to the destination company and be non-archived system templates. No guest access.
+Definition/Stage/Transition read/create permissions. Sources must belong
+to the destination company and be non-archived readable designs. No guest access.
 
-## `catalog(company, search='', module_key='', start=0, page_length=20)`
+## `catalog(company, search='', module_key='', start=0, page_length=20, include_user=0)`
 
 Read-only. Returns `{items: [{name, workflow_title, process_description,
 module_key, target_doctype, icon_key, color_hex, steps_count, modified}],
 next_start: int|null}`. Search matches title, not technical IDs. Page size 1–50;
-start is nonnegative. Returns only native-permitted system templates in company.
+start is nonnegative. Defaults to native-permitted system templates in company;
+`include_user=1` also returns native-permitted user designs for independent redesign.
 
 ## `create_from_template(company, source, source_modified, workflow_title,
 process_description='', icon_key='hub', color_hex='#315CF5')`

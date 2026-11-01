@@ -23,10 +23,12 @@ def access(company):
     require_company(company)
 
 
-def catalog(company, search="", module_key="", start=0, page_length=20):
+def catalog(company, search="", module_key="", start=0, page_length=20, *, include_user=0):
     access(company)
     start, page_length = max(0, cint(start)), min(50, max(1, cint(page_length)))
     filters = {"company": company, "is_system_template": 1, "status": ["!=", "Archived"]}
+    if cint(include_user):
+        filters.pop('is_system_template')
     if module_key:
         filters["module_key"] = module_key
     if search:
@@ -47,7 +49,7 @@ def create_from_template(company, source, source_modified, workflow_title,
         frappe.throw("الگوی انتخاب‌شده دیگر در دسترس نیست.")
     original = frappe.get_doc(DEFINITION, source, for_update=True)
     original.check_permission("read")
-    if original.company != company or not original.is_system_template or original.status == "Archived":
+    if original.company != company or original.status == "Archived":
         frappe.throw("استفاده از این الگو در دفتر انتخاب‌شده مجاز نیست.", frappe.PermissionError)
     if str(original.modified) != str(source_modified):
         frappe.throw("الگو تغییر کرده است؛ آن را دوباره انتخاب کنید.", frappe.TimestampMismatchError)
