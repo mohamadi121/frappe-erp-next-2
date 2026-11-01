@@ -65,3 +65,10 @@ drafts/files stay on the transferred task. No unrestricted manual transfer API i
 introduced. Original submitted form entries remain immutable. `document_access`
 does not grant native write access: existing request editing remains subject to
 its own owner/state checks; a task result never overwrites original entry values.
+
+The existing workflow-template catalog/copy endpoints also accept accessible
+non-archived user definitions in the same company. Copies always receive fresh
+definition/stage identities, version 1 and Pending configuration; no execution,
+history or native workflow link is copied. Original and other-company records
+remain untouched. Pending v1 action copies validate the config's structure;
+published-form/subject bindings must be explicitly reviewed before activation.
