@@ -45,3 +45,15 @@ version branches. Source module selection also fills existing definition
 module_key (Finance -> Accounting, Administration -> Support). No classification
 store is added. Backend/client deploy together, no migration. The user explicitly
 requested no test execution; this change must not be reported as tested.
+
+Stage configs with execution history cannot be rewritten or converted in place;
+the existing independent-copy flow is required. A server-derived `result_schema`
+snapshot preserves historical rendering even if the source form is later removed.
+New publication requires the current published result-form revision; existing
+tasks validate against their pinned immutable revision while the form is enabled.
+`forms.get_link_options` optionally accepts `task`: it checks the native assigned
+task and its pinned form instead of guessing the current form revision. Source,
+company, row filters and existing record permissions are unchanged. This is not
+an arbitrary older-revision read grant. Native schema validation may accept an
+already-attached private File owned by the prior assignee only when the caller
+can read it and it was already on the same task; ownership is never rewritten.
