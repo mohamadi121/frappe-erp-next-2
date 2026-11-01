@@ -16,8 +16,10 @@ may save. Existing start identity, positions and unrelated config are preserved.
 Running instances block changes. Identical settings are a no-op, so metadata-only
 saves remain possible during execution. Source metadata moves explicitly from
 legacy User Task configs to Start; form contents/task settings and history are preserved.
-Existing source binding validation/locks are reused; no form or instance is created
-by selecting a source. Manual start clears the form routing link. Changing mode
+Existing source binding validation/locks are reused; saving the binding itself
+creates no form or instance. The existing picker may materialize a built-in form
+definition/revision through `open_builtin`, never a business entry or execution.
+Manual start clears the form routing link. Changing mode
 requires explicit save; other workflows are untouched.
 
 Existing `workflow_runtime.start_workflow_instance` accepts optional `reason`
