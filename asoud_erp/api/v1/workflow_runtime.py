@@ -631,10 +631,15 @@ def start_workflow_instance(
     subject: str,
     reference_doctype: str | None = None,
     reference_name: str | None = None,
+    reason: str = '',
+    restart: int | str = 0,
 ) -> dict:
-    if reference_doctype != 'ASOUD Form Entry':
-        require_roles(("System Manager", "HR Manager", "HR User", "Accounts Manager",
-            "Accounts User", "Purchase Manager", "Purchase User", "Employee"))
+    if (not isinstance(definition, str) or not definition or len(definition) > 140
+            or not isinstance(subject, str) or len(subject.strip()) < 3 or len(subject) > 140):
+        frappe.throw('گردش‌کار و عنوان اجرا معتبر نیست؛ عنوان باید بین ۳ تا ۱۴۰ نویسه باشد.')
+    if any(value is not None and (not isinstance(value, str) or not value or len(value) > 140)
+           for value in (reference_doctype, reference_name)):
+        frappe.throw('نوع یا شناسهٔ رکورد شروع معتبر نیست.')
     workflow = frappe.get_doc("ASOUD Workflow Definition", definition, for_update=True)
     if workflow.get('source_form') and reference_doctype != 'ASOUD Form Entry':
         frappe.throw('این گردش‌کار فقط با ارسال فرم اصلی متصل به آن شروع می‌شود.')
@@ -642,6 +647,31 @@ def start_workflow_instance(
 
     if workflow.company:
         require_company(workflow.company)
+    start_row = frappe.db.get_value('ASOUD Workflow Stage',
+        {'workflow_definition': definition, 'stage_type': 'Start'}, ['name', 'config_json'], as_dict=True)
+    start_config = json.loads(start_row.config_json or '{}') if start_row else {}
+    configured_start = start_config.get('start_settings_version') == 1
+    roles = set(frappe.get_roles())
+    manager_restart = bool(roles.intersection({'System Manager', 'Accounts Manager'}) and workflow.has_permission('write'))
+    if str(restart) not in {'0', '1', 'False', 'True'}:
+        frappe.throw('درخواست شروع مجدد معتبر نیست.')
+    restarting = str(restart) in {'1', 'True'}
+    if restarting and not configured_start:
+        frappe.throw('برای شروع مجدد، مدیر باید ابتدا تنظیمات شروع این گردش‌کار را تکمیل کند.')
+    manual_start = configured_start and start_config.get('trigger_type') == 'Manual'
+    if not manual_start and reference_doctype != 'ASOUD Form Entry':
+        require_roles(("System Manager", "HR Manager", "HR User", "Accounts Manager",
+            "Accounts User", "Purchase Manager", "Purchase User", "Employee"))
+    if configured_start:
+        if manual_start and reference_doctype == 'ASOUD Form Entry':
+            frappe.throw('این گردش‌کار با اقدام دستی شروع می‌شود، نه با ارسال فرم.')
+        if not manual_start and reference_doctype != 'ASOUD Form Entry':
+            frappe.throw('این گردش‌کار فقط با ارسال درخواست یا سند متصل شروع می‌شود.')
+        if manual_start and not roles.intersection(start_config.get('initiator_roles', [])) and not (
+                restarting and manager_restart and start_config.get('allow_manager_restart')):
+            frappe.throw('نقش شما اجازهٔ شروع دستی این گردش‌کار را ندارد.', frappe.PermissionError)
+        if bool(reference_name) != bool(reference_doctype):
+            frappe.throw('نوع و شناسهٔ رکورد شروع باید با هم مشخص شوند.')
     requester_only = bool({"Employee", "HR User"}.intersection(frappe.get_roles())) and not {
         "System Manager", "HR Manager", "Accounts Manager", "Accounts User", "Purchase Manager", "Purchase User",
     }.intersection(frappe.get_roles())
@@ -651,7 +681,7 @@ def start_workflow_instance(
 
         submitted_entry = assert_reference(workflow, reference_name)
         subject = submitted_entry.subject
-    if requester_only and not submitted_entry:
+    if requester_only and not submitted_entry and not manual_start:
         if reference_doctype != "ASOUD Workflow Request" or not reference_name:
             frappe.throw("Employees must start workflows through their own request", frappe.PermissionError)
     if workflow.status != "Active" or workflow.readiness_status != "Ready":
@@ -673,13 +703,34 @@ def start_workflow_instance(
             readable = frappe.has_permission(reference_doctype, "read", reference_name)
         if not readable:
             frappe.throw(_("Not permitted to use the referenced document"), frappe.PermissionError)
-    if submitted_entry:
+    if configured_start:
+        if reference_doctype == 'ASOUD Workflow Request' and reference_name:
+            request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
+            if request.workflow_definition != definition or (requester_only and request.owner != frappe.session.user):
+                frappe.throw('درخواست اصلی با این گردش‌کار یا حساب شما سازگار نیست.', frappe.PermissionError)
+        lookup = {
+            'workflow_definition': definition, 'reference_doctype': reference_doctype,
+            'reference_name': reference_name}
+        existing = (frappe.db.get_value('ASOUD Workflow Instance', {**lookup, 'status': 'Running'},
+            ['name', 'status'], as_dict=True, order_by='creation desc') or
+            frappe.db.get_value('ASOUD Workflow Instance', lookup, ['name', 'status'], as_dict=True,
+                order_by='creation desc')) if reference_name else None
+        from asoud_erp.services.workflow_start_policy import start_decision
+
+        try:
+            decision = start_decision(start_config, existing.status if existing else None,
+                restarting, manager_restart, reason)
+        except ValueError as error:
+            frappe.throw(str(error))
+        if decision == 'reuse':
+            return success(dict(existing))
+    elif submitted_entry:
         existing = frappe.db.get_value('ASOUD Workflow Instance', {
             'reference_doctype': 'ASOUD Form Entry', 'reference_name': reference_name},
             ['name', 'status'], as_dict=True)
         if existing:
             return success(dict(existing))
-    if reference_doctype == "ASOUD Workflow Request" and reference_name:
+    if not configured_start and reference_doctype == "ASOUD Workflow Request" and reference_name:
         request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
         if requester_only and request.owner != frappe.session.user:
             frappe.throw(_("شروع گردش کار فقط برای درخواست خودتان مجاز است."), frappe.PermissionError)
@@ -709,6 +760,13 @@ def start_workflow_instance(
             "started_on": now_datetime(),
         }
     ).insert(ignore_permissions=True)
+    if configured_start:
+        frappe.get_doc({'doctype': 'ASOUD Workflow Activity', 'workflow_instance': instance.name,
+            'workflow_stage': start, 'actor': frappe.session.user, 'action': 'Workflow Started',
+            'comment': reason.strip(), 'created_on': instance.started_on,
+            'change_json': json.dumps({'start_mode': start_config['trigger_type'],
+                'previous_instance': existing.name if restarting and existing else None}, ensure_ascii=False),
+            'reference_doctype': reference_doctype, 'reference_name': reference_name}).insert(ignore_permissions=True)
     stage = _next_stage(instance, start)
     if not stage:
         frappe.throw(_("Workflow has no executable stage"))

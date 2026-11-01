@@ -122,8 +122,24 @@ def list_workflows(
     from asoud_erp.services.workflow_contract import is_system_workflow
 
     can_delete = bool(frappe.has_permission('ASOUD Workflow Definition', 'delete'))
+    starts = frappe.get_all('ASOUD Workflow Stage', filters={'workflow_definition': ['in', [r.name for r in rows] or ['']],
+        'stage_type': 'Start'}, fields=['workflow_definition', 'config_json'], limit_page_length=200)
+    start_configs = {}
+    for start in starts:
+        try:
+            config = json.loads(start.config_json or '{}')
+        except (TypeError, ValueError):
+            config = {}
+        start_configs[start.workflow_definition] = config if isinstance(config, dict) else {}
+    user_roles = set(frappe.get_roles())
     for row in rows:
         row['can_delete'] = can_delete and not is_system_workflow(row)
+        config = start_configs.get(row.name, {})
+        allowed_roles = config.get('initiator_roles')
+        allowed_roles = [role for role in allowed_roles if isinstance(role, str)] if isinstance(allowed_roles, list) else []
+        row['can_start_manual'] = (row.status == 'Active' and row.readiness_status == 'Ready'
+            and config.get('start_settings_version') == 1 and config.get('trigger_type') == 'Manual'
+            and bool(user_roles.intersection(allowed_roles)))
     return success([serialize_workflow(row) for row in rows], meta={"total": len(rows)})
 
 
@@ -253,8 +269,13 @@ def save_start_settings(
     initiator_roles: str | list[str],
     subject_source: str,
     pass_mode: str = "Direct",
+    settings: str | dict | None = None,
 ) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
+    if settings is not None:
+        from asoud_erp.services.workflow_start_settings import save
+
+        return success(_stage_dict(save(definition, settings).as_dict()))
     frappe.db.sql('select name from `tabASOUD Workflow Definition` where name=%s for update', (definition,))
     if trigger_type not in {"Manual", "Document Event", "System", "API"}:
         frappe.throw(_("Invalid start trigger"))
@@ -273,6 +294,8 @@ def save_start_settings(
     if not stage_name:
         frappe.throw(_("Workflow start stage does not exist"))
     stage = frappe.get_doc("ASOUD Workflow Stage", stage_name)
+    if json.loads(stage.config_json or '{}').get('start_settings_version') == 1:
+        frappe.throw('تنظیمات این شروع با فرم جدید مدیریت می‌شود؛ نسخهٔ برنامه را به‌روزرسانی کنید.')
     stage.config_json = json.dumps(
         {
             "trigger_type": trigger_type,
@@ -636,6 +659,11 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
     raw = json.loads(config) if isinstance(config, str) else config
     if not isinstance(raw, dict):
         frappe.throw(_("Stage configuration must be an object"))
+    if doc.stage_type == 'User Task' and raw.get('submission_source'):
+        start_config = frappe.db.get_value('ASOUD Workflow Stage',
+            {'workflow_definition': definition, 'stage_type': 'Start'}, 'config_json')
+        if json.loads(start_config or '{}').get('start_settings_version') == 1:
+            frappe.throw('انتخاب درخواست یا سند فقط از تنظیمات شروع فرایند انجام می‌شود.')
     if doc.stage_type == 'User Task' and 'submission_source' not in raw:
         previous_source = json.loads(doc.config_json or '{}').get('submission_source')
         if previous_source:
