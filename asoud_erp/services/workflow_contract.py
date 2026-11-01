@@ -21,6 +21,11 @@ def _validate_saved_stage(row):
             raise ValueError
         if config.get('trigger_type') == 'Manual' and not config.get('initiator_roles'):
             raise ValueError
+        if config.get('start_settings_version') == 1:
+            from asoud_erp.services.workflow_start_policy import normalize_settings
+
+            normalize_settings({key: config[key] for key in ('trigger_type', 'initiator_roles',
+                'submission_source', 'allow_manager_restart', 'require_manual_reason') if key in config})
     else:
         normalize_stage_config(row['stage_type'], {'title': row.get('stage_title') or 'مرحله',
             **({'outcome': 'Completed'} if row['stage_type'] == 'End' else {}), **config})

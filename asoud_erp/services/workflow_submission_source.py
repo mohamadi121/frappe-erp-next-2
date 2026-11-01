@@ -90,11 +90,11 @@ def route(form, revision):
     return row.name
 
 
-def assert_reference(workflow, name):
+def assert_reference(workflow, name, *, lock=True):
     """Explicit owner/form/route authority, never arbitrary Form Entry access."""
     if not isinstance(name, str) or not frappe.db.exists(ENTRY, name):
         frappe.throw('ثبت اصلی فرم پیدا نشد.')
-    entry = frappe.get_doc(ENTRY, name, for_update=True)
+    entry = frappe.get_doc(ENTRY, name, for_update=lock)
     require_company(entry.company)
     if entry.owner != frappe.session.user or entry.company != workflow.company or \
             not workflow.get('source_form') or workflow.source_form != entry.form or \
@@ -102,7 +102,7 @@ def assert_reference(workflow, name):
         frappe.throw('شروع گردش‌کار فقط برای ثبت اصلی و متعلق به حساب شما مجاز است.', frappe.PermissionError)
     from asoud_erp.api.v1 import forms
 
-    form = forms.load(entry.form, lock=True)
+    form = forms.load(entry.form, lock=lock)
     rev = forms.revision(form, entry.revision)
     if form.disabled or form.active_revision != rev.name or not forms.allowed(json.loads(rev.schema_json), entry.company):
         frappe.throw('این فرم در دسترس حساب شما نیست.', frappe.PermissionError)
