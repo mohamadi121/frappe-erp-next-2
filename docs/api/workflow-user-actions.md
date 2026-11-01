@@ -57,3 +57,11 @@ company, row filters and existing record permissions are unchanged. This is not
 an arbitrary older-revision read grant. Native schema validation may accept an
 already-attached private File owned by the prior assignee only when the caller
 can read it and it was already on the same task; ownership is never rewritten.
+
+Native overdue reassignment is retained: v1 queues are serialized and reduced to
+one assigned task before transfer to an enabled escalation-role user in the same
+company. Assignment, claim and reassignment use existing Activity rows; former
+drafts/files stay on the transferred task. No unrestricted manual transfer API is
+introduced. Original submitted form entries remain immutable. `document_access`
+does not grant native write access: existing request editing remains subject to
+its own owner/state checks; a task result never overwrites original entry values.
