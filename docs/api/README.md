@@ -116,3 +116,8 @@ payload is rejected with `REQUEST_KEY_CONFLICT`.
   See [the roadmap](../backend-roadmap.md#development-bench) for creating such a site.
 
 - [Form execution after approval](form-execution.md)
+# Workflow start configuration
+
+See [workflow start settings](workflow-start-settings.md) for the additive start-mode,
+source-selection and start-audit contract on the existing APIs.
+

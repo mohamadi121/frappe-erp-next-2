@@ -1,0 +1,44 @@
+# Workflow start settings (additive v1)
+
+Existing `workflow.save_start_settings` accepts optional `settings` object.
+Legacy calls without it retain their contract. Versioned settings contain
+`trigger_type` (Manual or Document Event), `initiator_roles` (enabled native roles),
+`submission_source` (published `{form, revision}` only for Document Event),
+`allow_manager_restart` (boolean), and `require_manual_reason` (boolean, default true).
+The saved Start config includes `start_settings_version: 1`. Duplicate active
+record prevention and start auditing are always enabled and cannot be disabled.
+No fixed start reason is stored by the designer: the initiator supplies it at runtime.
+
+Only existing workflow managers with company scope and native write permission
+may save. Existing start identity, positions and unrelated config are preserved.
+Running instances block changes. Source metadata moves explicitly from legacy
+User Task configs to Start; form contents/task settings and history are preserved.
+Existing source binding validation/locks are reused; no form or instance is created
+by selecting a source. Manual start clears the form routing link. Changing mode
+requires explicit save; other workflows are untouched.
+
+Existing `workflow_runtime.start_workflow_instance` accepts optional `reason`
+and `restart` (0/1). For v1 Manual starts, allowed initiator roles and company scope
+are enforced; a nonblank reason is required when configured. Manual mode cannot
+be started by submitted Form Entry. A v1 Document Event workflow requires its
+validated original Form Entry. Legacy workflows keep their existing entry paths.
+
+Record-bound repeated calls normally return their existing instance (idempotency).
+Explicit restart never duplicates a Running instance. Closed-record restart is
+allowed only when configured and explicitly requested by a System Manager or
+Accounts Manager with native workflow write and company permission, with a reason.
+It appends a new instance/activity; it never rewrites previous instances/history.
+Start actor/time/reference and reason are recorded in existing Instance/Activity
+records in the same transaction. General-subject manual starts have no record to
+deduplicate; each intentional call is a separate run. No new engine/ledger/schema.
+
+UI saves definition metadata/draft via existing APIs then configures its Start.
+On second-step failure the existing draft identity is retained for retry, not
+created twice. It does not report complete success until Start save is confirmed.
+Older servers lacking `start_settings_version: 1` must produce a clear upgrade
+error rather than silently accepting unsupported settings. Existing templates
+remain independent copies. System templates cannot be rebound to a new form.
+
+Deploy paired backend/client and restart workers. No new migration is required
+if the previously deployed submission-source fields/index exist. Site integration
+and HTTP tests must run on a disposable bench before production rollout.
