@@ -16,6 +16,11 @@ def configure(definition, settings):
 
 
 class TestWorkflowStartSettings(APITestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.second = setup_tenancy()['second']
+
     def test_selected_employee_role_can_start_only_within_its_company(self):
         definition, _ = make_definition(self.company, approvals=0, fields=[])
         configure(definition, {'trigger_type': 'Manual', 'initiator_roles': ['Employee']})
@@ -23,7 +28,7 @@ class TestWorkflowStartSettings(APITestCase):
         result = workflow_runtime.start_workflow_instance(definition, 'بررسی روزانه', reason='آغاز توسط کاربر مجاز')['data']
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', result['name'], 'started_by'), EMPLOYEE_USER)
         frappe.set_user('Administrator')
-        other, _ = make_definition(setup_tenancy()['second'], approvals=0, fields=[])
+        other, _ = make_definition(self.second, approvals=0, fields=[])
         configure(other, {'trigger_type': 'Manual', 'initiator_roles': ['Employee']})
         frappe.set_user(EMPLOYEE_USER)
         with self.assertRaises(frappe.PermissionError):
@@ -84,8 +89,7 @@ class TestWorkflowStartSettings(APITestCase):
         self.assertEqual(frappe.db.count('ASOUD Workflow Activity', {'workflow_instance': second, 'action': 'Workflow Started'}), 1)
 
     def test_other_company_and_non_manager_cannot_change_start(self):
-        second = setup_tenancy()['second']
-        definition, _ = make_definition(second, approvals=0, fields=[])
+        definition, _ = make_definition(self.second, approvals=0, fields=[])
         frappe.set_user(MANAGER_USER)
         with self.assertRaises(frappe.PermissionError):
             configure(definition, {'trigger_type': 'Manual', 'initiator_roles': ['System Manager']})
