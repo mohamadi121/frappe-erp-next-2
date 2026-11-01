@@ -44,6 +44,16 @@ company and initiator roles again. A configured role need not be in the legacy
 hard-coded initiator role list. Existing reference read/ownership restrictions
 still apply to explicit restarts; the exception does not grant document access.
 
+`workflow_runtime.get_workflow_instance` adds boolean `can_restart` for an
+authorized closed referenced execution only. It checks the same configured
+exception, active/ready definition, company, native manager/write permission,
+original reference ownership/read rules and absence of a Running execution for
+that record. The existing runtime RPC revalidates under lock when starting;
+the display flag is not authority. The client supplies the original reference,
+`restart: 1` and a fresh reason, then opens the new execution without replacing
+the previous instance or its history. Independent unreferenced manual runs are
+new intentional starts, not record restarts.
+
 UI saves definition metadata/draft via existing APIs then configures its Start.
 On second-step failure the existing draft identity is retained for retry, not
 created twice. It does not report complete success until Start save is confirmed.
