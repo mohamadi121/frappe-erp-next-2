@@ -13,6 +13,7 @@ CONFIG = 'asoud_allow_setup_reset'
 LIMIT = 2000
 BUSY_KEY = 'asoud_setup_reset_busy'
 RECEIPT_TTL = 86400
+RESET_POLICY_VERSION = 2
 COMPANY_DATA = ('ASOUD Office Role Assignment', 'ASOUD Personnel Record',
     'ASOUD Organization Chart', 'ASOUD Document Template', 'ASOUD Party Profile',
     'ASOUD Company Setup', 'Employee', 'Department', 'ASOUD Form', 'ASOUD Workflow Definition')
@@ -69,6 +70,15 @@ def _collect(actor):
     ):
         for child in children:
             groups[child] = rows(child, {field: ['in', [r['name'] for r in groups[parent]] or ['']]})
+    groups['Version'] = []
+    for doctype in ('ASOUD Workflow Definition', 'ASOUD Workflow Stage', 'ASOUD Workflow Transition'):
+        groups['Version'].extend(rows('Version', {'ref_doctype': doctype,
+            'docname': ['in', [r['name'] for r in groups[doctype]] or ['']]}))
+    if len(groups['Version']) > LIMIT:
+        frappe.throw('سوابق ویرایش بیش از حد مجاز بازنشانی موقت است؛ پاک‌سازی باید بررسی شود.')
+    if frappe.db.exists('ASOUD Workflow Instance',
+            {'workflow_definition': ['in', [r['name'] for r in groups['ASOUD Workflow Definition']] or ['']]}):
+        blockers.append('دفتر دارای سابقهٔ اجرای گردش‌کار است؛ ابتدا سوابق وابسته باید جداگانه بررسی شوند.')
     employee_names = [r['name'] for r in groups['Employee']]
     users = set(frappe.get_all('Employee', filters={'name': ['in', employee_names or ['']]}, pluck='user_id'))
     users.update(frappe.get_all('ASOUD Company Setup', filters=scope, pluck='first_hr_user'))
@@ -154,7 +164,8 @@ def _collect(actor):
     # Account identity/profile token participates in the stale-preview check.
     profile = frappe.db.get_value('User', actor, 'modified')
     state_token = frappe.db.get_value('ASOUD Account State', actor, 'modified')
-    digest = hashlib.sha256(json.dumps([actor, groups, str(profile), str(state_token)], sort_keys=True, default=str).encode()).hexdigest()
+    digest = hashlib.sha256(json.dumps([RESET_POLICY_VERSION, actor, groups, str(profile), str(state_token)],
+        sort_keys=True, default=str).encode()).hexdigest()
     return groups, list(dict.fromkeys(blockers)), digest
 
 
@@ -174,12 +185,24 @@ def preview():
 
 
 def _execute(actor, expected_digest):
-    access()
+    if access() != actor:
+        frappe.throw('حساب پردازش با تأیید بازنشانی مطابقت ندارد.', frappe.PermissionError)
+    job = getattr(frappe.flags, 'asoud_setup_reset_job', None)
+    receipt = _receipt(job) if job else None
+    if (getattr(frappe.flags, 'asoud_setup_reset_worker', False) is not True or not receipt
+            or receipt.get('job') != job or receipt.get('actor') != actor or receipt.get('state') != 'running'
+            or receipt.get('digest') != expected_digest):
+        frappe.throw('بازنشانی فقط در پردازش تأییدشدهٔ همین حساب اجرا می‌شود.', frappe.PermissionError)
     frappe.db.sql('select name from tabRole where name=%s for update', ('System Manager',))
     groups, blockers, digest = _collect(actor)
     if blockers or expected_digest != digest:
         frappe.throw('اطلاعات یا وابستگی‌ها تغییر کرده‌اند؛ پیش‌نمایش تازه را بررسی کنید.')
     frappe.db.savepoint('asoud_setup_reset')
+    previous_scope = getattr(frappe.flags, 'asoud_setup_reset_scope', None)
+    companies = [r['name'] for r in groups['Company']]
+    frappe.flags.asoud_setup_reset_scope = {'actor': actor, 'job': job, 'digest': digest,
+        'companies': tuple(companies),
+        'targets': {key: tuple(row['name'] for row in value) for key, value in groups.items()}}
     try:
         settings = frappe.get_single('ASOUD Settings')
         companies = [r['name'] for r in groups['Company']]
@@ -193,6 +216,16 @@ def _execute(actor, expected_digest):
             doc = frappe.get_doc('ASOUD Form', row['name'])
             doc.active_revision = None
             store(doc)
+        for row in groups['ASOUD Workflow Definition']:
+            doc = frappe.get_doc('ASOUD Workflow Definition', row['name'])
+            if doc.get('source_form') or doc.get('source_revision'):
+                scope = frappe.flags.asoud_setup_reset_scope['targets']
+                if (doc.source_form not in scope['ASOUD Form']
+                        or doc.source_revision not in scope['ASOUD Form Revision']):
+                    frappe.throw('منبع گردش‌کار خارج از محدودهٔ بازنشانی است؛ حذف متوقف شد.')
+                doc.flags.submission_source_service = True
+                doc.source_form = doc.source_revision = None
+                doc.save(ignore_permissions=True)
         for row in groups['Fiscal Year']:
             year = frappe.get_doc('Fiscal Year', row['name'])
             remaining = [r for r in year.companies if r.company not in companies]
@@ -222,7 +255,7 @@ def _execute(actor, expected_digest):
         state.save(ignore_permissions=True)
         order = ('ASOUD Access Assignment', 'ASOUD Office Role Assignment', 'ASOUD Personnel Record',
             'ASOUD Organization Chart', 'ASOUD Workflow Transition', 'ASOUD Workflow Stage',
-            'ASOUD Workflow Definition', 'ASOUD Form Revision', 'ASOUD Form', 'ASOUD Document Template',
+            'ASOUD Form Revision', 'ASOUD Form', 'Version', 'ASOUD Workflow Definition', 'ASOUD Document Template',
             'ASOUD Party Profile', 'Employee', 'Department', 'ASOUD Company Setup', 'User Permission',
             'ASOUD Account Token', 'ASOUD Account State', 'User', 'ASOUD Role Definition',
             'Role Profile', 'Custom DocPerm', 'Role', 'Company')
@@ -237,12 +270,15 @@ def _execute(actor, expected_digest):
         # best-effort audit logging, failure here must roll the reset back.
         receipt = security_audit.build_row(actor=actor, action='onboarding.reset.completed',
             target_type='Setup Reset', target=frappe.flags.asoud_setup_reset_job,
-            occurred_on=now_datetime(), details={'credentials_preserved': True})
+            occurred_on=now_datetime(), details={'credentials_preserved': True,
+                'company_groups': [companies[i:i + 50] for i in range(0, len(companies), 50)]})
         frappe.get_doc(receipt).insert(ignore_permissions=True)
     except Exception:
         frappe.db.rollback(save_point='asoud_setup_reset')
         frappe.clear_messages()
         frappe.throw('بازنشانی به دلیل وابستگی یا قاعدهٔ حذف متوقف شد؛ هیچ حذف جزئی تأیید نشد. مدیر سرور باید وابستگی را بررسی کند.')
+    finally:
+        frappe.flags.asoud_setup_reset_scope = previous_scope
     frappe.clear_cache(user=actor)
     return {'reset': True}
 
@@ -252,19 +288,43 @@ def _receipt(job):
 
 
 def _save_receipt(job, actor, state, message='', digest=None):
+    previous = _receipt(job) or {}
     receipt = {'job': job, 'actor': actor, 'state': state, 'message': message,
         'issued_on': now_datetime().isoformat()}
+    digest = digest or previous.get('digest')
     if digest:
         receipt['digest'] = digest
     frappe.cache.set_value(f'asoud_setup_reset_job:{job}', receipt, expires_in_sec=RECEIPT_TTL)
 
 
+def allows_workflow_cleanup(doc):
+    from asoud_erp.services.setup_reset_policy import workflow_reset_allowed
+
+    if not cint(frappe.conf.get(CONFIG)) or not is_system_admin():
+        return False
+    job = getattr(frappe.flags, 'asoud_setup_reset_job', None)
+    return workflow_reset_allowed(actor=frappe.session.user, job=job,
+        worker=getattr(frappe.flags, 'asoud_setup_reset_worker', False),
+        receipt=_receipt(job) if job else None, scope=getattr(frappe.flags, 'asoud_setup_reset_scope', None),
+        name=doc.name, company=doc.company)
+
+
 def _committed(job, actor):
     # Locking current read, not an old repeatable-read snapshot: a worker can
     # commit between polling the receipt and querying its native queue state.
-    return bool(frappe.db.sql('select name from `tabASOUD Security Audit` where action=%s '
+    rows = frappe.db.sql('select details from `tabASOUD Security Audit` where action=%s '
         'and actor=%s and target_type=%s and target=%s and result=%s limit 1 lock in share mode',
-        ('onboarding.reset.completed', actor, 'Setup Reset', job, 'success')))
+        ('onboarding.reset.completed', actor, 'Setup Reset', job, 'success'), as_dict=True)
+    if not rows:
+        return None
+    try:
+        details = json.loads(rows[0].details or '{}')
+    except (TypeError, ValueError):
+        details = {}
+    from asoud_erp.services.setup_reset_policy import completed_companies
+
+    return {'job': job, 'state': 'completed', 'actor': actor, 'message': 'بازنشانی سرور ثبت شده است.',
+        'companies': completed_companies(details)}
 
 
 def status(job=None, preview_token=None):
@@ -278,8 +338,8 @@ def status(job=None, preview_token=None):
         job = authorization['job']
     if not isinstance(job, str) or not 20 <= len(job) <= 80:
         frappe.throw('شناسهٔ پیگیری بازنشانی معتبر نیست.')
-    if _committed(job, actor):
-        return {'job': job, 'state': 'completed', 'message': 'بازنشانی سرور ثبت شده است.'}
+    if completed := _committed(job, actor):
+        return completed
     receipt = _receipt(job)
     if not receipt or receipt.get('actor') != actor:
         frappe.throw('وضعیت این عملیات در دسترس نیست؛ هیچ موفقیتی تأیید نشده است. مدیر سرور باید بررسی کند.')
@@ -288,14 +348,16 @@ def status(job=None, preview_token=None):
 
         queue_state = get_job_status(f'asoud-setup-reset-{job}')
         if queue_state in {'failed', 'stopped', 'canceled', 'finished'}:
-            if _committed(job, actor):
-                return {'job': job, 'state': 'completed', 'message': 'بازنشانی سرور ثبت شده است.'}
+            if completed := _committed(job, actor):
+                return completed
             _save_receipt(job, actor, 'failed', 'پردازش متوقف شد و رسید تکمیل وجود ندارد؛ پیش‌نمایش تازه و وضعیت سرور را بررسی کنید.')
             if frappe.cache.get_value(BUSY_KEY) == job:
                 frappe.cache.delete_value(BUSY_KEY)
             receipt = _receipt(job)
         elif receipt['state'] == 'queued':
             receipt['message'] = 'در انتظار پردازش سرور؛ پردازشگر صف باید فعال باشد.'
+    if receipt.get('state') == 'completed':
+        frappe.throw('رسید نهایی حذف از پایگاه داده تأیید نشد؛ عملیات را تکرار نکنید و وضعیت سرور را بررسی کنید.')
     return {key: receipt.get(key) for key in ('job', 'state', 'message')}
 
 
