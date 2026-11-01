@@ -1,5 +1,39 @@
 # Temporary, administrator-authenticated setup reset
 
+## Complete first-entry reset correction
+
+The existing `preview`/`perform`/`status` flow deletes the authenticated owner's
+offices, organization charts/positions/units, personnel and custom roles. Login
+identity/password/System Manager authority, native essential roles, other owners'
+offices and security audit are preserved. Operational/posted dependencies still
+block deletion; this is not a site-wide accounting purge.
+
+Only the authenticated, queued reset worker may remove the previewed offices'
+system workflow definitions and their technical edit history. Its in-process
+capability includes actor, job and the exact freshly verified document scope;
+ordinary workflow deletion remains protected, and native dependency checks are
+never forced or skipped. Owned form/revision/source cycles are broken within
+the same rollback-capable transaction. Any remaining relationship aborts all
+changes. Counts include technical edit history affected by native deletion.
+
+Completed `status` adds `actor: string` and `companies: string[]`, recovered from the mandatory durable
+receipt (also after lost Redis state). The client clears only that user's related
+organization drafts/caches, personnel/office caches and custom role drafts on the same server **after**
+durable server success; failure/queued/running never clear them. Credentials and
+queued offline writes/other users' drafts are not cleared. Related organization and
+role drafts are explicitly discarded with the administrator's confirmation.
+Cache-cleanup failure does not
+repeat server deletion or falsely report that the committed reset failed.
+Office caches now use an owner/server namespace; ownerless legacy records are
+not adopted or erased, so a deleted office cannot reappear from a legacy fallback.
+The preflight also checks the separate personnel outbox and scoped pending office
+records, not only the generic offline mutation queue.
+
+The reset still requires the explicitly enabled server flag, admin sign-in, fresh
+password, preview, backup acknowledgment and typed confirmation. No SSH interaction
+is part of the app's button. The next sign-in loads server-authoritative first-entry
+state; deploying this code does not itself delete production data.
+
 Implementation requires explicit site config activation; no site flag is enabled
 and no live deletion is performed by development. The UI authenticates first.
 
@@ -60,11 +94,13 @@ outside application hooks must not run during this administrative operation.
 The current administrator's recovery tokens are invalidated, but the native login
 identity, username and password are preserved. Posted and unsupported dependencies
 block the reset rather than being forcibly erased. Existing ledgers are not wiped.
-Tests were added but not run; live destructive/site verification was not performed.
+Live destructive/site verification is required on a disposable, backed-up site
+before enabling production reset; local pure/widget tests cannot prove native deletion.
 
 Background execution uses the native
 [Frappe v15 queue and job status API](https://github.com/frappe/frappe/blob/version-15/frappe/utils/background_jobs.py).
 
 Deployment: no schema migration. Explicitly enable on the intended backed-up site,
 use the temporary login entry, then disable/remove the flag. This environment does
-not execute a live reset. User requested no tests; tests must not be reported passed.
+not execute a live reset. See [the reset review report](../setup-reset-review.md)
+for actual verification results.

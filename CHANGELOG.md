@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Full setup reset correction: the verified reset worker can delete only its freshly previewed offices' seeded workflow definitions/edit history without weakening ordinary workflow deletion. Execution history and native links still block and roll back all changes. Durable completion includes actor/office scope for safe client cache cleanup; preserves login credentials and other owners' data. No new schema/endpoint; deploy backend and client together, restart long workers, explicitly enable the temporary flag only on a backed-up site. No production reset performed.
+
+- Read-only workflow details: existing design response adds a saved-graph `details_summary` using the same activation checks, grouped into independent stage/exit readiness and Persian issues. No workflow status, permissions, history, schema or activation-rule changes; no migration. Deploy with the matching details-dialog client.
+
+- Workflow card operations: existing status API now validates the saved ASOUD graph instead of requiring an unrelated native Workflow link; native write/company checks and serialized start/delete locks protect status transitions. Existing native deletion rejects system definitions, execution/request/version history, form/stage references and ordinary native dependencies; only unused owned graph rows are cleaned atomically. No new endpoint/schema/migration. Deploy/restart backend before matching Flutter. Pure tests pass; real-site/API regressions registered but not run locally (no Frappe/bench).
+
 - Correct office digit-normalization test fixtures to use a valid Persian-digit mobile number under the existing office mobile validation contract; retain ASCII persistence assertions and party landline coverage. No runtime or deployment changes.
 
 - Submitted-form workflow routing replaces the superseded task-form draft: published Request/Document identities are pinned to a workflow, original entries/native documents enter the existing runtime once, and assignees view sanitized read-only data without re-entering forms. Native permission/company checks, revision changes and duplicate routes are guarded. Deployment: `bench migrate` (definition source links/index), restart workers, then matching Flutter.

@@ -155,9 +155,22 @@ def drop_definition(definition: str) -> dict:
     if not title.startswith(PREFIX):
         raise SystemExit(f"refusing to drop {definition}: title {title!r} is not {PREFIX}")
     used = frappe.db.count("ASOUD Workflow Request", {"workflow_definition": definition})
-    if used:
+    used += frappe.db.count('ASOUD Workflow Instance', {'workflow_definition': definition})
+    row = frappe.get_doc('ASOUD Workflow Definition', definition)
+    if used or row.is_system_template or row.template_key or definition.upper().startswith('SYS-'):
         raise SystemExit(f"refusing to drop {definition}: {used} request(s) reference it")
-    frappe.delete_doc("ASOUD Workflow Definition", definition, ignore_permissions=True, force=True)
+    # Explicit test-fixture cleanup only. Production deletion must retain all
+    # history; this bench helper accepts only unused E2E-prefixed fixtures.
+    for doctype, names in (
+        ('ASOUD Workflow Definition', [definition]),
+        *[(kind, frappe.get_all(kind, filters={'workflow_definition': definition}, pluck='name'))
+          for kind in ('ASOUD Workflow Stage', 'ASOUD Workflow Transition')],
+    ):
+        if names:
+            frappe.db.delete('Version', {'ref_doctype': doctype, 'docname': ['in', names]})
+    frappe.db.set_value('ASOUD Workflow Definition', definition,
+        {'source_form': None, 'source_revision': None}, update_modified=False)
+    frappe.delete_doc("ASOUD Workflow Definition", definition, ignore_permissions=True)
     frappe.db.commit()
     return {"dropped": definition}
 
