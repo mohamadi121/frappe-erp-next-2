@@ -1,5 +1,39 @@
 # User action settings — additive v1
 
+## Report and optional capabilities (additive)
+
+New action designs set `simple_result_style: Report`. Its only scalar result is
+required LongText `action_note` (گزارش انجام اقدام, max 5000). Existing configs
+without this key retain `Outcomes`, including their existing result/history.
+`Complete` validates the report; Follow Up/Blocked remain Outcomes-only.
+
+Four independent settings are `allow_original_access` (default true for older
+configs), `document_access` (Read Only/Edit), `allow_add_attachments`, existing
+`allow_draft`, and `allow_reassign` (default false). The first two constitute
+one original-access capability. Disabling original access removes original
+snapshot/values/request links from this task response, not Canvas evaluation.
+Enabling Edit never grants native write permissions, unlocks submitted immutable
+form entries or bypasses the original request's owner/state rules.
+
+Existing `get_workflow_task(task, candidate_query?, candidate_start=0)` returns
+`reassignment_candidates: [{user, label}]` and `has_more` when candidate_query is
+supplied, after task ownership/company/live-stage/claim checks. Page size 25;
+search max 100 characters; at most 200 eligible principals are resolved. Unit
+direct assignment may transfer within that same unit; shared unit/role scopes
+retain their rule. Subject/manager direct assignments may transfer within the
+resolved person's active unit; an account without Employee has no such expansion.
+Native enabled-user, company and pinned-result-form access are rechecked at write.
+
+Existing `complete_workflow_task` accepts `action: Reassign, assignee: <user>`.
+It checks allow_reassign, locks instance then the same task, rejects self/unknown/
+ineligible recipients, preserves response/draft/files, transfers assigned_to and
+records Reassigned with old/new user/time in native Activity. No stage advance or
+new task occurs. Former owner loses access immediately. Successful envelope:
+`{task, reassigned: true, instance_status}`. Errors are Persian, e.g.
+«واگذاری مجدد برای این اقدام فعال نیست.» / «کاربر انتخاب‌شده واجد شرایط این اقدام نیست.».
+Client and backend deploy together; no database migration. Test execution is
+explicitly excluded by the user's standing instruction, not reported as passed.
+
 Existing User Task stage identities and legacy configs stay valid. New edits opt
 into `action_contract_version: 1`; the Persian name is اقدام کاربر. Existing
 `save_stage_settings` manager/write/company checks remain authoritative.
@@ -61,8 +95,8 @@ can read it and it was already on the same task; ownership is never rewritten.
 Native overdue reassignment is retained: v1 queues are serialized and reduced to
 one assigned task before transfer to an enabled escalation-role user in the same
 company. Assignment, claim and reassignment use existing Activity rows; former
-drafts/files stay on the transferred task. No unrestricted manual transfer API is
-introduced. Original submitted form entries remain immutable. `document_access`
+drafts/files stay on the transferred task. The optional bounded manual transfer
+described above reuses this same task API. Original submitted form entries remain immutable. `document_access`
 does not grant native write access: existing request editing remains subject to
 its own owner/state checks; a task result never overwrites original entry values.
 

@@ -57,6 +57,62 @@ class TestWorkflowUserActions(APITestCase):
             workflow_runtime.complete_workflow_task(task, 'Complete', response={'action_result': 'done'})
         self.assertEqual(frappe.db.count('ASOUD Workflow Activity', {'workflow_task': task, 'action': 'Complete'}), 1)
 
+    def test_report_requires_note_and_draft_never_advances(self):
+        definition, _ = self.make_action(simple_result_style='Report', allow_original_access=False)
+        instance, task = self.start(definition)
+        detail = workflow_runtime.get_workflow_task(task)['data']
+        self.assertFalse(detail['allow_original_access'])
+        self.assertEqual(detail['request_values'], {})
+        self.assertFalse(detail['submitted_form'])
+        self.assertEqual([field['key'] for field in detail['action_schema']['sections'][0]['fields']], ['action_note'])
+        with self.assertRaises(frappe.ValidationError):
+            workflow_runtime.complete_workflow_task(task, 'Complete', response={})
+        with self.assertRaises(frappe.ValidationError):
+            workflow_runtime.complete_workflow_task(task, 'Follow Up', response={'action_note': 'گزارش'})
+        workflow_runtime.save_workflow_task_draft(task, {'action_note': 'نیمه‌تمام'})
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', instance, 'status'), 'Running')
+        workflow_runtime.complete_workflow_task(task, 'Complete', response={'action_note': 'بررسی انجام شد.'})
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', instance, 'status'), 'Completed')
+
+    def test_manual_reassignment_transfers_same_claimed_task_and_preserves_draft(self):
+        role = frappe.get_doc({'doctype': 'Role', 'role_name': f'Transfer {uuid4().hex[:10]}'}).insert().name
+        for user in (EMPLOYEE_USER, APPROVER_USER):
+            frappe.get_doc('User', user).add_roles(role)
+        definition, _ = self.make_action({'basis': 'Role', 'role': role},
+            simple_result_style='Report', allow_reassign=True)
+        instance, task = self.start(definition)
+        with self.assertRaises(frappe.ValidationError):
+            workflow_runtime.get_workflow_task(task, candidate_query='')
+        workflow_runtime.complete_workflow_task(task, 'Claim')
+        workflow_runtime.save_workflow_task_draft(task, {'action_note': 'اطلاعات محفوظ'})
+        before = frappe.db.count('ASOUD Workflow Task', {'workflow_instance': instance})
+        options = workflow_runtime.get_workflow_task(task, candidate_query='')['data']
+        self.assertEqual([row['user'] for row in options['reassignment_candidates']], [APPROVER_USER])
+        for user in (EMPLOYEE_USER, EMPLOYEE_B_USER, 'missing@example.com'):
+            with self.assertRaises(frappe.PermissionError):
+                workflow_runtime.complete_workflow_task(task, 'Reassign', assignee=user)
+        result = workflow_runtime.complete_workflow_task(task, 'Reassign', assignee=APPROVER_USER)['data']
+        self.assertTrue(result['reassigned'])
+        self.assertEqual(frappe.db.count('ASOUD Workflow Task', {'workflow_instance': instance}), before)
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', instance, 'status'), 'Running')
+        with self.assertRaises(frappe.PermissionError):
+            workflow_runtime.save_workflow_task_draft(task, {'action_note': 'تغییر غیرمجاز'})
+        frappe.set_user(APPROVER_USER)
+        detail = workflow_runtime.get_workflow_task(task)['data']
+        self.assertEqual(detail['action_values']['action_note'], 'اطلاعات محفوظ')
+        self.assertEqual(detail['status'], 'Open')
+        self.assertEqual(frappe.db.count('ASOUD Workflow Activity', {'workflow_task': task,
+            'action': 'Reassigned', 'actor': EMPLOYEE_USER, 'reference_name': APPROVER_USER}), 1)
+        workflow_runtime.complete_workflow_task(task, 'Complete', response={'action_note': 'تکمیل توسط مسئول جدید'})
+
+    def test_reassignment_disabled_even_when_call_is_forged(self):
+        definition, _ = self.make_action()
+        _, task = self.start(definition)
+        with self.assertRaises(frappe.PermissionError):
+            workflow_runtime.get_workflow_task(task, candidate_query='')
+        with self.assertRaises(frappe.PermissionError):
+            workflow_runtime.complete_workflow_task(task, 'Reassign', assignee=APPROVER_USER)
+
     def test_shared_claim_cancels_peers_and_requires_only_one_completion(self):
         role = frappe.get_doc({'doctype': 'Role', 'role_name': f'Action {uuid4().hex[:10]}'}).insert().name
         for user in (EMPLOYEE_USER, APPROVER_USER):
