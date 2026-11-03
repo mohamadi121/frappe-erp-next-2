@@ -1,5 +1,22 @@
 # Organization units and import
 
+## reset_chart (explicit test/setup reset)
+
+POST `asoud_erp.api.v1.organization.reset_chart(company, revision)` uses existing
+organization write roles (System Manager / HR Manager), Company read scope and
+native chart write permission. Revision is a nonnegative integer, checked under
+the Company and chart locks. It clears all chart positions, even occupied rows,
+children and assignment history; ordinary position-deletion blockers do not apply
+to this explicit whole-chart operation. Before/after structure is retained by
+native Version tracking. No Employee, Department, office, role or financial
+document is deleted or rewritten. This is chart reset, not a tenant/database wipe.
+Response `{rows: [], revision: <next>, reset: true}`; no chart is idempotently empty
+at revision 0. A stale revision fails with «ساختار تغییر کرده است؛ دوباره بارگذاری کنید.».
+No offline queue/replay: the client reports completion only after server success,
+refreshes its owner-scoped cache and supersedes older queued chart drafts.
+No migration; deploy backend/client together. First-entry UI is based on actual
+chart rows, not pre-existing native Department defaults.
+
 Known standard titles have additive Persian display labels; raw fields and native
 identifiers are unchanged. See [localization contract](organization-localization.md).
 

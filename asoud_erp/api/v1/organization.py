@@ -47,6 +47,36 @@ def get_chart(company):
 
 
 @frappe.whitelist(methods=["POST"])
+def reset_chart(company, revision):
+    """Explicit whole-chart reset; retain native Version, never erase HR masters."""
+    _access(company, write=True)
+    from asoud_erp.services.organization_contract import reset_revision
+
+    try:
+        expected = reset_revision(revision)
+    except ValueError as error:
+        frappe.throw(str(error))
+    lock_company(company)
+    name = frappe.db.get_value('ASOUD Organization Chart', {'company': company}, 'name')
+    if not name:
+        if expected != 0:
+            frappe.throw('ساختار تغییر کرده است؛ دوباره بارگذاری کنید.', frappe.TimestampMismatchError)
+        return success({'rows': [], 'revision': 0, 'reset': True})
+    doc = frappe.get_doc('ASOUD Organization Chart', name, for_update=True)
+    doc.check_permission('write')
+    if expected != int(doc.revision or 0):
+        frappe.throw('ساختار تغییر کرده است؛ دوباره بارگذاری کنید.', frappe.TimestampMismatchError)
+    previous = getattr(frappe.flags, 'asoud_reset_chart', None)
+    try:
+        frappe.flags.asoud_reset_chart = doc.name
+        doc.structure_json = '[]'
+        doc.save()
+    finally:
+        frappe.flags.asoud_reset_chart = previous
+    return success({**_snapshot(doc), 'reset': True})
+
+
+@frappe.whitelist(methods=["POST"])
 def save_chart(payload):
     data = json.loads(payload) if isinstance(payload, str) else payload
     if not isinstance(data, dict) or not data.get("company"):

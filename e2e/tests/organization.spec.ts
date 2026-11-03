@@ -4,6 +4,20 @@ import { loadState } from '../support/state';
 const state = loadState();
 const prefix = 'asoud_erp.api.v1.organization.';
 type Chart = {rows: Array<Record<string, unknown>>; revision: number};
+
+test('whole-chart reset rejects unauthorized, foreign-company and stale requests over HTTP', async ({api}) => {
+  const admin = await api.login('admin');
+  const employee = await api.login('employee');
+  const hr = await api.login('hr');
+  const before = await admin.read<Chart>(prefix + 'get_chart', {company: state.company});
+  const args = {company: state.company, revision: String(before.revision)};
+  expect((await employee.post(prefix + 'reset_chart', args)).status).toBe(403);
+  expect((await hr.post(prefix + 'reset_chart', {...args, company: state.second_company})).status).toBe(403);
+  expect((await admin.post(prefix + 'reset_chart', {...args, revision: String(before.revision + 1)})).status).toBe(417);
+  expect((await admin.post(prefix + 'reset_chart', {...args, revision: '-1'})).status).toBe(417);
+  const after = await admin.read<Chart>(prefix + 'get_chart', {company: state.company});
+  expect(after).toEqual(before);
+});
 type Review = {can_delete: boolean; counts: {occupants: number; subordinates: number; history: number}};
 
 test('unit descriptions persist on native units and keep role gates over HTTP', async ({api}) => {
