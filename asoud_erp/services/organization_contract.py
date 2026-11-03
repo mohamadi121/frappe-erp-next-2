@@ -1,3 +1,12 @@
+def reset_revision(value):
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise ValueError('نسخه ساختار معتبر نیست.')
+    text = str(value)
+    if not text.isascii() or not text.isdecimal() or len(text) > 18:
+        raise ValueError('نسخه ساختار معتبر نیست.')
+    return int(text)
+
+
 def validate_rows(rows):
     if not isinstance(rows, list) or len(rows) > 500:
         raise ValueError("Invalid organization rows (maximum 500)")

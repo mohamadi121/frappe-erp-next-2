@@ -8,6 +8,42 @@ from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER, APITestCase
 
 
 class TestOrganization(APITestCase):
+    def test_explicit_reset_keeps_native_people_units_and_version(self):
+        current = organization.get_chart(self.company)["data"]
+        name = organization.save_unit(self.company, dict(
+            title="Reset test " + frappe.generate_hash(length=8), is_group=True))["data"]["name"]
+        code = "RESET-" + frappe.generate_hash(length=8)
+        employee = self.records["employee"]
+        saved = organization.save_chart(dict(company=self.company, revision=current["revision"],
+            rows=[*current["rows"], dict(code=code, title="Reset occupied root", capacity=1,
+                department_id=name, occupants=["employee:" + employee]),
+                dict(code=code + "-CHILD", title="Child", parent=code, capacity=1, occupants=[])]))["data"]
+        # Ordinary deletion is still protected; only the explicit endpoint resets.
+        with self.assertRaises(frappe.ValidationError):
+            organization.save_chart(dict(company=self.company, revision=saved["revision"], rows=[]))
+        with self.assertRaises(frappe.TimestampMismatchError):
+            organization.reset_chart(self.company, saved["revision"] - 1)
+        frappe.set_user(EMPLOYEE_USER)
+        with self.assertRaises(frappe.PermissionError):
+            organization.reset_chart(self.company, saved["revision"])
+        frappe.set_user("Administrator")
+        chart = frappe.db.get_value("ASOUD Organization Chart", {"company": self.company}, "name")
+        before = frappe.db.get_value("ASOUD Organization Chart", chart, "structure_json")
+        result = organization.reset_chart(self.company, saved["revision"])["data"]
+        self.assertTrue(result["reset"])
+        self.assertEqual(result["rows"], [])
+        self.assertEqual(result["revision"], saved["revision"] + 1)
+        self.assertEqual(organization.get_chart(self.company)["data"]["rows"], [])
+        self.assertTrue(frappe.db.exists("Employee", employee))
+        self.assertTrue(frappe.db.exists("Department", name))
+        versions = frappe.get_all("Version", filters={"ref_doctype": "ASOUD Organization Chart",
+            "docname": chart}, pluck="data")
+        self.assertTrue(any(any(change[0] == "structure_json" and change[1] == before
+            for change in json.loads(data).get("changed", [])) for data in versions))
+        again = organization.reset_chart(self.company, result["revision"])["data"]
+        self.assertEqual(again["revision"], result["revision"])
+        self.assertIsNone(getattr(frappe.flags, "asoud_reset_chart", None))
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

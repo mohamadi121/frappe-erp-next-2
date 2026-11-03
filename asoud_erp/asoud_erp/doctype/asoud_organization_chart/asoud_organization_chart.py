@@ -23,7 +23,11 @@ class ASOUDOrganizationChart(Document):
         validate_position_units(rows, self.company)
         old_rows = json.loads(previous.structure_json or "[]") if previous else []
         try:
-            rows = reconcile(rows, old_rows, str(now_datetime()), frappe.session.user)
+            # Only the scoped server reset endpoint establishes this context;
+            # client-supplied document flags do not bypass ordinary deletion.
+            resetting = previous and not rows and getattr(frappe.flags, 'asoud_reset_chart', None) == self.name
+            if not resetting:
+                rows = reconcile(rows, old_rows, str(now_datetime()), frappe.session.user)
         except ValueError as error:
             frappe.throw(str(error))
         self.revision = ((previous.revision or 0) if previous else 0) + int(rows != old_rows)
