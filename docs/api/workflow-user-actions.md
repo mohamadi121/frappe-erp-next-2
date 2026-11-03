@@ -95,8 +95,8 @@ can read it and it was already on the same task; ownership is never rewritten.
 Native overdue reassignment is retained: v1 queues are serialized and reduced to
 one assigned task before transfer to an enabled escalation-role user in the same
 company. Assignment, claim and reassignment use existing Activity rows; former
-drafts/files stay on the transferred task. No unrestricted manual transfer API is
-introduced. Original submitted form entries remain immutable. `document_access`
+drafts/files stay on the transferred task. The optional bounded manual transfer
+described above reuses this same task API. Original submitted form entries remain immutable. `document_access`
 does not grant native write access: existing request editing remains subject to
 its own owner/state checks; a task result never overwrites original entry values.
 

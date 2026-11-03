@@ -42,8 +42,21 @@ def normalize_action(raw):
     attachments = raw.get('allow_add_attachments', False)
     if type(attachments) is not bool:
         raise ValueError('تنظیم پیوست باید روشن یا خاموش باشد.')
+    style = raw.get('simple_result_style', 'Outcomes')
+    if style not in ('Outcomes', 'Report'):
+        raise ValueError('روش ثبت گزارش اقدام معتبر نیست.')
+    access = raw.get('document_access', 'Read Only')
+    if access not in ('Read Only', 'Edit', 'Limited Edit'):
+        raise ValueError('سطح دسترسی به درخواست اصلی معتبر نیست.')
+    capabilities = {}
+    for key, default in [('allow_original_access', True), ('allow_draft', True), ('allow_reassign', False)]:
+        value = raw.get(key, default)
+        if type(value) is not bool:
+            raise ValueError('تنظیمات تکمیلی باید روشن یا خاموش باشند.')
+        capabilities[key] = value
     return {'action_contract_version': 1, 'result_mode': mode, 'result_form': form,
-        'assignment_rule': result, 'allow_add_attachments': attachments}
+        'assignment_rule': result, 'allow_add_attachments': attachments,
+        'simple_result_style': style, 'document_access': access, **capabilities}
 
 
 def required(rule, key):
@@ -53,13 +66,16 @@ def required(rule, key):
     return value.strip()
 
 
-def simple_schema(attachments):
+def simple_schema(attachments, style='Outcomes'):
     fields = [
         {'key': 'action_result', 'type': 'Select', 'label': 'نتیجه اقدام', 'required': True, 'default': 'done',
          'options': [{'id': 'done', 'label': 'انجام شد'}, {'id': 'follow_up', 'label': 'نیازمند پیگیری'},
                      {'id': 'blocked', 'label': 'امکان انجام وجود ندارد'}]},
         {'key': 'action_note', 'type': 'LongText', 'label': 'شرح نتیجه اقدام', 'max_length': 5000},
     ]
+    if style == 'Report':
+        fields = [{'key': 'action_note', 'type': 'LongText', 'label': 'گزارش انجام اقدام',
+            'required': True, 'max_length': 5000}]
     if attachments:
         fields.append({'key': 'action_files', 'type': 'File', 'label': 'پیوست مستندات', 'max_files': 10,
             'extensions': ['pdf', 'jpg', 'jpeg', 'png', 'xlsx', 'docx'], 'max_mb': 10})

@@ -1011,7 +1011,7 @@ def _followup_task(doc, followup: dict, activity_type: str) -> dict:
 
 
 @frappe.whitelist()
-def get_workflow_task(task: str) -> dict:
+def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dict:
     doc = frappe.get_doc("ASOUD Workflow Task", task)
     _assert_task_owner(doc)
     from asoud_erp.services.directive_access import directive_for
@@ -1029,6 +1029,13 @@ def get_workflow_task(task: str) -> dict:
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
     config = json.loads(stage.config_json or "{}")
     instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
+    if candidate_query is not None:
+        from asoud_erp.services.workflow_user_action import reassignment_candidates
+
+        if config.get('action_contract_version') != 1:
+            frappe.throw('واگذاری مجدد برای این اقدام فعال نیست.', frappe.PermissionError)
+        return success(reassignment_candidates(doc, config, candidate_query, candidate_start))
+    original_access = config.get('action_contract_version') != 1 or config.get('allow_original_access', True)
     history = frappe.get_all(
         "ASOUD Workflow Activity",
         filters={"workflow_instance": doc.workflow_instance},
@@ -1039,8 +1046,8 @@ def get_workflow_task(task: str) -> dict:
     document_context = {}
     from asoud_erp.services.workflow_submission_source import task_snapshot
 
-    submitted_form = task_snapshot(instance)
-    if not submitted_form and instance.reference_doctype and instance.reference_name:
+    submitted_form = task_snapshot(instance) if original_access else {}
+    if original_access and not submitted_form and instance.reference_doctype and instance.reference_name:
         if not frappe.has_permission(
             instance.reference_doctype,
             "read",
@@ -1096,7 +1103,7 @@ def get_workflow_task(task: str) -> dict:
             "name": doc.name,
             "workflow_instance": doc.workflow_instance,
             "workflow_stage": doc.workflow_stage,
-            "request_name": request_row.get("name", ""),
+            "request_name": request_row.get("name", "") if original_access else "",
             "request_company": request_row.get("company", ""),
             "task_title": doc.task_title,
             "status": doc.status,
@@ -1113,7 +1120,7 @@ def get_workflow_task(task: str) -> dict:
             "previous_data": _previous_task_data(instance, exclude_task=doc.name),
             "document": document_context,
             "submitted_form": submitted_form,
-            "request_values": submitted_form['values'] if submitted_form else request_values_for_instance(frappe, instance),
+            "request_values": (submitted_form['values'] if submitted_form else request_values_for_instance(frappe, instance)) if original_access else {},
         }
     )
 
@@ -1219,6 +1226,7 @@ def complete_workflow_task(
     action: str,
     comment: str | None = None,
     response: str | dict | None = None,
+    assignee: str | None = None,
 ) -> dict:
     from asoud_erp.services.directive_access import reject_generic
     original = frappe.get_doc("ASOUD Workflow Task", task)
@@ -1229,8 +1237,8 @@ def complete_workflow_task(
     if versioned_action:
         from asoud_erp.services.workflow_user_action import assert_writable, handle, prepare
 
-        if action in ('Claim', 'Follow Up', 'Blocked'):
-            return success(handle(task, action, response, comment))
+        if action in ('Claim', 'Follow Up', 'Blocked', 'Reassign'):
+            return success(handle(task, action, response, comment, assignee))
         if action != 'Complete':
             frappe.throw('برای این اقدام فقط ثبت نتیجه و تکمیل مجاز است؛ رد درخواست اصلی از این بخش انجام نمی‌شود.')
         frappe.get_doc('ASOUD Workflow Instance', original.workflow_instance, for_update=True)
@@ -1275,7 +1283,7 @@ def complete_workflow_task(
             # A draft carries Auto values the server computed earlier; they are ignored here
             # and recomputed by the template validation below.
             normalized_response = prepare(doc, config, values=raw_response) if versioned_action else normalize_form_response(fields, raw_response, allow_auto=True)
-            if versioned_action and config['result_mode'] == 'Simple' and normalized_response.get('action_result') != 'done':
+            if versioned_action and config['result_mode'] == 'Simple' and config.get('simple_result_style') != 'Report' and normalized_response.get('action_result') != 'done':
                 frappe.throw('برای پیگیری یا ثبت مانع، از دکمهٔ ثبت وضعیت اقدام استفاده کنید.')
         except ValueError as error:
             frappe.throw(_(str(error)))

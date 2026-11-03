@@ -26,7 +26,7 @@ def form_schema(definition, config, *, designing=False, history=False):
             frappe.throw('دسترسی به اطلاعات فرم این اقدام مجاز نیست.', frappe.PermissionError)
         return schema, (config.get('result_form') or {}).get('form'), company
     if config['result_mode'] == 'Simple':
-        return simple_schema(config['allow_add_attachments']), None, company
+        return simple_schema(config['allow_add_attachments'], config.get('simple_result_style', 'Outcomes')), None, company
     source = config['result_form']
     if not frappe.db.exists('ASOUD Form', source['form']) or not frappe.db.exists('ASOUD Form Revision',
             {'name': source['revision'], 'form': source['form']}):
@@ -138,9 +138,29 @@ def users_for(stage, instance):
     # Native company authorization is checked per principal; master reads above are batched.
     result = [user for user in dict.fromkeys(active) if user not in ('Guest', 'Administrator') and company_access(company, user)]
     result = filter_form_users(config, company, result)
+    result = filter_reference_users(instance, config, result)
     if not result:
         frappe.throw('مسئول فعال و دارای دسترسی به اطلاعات این اقدام پیدا نشد؛ تنظیمات ارجاع و فرم را اصلاح کنید.')
     return result
+
+
+def filter_reference_users(instance, config, users):
+    """An assignment may not grant native document read permission."""
+    # Native task-read hooks still require source-document permission even when
+    # the designer hides its snapshot. Do not assign an unopenable task.
+    if not instance.reference_name:
+        return users
+    doctype, name = instance.reference_doctype, instance.reference_name
+    if doctype == 'ASOUD Form Entry':
+        from asoud_erp.services.workflow_submission_source import entry_for_instance
+
+        entry = entry_for_instance(instance)
+        doctype, name = entry.reference_doctype, entry.reference_name
+    # Request hooks explicitly authorize assignees, unlike native documents.
+    if not doctype or not name or doctype == 'ASOUD Workflow Request':
+        return users
+    document = frappe.get_doc(doctype, name)
+    return [user for user in users if frappe.has_permission(doctype, 'read', doc=document, user=user)]
 
 
 def filter_form_users(config, company, users):
@@ -189,6 +209,8 @@ def prepare(task, config, *, draft=False, values=_PRESENTATION):
         return {'action_schema': schema, 'action_form': name or task.name, 'action_company': company,
             'action_contract_version': 1, 'requires_claim': task.status == 'Open' and task.action == 'Awaiting Claim',
             'allow_draft': config.get('allow_draft', True), 'allow_add_attachments': config['allow_add_attachments'],
+            'allow_reassign': config.get('allow_reassign', False),
+            'allow_original_access': config.get('allow_original_access', True),
             'action_values': current}
     raw = forms.parse(values)
     if not isinstance(raw, dict):
@@ -217,6 +239,8 @@ def prepare(task, config, *, draft=False, values=_PRESENTATION):
 
 
 def assert_writable(task, config):
+    if task.assigned_to != frappe.session.user:
+        frappe.throw('این اقدام به کاربر دیگری واگذار شده است.', frappe.PermissionError)
     if task.status != 'Open':
         frappe.throw('این اقدام دیگر باز نیست.')
     if task.action == 'Awaiting Claim':
@@ -225,8 +249,12 @@ def assert_writable(task, config):
     stage = frappe.get_doc('ASOUD Workflow Stage', task.workflow_stage)
     escalated = bool(task.escalated_on and config.get('reassign_on_overdue') and
         frappe.db.exists('ASOUD Workflow Activity', {'workflow_task': task.name, 'action': 'Escalated'}) and
-        frappe.session.user in escalation_users(config, company_for(instance.workflow_definition)))
-    if instance.status != 'Running' or instance.current_stage != stage.name or (not escalated and frappe.session.user not in users_for(stage, instance)):
+        frappe.session.user in filter_reference_users(instance, config,
+            escalation_users(config, company_for(instance.workflow_definition))))
+    delegated = bool(config.get('allow_reassign') and frappe.db.exists('ASOUD Workflow Activity', {
+        'workflow_task': task.name, 'action': 'Reassigned', 'reference_doctype': 'User',
+        'reference_name': frappe.session.user}) and frappe.session.user in delegation_users(stage, instance))
+    if instance.status != 'Running' or instance.current_stage != stage.name or (not escalated and not delegated and frappe.session.user not in users_for(stage, instance)):
         frappe.throw('این اقدام یا دسترسی مسئول آن تغییر کرده است؛ صفحه را دوباره دریافت کنید.', frappe.PermissionError)
 
 
@@ -254,7 +282,7 @@ def escalate(task_name, current):
         return
     config = json.loads(frappe.db.get_value('ASOUD Workflow Stage', task.workflow_stage, 'config_json') or '{}')
     company = frappe.db.get_value('ASOUD Workflow Definition', instance.workflow_definition, 'company')
-    candidates = escalation_users(config, company)
+    candidates = filter_reference_users(instance, config, escalation_users(config, company))
     if config.get('reassign_on_overdue') and candidates:
         previous = task.assigned_to
         if task.action == 'Awaiting Claim':
@@ -293,7 +321,7 @@ def link_schema(task_name, form_name, company):
     return schema
 
 
-def handle(task_name, action, response, comment):
+def handle(task_name, action, response, comment, assignee=None):
     """Caller already checks task ownership; use instance-first locks for candidates."""
     from asoud_erp.api.v1.workflow_runtime import _record_activity
 
@@ -322,7 +350,9 @@ def handle(task_name, action, response, comment):
         _record_activity(task, 'Claim', 'اقدام از صف مشترک دریافت شد.')
         return {'task': task.name, 'claimed': True, 'instance_status': instance.status}
     assert_writable(task, config)
-    if config['result_mode'] != 'Simple' or action not in ('Follow Up', 'Blocked'):
+    if action == 'Reassign':
+        return reassign(task, stage, instance, config, assignee)
+    if config['result_mode'] != 'Simple' or config.get('simple_result_style') == 'Report' or action not in ('Follow Up', 'Blocked'):
         frappe.throw('عملیات ثبت وضعیت اقدام معتبر نیست.')
     checked = prepare(task, config, values=response)
     expected = 'follow_up' if action == 'Follow Up' else 'blocked'
@@ -334,3 +364,64 @@ def handle(task_name, action, response, comment):
     task.save(ignore_permissions=True)
     _record_activity(task, action, task.comment)
     return {'task': task.name, 'saved': True, 'instance_status': instance.status}
+
+
+def delegation_users(stage, instance):
+    """Use the existing recipient resolver; transfer never grants new rights."""
+    import copy
+
+    config = json.loads(stage.config_json or '{}')
+    rule = config['assignment_rule']
+    proxy = copy.copy(stage)
+    expanded = copy.deepcopy(config)
+    if rule['basis'] == 'Unit':
+        expanded['assignment_rule'] = {'basis': 'Unit', 'department': rule['department'], 'delivery': 'Shared'}
+    elif rule['basis'] in ('Subject', 'Manager'):
+        original = users_for(stage, instance)
+        company = company_for(instance.workflow_definition)
+        departments = frappe.get_all('Employee', filters={'user_id': ['in', original],
+            'company': company, 'status': 'Active'}, pluck='department', limit_page_length=2)
+        if len(departments) == 1 and departments[0]:
+            expanded['assignment_rule'] = {'basis': 'Unit', 'department': departments[0], 'delivery': 'Shared'}
+    proxy.config_json = json.dumps(expanded)
+    return users_for(proxy, instance)
+
+
+def reassignment_candidates(task, config, query, start):
+    assert_writable(task, config)
+    if not config.get('allow_reassign'):
+        frappe.throw('واگذاری مجدد برای این اقدام فعال نیست.', frappe.PermissionError)
+    if not isinstance(query, str) or len(query) > 100:
+        frappe.throw('عبارت جست‌وجوی مسئول معتبر نیست.')
+    try:
+        start = int(start)
+    except (ValueError, TypeError):
+        frappe.throw('شمارهٔ صفحه معتبر نیست.')
+    if start < 0 or start > 200:
+        frappe.throw('شمارهٔ صفحه معتبر نیست.')
+    stage = frappe.get_doc('ASOUD Workflow Stage', task.workflow_stage)
+    instance = frappe.get_doc('ASOUD Workflow Instance', task.workflow_instance)
+    candidates = [user for user in delegation_users(stage, instance) if user != task.assigned_to]
+    rows = frappe.get_all('User', filters={'name': ['in', candidates or ['']]},
+        fields=['name', 'full_name'], order_by='full_name asc, name asc', limit_page_length=201)
+    matches = [row for row in rows if query.casefold() in (row.full_name or '').casefold()]
+    return {'reassignment_candidates': [{'user': row.name, 'label': row.full_name or 'کاربر مجاز'}
+        for row in matches[start:start + 25]], 'has_more': len(matches) > start + 25}
+
+
+def reassign(task, stage, instance, config, assignee):
+    from asoud_erp.api.v1.workflow_runtime import _notify_user, _record_activity
+
+    if not config.get('allow_reassign'):
+        frappe.throw('واگذاری مجدد برای این اقدام فعال نیست.', frappe.PermissionError)
+    if not isinstance(assignee, str) or assignee == task.assigned_to or assignee not in delegation_users(stage, instance):
+        frappe.throw('کاربر انتخاب‌شده واجد شرایط این اقدام نیست.', frappe.PermissionError)
+    previous = task.assigned_to
+    previous_name = frappe.db.get_value('User', previous, 'full_name') or 'مسئول قبلی'
+    next_name = frappe.db.get_value('User', assignee, 'full_name') or 'مسئول جدید'
+    task.assigned_to = assignee
+    task.save(ignore_permissions=True)
+    _record_activity(task, 'Reassigned', f'واگذاری از {previous_name} به {next_name}',
+        reference_doctype='User', reference_name=assignee)
+    _notify_user(assignee, 'اقدام به شما واگذار شد.', instance, message=task.task_title)
+    return {'task': task.name, 'reassigned': True, 'instance_status': instance.status}

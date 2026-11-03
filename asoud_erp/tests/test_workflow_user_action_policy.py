@@ -12,6 +12,37 @@ def test_legacy_config_is_not_converted():
     assert normalize_action({'assignment_type': 'Initiator'}) == {}
 
 
+def test_report_is_explicit_and_old_outcomes_are_preserved():
+    assert normalize_action(config())['simple_result_style'] == 'Outcomes'
+    report = normalize_action(config(simple_result_style='Report'))
+    assert report['simple_result_style'] == 'Report'
+    fields = simple_schema(False, 'Report')['sections'][0]['fields']
+    assert [field['key'] for field in fields] == ['action_note']
+    assert fields[0]['required'] is True
+    assert fields[0]['max_length'] == 5000
+
+
+@pytest.mark.parametrize('key', ['allow_original_access', 'allow_draft', 'allow_reassign'])
+def test_capabilities_require_real_booleans(key):
+    with pytest.raises(ValueError):
+        normalize_action(config(**{key: 'false'}))
+
+
+def test_capabilities_are_independent():
+    value = normalize_action(config(allow_original_access=False, allow_draft=False,
+        allow_add_attachments=True, allow_reassign=True, document_access='Edit'))
+    assert value['allow_original_access'] is False
+    assert value['allow_draft'] is False
+    assert value['allow_add_attachments'] is True
+    assert value['allow_reassign'] is True
+
+
+def test_invalid_style_and_access_fail_closed():
+    for change in ({'simple_result_style': 'Other'}, {'document_access': 'Other'}):
+        with pytest.raises(ValueError):
+            normalize_action(config(**change))
+
+
 @pytest.mark.parametrize('version', [True, '1', 0, 2, []])
 def test_unknown_version_fails_closed(version):
     with pytest.raises(ValueError):
