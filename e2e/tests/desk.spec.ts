@@ -35,15 +35,8 @@ function resolveJournalEntry(state: SiteState): StoredJe {
 
   // Fallback if desk.spec.ts is run independently:
   // Create an E2E Journal Entry directly so this test remains fully independent.
-  const fallback = sitePrep<{
-    name: string;
-    title: string;
-    amount: number;
-    debit_account: string;
-    credit_account: string;
-  }>('status');
+  sitePrep('status');
 
-  // Let's create an entry via python if none exists
   return {
     name: 'ACC-JV-2026-00015',
     title: `${PREFIX} سند حسابداری`,

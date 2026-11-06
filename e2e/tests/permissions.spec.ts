@@ -11,7 +11,6 @@
  */
 
 import { expect, test } from '../support/fixtures';
-import type { ApiSession } from '../support/api';
 import { METHOD, errorText } from '../support/api';
 import { RUN_ID, requestId, subject } from '../support/config';
 import { loadState, sitePrep } from '../support/state';
