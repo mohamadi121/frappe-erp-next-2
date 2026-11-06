@@ -139,7 +139,7 @@ class TestWorkflowUserActions(APITestCase):
         frappe.set_user('Administrator')
         original = frappe.get_doc('ASOUD Workflow Stage', stage)
         with self.assertRaises(frappe.ValidationError):
-            workflow.save_stage_settings(definition, stage, {**json.loads(original.config_json), 'title': 'عنوان جدید'})
+            workflow.save_stage_settings(definition, stage, {**json.loads(original.config_json), 'allow_draft': False})
         before = workflow.get_workflow_design(definition)['data']
         copied = workflow_templates.create_from_template(self.company, definition,
             str(frappe.db.get_value('ASOUD Workflow Definition', definition, 'modified')), 'بازطراحی مستقل')['data']
@@ -168,7 +168,7 @@ class TestWorkflowUserActions(APITestCase):
         schema = {'kind': 'Request', 'title': 'نتیجه بررسی', 'sections': [{'id': 'main', 'title': 'اصلی', 'fields': [
             {'key': 'quantity', 'label': 'تعداد', 'type': 'Integer', 'required': True},
             {'key': 'price', 'label': 'قیمت', 'type': 'Money', 'required': True},
-            {'key': 'total', 'label': 'جمع', 'type': 'Formula', 'formula': {'op': 'mul', 'inputs': ['quantity', 'price']}},
+            {'key': 'total', 'label': 'جمع', 'type': 'Formula', 'formula': {'op': 'multiply', 'inputs': ['quantity', 'price']}},
             {'key': 'secret', 'label': 'اطلاعات محرمانه', 'type': 'Text', 'sensitive': True},
             {'key': 'rows', 'label': 'ردیف‌ها', 'type': 'Table', 'columns': [
                 {'key': 'note', 'label': 'شرح', 'type': 'Text', 'required': True},
