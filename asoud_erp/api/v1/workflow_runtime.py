@@ -1420,20 +1420,25 @@ def process_workflow_deadlines() -> None:
         limit_page_length=0,
     )
     for name in reminders:
-        task = frappe.get_doc("ASOUD Workflow Task", name)
-        if task.get('directive_kind'):
-            from asoud_erp.api.v1.directives import notify_reminder
-            notify_reminder(task)
-            continue
-        instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)
-        _notify_user(
-            task.assigned_to,
-            _("Workflow task is nearing its deadline"),
-            instance,
-            message=task.task_title,
-        )
-        task.reminder_sent_on = current
-        task.save(ignore_permissions=True)
+        frappe.db.savepoint("asoud_deadline_reminder")
+        try:
+            task = frappe.get_doc("ASOUD Workflow Task", name)
+            if task.get('directive_kind'):
+                from asoud_erp.api.v1.directives import notify_reminder
+                notify_reminder(task)
+                continue
+            instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)
+            _notify_user(
+                task.assigned_to,
+                _("Workflow task is nearing its deadline"),
+                instance,
+                message=task.task_title,
+            )
+            task.reminder_sent_on = current
+            task.save(ignore_permissions=True)
+        except Exception:
+            frappe.db.rollback(save_point="asoud_deadline_reminder")
+            frappe.log_error(title=f"Workflow deadline reminder failed for task {name}")
 
     overdue = frappe.get_all(
         "ASOUD Workflow Task",
@@ -1446,40 +1451,45 @@ def process_workflow_deadlines() -> None:
         limit_page_length=0,
     )
     for name in overdue:
-        task = frappe.get_doc("ASOUD Workflow Task", name)
-        if task.get("directive_kind"):
-            from asoud_erp.api.v1.directives import notify_overdue
-            notify_overdue(task)
-            continue
-        stage = frappe.get_doc("ASOUD Workflow Stage", task.workflow_stage)
-        config = json.loads(stage.config_json or "{}")
-        if config.get('action_contract_version') == 1:
-            from asoud_erp.services.workflow_user_action import escalate
+        frappe.db.savepoint("asoud_deadline_overdue")
+        try:
+            task = frappe.get_doc("ASOUD Workflow Task", name)
+            if task.get("directive_kind"):
+                from asoud_erp.api.v1.directives import notify_overdue
+                notify_overdue(task)
+                continue
+            stage = frappe.get_doc("ASOUD Workflow Stage", task.workflow_stage)
+            config = json.loads(stage.config_json or "{}")
+            if config.get('action_contract_version') == 1:
+                from asoud_erp.services.workflow_user_action import escalate
 
-            escalate(name, current)
-            continue
-        instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)
-        _notify_user(
-            task.assigned_to,
-            _("Workflow task is overdue"),
-            instance,
-            message=task.task_title,
-        )
-        escalation_users = _users_for_roles(config.get("escalation_roles") or [])
-        for user in escalation_users:
+                escalate(name, current)
+                continue
+            instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)
             _notify_user(
-                user,
-                _("Workflow task requires escalation"),
+                task.assigned_to,
+                _("Workflow task is overdue"),
                 instance,
-                message=f"{task.task_title}: {task.assigned_to}",
+                message=task.task_title,
             )
-        if config.get("reassign_on_overdue") and escalation_users:
-            previous = task.assigned_to
-            task.assigned_to = escalation_users[0]
-            _record_activity(
-                task,
-                "Escalated",
-                _("Reassigned from {0} to {1}").format(previous, task.assigned_to),
-            )
-        task.escalated_on = current
-        task.save(ignore_permissions=True)
+            escalation_users = _users_for_roles(config.get("escalation_roles") or [])
+            for user in escalation_users:
+                _notify_user(
+                    user,
+                    _("Workflow task requires escalation"),
+                    instance,
+                    message=f"{task.task_title}: {task.assigned_to}",
+                )
+            if config.get("reassign_on_overdue") and escalation_users:
+                previous = task.assigned_to
+                task.assigned_to = escalation_users[0]
+                _record_activity(
+                    task,
+                    "Escalated",
+                    _("Reassigned from {0} to {1}").format(previous, task.assigned_to),
+                )
+            task.escalated_on = current
+            task.save(ignore_permissions=True)
+        except Exception:
+            frappe.db.rollback(save_point="asoud_deadline_overdue")
+            frappe.log_error(title=f"Workflow deadline overdue failed for task {name}")
