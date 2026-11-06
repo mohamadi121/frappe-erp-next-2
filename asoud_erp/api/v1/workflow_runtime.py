@@ -1193,7 +1193,7 @@ def upload_workflow_attachment(task: str, filename: str, content_base64: str) ->
     if not isinstance(filename, str) or not isinstance(content_base64, str) or len(content_base64) > 14 * 1024 * 1024:
         frappe.throw('فایل معتبر نیست یا حجم آن بیش از حد مجاز است.')
     safe_name = Path(filename or "").name
-    extensions = ALLOWED_ATTACHMENT_EXTENSIONS | ({'.csv'} if stage_config.get('action_contract_version') == 1 else set())
+    extensions = ALLOWED_ATTACHMENT_EXTENSIONS
     if Path(safe_name).suffix.lower() not in extensions:
         frappe.throw(_("Unsupported workflow attachment type"))
     try:
