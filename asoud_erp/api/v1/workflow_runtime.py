@@ -723,6 +723,11 @@ def start_workflow_instance(
             readable = frappe.has_permission(reference_doctype, "read", reference_name)
         if not readable:
             frappe.throw(_("Not permitted to use the referenced document"), frappe.PermissionError)
+
+    workflow = frappe.get_doc("ASOUD Workflow Definition", definition, for_update=True)
+    if workflow.status != "Active" or workflow.readiness_status != "Ready":
+        frappe.throw(_("Only an active workflow can be started"))
+
     if configured_start:
         if reference_doctype == 'ASOUD Workflow Request' and reference_name:
             request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
@@ -734,10 +739,6 @@ def start_workflow_instance(
             frappe.throw(_("شروع گردش کار فقط برای درخواست خودتان مجاز است."), frappe.PermissionError)
         if request.workflow_definition != definition:
             frappe.throw("Request workflow does not match")
-
-    workflow = frappe.get_doc("ASOUD Workflow Definition", definition, for_update=True)
-    if workflow.status != "Active" or workflow.readiness_status != "Ready":
-        frappe.throw(_("Only an active workflow can be started"))
 
     if configured_start:
         lookup = {
