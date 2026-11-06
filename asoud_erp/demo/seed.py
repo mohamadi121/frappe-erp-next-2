@@ -1028,158 +1028,162 @@ def check() -> dict:
 
 
 def _reset() -> None:
-    deleted: dict = {}
-
-    def wipe(doctype: str, names: list, purge_ledger: bool = False) -> None:
-        if names:
-            deleted[doctype] = deleted.get(doctype, 0) + _cancel_and_delete(
-                doctype, names, purge_ledger)
-
-    demo_employees = _pluck("Employee", {"company": m.COMPANY})
-    demo_items = [code for code, _t, _s, _r in m.ITEMS]
-    # 1. Submitted transactions first (cancel, purge their ledger rows, delete).
-    wipe("Purchase Invoice", _pluck("Purchase Invoice", {"company": m.COMPANY}), purge_ledger=True)
-    wipe("Purchase Receipt", _pluck("Purchase Receipt", {"company": m.COMPANY}), purge_ledger=True)
-    wipe("Purchase Order", _pluck("Purchase Order", {"company": m.COMPANY}))
-    wipe("Sales Invoice", _pluck("Sales Invoice", {"company": m.COMPANY}), purge_ledger=True)
-    wipe("Payment Entry", _pluck("Payment Entry", {"company": m.COMPANY}), purge_ledger=True)
-    wipe("Stock Entry", _pluck("Stock Entry", {"company": m.COMPANY}), purge_ledger=True)
-    # Drafts created by the approved purchase/supply requests (they link their request).
-    wipe("Material Request", _pluck("Material Request", {"company": m.COMPANY}))
-    wipe("Attendance", _pluck("Attendance", {"company": m.COMPANY}))
-    wipe("Leave Application", _pluck("Leave Application", {"company": m.COMPANY}))
-    wipe("Leave Allocation", _pluck("Leave Allocation", {"company": m.COMPANY}))
-    # Leave ledger rows are ERPNext-internal postings of the allocations and
-    # applications above; purge exactly the demo employees' rows.
-    if demo_employees:
-        purged = frappe.db.count(
-            "Leave Ledger Entry", {"employee": ["in", demo_employees]})
-        frappe.db.sql("delete from `tabLeave Ledger Entry` where employee in %s",
-                      [tuple(demo_employees)])
-        deleted["Leave Ledger Entry"] = deleted.get("Leave Ledger Entry", 0) + purged
-    wipe("Salary Structure Assignment", _pluck("Salary Structure Assignment",
-                                               {"company": m.COMPANY}))
-    wipe("Salary Slip", _pluck("Salary Slip", {"company": m.COMPANY}), purge_ledger=True)
-    wipe("Payroll Entry", _pluck("Payroll Entry", {"company": m.COMPANY}))
-    # 2. ASOUD workflow records of the demo company.
-    definitions = _definition_names()
-    instances = _demo_instance_names(definitions)
-    # Activities reference their task, so they go before the tasks.
-    wipe("ASOUD Workflow Activity", _pluck("ASOUD Workflow Activity",
-                                           {"workflow_instance": ["in", instances] or [""]})
-         if instances else [])
-    wipe("ASOUD Workflow Task", _pluck("ASOUD Workflow Task",
-                                       {"workflow_instance": ["in", instances] or [""]})
-         if instances else [])
-    # Requests and instances reference each other (Request.workflow_instance
-    # and the instance's dynamic reference), so the link is cleared first.
-    for request in _pluck("ASOUD Workflow Request", {"company": m.COMPANY}):
-        _set_values("ASOUD Workflow Request", request, {"workflow_instance": None})
-    wipe("ASOUD Workflow Instance", instances)
-    requests = _pluck("ASOUD Workflow Request", {"company": m.COMPANY})
-    # Native-document failures notify about the request itself.
-    wipe("Notification Log", _pluck("Notification Log", {"document_type": "ASOUD Workflow Request",
-                                                          "document_name": ["in", requests]})
-         if requests else [])
-    wipe("ASOUD Workflow Request", requests)
-    wipe("Notification Log", _pluck("Notification Log",
-                                    {"document_type": "ASOUD Workflow Instance",
-                                     "document_name": ["in", instances] or [""]}) if instances else [])
-    wipe("ASOUD Workflow Transition", _pluck("ASOUD Workflow Transition",
-                                             {"workflow_definition": ["in", definitions]
-                                              or [""]}) if definitions else [])
-    wipe("ASOUD Workflow Stage", _pluck("ASOUD Workflow Stage",
-                                        {"workflow_definition": ["in", definitions]
-                                         or [""]}) if definitions else [])
-    wipe("ASOUD Workflow Definition", definitions)
-    # Older seeds had a native Workflow per demo request type. The system templates share one
-    # Workflow across companies: it goes only when no definition of any company still uses it.
-    wipe("Workflow", [f"{code}-NATIVE" for code in m.LEGACY_WORKFLOW_CODES])
-    if _shared_workflow_unreferenced():
-        wipe("Workflow", [m.SYSTEM_NATIVE_WORKFLOW])
-    # Workflow States live in a shared namespace: another workflow on this
-    # site may reference the demo state (e.g. stamps it on its own requests).
-    # Remove it only when nothing else links it; never touch other data.
+    frappe.flags.asoud_demo_reset = True
     try:
-        wipe("Workflow State", [f"{m.PREFIX} Draft"])
-    except frappe.LinkExistsError:
-        SUMMARY.setdefault("kept", {})["Workflow State"] = f"{m.PREFIX} Draft"
-    # 3. Personnel records, profiles, employees, users.
-    demo_profiles = _pluck("ASOUD Party Profile", {"company": m.COMPANY})
-    wipe("ASOUD Personnel Record", _pluck("ASOUD Personnel Record",
-                                          {"party": ["in", demo_profiles] or [""]})
-         if demo_profiles else [])
-    wipe("ASOUD Personnel Operation", _pluck("ASOUD Personnel Operation",
-                                             {"party": ["in", demo_profiles] or [""]})
-         if demo_profiles else [])
-    wipe("ASOUD Floating Detail", _pluck("ASOUD Floating Detail",
-                                         {"linked_document": ["in", demo_profiles] or [""]})
-         if demo_profiles else [])
-    wipe("File", _pluck("File", {"attached_to_doctype": "Employee",
-                                 "attached_to_name": ["in", demo_employees] or [""]})
-         if demo_employees else [])
-    wipe("Comment", frappe.get_all(
-        "Comment", filters={"reference_doctype": "Employee",
-                            "reference_name": ["in", demo_employees] or [""]},
-        pluck="name", limit_page_length=0) if demo_employees else [])
-    wipe("ASOUD Party Profile", demo_profiles)
-    # Break the reports_to chain first: a manager cannot be deleted while
-    # their reports still point at them. Scoped to demo employees only.
-    for employee in demo_employees:
-        _set_values("Employee", employee, {"reports_to": None})
-    wipe("Employee", demo_employees)
-    wipe("User", [m.demo_email(local) for local, _i, _r, _n in m.USERS])
-    # 4. Trade masters and HR masters.
-    # Cancelling stock vouchers spawns fresh Repost Item Valuation rows, so
-    # they are wiped here, after every voucher is gone. A Queued repost
-    # cannot be cancelled (and never runs where the scheduler is off), so
-    # those rows are marked Failed first — reposting deleted vouchers is moot.
-    for riv in _pluck("Repost Item Valuation", {"item_code": ["in", demo_items]}):
-        if frappe.db.get_value("Repost Item Valuation", riv, "status") in ("Queued", "In Progress"):
-            frappe.db.set_value("Repost Item Valuation", riv, "status", "Failed")
-    wipe("Repost Item Valuation", _pluck("Repost Item Valuation",
-                                         {"item_code": ["in", demo_items]}))
-    wipe("Item", [code for code, _t, _s, _r in m.ITEMS])
-    wipe("Customer", list(m.CUSTOMERS))
-    wipe("Supplier", list(m.SUPPLIERS))
-    # Parties reference the demo lists, and items cascade their prices.
-    wipe("Price List", [m.PRICE_LIST_SELLING, m.PRICE_LIST_BUYING])
-    wipe("Warehouse", frappe.get_all("Warehouse", filters={"company": m.COMPANY},
-                                        pluck="name", order_by="lft desc",
-                                        limit_page_length=0))
-    wipe("Salary Structure", [m.SALARY_STRUCTURE])
-    wipe("Salary Component", [m.SALARY_EARNING, m.SALARY_DEDUCTION])
-    wipe("Leave Type", list(dict(m.LEAVE_TYPES).keys()))
-    if frappe.db.exists("Company", m.COMPANY):
-        # The company links its default holiday list; clear it before deleting the list.
-        _set_values("Company", m.COMPANY, {"default_holiday_list": None})
-    wipe("Holiday List", _pluck("Holiday List",
-                                {"holiday_list_name": ["like", f"{m.HOLIDAY_LIST}%"]}))
-    wipe("Designation", [name for name in m.DESIGNATIONS])
-    # NestedSet: delete leaves before their parents.
-    wipe("Department", frappe.get_all("Department", filters={"company": m.COMPANY},
-                                      pluck="name", order_by="lft desc", limit_page_length=0))
-    # 5. Fiscal year row, then the company itself.
-    for year in frappe.get_all("Fiscal Year", pluck="name"):
-        doc = frappe.get_doc("Fiscal Year", year)
-        action = m.fiscal_year_reset_action(
-            doc.name,
-            doc.year_start_date,
-            doc.year_end_date,
-            [row.company for row in doc.companies],
-            m.COMPANY,
-        )
-        if action == "keep":
-            continue
-        if action == "delete":
-            frappe.delete_doc("Fiscal Year", year, ignore_permissions=True)
-            deleted["Fiscal Year"] = deleted.get("Fiscal Year", 0) + 1
-            continue
-        for row in [row for row in doc.companies if row.company == m.COMPANY]:
-            doc.remove(row)
-        doc.save(ignore_permissions=True)
-    wipe("ASOUD Company Setup", _pluck("ASOUD Company Setup", {"company": m.COMPANY}))
-    if frappe.db.exists("Company", m.COMPANY):
-        frappe.delete_doc("Company", m.COMPANY, ignore_permissions=True)
-        deleted["Company"] = deleted.get("Company", 0) + 1
-    SUMMARY["deleted"] = deleted
+        deleted: dict = {}
+
+        def wipe(doctype: str, names: list, purge_ledger: bool = False) -> None:
+            if names:
+                deleted[doctype] = deleted.get(doctype, 0) + _cancel_and_delete(
+                    doctype, names, purge_ledger)
+
+        demo_employees = _pluck("Employee", {"company": m.COMPANY})
+        demo_items = [code for code, _t, _s, _r in m.ITEMS]
+        # 1. Submitted transactions first (cancel, purge their ledger rows, delete).
+        wipe("Purchase Invoice", _pluck("Purchase Invoice", {"company": m.COMPANY}), purge_ledger=True)
+        wipe("Purchase Receipt", _pluck("Purchase Receipt", {"company": m.COMPANY}), purge_ledger=True)
+        wipe("Purchase Order", _pluck("Purchase Order", {"company": m.COMPANY}))
+        wipe("Sales Invoice", _pluck("Sales Invoice", {"company": m.COMPANY}), purge_ledger=True)
+        wipe("Payment Entry", _pluck("Payment Entry", {"company": m.COMPANY}), purge_ledger=True)
+        wipe("Stock Entry", _pluck("Stock Entry", {"company": m.COMPANY}), purge_ledger=True)
+        # Drafts created by the approved purchase/supply requests (they link their request).
+        wipe("Material Request", _pluck("Material Request", {"company": m.COMPANY}))
+        wipe("Attendance", _pluck("Attendance", {"company": m.COMPANY}))
+        wipe("Leave Application", _pluck("Leave Application", {"company": m.COMPANY}))
+        wipe("Leave Allocation", _pluck("Leave Allocation", {"company": m.COMPANY}))
+        # Leave ledger rows are ERPNext-internal postings of the allocations and
+        # applications above; purge exactly the demo employees' rows.
+        if demo_employees:
+            purged = frappe.db.count(
+                "Leave Ledger Entry", {"employee": ["in", demo_employees]})
+            frappe.db.sql("delete from `tabLeave Ledger Entry` where employee in %s",
+                          [tuple(demo_employees)])
+            deleted["Leave Ledger Entry"] = deleted.get("Leave Ledger Entry", 0) + purged
+        wipe("Salary Structure Assignment", _pluck("Salary Structure Assignment",
+                                                   {"company": m.COMPANY}))
+        wipe("Salary Slip", _pluck("Salary Slip", {"company": m.COMPANY}), purge_ledger=True)
+        wipe("Payroll Entry", _pluck("Payroll Entry", {"company": m.COMPANY}))
+        # 2. ASOUD workflow records of the demo company.
+        definitions = _definition_names()
+        instances = _demo_instance_names(definitions)
+        # Activities reference their task, so they go before the tasks.
+        wipe("ASOUD Workflow Activity", _pluck("ASOUD Workflow Activity",
+                                               {"workflow_instance": ["in", instances] or [""]})
+             if instances else [])
+        wipe("ASOUD Workflow Task", _pluck("ASOUD Workflow Task",
+                                           {"workflow_instance": ["in", instances] or [""]})
+             if instances else [])
+        # Requests and instances reference each other (Request.workflow_instance
+        # and the instance's dynamic reference), so the link is cleared first.
+        for request in _pluck("ASOUD Workflow Request", {"company": m.COMPANY}):
+            _set_values("ASOUD Workflow Request", request, {"workflow_instance": None})
+        wipe("ASOUD Workflow Instance", instances)
+        requests = _pluck("ASOUD Workflow Request", {"company": m.COMPANY})
+        # Native-document failures notify about the request itself.
+        wipe("Notification Log", _pluck("Notification Log", {"document_type": "ASOUD Workflow Request",
+                                                              "document_name": ["in", requests]})
+             if requests else [])
+        wipe("ASOUD Workflow Request", requests)
+        wipe("Notification Log", _pluck("Notification Log",
+                                        {"document_type": "ASOUD Workflow Instance",
+                                         "document_name": ["in", instances] or [""]}) if instances else [])
+        wipe("ASOUD Workflow Transition", _pluck("ASOUD Workflow Transition",
+                                                 {"workflow_definition": ["in", definitions]
+                                                  or [""]}) if definitions else [])
+        wipe("ASOUD Workflow Stage", _pluck("ASOUD Workflow Stage",
+                                            {"workflow_definition": ["in", definitions]
+                                             or [""]}) if definitions else [])
+        wipe("ASOUD Workflow Definition", definitions)
+        # Older seeds had a native Workflow per demo request type. The system templates share one
+        # Workflow across companies: it goes only when no definition of any company still uses it.
+        wipe("Workflow", [f"{code}-NATIVE" for code in m.LEGACY_WORKFLOW_CODES])
+        if _shared_workflow_unreferenced():
+            wipe("Workflow", [m.SYSTEM_NATIVE_WORKFLOW])
+        # Workflow States live in a shared namespace: another workflow on this
+        # site may reference the demo state (e.g. stamps it on its own requests).
+        # Remove it only when nothing else links it; never touch other data.
+        try:
+            wipe("Workflow State", [f"{m.PREFIX} Draft"])
+        except frappe.LinkExistsError:
+            SUMMARY.setdefault("kept", {})["Workflow State"] = f"{m.PREFIX} Draft"
+        # 3. Personnel records, profiles, employees, users.
+        demo_profiles = _pluck("ASOUD Party Profile", {"company": m.COMPANY})
+        wipe("ASOUD Personnel Record", _pluck("ASOUD Personnel Record",
+                                              {"party": ["in", demo_profiles] or [""]})
+             if demo_profiles else [])
+        wipe("ASOUD Personnel Operation", _pluck("ASOUD Personnel Operation",
+                                                 {"party": ["in", demo_profiles] or [""]})
+             if demo_profiles else [])
+        wipe("ASOUD Floating Detail", _pluck("ASOUD Floating Detail",
+                                             {"linked_document": ["in", demo_profiles] or [""]})
+             if demo_profiles else [])
+        wipe("File", _pluck("File", {"attached_to_doctype": "Employee",
+                                     "attached_to_name": ["in", demo_employees] or [""]})
+             if demo_employees else [])
+        wipe("Comment", frappe.get_all(
+            "Comment", filters={"reference_doctype": "Employee",
+                                "reference_name": ["in", demo_employees] or [""]},
+            pluck="name", limit_page_length=0) if demo_employees else [])
+        wipe("ASOUD Party Profile", demo_profiles)
+        # Break the reports_to chain first: a manager cannot be deleted while
+        # their reports still point at them. Scoped to demo employees only.
+        for employee in demo_employees:
+            _set_values("Employee", employee, {"reports_to": None})
+        wipe("Employee", demo_employees)
+        wipe("User", [m.demo_email(local) for local, _i, _r, _n in m.USERS])
+        # 4. Trade masters and HR masters.
+        # Cancelling stock vouchers spawns fresh Repost Item Valuation rows, so
+        # they are wiped here, after every voucher is gone. A Queued repost
+        # cannot be cancelled (and never runs where the scheduler is off), so
+        # those rows are marked Failed first — reposting deleted vouchers is moot.
+        for riv in _pluck("Repost Item Valuation", {"item_code": ["in", demo_items]}):
+            if frappe.db.get_value("Repost Item Valuation", riv, "status") in ("Queued", "In Progress"):
+                frappe.db.set_value("Repost Item Valuation", riv, "status", "Failed")
+        wipe("Repost Item Valuation", _pluck("Repost Item Valuation",
+                                             {"item_code": ["in", demo_items]}))
+        wipe("Item", [code for code, _t, _s, _r in m.ITEMS])
+        wipe("Customer", list(m.CUSTOMERS))
+        wipe("Supplier", list(m.SUPPLIERS))
+        # Parties reference the demo lists, and items cascade their prices.
+        wipe("Price List", [m.PRICE_LIST_SELLING, m.PRICE_LIST_BUYING])
+        wipe("Warehouse", frappe.get_all("Warehouse", filters={"company": m.COMPANY},
+                                            pluck="name", order_by="lft desc",
+                                            limit_page_length=0))
+        wipe("Salary Structure", [m.SALARY_STRUCTURE])
+        wipe("Salary Component", [m.SALARY_EARNING, m.SALARY_DEDUCTION])
+        wipe("Leave Type", list(dict(m.LEAVE_TYPES).keys()))
+        if frappe.db.exists("Company", m.COMPANY):
+            # The company links its default holiday list; clear it before deleting the list.
+            _set_values("Company", m.COMPANY, {"default_holiday_list": None})
+        wipe("Holiday List", _pluck("Holiday List",
+                                    {"holiday_list_name": ["like", f"{m.HOLIDAY_LIST}%"]}))
+        wipe("Designation", [name for name in m.DESIGNATIONS])
+        # NestedSet: delete leaves before their parents.
+        wipe("Department", frappe.get_all("Department", filters={"company": m.COMPANY},
+                                          pluck="name", order_by="lft desc", limit_page_length=0))
+        # 5. Fiscal year row, then the company itself.
+        for year in frappe.get_all("Fiscal Year", pluck="name"):
+            doc = frappe.get_doc("Fiscal Year", year)
+            action = m.fiscal_year_reset_action(
+                doc.name,
+                doc.year_start_date,
+                doc.year_end_date,
+                [row.company for row in doc.companies],
+                m.COMPANY,
+            )
+            if action == "keep":
+                continue
+            if action == "delete":
+                frappe.delete_doc("Fiscal Year", year, ignore_permissions=True)
+                deleted["Fiscal Year"] = deleted.get("Fiscal Year", 0) + 1
+                continue
+            for row in [row for row in doc.companies if row.company == m.COMPANY]:
+                doc.remove(row)
+            doc.save(ignore_permissions=True)
+        wipe("ASOUD Company Setup", _pluck("ASOUD Company Setup", {"company": m.COMPANY}))
+        if frappe.db.exists("Company", m.COMPANY):
+            frappe.delete_doc("Company", m.COMPANY, ignore_permissions=True)
+            deleted["Company"] = deleted.get("Company", 0) + 1
+        SUMMARY["deleted"] = deleted
+    finally:
+        frappe.flags.asoud_demo_reset = False

@@ -212,7 +212,7 @@ def _collect(actor, include_access_blockers=False):
 
 def preview():
     actor = access()
-    job = frappe.cache.get_value(f'asoud_setup_reset_latest:{actor}')
+    job = frappe.cache.get_value(f'asoud_setup_reset_latest:{actor}', expires=True)
     if job:
         receipt = _receipt(job)
         if not receipt or receipt.get('state') in {'queued', 'running'}:
@@ -328,7 +328,7 @@ def _execute(actor, expected_digest):
 
 
 def _receipt(job):
-    return frappe.cache.get_value(f'asoud_setup_reset_job:{job}')
+    return frappe.cache.get_value(f'asoud_setup_reset_job:{job}', expires=True)
 
 
 def _save_receipt(job, actor, state, message='', digest=None):
@@ -343,6 +343,11 @@ def _save_receipt(job, actor, state, message='', digest=None):
 
 def allows_workflow_cleanup(doc):
     from asoud_erp.services.setup_reset_policy import workflow_reset_allowed
+
+    if getattr(frappe.flags, 'asoud_demo_reset', False):
+        from asoud_erp.demo import markers as m
+        if doc.company == m.COMPANY:
+            return True
 
     if not cint(frappe.conf.get(CONFIG)) or not is_system_admin():
         return False
@@ -376,7 +381,7 @@ def status(job=None, preview_token=None):
     if preview_token is not None:
         if not isinstance(preview_token, str) or len(preview_token) != 40:
             frappe.throw('شناسهٔ پیش‌نمایش برای پیگیری معتبر نیست.')
-        authorization = frappe.cache.get_value(f'asoud_setup_reset_authorization:{preview_token}')
+        authorization = frappe.cache.get_value(f'asoud_setup_reset_authorization:{preview_token}', expires=True)
         if not authorization or authorization.get('actor') != actor:
             frappe.throw('عملیات پذیرفته‌شده‌ای برای این پیش‌نمایش پیدا نشد؛ موفقیتی تأیید نشده است.')
         job = authorization['job']
@@ -411,16 +416,16 @@ def perform(token=None, password=None, confirmation=None, backup_confirmed=0):
         frappe.throw('رمز حساب، تأیید نسخهٔ پشتیبان و عبارت «شروع دوباره» لازم است.')
     # Fresh verification is explicitly rate limited; secret is never queued.
     rate_key = f'asoud_setup_reset_password:{actor}'
-    if cint(frappe.cache.get_value(rate_key)) >= 8:
+    if cint(frappe.cache.get_value(rate_key, expires=True)) >= 8:
         frappe.throw('تلاش‌های ناموفق زیاد است؛ ده دقیقه دیگر دوباره تلاش کنید.')
     try:
         check_password(actor, password)
     except frappe.AuthenticationError:
-        frappe.cache.set_value(rate_key, cint(frappe.cache.get_value(rate_key)) + 1, expires_in_sec=600)
+        frappe.cache.set_value(rate_key, cint(frappe.cache.get_value(rate_key, expires=True)) + 1, expires_in_sec=600)
         raise
     frappe.cache.delete_value(rate_key)
     with frappe.cache.lock('asoud_setup_reset_authorize', timeout=30, blocking_timeout=3):
-        previous = frappe.cache.get_value(f'asoud_setup_reset_latest:{actor}')
+        previous = frappe.cache.get_value(f'asoud_setup_reset_latest:{actor}', expires=True)
         if previous:
             receipt = _receipt(previous)
             if not receipt or receipt.get('state') in {'queued', 'running'}:
@@ -429,7 +434,7 @@ def perform(token=None, password=None, confirmation=None, backup_confirmed=0):
             frappe.throw('بازنشانی دیگری روی سرور در حال اجراست؛ پس از پایان دوباره تلاش کنید.')
         if not isinstance(token, str) or len(token) != 40:
             frappe.throw('پیش‌نمایش بازنشانی معتبر نیست.')
-        stored = frappe.cache.get_value(f'asoud_setup_reset:{token}')
+        stored = frappe.cache.get_value(f'asoud_setup_reset:{token}', expires=True)
         if not stored or stored.get('actor') != actor:
             frappe.throw('پیش‌نمایش بازنشانی منقضی شده است؛ دوباره دریافت کنید.')
         groups, blockers, digest = _collect(actor)
