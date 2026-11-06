@@ -274,3 +274,17 @@ class TestWorkflowUserActions(APITestCase):
             workflow_runtime.process_workflow_deadlines()
         finally:
             workflow_user_action.escalate = original_escalate
+
+    def test_accounts_user_without_employee_record_is_returned(self):
+        acct_user = _user(f'acct_{uuid4().hex[:6]}@example.com', ['Accounts User'])
+        self.assertFalse(frappe.db.exists('Employee', {'user_id': acct_user}))
+        role = frappe.get_doc({'doctype': 'Role', 'role_name': f'AcctRole {uuid4().hex[:10]}'}).insert().name
+        frappe.get_doc('User', acct_user).add_roles(role)
+        frappe.get_doc({
+            'doctype': 'User Permission', 'user': acct_user, 'allow': 'Company',
+            'for_value': self.company, 'apply_to_all_doctypes': 1
+        }).insert(ignore_permissions=True)
+        definition, _ = self.make_action({'basis': 'Role', 'role': role, 'scope': 'Company'})
+        instance, _ = self.start(definition)
+        assignees = frappe.get_all('ASOUD Workflow Task', filters={'workflow_instance': instance}, pluck='assigned_to')
+        self.assertIn(acct_user, assignees)

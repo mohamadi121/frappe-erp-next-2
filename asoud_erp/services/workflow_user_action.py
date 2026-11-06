@@ -146,6 +146,7 @@ def users_for(stage, instance):
                 where u.enabled = 1 and u.user_type = 'System User' and u.name not in ('Guest', 'Administrator')
             """, (rule['role'], company, department), pluck=True)
         else:
+            # SQL prefilter narrows candidates; company_access remains the final authority.
             candidates = frappe.db.sql("""
                 select distinct u.name
                 from `tabUser` u
@@ -155,7 +156,7 @@ def users_for(stage, instance):
                     u.name in (select user_id from `tabEmployee` where company = %s and status = 'Active' and user_id is not null)
                     or u.name in (select user from `tabASOUD Office Role Assignment` where company = %s)
                     or u.name in (select user from `tabUser Permission` where allow = 'Company' and for_value = %s and apply_to_all_doctypes = 1)
-                    or exists (select 1 from `tabHas Role` r where r.parent = u.name and r.parenttype = 'User' and r.role in ('System Manager', 'HR Manager', 'Accounts Manager'))
+                    or exists (select 1 from `tabHas Role` r where r.parent = u.name and r.parenttype = 'User' and r.role in ('System Manager', 'HR Manager', 'Accounts Manager', 'Accounts User'))
                 )
             """, (rule['role'], company, company, company), pluck=True)
     if len(candidates) > 200:
