@@ -1,5 +1,6 @@
 import { expect, test } from '../support/fixtures';
 import { loadState, sitePrep } from '../support/state';
+import { errorText } from '../support/api';
 
 const state = loadState();
 const prefix = 'asoud_erp.api.v1.workflow.';
@@ -67,6 +68,10 @@ test('workflow.delete_workflow success for unused workflow, rejection for plain 
     target_doctype: 'ASOUD Workflow Request'});
 
   try {
+    const missingName = await admin.post(prefix + 'delete_workflow', {});
+    expect(missingName.status).toBe(417);
+    expect(errorText(missingName)).toContain('شناسهٔ گردش‌کار معتبر نیست');
+
     // 1. Plain employee cannot delete
     const empDel = await employee.post(prefix + 'delete_workflow', {name: draft.name});
     expect(empDel.status).toBe(403);
@@ -75,9 +80,20 @@ test('workflow.delete_workflow success for unused workflow, rejection for plain 
     const foreignDel = await accounts.post(prefix + 'delete_workflow', {name: foreignDraft.name});
     expect(foreignDel.status).toBe(403);
 
-    // 3. Admin successfully deletes unused workflow
-    const adminDel = await admin.mutate(prefix + 'delete_workflow', {name: draft.name});
-    expect(adminDel).toBeTruthy();
+    // 3. Real HTTP edits create native Version rows. Edit history alone must
+    // not prevent an unused workflow's deletion (issue #47).
+    await admin.mutate(prefix + 'update_request_type_info', {
+      name: draft.name, workflow_title: `E2E ویرایش پیش از حذف ${Date.now()}`});
+    const history = {doctype: 'Version', filters: {
+      ref_doctype: 'ASOUD Workflow Definition', docname: draft.name}};
+    const before = await admin.get('frappe.client.get_count', history);
+    expect(before.status).toBe(200);
+    expect(Number(before.body.message)).toBeGreaterThan(0);
+    const adminDel = await admin.mutate<{name: string; deleted: boolean}>(prefix + 'delete_workflow', {name: draft.name});
+    expect(adminDel).toEqual({name: draft.name, deleted: true});
+    const after = await admin.get('frappe.client.get_count', history);
+    expect(after.status).toBe(200);
+    expect(Number(after.body.message)).toBe(0);
   } finally {
     sitePrep('drop-definition', {definition: foreignDraft.name});
   }

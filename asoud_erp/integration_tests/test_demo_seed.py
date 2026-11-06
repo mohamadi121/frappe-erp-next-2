@@ -84,15 +84,38 @@ def request_status(request_id: str) -> str:
 
 class TestDemoSeed(FrappeTestCase):
     @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.original_home = frappe.db.get_default("desktop:home_page")
+        settings = frappe.get_single("System Settings")
+        cls.original_settings = {key: settings.get(key) for key in ("language", "time_zone", "setup_complete")}
+        cls.original_apps = frappe.get_all("Installed Application", fields=["name", "is_setup_complete"])
+
+    @classmethod
     def tearDownClass(cls):
         frappe.set_user("Administrator")
         try:
             demo_seed.run(reset=True, force=True)
         finally:
+            frappe.db.set_default("desktop:home_page", cls.original_home)
+            frappe.db.set_single_value("System Settings", cls.original_settings)
+            for row in cls.original_apps:
+                if frappe.db.exists("Installed Application", row.name):
+                    frappe.db.set_value("Installed Application", row.name, "is_setup_complete",
+                                        row.is_setup_complete, update_modified=False)
+            frappe.db.commit()
+            frappe.clear_cache()
             super().tearDownClass()
 
     def setUp(self):
         frappe.set_user("Administrator")
+
+    def tearDown(self):
+        # The seed commits deliberately; helper-only query fixtures must not be
+        # committed by the next test's seed/reset call.
+        frappe.db.rollback()
+        frappe.set_user("Administrator")
+        frappe.clear_cache()
 
     def test_guard_refuses_without_developer_mode_unless_forced(self):
         self.assertIsNotNone(m.guard_error("erp.local", True, False))
@@ -106,6 +129,8 @@ class TestDemoSeed(FrappeTestCase):
         frappe.conf.developer_mode = previous
 
     def test_seed_is_idempotent(self):
+        original = frappe.get_single("System Settings")
+        language, time_zone = original.language, original.time_zone
         demo_seed.run(force=True, password=PASSWORD)
         before = demo_counts()
         second = demo_seed.run(force=True, password=PASSWORD)
@@ -115,6 +140,16 @@ class TestDemoSeed(FrappeTestCase):
                    if isinstance(value, dict)]
         self.assertTrue(created)
         self.assertEqual(sum(created), 0, second["summary"])
+        self.assertEqual(frappe.db.get_default("desktop:home_page"), m.DEFAULT_DESK_HOME_PAGE)
+        sys_settings = frappe.get_single("System Settings")
+        self.assertEqual(sys_settings.language, language or m.DEFAULT_LANGUAGE)
+        self.assertEqual(sys_settings.time_zone, time_zone or m.DEFAULT_TIME_ZONE)
+        self.assertEqual(sys_settings.setup_complete, 1)
+        if frappe.db.table_exists("Installed Application"):
+            self.assertEqual(frappe.db.count("Installed Application", {
+                "is_setup_complete": 0, "app_name": ["in", m.setup_apps(frappe.get_installed_apps())],
+                "parent": "Installed Applications", "parenttype": "Installed Applications",
+                "parentfield": "installed_applications"}), 0)
         leaves = leave_requests_seeded()
         self.assertEqual(
             (before["employees"], before["users"],
@@ -204,6 +239,44 @@ class TestDemoSeed(FrappeTestCase):
                 doctype, filters={"company": m.COMPANY}, pluck="currency")
             self.assertTrue(currencies, doctype)
             self.assertEqual(set(currencies), {"IRR"}, doctype)
+
+    def test_seed_clears_desk_redirect_loop_and_sets_system_settings(self):
+        frappe.db.set_default("desktop:home_page", "setup-wizard")
+        # Exercise missing mandatory settings without rewriting valid site settings.
+        frappe.db.set_single_value("System Settings", {"language": None, "time_zone": None, "setup_complete": 0})
+        frappe.clear_cache(doctype="System Settings")
+        demo_seed._ensure_desk_defaults()
+        demo_seed._ensure_system_settings()
+        demo_seed._ensure_installed_apps_setup_complete()
+        self.assertEqual(frappe.db.get_default("desktop:home_page"), "workspace")
+        sys_settings = frappe.get_single("System Settings")
+        self.assertEqual(sys_settings.language, "fa")
+        self.assertEqual(sys_settings.time_zone, "Asia/Tehran")
+        self.assertEqual(sys_settings.setup_complete, 1)
+        if frappe.db.table_exists("Installed Application"):
+            self.assertEqual(frappe.db.count("Installed Application", {
+                "is_setup_complete": 0, "app_name": ["in", m.setup_apps(frappe.get_installed_apps())],
+                "parent": "Installed Applications", "parenttype": "Installed Applications",
+                "parentfield": "installed_applications"}), 0)
+
+    def test_installed_app_completion_preserves_other_apps_and_is_idempotent(self):
+        rows = []
+        for app, parent in (("frappe", "Installed Applications"),
+                            ("unrelated_demo_extension", "Installed Applications"),
+                            ("frappe", "unrelated-parent")):
+            row = frappe.get_doc({"doctype": "Installed Application", "app_name": app,
+                "parent": parent, "parenttype": "Installed Applications",
+                "parentfield": "installed_applications", "is_setup_complete": 0})
+            row.name = frappe.generate_hash(length=20)
+            row.db_insert()
+            rows.append(row)
+        # All rows are real, uncommitted child rows; helper must filter before writes.
+        demo_seed._ensure_installed_apps_setup_complete()
+        self.assertEqual([frappe.db.get_value(row.doctype, row.name, "is_setup_complete")
+                          for row in rows], [1, 0, 0])
+        modified = frappe.db.get_value(rows[0].doctype, rows[0].name, "modified")
+        demo_seed._ensure_installed_apps_setup_complete()
+        self.assertEqual(frappe.db.get_value(rows[0].doctype, rows[0].name, "modified"), modified)
 
     def test_reset_removes_marked_records_and_keeps_unrelated(self):
         others = [name for name in frappe.get_all("Company", pluck="name")
