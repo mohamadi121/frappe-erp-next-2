@@ -3,11 +3,13 @@ import json
 from uuid import uuid4
 
 import frappe
+from frappe.utils import add_to_date, now_datetime
 
 from asoud_erp.api.v1 import forms, workflow, workflow_runtime, workflow_templates
 from asoud_erp.integration_tests.fixtures import APPROVER_USER, EMPLOYEE_USER, APITestCase, _user
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.tenancy import EMPLOYEE_B_USER, setup_tenancy
+from asoud_erp.services import workflow_user_action
 
 
 class TestWorkflowUserActions(APITestCase):
@@ -163,7 +165,7 @@ class TestWorkflowUserActions(APITestCase):
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', instance, 'status'), 'Completed')
 
     def test_existing_form_keeps_tables_and_recomputes_formula_without_entry(self):
-        schema = {'kind': 'Request', 'title': 'نتیجه بررسی', 'sections': [{'id': 'main', 'fields': [
+        schema = {'kind': 'Request', 'title': 'نتیجه بررسی', 'sections': [{'id': 'main', 'title': 'اصلی', 'fields': [
             {'key': 'quantity', 'label': 'تعداد', 'type': 'Integer', 'required': True},
             {'key': 'price', 'label': 'قیمت', 'type': 'Money', 'required': True},
             {'key': 'total', 'label': 'جمع', 'type': 'Formula', 'formula': {'op': 'mul', 'inputs': ['quantity', 'price']}},
@@ -208,7 +210,7 @@ class TestWorkflowUserActions(APITestCase):
             frappe.get_doc('User', user).add_roles(role)
         saved = forms.save_form(self.company, {'kind': 'Request', 'title': 'فرم مسئول مجاز',
             'access': {'mode': 'roles', 'roles': ['Leave Approver']},
-            'sections': [{'id': 'main', 'fields': [{'key': 'note', 'label': 'شرح', 'type': 'Text'}]}]},
+            'sections': [{'id': 'main', 'title': 'اصلی', 'fields': [{'key': 'note', 'label': 'شرح', 'type': 'Text'}]}]},
             client_id=uuid4().hex)['data']
         published = forms.transition(saved['name'], 'publish', saved['draft_version'])['data']
         definition, _ = self.make_action({'basis': 'Role', 'role': role}, result_mode='Form',
@@ -221,3 +223,67 @@ class TestWorkflowUserActions(APITestCase):
         workflow_runtime.complete_workflow_task(task, 'Claim')
         workflow_runtime.complete_workflow_task(task, 'Complete', response={'note': 'ثبت مجاز'})
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', instance, 'status'), 'Completed')
+
+    def test_role_candidates_filtered_before_200_cap(self):
+        role = frappe.get_doc({'doctype': 'Role', 'role_name': f'BulkRole {uuid4().hex[:10]}'}).insert().name
+        frappe.get_doc('User', APPROVER_USER).add_roles(role)
+        for i in range(210):
+            email = f'bulk_{i}_{uuid4().hex[:6]}@example.com'
+            if not frappe.db.exists('User', email):
+                frappe.get_doc({
+                    'doctype': 'User', 'email': email, 'first_name': f'Bulk {i}',
+                    'enabled': 0, 'user_type': 'System User'
+                }).insert(ignore_permissions=True)
+            frappe.get_doc({
+                'doctype': 'Has Role', 'parent': email, 'parenttype': 'User',
+                'parentfield': 'roles', 'role': role
+            }).insert(ignore_permissions=True)
+        definition, _ = self.make_action({'basis': 'Role', 'role': role, 'scope': 'Company'})
+        instance, _ = self.start(definition)
+        assignees = frappe.get_all('ASOUD Workflow Task', filters={'workflow_instance': instance}, pluck='assigned_to')
+        self.assertIn(APPROVER_USER, assignees)
+
+    def test_escalation_notifies_and_sorts_deterministically(self):
+        esc_role = frappe.get_doc({'doctype': 'Role', 'role_name': f'EscRole {uuid4().hex[:10]}'}).insert().name
+        for user in (APPROVER_USER, EMPLOYEE_USER):
+            frappe.get_doc('User', user).add_roles(esc_role)
+        definition, stage_name = self.make_action()
+        stage_doc = frappe.get_doc('ASOUD Workflow Stage', stage_name)
+        cfg = json.loads(stage_doc.config_json or '{}')
+        cfg['escalation_roles'] = [esc_role]
+        cfg['reassign_on_overdue'] = True
+        stage_doc.config_json = json.dumps(cfg)
+        stage_doc.save(ignore_permissions=True)
+
+        _, task = self.start(definition)
+        workflow_user_action.escalate(task, now_datetime())
+        updated_task = frappe.get_doc('ASOUD Workflow Task', task)
+        self.assertEqual(updated_task.status, 'Open')
+        self.assertIsNotNone(updated_task.escalated_on)
+
+    def test_process_workflow_deadlines_continues_on_error(self):
+        definition, _ = self.make_action()
+        _, task = self.start(definition)
+        frappe.db.set_value('ASOUD Workflow Task', task, {'due_on': add_to_date(now_datetime(), hours=-2), 'escalated_on': None})
+        original_escalate = workflow_user_action.escalate
+        try:
+            def bad_escalate(t_name, current):
+                raise ValueError("Simulated failure")
+            workflow_user_action.escalate = bad_escalate
+            workflow_runtime.process_workflow_deadlines()
+        finally:
+            workflow_user_action.escalate = original_escalate
+
+    def test_accounts_user_without_employee_record_is_returned(self):
+        acct_user = _user(f'acct_{uuid4().hex[:6]}@example.com', ['Accounts User'])
+        self.assertFalse(frappe.db.exists('Employee', {'user_id': acct_user}))
+        role = frappe.get_doc({'doctype': 'Role', 'role_name': f'AcctRole {uuid4().hex[:10]}'}).insert().name
+        frappe.get_doc('User', acct_user).add_roles(role)
+        frappe.get_doc({
+            'doctype': 'User Permission', 'user': acct_user, 'allow': 'Company',
+            'for_value': self.company, 'apply_to_all_doctypes': 1
+        }).insert(ignore_permissions=True)
+        definition, _ = self.make_action({'basis': 'Role', 'role': role, 'scope': 'Company'})
+        instance, _ = self.start(definition)
+        assignees = frappe.get_all('ASOUD Workflow Task', filters={'workflow_instance': instance}, pluck='assigned_to')
+        self.assertIn(acct_user, assignees)

@@ -900,13 +900,6 @@ def set_workflow_status(name: str, status: str) -> dict:
     doc = frappe.get_doc("ASOUD Workflow Definition", name, for_update=True)
     require_company(doc.company)
     doc.check_permission('write')
-    if status == 'Active':
-        from asoud_erp.services.workflow_lifecycle import require_activation_ready
-
-        require_activation_ready(doc)
-        doc.readiness_status = 'Ready'
-        doc.pending_reason = ''
-        doc.missing_requirements_json = '[]'
     doc.status = status
     doc.archived_on = now_datetime() if status == "Archived" else None
     doc.save()
@@ -915,3 +908,22 @@ def set_workflow_status(name: str, status: str) -> dict:
     row = doc.as_dict()
     row['can_delete'] = bool(doc.has_permission('delete')) and not is_system_workflow(row)
     return success(serialize_workflow(row))
+
+
+@frappe.whitelist(methods=["POST"])
+def delete_workflow(name: str) -> dict:
+    require_roles(("System Manager", "Accounts Manager"))
+    if not isinstance(name, str) or not name.strip() or len(name) > 140:
+        frappe.throw('شناسهٔ گردش‌کار معتبر نیست.')
+    if not frappe.db.exists("ASOUD Workflow Definition", name):
+        frappe.throw('گردش‌کار موردنظر یافت نشد.')
+    doc = frappe.get_doc("ASOUD Workflow Definition", name, for_update=True)
+    if doc.company:
+        require_company(doc.company)
+    doc.check_permission('delete')
+    try:
+        frappe.delete_doc("ASOUD Workflow Definition", name)
+    except frappe.LinkExistsError:
+        frappe.clear_messages()
+        frappe.throw('این گردش‌کار یا مراحل آن وابستگی دارد؛ برای حفظ اطلاعات، حذف انجام نشد.')
+    return success({"name": name, "deleted": True})

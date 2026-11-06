@@ -19,6 +19,7 @@ from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
 from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
 from asoud_erp.services.workflow_response import normalize_form_response
+from asoud_erp.services.workflow_start_policy import validate_request_id
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".xlsx", ".docx"}
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
@@ -645,6 +646,13 @@ def _run_system_action(instance, stage, config: dict, source_task=None) -> None:
         )
 
 
+def _validate_request_id(request_id: str | None) -> None:
+    try:
+        validate_request_id(request_id)
+    except ValueError as error:
+        frappe.throw(str(error))
+
+
 @frappe.whitelist(methods=["POST"])
 def start_workflow_instance(
     definition: str,
@@ -653,14 +661,16 @@ def start_workflow_instance(
     reference_name: str | None = None,
     reason: str = '',
     restart: int | str = 0,
+    request_id: str | None = None,
 ) -> dict:
+    _validate_request_id(request_id)
     if (not isinstance(definition, str) or not definition or len(definition) > 140
             or not isinstance(subject, str) or len(subject.strip()) < 3 or len(subject) > 140):
         frappe.throw('گردش‌کار و عنوان اجرا معتبر نیست؛ عنوان باید بین ۳ تا ۱۴۰ نویسه باشد.')
     if any(value is not None and (not isinstance(value, str) or not value or len(value) > 140)
            for value in (reference_doctype, reference_name)):
         frappe.throw('نوع یا شناسهٔ رکورد شروع معتبر نیست.')
-    workflow = frappe.get_doc("ASOUD Workflow Definition", definition, for_update=True)
+    workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
     if workflow.get('source_form') and reference_doctype != 'ASOUD Form Entry':
         frappe.throw('این گردش‌کار فقط با ارسال فرم اصلی متصل به آن شروع می‌شود.')
     from asoud_erp.services.request_access import require_company
@@ -699,7 +709,7 @@ def start_workflow_instance(
     if reference_doctype == 'ASOUD Form Entry':
         from asoud_erp.services.workflow_submission_source import assert_reference
 
-        submitted_entry = assert_reference(workflow, reference_name)
+        submitted_entry = assert_reference(workflow, reference_name, restarting=restarting)
         subject = submitted_entry.subject
     if requester_only and not submitted_entry and not manual_start:
         if reference_doctype != "ASOUD Workflow Request" or not reference_name:
@@ -723,11 +733,44 @@ def start_workflow_instance(
             readable = frappe.has_permission(reference_doctype, "read", reference_name)
         if not readable:
             frappe.throw(_("Not permitted to use the referenced document"), frappe.PermissionError)
+
+    workflow = frappe.get_doc("ASOUD Workflow Definition", definition, for_update=True)
+    if workflow.status != "Active" or workflow.readiness_status != "Ready":
+        frappe.throw(_("Only an active workflow can be started"))
+
+    if request_id:
+        activity_rows = frappe.db.sql("""
+            SELECT a.workflow_instance, i.status, a.change_json
+            FROM `tabASOUD Workflow Activity` a
+            JOIN `tabASOUD Workflow Instance` i ON i.name = a.workflow_instance
+            WHERE a.action = 'Workflow Started'
+              AND a.actor = %(actor)s
+              AND i.workflow_definition = %(definition)s
+        """, {
+            "actor": frappe.session.user,
+            "definition": definition,
+        }, as_dict=True)
+        for row in activity_rows:
+            try:
+                cjson = json.loads(row.change_json or "{}")
+                if cjson.get("request_id") == request_id:
+                    return success({"name": row.workflow_instance, "status": row.status})
+            except Exception:
+                pass
+
     if configured_start:
         if reference_doctype == 'ASOUD Workflow Request' and reference_name:
             request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
             if request.workflow_definition != definition or (requester_only and request.owner != frappe.session.user):
                 frappe.throw('درخواست اصلی با این گردش‌کار یا حساب شما سازگار نیست.', frappe.PermissionError)
+    if not configured_start and reference_doctype == "ASOUD Workflow Request" and reference_name:
+        request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
+        if requester_only and request.owner != frappe.session.user:
+            frappe.throw(_("شروع گردش کار فقط برای درخواست خودتان مجاز است."), frappe.PermissionError)
+        if request.workflow_definition != definition:
+            frappe.throw("Request workflow does not match")
+
+    if configured_start:
         lookup = {
             'workflow_definition': definition, 'reference_doctype': reference_doctype,
             'reference_name': reference_name}
@@ -751,11 +794,6 @@ def start_workflow_instance(
         if existing:
             return success(dict(existing))
     if not configured_start and reference_doctype == "ASOUD Workflow Request" and reference_name:
-        request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
-        if requester_only and request.owner != frappe.session.user:
-            frappe.throw(_("شروع گردش کار فقط برای درخواست خودتان مجاز است."), frappe.PermissionError)
-        if request.workflow_definition != definition:
-            frappe.throw("Request workflow does not match")
         existing = frappe.db.get_value("ASOUD Workflow Instance", {
             "reference_doctype": reference_doctype, "reference_name": reference_name},
             ["name", "status"], as_dict=True)
@@ -781,11 +819,16 @@ def start_workflow_instance(
         }
     ).insert(ignore_permissions=True)
     if configured_start:
+        change_data = {
+            'start_mode': start_config.get('trigger_type', 'Manual'),
+            'previous_instance': existing.name if restarting and existing else None,
+        }
+        if request_id:
+            change_data['request_id'] = request_id
         frappe.get_doc({'doctype': 'ASOUD Workflow Activity', 'workflow_instance': instance.name,
             'workflow_stage': start, 'actor': frappe.session.user, 'action': 'Workflow Started',
             'comment': reason.strip(), 'created_on': instance.started_on,
-            'change_json': json.dumps({'start_mode': start_config['trigger_type'],
-                'previous_instance': existing.name if restarting and existing else None}, ensure_ascii=False),
+            'change_json': json.dumps(change_data, ensure_ascii=False),
             'reference_doctype': reference_doctype, 'reference_name': reference_name}).insert(ignore_permissions=True)
     stage = _next_stage(instance, start)
     if not stage:
@@ -1185,7 +1228,7 @@ def upload_workflow_attachment(task: str, filename: str, content_base64: str) ->
     if not isinstance(filename, str) or not isinstance(content_base64, str) or len(content_base64) > 14 * 1024 * 1024:
         frappe.throw('فایل معتبر نیست یا حجم آن بیش از حد مجاز است.')
     safe_name = Path(filename or "").name
-    extensions = ALLOWED_ATTACHMENT_EXTENSIONS | ({'.csv'} if stage_config.get('action_contract_version') == 1 else set())
+    extensions = ALLOWED_ATTACHMENT_EXTENSIONS
     if Path(safe_name).suffix.lower() not in extensions:
         frappe.throw(_("Unsupported workflow attachment type"))
     try:
@@ -1420,20 +1463,25 @@ def process_workflow_deadlines() -> None:
         limit_page_length=0,
     )
     for name in reminders:
-        task = frappe.get_doc("ASOUD Workflow Task", name)
-        if task.get('directive_kind'):
-            from asoud_erp.api.v1.directives import notify_reminder
-            notify_reminder(task)
-            continue
-        instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)
-        _notify_user(
-            task.assigned_to,
-            _("Workflow task is nearing its deadline"),
-            instance,
-            message=task.task_title,
-        )
-        task.reminder_sent_on = current
-        task.save(ignore_permissions=True)
+        frappe.db.savepoint("asoud_deadline_reminder")
+        try:
+            task = frappe.get_doc("ASOUD Workflow Task", name)
+            if task.get('directive_kind'):
+                from asoud_erp.api.v1.directives import notify_reminder
+                notify_reminder(task)
+                continue
+            instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)
+            _notify_user(
+                task.assigned_to,
+                _("Workflow task is nearing its deadline"),
+                instance,
+                message=task.task_title,
+            )
+            task.reminder_sent_on = current
+            task.save(ignore_permissions=True)
+        except Exception:
+            frappe.db.rollback(save_point="asoud_deadline_reminder")
+            frappe.log_error(title=f"Workflow deadline reminder failed for task {name}")
 
     overdue = frappe.get_all(
         "ASOUD Workflow Task",
@@ -1446,40 +1494,45 @@ def process_workflow_deadlines() -> None:
         limit_page_length=0,
     )
     for name in overdue:
-        task = frappe.get_doc("ASOUD Workflow Task", name)
-        if task.get("directive_kind"):
-            from asoud_erp.api.v1.directives import notify_overdue
-            notify_overdue(task)
-            continue
-        stage = frappe.get_doc("ASOUD Workflow Stage", task.workflow_stage)
-        config = json.loads(stage.config_json or "{}")
-        if config.get('action_contract_version') == 1:
-            from asoud_erp.services.workflow_user_action import escalate
+        frappe.db.savepoint("asoud_deadline_overdue")
+        try:
+            task = frappe.get_doc("ASOUD Workflow Task", name)
+            if task.get("directive_kind"):
+                from asoud_erp.api.v1.directives import notify_overdue
+                notify_overdue(task)
+                continue
+            stage = frappe.get_doc("ASOUD Workflow Stage", task.workflow_stage)
+            config = json.loads(stage.config_json or "{}")
+            if config.get('action_contract_version') == 1:
+                from asoud_erp.services.workflow_user_action import escalate
 
-            escalate(name, current)
-            continue
-        instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)
-        _notify_user(
-            task.assigned_to,
-            _("Workflow task is overdue"),
-            instance,
-            message=task.task_title,
-        )
-        escalation_users = _users_for_roles(config.get("escalation_roles") or [])
-        for user in escalation_users:
+                escalate(name, current)
+                continue
+            instance = frappe.get_doc("ASOUD Workflow Instance", task.workflow_instance)
             _notify_user(
-                user,
-                _("Workflow task requires escalation"),
+                task.assigned_to,
+                _("Workflow task is overdue"),
                 instance,
-                message=f"{task.task_title}: {task.assigned_to}",
+                message=task.task_title,
             )
-        if config.get("reassign_on_overdue") and escalation_users:
-            previous = task.assigned_to
-            task.assigned_to = escalation_users[0]
-            _record_activity(
-                task,
-                "Escalated",
-                _("Reassigned from {0} to {1}").format(previous, task.assigned_to),
-            )
-        task.escalated_on = current
-        task.save(ignore_permissions=True)
+            escalation_users = _users_for_roles(config.get("escalation_roles") or [])
+            for user in escalation_users:
+                _notify_user(
+                    user,
+                    _("Workflow task requires escalation"),
+                    instance,
+                    message=f"{task.task_title}: {task.assigned_to}",
+                )
+            if config.get("reassign_on_overdue") and escalation_users:
+                previous = task.assigned_to
+                task.assigned_to = escalation_users[0]
+                _record_activity(
+                    task,
+                    "Escalated",
+                    _("Reassigned from {0} to {1}").format(previous, task.assigned_to),
+                )
+            task.escalated_on = current
+            task.save(ignore_permissions=True)
+        except Exception:
+            frappe.db.rollback(save_point="asoud_deadline_overdue")
+            frappe.log_error(title=f"Workflow deadline overdue failed for task {name}")

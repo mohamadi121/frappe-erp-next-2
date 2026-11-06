@@ -90,13 +90,25 @@ def route(form, revision):
     return row.name
 
 
-def assert_reference(workflow, name, *, lock=True):
+def assert_reference(workflow, name, *, lock=True, restarting=False):
     """Explicit owner/form/route authority, never arbitrary Form Entry access."""
     if not isinstance(name, str) or not frappe.db.exists(ENTRY, name):
         frappe.throw('ثبت اصلی فرم پیدا نشد.')
     entry = frappe.get_doc(ENTRY, name, for_update=lock)
     require_company(entry.company)
-    if entry.owner != frappe.session.user or entry.company != workflow.company or \
+    roles = set(frappe.get_roles())
+    manager_restart = bool(roles.intersection({'System Manager', 'Accounts Manager'}) and workflow.has_permission('write'))
+    start_config = {}
+    if restarting:
+        start_row = frappe.db.get_value('ASOUD Workflow Stage',
+            {'workflow_definition': workflow.name, 'stage_type': 'Start'}, ['config_json'], as_dict=True)
+        start_config = json.loads(start_row.config_json or '{}') if start_row else {}
+        if not manager_restart or not start_config.get('allow_manager_restart'):
+            frappe.throw('شروع مجدد فقط توسط مدیر مجاز است.', frappe.PermissionError)
+    else:
+        if entry.owner != frappe.session.user:
+            frappe.throw('شروع گردش‌کار فقط برای ثبت اصلی و متعلق به حساب شما مجاز است.', frappe.PermissionError)
+    if entry.company != workflow.company or \
             not workflow.get('source_form') or workflow.source_form != entry.form or \
             workflow.source_revision != entry.revision:
         frappe.throw('شروع گردش‌کار فقط برای ثبت اصلی و متعلق به حساب شما مجاز است.', frappe.PermissionError)

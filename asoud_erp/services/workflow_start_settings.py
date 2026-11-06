@@ -88,7 +88,7 @@ def restart_allowed(instance):
         if instance.reference_doctype == 'ASOUD Form Entry':
             from asoud_erp.services.workflow_submission_source import assert_reference
 
-            assert_reference(workflow, instance.reference_name, lock=False)
+            assert_reference(workflow, instance.reference_name, lock=False, restarting=True)
             return True
         if instance.reference_doctype != workflow.target_doctype or not frappe.db.exists(
                 instance.reference_doctype, instance.reference_name):

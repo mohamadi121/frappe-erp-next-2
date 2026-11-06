@@ -103,3 +103,77 @@ class TestWorkflowStartSettings(APITestCase):
         frappe.set_user(EMPLOYEE_USER)
         with self.assertRaises(frappe.PermissionError):
             configure(definition, {'trigger_type': 'Manual', 'initiator_roles': ['Employee']})
+
+    def test_manager_restart_by_different_user_and_rejections(self):
+        definition, stages = make_definition(self.company, approvals=0, fields=[])
+        saved = forms.save_form(self.company, {'kind': 'Request', 'title': 'فرم تست مدیر', 'sections': [
+            {'id': 'main', 'title': 'اطلاعات', 'fields': [{'key': 'note', 'label': 'توضیح', 'type': 'Text'}]}]},
+            client_id=uuid4().hex)['data']
+        forms.transition(saved['name'], 'publish', saved['draft_version'])
+        form = forms.get_form(saved['name'])['data']
+        source = {'form': form['name'], 'revision': form['revision']}
+        configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
+            'allow_manager_restart': True})
+
+        # 1. Employee submits entry
+        frappe.set_user(EMPLOYEE_USER)
+        entry = forms.submit_form(form['name'], form['revision'], 'درخواست کارمند', {'note': 'متن'}, uuid4().hex)['data']
+        first = entry['workflow_instance']
+
+        # Complete task to close instance
+        task_id = frappe.db.get_value('ASOUD Workflow Task', {'workflow_instance': first}, 'name')
+        assignee = frappe.db.get_value('ASOUD Workflow Task', task_id, 'assigned_to')
+        frappe.set_user(assignee)
+        workflow_runtime.complete_workflow_task(task_id, 'Complete', response={})
+
+        # 2. Plain employee cannot restart
+        frappe.set_user(EMPLOYEE_USER)
+        self.assertFalse(workflow_runtime.get_workflow_instance(first)['data']['can_restart'])
+        with self.assertRaises((frappe.PermissionError, frappe.ValidationError)):
+            workflow_runtime.start_workflow_instance(definition, 'شروع مجدد توسط کارمند', 'ASOUD Form Entry', entry['name'], reason='تست', restart=1)
+
+        # 3. Manager of another company cannot restart (and can_restart is False)
+        other_manager = _user('other.manager@example.com', ['System Manager'])
+        frappe.set_user(other_manager)
+        self.assertFalse(workflow_runtime.get_workflow_instance(first)['data']['can_restart'])
+        with self.assertRaises((frappe.PermissionError, frappe.ValidationError, frappe.DoesNotExistError)):
+            workflow_runtime.start_workflow_instance(definition, 'شروع مجدد دفتر دیگر', 'ASOUD Form Entry', entry['name'], reason='تست', restart=1)
+
+        # 4. When allow_manager_restart is false, manager cannot restart (and can_restart is False)
+        frappe.set_user('Administrator')
+        configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
+            'allow_manager_restart': False})
+        frappe.set_user(self.initiator)
+        self.assertFalse(workflow_runtime.get_workflow_instance(first)['data']['can_restart'])
+        with self.assertRaises((frappe.PermissionError, frappe.ValidationError)):
+            workflow_runtime.start_workflow_instance(definition, 'بدون اجازه مدیر', 'ASOUD Form Entry', entry['name'], reason='تست', restart=1)
+
+        # 5. Allowed manager (self.initiator, allow_manager_restart=True, submitter != manager) can restart
+        frappe.set_user('Administrator')
+        configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
+            'allow_manager_restart': True})
+        frappe.set_user(self.initiator)
+        self.assertTrue(workflow_runtime.get_workflow_instance(first)['data']['can_restart'])
+        second = workflow_runtime.start_workflow_instance(definition, 'شروع مجدد توسط مدیر مجاز', 'ASOUD Form Entry', entry['name'],
+            reason='بازبینی مدیریتی ثبت‌شده توسط غیر', restart=1)['data']['name']
+        self.assertNotEqual(second, first)
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', second, 'started_by'), self.initiator)
+
+    def test_idempotent_manual_start_with_request_id(self):
+        definition, _ = make_definition(self.company, approvals=0, fields=[])
+        configure(definition, {'trigger_type': 'Manual', 'initiator_roles': ['System Manager']})
+        frappe.set_user(self.initiator)
+        req_id = 'test-request-id-01'
+        res1 = workflow_runtime.start_workflow_instance(definition, 'شروع ۱', reason='علت اول', request_id=req_id)['data']
+        res2 = workflow_runtime.start_workflow_instance(definition, 'شروع ۲', reason='علت دوم', request_id=req_id)['data']
+        self.assertEqual(res1['name'], res2['name'])
+
+        res3 = workflow_runtime.start_workflow_instance(definition, 'شروع ۳', reason='علت سوم', request_id='test-request-id-02')['data']
+        self.assertNotEqual(res1['name'], res3['name'])
+
+        frappe.set_user(MANAGER_USER)
+        res4 = workflow_runtime.start_workflow_instance(definition, 'شروع مدیر دیگر', reason='علت مدیر', request_id=req_id)['data']
+        self.assertNotEqual(res1['name'], res4['name'])
+
+        with self.assertRaises(frappe.ValidationError):
+            workflow_runtime.start_workflow_instance(definition, 'نامعتبر', reason='علت', request_id='bad id!')

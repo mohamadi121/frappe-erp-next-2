@@ -2,13 +2,15 @@
 
 ## reset_chart (explicit test/setup reset)
 
-POST `asoud_erp.api.v1.organization.reset_chart(company, revision)` uses existing
-organization write roles (System Manager / HR Manager), Company read scope and
-native chart write permission. Revision is a nonnegative integer, checked under
+POST `asoud_erp.api.v1.organization.reset_chart(company, revision)` requires
+`System Manager` role (HR Manager is rejected with `PermissionError`), Company read
+scope and native chart write permission. Revision is a nonnegative integer, checked under
 the Company and chart locks. It clears all chart positions, even occupied rows,
 children and assignment history; ordinary position-deletion blockers do not apply
 to this explicit whole-chart operation. Before/after structure is retained by
-native Version tracking. No Employee, Department, office, role or financial
+native Version tracking and an `ASOUD Security Audit` row (`organization.chart.reset`)
+recording positions, occupants and assignment-history entries removed (rolling back with
+the reset if audit recording fails). No Employee, Department, office, role or financial
 document is deleted or rewritten. This is chart reset, not a tenant/database wipe.
 Response `{rows: [], revision: <next>, reset: true}`; no chart is idempotently empty
 at revision 0. A stale revision fails with «ساختار تغییر کرده است؛ دوباره بارگذاری کنید.».
@@ -37,6 +39,7 @@ roles listed). Frappe errors follow the [API conventions](README.md#errors):
 | --- | --- |
 | Read: `System Manager`, `HR Manager`, `HR User` | `list_units`, `employee_photo` |
 | Write: `System Manager`, `HR Manager` | `save_unit`, `delete_unit`, `preview_delete_unit`, `preview_delete_position`, `preview_import`, `apply_import` |
+| Reset: `System Manager` only | `reset_chart` |
 
 Each write also needs the matching native `Department` or `Employee` permission
 for the user. Users without the roles get `PermissionError` with message

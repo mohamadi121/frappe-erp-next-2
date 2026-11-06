@@ -115,26 +115,53 @@ def users_for(stage, instance):
                 frappe.throw('واحد سازمانی شخص مبنا مشخص نیست.')
             if not frappe.db.exists('Department', {'name': department, 'company': company, 'disabled': 0}):
                 frappe.throw('واحد سازمانی شخص مبنا فعال یا متعلق به این دفتر نیست.')
-            candidates = frappe.get_all('Employee', filters={'company': company, 'department': department,
-                'status': 'Active', 'user_id': ['is', 'set']}, pluck='user_id', limit_page_length=201)
+            candidates = frappe.db.sql("""
+                select distinct u.name
+                from `tabUser` u
+                join `tabEmployee` e on e.user_id = u.name and e.company = %s and e.department = %s and e.status = 'Active'
+                where u.enabled = 1 and u.user_type = 'System User' and u.name not in ('Guest', 'Administrator')
+            """, (company, department), pluck=True)
     elif basis == 'Unit':
         filters = {'company': company, 'department': department, 'status': 'Active', 'user_id': ['is', 'set']}
         if rule['delivery'] == 'Direct':
             filters['name'] = rule['person']
-        candidates = frappe.get_all('Employee', filters=filters, pluck='user_id', limit_page_length=201)
+            emp_user = frappe.db.get_value('Employee', filters, 'user_id')
+            candidates = [emp_user] if emp_user else []
+        else:
+            candidates = frappe.db.sql("""
+                select distinct u.name
+                from `tabUser` u
+                join `tabEmployee` e on e.user_id = u.name and e.company = %s and e.department = %s and e.status = 'Active'
+                where u.enabled = 1 and u.user_type = 'System User' and u.name not in ('Guest', 'Administrator')
+            """, (company, department), pluck=True)
     else:
         if not frappe.db.exists('Role', {'name': rule['role'], 'disabled': 0}):
             frappe.throw('نقش مسئول حذف یا غیرفعال شده است.')
-        candidates = frappe.get_all('Has Role', filters={'role': rule['role'], 'parenttype': 'User'},
-            pluck='parent', limit_page_length=201)
         if rule.get('scope') == 'Department':
-            members = set(frappe.get_all('Employee', filters={'company': company, 'department': department,
-                'status': 'Active', 'user_id': ['in', candidates or ['']]}, pluck='user_id', limit_page_length=201))
-            candidates = [user for user in candidates if user in members]
+            candidates = frappe.db.sql("""
+                select distinct u.name
+                from `tabUser` u
+                join `tabHas Role` hr on hr.parent = u.name and hr.parenttype = 'User' and hr.role = %s
+                join `tabEmployee` e on e.user_id = u.name and e.company = %s and e.department = %s and e.status = 'Active'
+                where u.enabled = 1 and u.user_type = 'System User' and u.name not in ('Guest', 'Administrator')
+            """, (rule['role'], company, department), pluck=True)
+        else:
+            # SQL prefilter narrows candidates; company_access remains the final authority.
+            candidates = frappe.db.sql("""
+                select distinct u.name
+                from `tabUser` u
+                join `tabHas Role` hr on hr.parent = u.name and hr.parenttype = 'User' and hr.role = %s
+                where u.enabled = 1 and u.user_type = 'System User' and u.name not in ('Guest', 'Administrator')
+                and (
+                    u.name in (select user_id from `tabEmployee` where company = %s and status = 'Active' and user_id is not null)
+                    or u.name in (select user from `tabASOUD Office Role Assignment` where company = %s)
+                    or u.name in (select user from `tabUser Permission` where allow = 'Company' and for_value = %s and apply_to_all_doctypes = 1)
+                    or exists (select 1 from `tabHas Role` r where r.parent = u.name and r.parenttype = 'User' and r.role in ('System Manager', 'HR Manager', 'Accounts Manager', 'Accounts User'))
+                )
+            """, (rule['role'], company, company, company), pluck=True)
     if len(candidates) > 200:
         frappe.throw('تعداد نامزدهای ارجاع بیش از حد مجاز است؛ محدوده را کوچک‌تر کنید.')
-    active = frappe.get_all('User', filters={'name': ['in', [user for user in candidates if user] or ['']],
-        'enabled': 1, 'user_type': 'System User'}, pluck='name', limit_page_length=201)
+    active = candidates
     # Native company authorization is checked per principal; master reads above are batched.
     result = [user for user in dict.fromkeys(active) if user not in ('Guest', 'Administrator') and company_access(company, user)]
     result = filter_form_users(config, company, result)
@@ -282,7 +309,13 @@ def escalate(task_name, current):
         return
     config = json.loads(frappe.db.get_value('ASOUD Workflow Stage', task.workflow_stage, 'config_json') or '{}')
     company = frappe.db.get_value('ASOUD Workflow Definition', instance.workflow_definition, 'company')
-    candidates = filter_reference_users(instance, config, escalation_users(config, company))
+    esc_users = escalation_users(config, company)
+    notified = set()
+    for user in esc_users:
+        if user and user not in notified and user not in ('Guest', 'Administrator'):
+            notified.add(user)
+            _notify_user(user, 'اقدام نیازمند ارجاع است', instance, message=f"{task.task_title}: {task.assigned_to}")
+    candidates = sorted(filter_reference_users(instance, config, esc_users))
     if config.get('reassign_on_overdue') and candidates:
         previous = task.assigned_to
         if task.action == 'Awaiting Claim':
