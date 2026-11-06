@@ -150,6 +150,15 @@ Read this before every change that touches workflows, resets, locks, schedulers 
 - Keep a change minimal. Do not move unrelated blocks while fixing one thing; reviewers cannot see what changed.
 
 
+## Use the knowledge graph (graphify) first
+
+`graphify-out/` is committed (`graph.json`, `GRAPH_REPORT.md`, `graph.html`, `manifest.json`). Agents MUST use it before reading or grepping the code:
+
+1. Read `graphify-out/GRAPH_REPORT.md` for the god nodes, communities and surprising connections.
+2. Answer "where is X / what calls Y / how are A and B related" with `graphify query "<question>"`, `graphify path "<A>" "<B>"` and `graphify explain "<node>"` (see `.claude/skills/graphify/SKILL.md`) instead of opening files blindly.
+3. After a change that adds or moves code, refresh it with `graphify update .` and commit the updated `graph.json`, `GRAPH_REPORT.md` and `manifest.json` in the same PR. The `cache/` folder and dated snapshot folders stay untracked.
+4. Do not trust a graph answer alone for behaviour: open the files it points to before editing.
+
 ## Project skills
 
 Shared agent skills live in `.claude/skills/` (`asoud-erp-expert`, `soroush-style`, `software-development`, `graphify`). Load `asoud-erp-expert` before changing code here: read its `references/engineering-principles.md` and `references/gotchas.md` first. The rules in this file win if a skill disagrees.
