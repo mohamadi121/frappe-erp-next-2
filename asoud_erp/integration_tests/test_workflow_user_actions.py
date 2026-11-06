@@ -165,7 +165,7 @@ class TestWorkflowUserActions(APITestCase):
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', instance, 'status'), 'Completed')
 
     def test_existing_form_keeps_tables_and_recomputes_formula_without_entry(self):
-        schema = {'kind': 'Request', 'title': 'نتیجه بررسی', 'sections': [{'id': 'main', 'fields': [
+        schema = {'kind': 'Request', 'title': 'نتیجه بررسی', 'sections': [{'id': 'main', 'title': 'اصلی', 'fields': [
             {'key': 'quantity', 'label': 'تعداد', 'type': 'Integer', 'required': True},
             {'key': 'price', 'label': 'قیمت', 'type': 'Money', 'required': True},
             {'key': 'total', 'label': 'جمع', 'type': 'Formula', 'formula': {'op': 'mul', 'inputs': ['quantity', 'price']}},
@@ -210,7 +210,7 @@ class TestWorkflowUserActions(APITestCase):
             frappe.get_doc('User', user).add_roles(role)
         saved = forms.save_form(self.company, {'kind': 'Request', 'title': 'فرم مسئول مجاز',
             'access': {'mode': 'roles', 'roles': ['Leave Approver']},
-            'sections': [{'id': 'main', 'fields': [{'key': 'note', 'label': 'شرح', 'type': 'Text'}]}]},
+            'sections': [{'id': 'main', 'title': 'اصلی', 'fields': [{'key': 'note', 'label': 'شرح', 'type': 'Text'}]}]},
             client_id=uuid4().hex)['data']
         published = forms.transition(saved['name'], 'publish', saved['draft_version'])['data']
         definition, _ = self.make_action({'basis': 'Role', 'role': role}, result_mode='Form',
