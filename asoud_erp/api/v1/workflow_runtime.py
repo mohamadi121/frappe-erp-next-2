@@ -699,7 +699,7 @@ def start_workflow_instance(
     if reference_doctype == 'ASOUD Form Entry':
         from asoud_erp.services.workflow_submission_source import assert_reference
 
-        submitted_entry = assert_reference(workflow, reference_name)
+        submitted_entry = assert_reference(workflow, reference_name, restarting=restarting)
         subject = submitted_entry.subject
     if requester_only and not submitted_entry and not manual_start:
         if reference_doctype != "ASOUD Workflow Request" or not reference_name:
