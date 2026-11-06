@@ -900,13 +900,6 @@ def set_workflow_status(name: str, status: str) -> dict:
     doc = frappe.get_doc("ASOUD Workflow Definition", name, for_update=True)
     require_company(doc.company)
     doc.check_permission('write')
-    if status == 'Active':
-        from asoud_erp.services.workflow_lifecycle import require_activation_ready
-
-        require_activation_ready(doc)
-        doc.readiness_status = 'Ready'
-        doc.pending_reason = ''
-        doc.missing_requirements_json = '[]'
     doc.status = status
     doc.archived_on = now_datetime() if status == "Archived" else None
     doc.save()

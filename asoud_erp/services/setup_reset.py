@@ -274,6 +274,7 @@ def _execute(actor, expected_digest):
                 'company_groups': [companies[i:i + 50] for i in range(0, len(companies), 50)]})
         frappe.get_doc(receipt).insert(ignore_permissions=True)
     except Exception:
+        frappe.log_error(title='ASOUD setup reset failed', message=frappe.get_traceback())
         frappe.db.rollback(save_point='asoud_setup_reset')
         frappe.clear_messages()
         frappe.throw('بازنشانی به دلیل وابستگی یا قاعدهٔ حذف متوقف شد؛ هیچ حذف جزئی تأیید نشد. مدیر سرور باید وابستگی را بررسی کند.')
