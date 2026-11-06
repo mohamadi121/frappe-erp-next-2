@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Integration CI now runs every API module sequentially and reports all failed modules before failing the job. Correct workflow history/v1-stage fixtures, exercise stage/transition history deletion guards, and isolate hiring-order HR accounts from contract tests. Organization reset tests use a scoped HR manager and enable native Version creation for the history assertion; deadline tests verify notifications, deterministic reassignment, per-item rollback and continued processing. Test/CI changes only; no migration or site configuration changes.
+
 - Organization reset security & workflow start authorization lock: `reset_chart` is restricted to `System Manager` only (`HR Manager` is rejected with `PermissionError`) and writes an atomic `ASOUD Security Audit` row recording positions, occupants and assignment-history entries removed (rolling back with the reset if failed). Workflow `start_workflow_instance` moves definition locking (`for_update=True`) after authorization and permission checks so unauthorized users are rejected without acquiring database locks. No schema migration required; deploy backend and restart workers.
 
 - Organizational structure: explicit company/revision-scoped `reset_chart` waives chart assignment/history deletion blockers only after an authorized request, preserves the previous JSON in native Version history, and leaves native employees, Departments, offices and roles intact. Ordinary deletion protections are unchanged. Matching client clears its scoped drafts/queued chart saves and returns to empty setup. Deploy backend before client; no migration. Native integration and HTTP boundary regressions added to existing registered modules; no production reset performed.

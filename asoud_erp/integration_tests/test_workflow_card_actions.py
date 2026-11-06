@@ -116,7 +116,8 @@ class TestWorkflowCardActions(APITestCase):
         self.assertTrue(frappe.db.exists('ASOUD Workflow Definition', name))
         versioned = frappe.get_doc('ASOUD Workflow Definition', self.draft())
         versioned.workflow_title = 'ویرایش دارای سابقه'
-        versioned.save()
+        # Frappe suppresses Versions in tests unless explicitly requested.
+        versioned.save(ignore_version=False)
         self.assertTrue(frappe.db.exists('Version', {'ref_doctype': versioned.doctype, 'docname': versioned.name}))
         with self.assertRaises(frappe.ValidationError):
             delete(versioned.doctype, versioned.name)
@@ -133,30 +134,78 @@ class TestWorkflowCardActions(APITestCase):
         with self.assertRaises(frappe.ValidationError):
             workflow.delete_workflow(name2)
 
+    def test_owned_stage_and_transition_versions_prevent_delete(self):
+        for doctype, field, value in (
+            ('ASOUD Workflow Stage', 'stage_title', 'عنوان دارای سابقه'),
+            ('ASOUD Workflow Transition', 'transition_label', 'مسیر دارای سابقه'),
+        ):
+            with self.subTest(doctype=doctype):
+                name = self.draft()
+                self.complete(name)
+                doc = frappe.get_doc(doctype, {'workflow_definition': name})
+                doc.set(field, value)
+                doc.save(ignore_version=False)
+                versions = frappe.get_all('Version', filters={
+                    'ref_doctype': doctype, 'docname': doc.name}, pluck='name')
+                self.assertTrue(versions)
+                graph = workflow.get_workflow_design(name)['data']
+                with self.assertRaises(frappe.ValidationError):
+                    workflow.delete_workflow(name)
+                self.assertEqual(workflow.get_workflow_design(name)['data'], graph)
+                self.assertTrue(all(frappe.db.exists('Version', version) for version in versions))
+
     def test_stage_update_lock_title_vs_config(self):
         name = self.draft()
         self.complete(name)
         stage_name = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': name, 'stage_type': 'User Task'}, 'name')
-        instance = frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': name,
-            'subject': 'اجرا', 'status': 'Running'}).insert()
-        frappe.get_doc({'doctype': 'ASOUD Workflow Task', 'workflow_instance': instance.name,
-            'workflow_stage': stage_name, 'task_title': 'تکلیف', 'assigned_to': 'Administrator', 'status': 'Open'}).insert()
-
-        # 1. Non-v1 (legacy) stage config change still allowed
+        # Legacy edits remain supported, but adoption of v1 must precede tasks.
         stage_doc = frappe.get_doc('ASOUD Workflow Stage', stage_name)
         stage_doc.config_json = json.dumps({'legacy_param': 1})
-        stage_doc.save() # Should not raise
-
-        # 2. v1 stage title-only change OK
-        stage_doc.config_json = json.dumps({'action_contract_version': 1})
         stage_doc.save()
-        stage_doc.stage_title = 'عنوان جدید v1'
+        instance = frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': name,
+            'subject': 'اجرا', 'status': 'Running'}).insert()
+        task = frappe.get_doc({'doctype': 'ASOUD Workflow Task', 'workflow_instance': instance.name,
+            'workflow_stage': stage_name, 'task_title': 'تکلیف', 'assigned_to': 'Administrator', 'status': 'Open'}).insert()
+        stage_doc.config_json = json.dumps({'legacy_param': 2})
         stage_doc.save()
-        self.assertEqual(stage_doc.stage_title, 'عنوان جدید v1')
+        self.assertEqual(json.loads(stage_doc.reload().config_json), {'legacy_param': 2})
 
-        # 3. v1 stage config change blocked with count in message
-        stage_doc.config_json = json.dumps({'action_contract_version': 1, 'changed': True})
-        with self.assertRaises(frappe.ValidationError) as ctx:
+        v1 = {'action_contract_version': 1,
+            'assignment_rule': {'basis': 'Subject', 'subject': 'Initiator'}}
+        # An existing task also blocks legacy -> v1 conversion.
+        stage_doc.config_json = json.dumps(v1)
+        with self.assertRaises(frappe.ValidationError):
             stage_doc.save()
-        self.assertIn('1', str(ctx.exception))
-        self.assertIn('کار', str(ctx.exception))
+
+        # A separate, valid v1 stage is configured before any task refers to it.
+        v1_name = self.draft()
+        self.complete(v1_name)
+        v1_stage = frappe.get_doc('ASOUD Workflow Stage',
+            {'workflow_definition': v1_name, 'stage_type': 'User Task'})
+        config = json.loads(v1_stage.config_json)
+        v1_stage.config_json = json.dumps({**config, **v1})
+        v1_stage.save()
+        v1_instance = frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': v1_name,
+            'subject': 'اجرای نسخه یک', 'status': 'Running'}).insert()
+        frappe.get_doc({'doctype': 'ASOUD Workflow Task', 'workflow_instance': v1_instance.name,
+            'workflow_stage': v1_stage.name, 'task_title': 'تکلیف', 'assigned_to': 'Administrator',
+            'status': 'Open'}).insert()
+        original_config = json.loads(v1_stage.config_json)
+        v1_stage.stage_title = 'عنوان جدید v1'
+        v1_stage.save()
+        self.assertEqual(v1_stage.reload().stage_title, 'عنوان جدید v1')
+        self.assertEqual(json.loads(v1_stage.config_json), original_config)
+
+        for changes in ({'config_json': json.dumps({**original_config, 'allow_draft': False})},
+                        {'stage_type': 'Approval'}, {'config_json': '{}'}):
+            with self.subTest(changes=changes):
+                v1_stage.reload()
+                v1_stage.update(changes)
+                with self.assertRaises(frappe.ValidationError) as ctx:
+                    v1_stage.save()
+                self.assertIn('1', str(ctx.exception))
+                self.assertIn('کار', str(ctx.exception))
+                v1_stage.reload()
+                self.assertEqual(v1_stage.stage_type, 'User Task')
+                self.assertEqual(json.loads(v1_stage.config_json), original_config)
+        self.assertTrue(frappe.db.exists('ASOUD Workflow Task', task.name))
