@@ -256,6 +256,8 @@ class TestWorkflowUserActions(APITestCase):
         stage_doc.save(ignore_permissions=True)
 
         instance, task = self.start(definition)
+        # Deadlines run as the scheduler, not a recipient (_notify_user skips its actor).
+        frappe.set_user('Administrator')
         workflow_user_action.escalate(task, now_datetime())
         updated_task = frappe.get_doc('ASOUD Workflow Task', task)
         self.assertEqual(updated_task.status, 'Open')

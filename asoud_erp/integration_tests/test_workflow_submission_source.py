@@ -5,7 +5,7 @@ from uuid import uuid4
 import frappe
 
 from asoud_erp.api.v1 import forms, workflow, workflow_runtime
-from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER, APITestCase
+from asoud_erp.integration_tests.fixtures import ACCOUNTANT_USER, EMPLOYEE_USER, APITestCase
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.tenancy import EMPLOYEE_B_USER, setup_tenancy
 from asoud_erp.services.workflow_submission_source import sanitized
@@ -55,7 +55,10 @@ class TestWorkflowSubmissionSource(APITestCase):
             'reference_doctype': 'ASOUD Form Entry', 'reference_name': result['name']}), 1)
         task = frappe.db.get_value('ASOUD Workflow Task', {'workflow_instance': instance.name}, 'name')
         detail = workflow_runtime.get_workflow_task(task)['data']
-        self.assertEqual(detail['submitted_form']['values']['rows'], values['rows'])
+        # The snapshot exposes validated stored values, not the raw numeric input.
+        stored = json.loads(frappe.db.get_value('ASOUD Form Entry', result['name'], 'values_json'))
+        self.assertEqual(stored['rows'], [{'title': 'ردیف', 'qty': '2'}])
+        self.assertEqual(detail['submitted_form']['values']['rows'], stored['rows'])
         self.assertNotIn('secret', detail['submitted_form']['values'])
         self.assertNotIn('secret', detail['request_values'])
         self.assertEqual(detail['config']['form_fields'], [])
@@ -110,6 +113,8 @@ class TestWorkflowSubmissionSource(APITestCase):
         stage = next(s for s in stages.values() if s.stage_type == 'User Task')
         with self.assertRaises(frappe.ValidationError):
             workflow.save_stage_settings(definition, stage.name, self.config)
+        # Initiator assignment requires an ordinary user; Administrator is excluded.
+        frappe.set_user(EMPLOYEE_USER)
         result = forms.submit_form(self.source['name'], self.source['revision'], 'درخواست اصلی',
             {'note': 'اطلاعات'}, uuid4().hex)['data']
         task = frappe.db.get_value('ASOUD Workflow Task', {'workflow_instance': result['workflow_instance']}, 'name')
@@ -142,6 +147,8 @@ class TestWorkflowSubmissionSource(APITestCase):
         equity = frappe.get_all('Account', filters={'company': self.company, 'root_type': 'Equity',
             'is_group': 0}, pluck='name', limit_page_length=1)[0]
         before = frappe.db.count('Journal Entry')
+        # The initiator must also have native Journal Entry create/read permissions.
+        frappe.set_user(ACCOUNTANT_USER)
         result = forms.submit_form(source['name'], source['revision'], 'ثبت سند اصلی', {
             'date': nowdate(), 'rows': [{'account': f'Cash - {abbr()}', 'debit': 100, 'credit': 0},
                 {'account': equity, 'debit': 0, 'credit': 100}]}, uuid4().hex)['data']
