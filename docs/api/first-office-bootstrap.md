@@ -29,7 +29,10 @@ Only creates a new native System User; never upgrades, overwrites or resets an
 existing account. Duplicate identity and protected usernames are rejected.
 Missing name, username, contact or password arguments receive the same Persian
 field validation as empty values. Numeric-only/repeated-character passwords are
-rejected, and the native site password-strength policy is also enforced before writes.
+rejected, and the native site password-strength policy (Frappe zxcvbn) is also
+enforced before writes. When the native policy rejects a password, the response
+returns the translated warning and suggestions in Persian (e.g.
+«رمز موقت ضعیف است؛ این رمز شبیه یکی از رمزهای پرکاربرد است. پیشنهاد: یک یا دو کلمه دیگر اضافه کنید؛ استفاده از کلمات غیرمعمول بهتر است.»).
 Validation errors name the field: «نام کاربری قبلاً برای حساب دیگری ثبت شده است؛ نام دیگری انتخاب کنید.»,
 «ایمیل تماس قبلاً برای حساب دیگری ثبت شده است.»,
 «شماره موبایل قبلاً برای حساب دیگری ثبت شده است.»,

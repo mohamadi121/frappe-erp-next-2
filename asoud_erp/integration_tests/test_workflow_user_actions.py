@@ -139,7 +139,7 @@ class TestWorkflowUserActions(APITestCase):
         frappe.set_user('Administrator')
         original = frappe.get_doc('ASOUD Workflow Stage', stage)
         with self.assertRaises(frappe.ValidationError):
-            workflow.save_stage_settings(definition, stage, {**json.loads(original.config_json), 'title': 'عنوان جدید'})
+            workflow.save_stage_settings(definition, stage, {**json.loads(original.config_json), 'allow_draft': False})
         before = workflow.get_workflow_design(definition)['data']
         copied = workflow_templates.create_from_template(self.company, definition,
             str(frappe.db.get_value('ASOUD Workflow Definition', definition, 'modified')), 'بازطراحی مستقل')['data']
@@ -168,7 +168,7 @@ class TestWorkflowUserActions(APITestCase):
         schema = {'kind': 'Request', 'title': 'نتیجه بررسی', 'sections': [{'id': 'main', 'title': 'اصلی', 'fields': [
             {'key': 'quantity', 'label': 'تعداد', 'type': 'Integer', 'required': True},
             {'key': 'price', 'label': 'قیمت', 'type': 'Money', 'required': True},
-            {'key': 'total', 'label': 'جمع', 'type': 'Formula', 'formula': {'op': 'mul', 'inputs': ['quantity', 'price']}},
+            {'key': 'total', 'label': 'جمع', 'type': 'Formula', 'formula': {'op': 'multiply', 'inputs': ['quantity', 'price']}},
             {'key': 'secret', 'label': 'اطلاعات محرمانه', 'type': 'Text', 'sensitive': True},
             {'key': 'rows', 'label': 'ردیف‌ها', 'type': 'Table', 'columns': [
                 {'key': 'note', 'label': 'شرح', 'type': 'Text', 'required': True},
@@ -255,24 +255,55 @@ class TestWorkflowUserActions(APITestCase):
         stage_doc.config_json = json.dumps(cfg)
         stage_doc.save(ignore_permissions=True)
 
-        _, task = self.start(definition)
+        instance, task = self.start(definition)
+        # Deadlines run as the scheduler, not a recipient (_notify_user skips its actor).
+        frappe.set_user('Administrator')
         workflow_user_action.escalate(task, now_datetime())
         updated_task = frappe.get_doc('ASOUD Workflow Task', task)
         self.assertEqual(updated_task.status, 'Open')
         self.assertIsNotNone(updated_task.escalated_on)
+        self.assertEqual(updated_task.assigned_to, sorted([APPROVER_USER, EMPLOYEE_USER])[0])
+        notifications = {'document_name': instance, 'subject': 'اقدام نیازمند ارجاع است'}
+        self.assertEqual(set(frappe.get_all('Notification Log', filters=notifications,
+            pluck='for_user')), {APPROVER_USER, EMPLOYEE_USER})
+        workflow_user_action.escalate(task, now_datetime())
+        self.assertEqual(frappe.db.count('Notification Log', notifications), 2)
+        self.assertEqual(frappe.db.count('ASOUD Workflow Activity', {
+            'workflow_task': task, 'action': 'Escalated'}), 1)
 
     def test_process_workflow_deadlines_continues_on_error(self):
         definition, _ = self.make_action()
-        _, task = self.start(definition)
-        frappe.db.set_value('ASOUD Workflow Task', task, {'due_on': add_to_date(now_datetime(), hours=-2), 'escalated_on': None})
+        _, first = self.start(definition)
+        _, second = self.start(definition)
+        tasks = {first, second}
+        for task in tasks:
+            frappe.db.set_value('ASOUD Workflow Task', task, {
+                'due_on': add_to_date(now_datetime(), hours=-2), 'escalated_on': None})
+        before = {task: frappe.db.get_value('ASOUD Workflow Task', task, 'draft_json') for task in tasks}
+        visited = []
         original_escalate = workflow_user_action.escalate
+
+        def bad_escalate(t_name, current):
+            if t_name in tasks:
+                visited.append(t_name)
+                if len(visited) == 1:
+                    # Prove per-item rollback as well as continuing to a good row.
+                    frappe.db.set_value('ASOUD Workflow Task', t_name, 'draft_json', '{"partial": true}')
+                    raise ValueError("Simulated failure")
+            return original_escalate(t_name, current)
+
+        frappe.set_user('Administrator')
         try:
-            def bad_escalate(t_name, current):
-                raise ValueError("Simulated failure")
             workflow_user_action.escalate = bad_escalate
             workflow_runtime.process_workflow_deadlines()
         finally:
             workflow_user_action.escalate = original_escalate
+        self.assertEqual(set(visited), tasks)
+        self.assertEqual(len(visited), 2)
+        failed, succeeded = visited
+        self.assertIsNone(frappe.db.get_value('ASOUD Workflow Task', failed, 'escalated_on'))
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Task', failed, 'draft_json'), before[failed])
+        self.assertIsNotNone(frappe.db.get_value('ASOUD Workflow Task', succeeded, 'escalated_on'))
 
     def test_accounts_user_without_employee_record_is_returned(self):
         acct_user = _user(f'acct_{uuid4().hex[:6]}@example.com', ['Accounts User'])

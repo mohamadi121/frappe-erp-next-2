@@ -57,6 +57,12 @@ branches), standard comparison operators in conditions (`>`, `<`, `=`, `==`, `>=
 operator precedence (`*`, `/`, `%` evaluated before `+`, `-`), negative numbers,
 parentheses `()`, and nested expressions (`expression` / `chain`).
 
+Request form submissions normalize nonempty numeric values (`Integer`, `Decimal`,
+`Money`, `Rating`, `Formula`) to decimal strings, including table cells. For example,
+input `{"qty": 2}` in an Integer column is saved and returned as `{"qty": "2"}`.
+Submitted-form workflow snapshots preserve these saved values. Document forms read
+values from native ERPNext fields, whose numeric types follow the native DocType.
+
 ### Additive presentation and entry-validation keys (schema version 2)
 
 The following optional keys are additive and do not change `schema_version`.

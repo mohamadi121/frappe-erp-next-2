@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { expect, test } from '../support/fixtures';
+import { expect, test, type ApiFixture } from '../support/fixtures';
 import { PYTHON } from '../support/config';
 import { loadState } from '../support/state';
 
@@ -30,7 +30,7 @@ test.afterAll(() => {
   if (prepared) fixture('cleanup', { form: prepared.form, definition: prepared.definition, restore: prepared.restore, foreign });
 });
 
-async function executed(api: any): Promise<Request> {
+async function executed(api: ApiFixture): Promise<Request> {
   const employee = await api.login('employee');
   const approver = await api.login('approver');
   const admin = await api.login('admin');
@@ -40,7 +40,7 @@ async function executed(api: any): Promise<Request> {
   });
   const request = await employee.read<Request>(requests + 'get_request', { name: entry.reference_name });
   const tasks = await approver.read<Array<{ name: string; workflow_instance: string }>>(runtime + 'list_my_workflow_tasks', {});
-  const task = tasks.find(item => item.workflow_instance === request.workflow_instance);
+  const task = tasks.find((item: { workflow_instance: string }) => item.workflow_instance === request.workflow_instance);
   await approver.mutate(runtime + 'complete_workflow_task', { task: task!.name, action: 'Approve' });
   const detail = await admin.read<Request>(requests + 'get_request', { name: request.name });
   expect(detail.native.status).toBe('Created');

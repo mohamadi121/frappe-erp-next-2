@@ -20,7 +20,7 @@ test('first HR account reports Persian fields and enforces administrator access 
     const status = await admin.post('asoud_erp.api.v1.first_office_setup.status', { company: state.company });
     expect(status.status).toBe(200);
     expect(status.envelope.ok).toBe(true);
-    expect(status.envelope.data.hr_lead).toBeNull();
+    expect((status.envelope.data as { hr_lead: unknown }).hr_lead).toBeNull();
     const args = { company: state.company, full_name: 'علی رضایی', username: reservation.username,
       contact: 'lead-contact@example.com', temporary_password: 'Secure-Lead-Password-42' };
     for (const [overrides, message] of [

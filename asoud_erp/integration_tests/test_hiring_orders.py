@@ -7,7 +7,7 @@ import frappe
 from frappe.utils import nowdate
 
 from asoud_erp.api.v1 import hiring_orders as api
-from asoud_erp.integration_tests.fixtures import APITestCase, company
+from asoud_erp.integration_tests.fixtures import APITestCase, _employee, _user, company
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.tenancy import (
     EMPLOYEE_A_USER,
@@ -19,8 +19,6 @@ from asoud_erp.integration_tests.tenancy import (
 from asoud_erp.integration_tests.test_payroll import STRUCTURE, payroll_employee, setup_payroll
 from asoud_erp.services.hiring_orders import default_template
 
-HR_USER = "asoud.test-hr-user@example.com"
-
 
 class TestHiringOrders(APITestCase):
     @classmethod
@@ -28,42 +26,12 @@ class TestHiringOrders(APITestCase):
         super().setUpClass()
         setup_tenancy()
 
-        comp = company()
-        if not frappe.db.exists("User", HR_USER):
-            user = frappe.get_doc({
-                "doctype": "User",
-                "email": HR_USER,
-                "first_name": "کارشناس",
-                "last_name": "منابع انسانی",
-                "roles": [{"role": "HR User"}],
-            })
-            user.flags.ignore_permissions = True
-            user.insert()
-
-            perm = frappe.get_doc({
-                "doctype": "User Permission",
-                "user": HR_USER,
-                "allow": "Company",
-                "for_value": comp,
-                "apply_to_all_doctypes": 1,
-            })
-            perm.flags.ignore_permissions = True
-            perm.insert()
-
-        if not frappe.db.exists("Employee", {"user_id": EMPLOYEE_A_USER, "company": comp}):
-            emp = frappe.get_doc({
-                "doctype": "Employee",
-                "first_name": "پرسنل",
-                "last_name": "آزمایشی",
-                "user_id": EMPLOYEE_A_USER,
-                "company": comp,
-                "status": "Active",
-                "gender": "Male",
-                "date_of_birth": "1992-01-01",
-                "date_of_joining": nowdate(),
-            })
-            emp.flags.ignore_permissions = True
-            emp.insert()
+    def setUp(self):
+        super().setUp()
+        # Do not borrow the contract module's committed operational HR account.
+        self.hr_user = _user(f"hiring-hr-{uuid4().hex[:12]}@example.com", ["HR User"])
+        _employee(self.hr_user, "Hiring HR")
+        self.assertNotIn("HR Manager", frappe.get_roles(self.hr_user))
 
     def test_hiring_order_template_lifecycle(self):
         comp = company()
@@ -145,7 +113,7 @@ class TestHiringOrders(APITestCase):
         comp = company()
 
         # Operational HR User cannot edit/publish template, gets Persian permission error
-        frappe.set_user(HR_USER)
+        frappe.set_user(self.hr_user)
         with self.assertRaises(frappe.PermissionError) as cm_save:
             api.save_hiring_order_template(company=comp, revision=0, template=default_template())
         self.assertIn("شما اجازهٔ ویرایش یا انتشار قالب حکم استخدام را ندارید.", str(cm_save.exception))
@@ -261,7 +229,7 @@ class TestHiringOrders(APITestCase):
 
     def test_no_workflow_uses_hr_direct_issuance_policy_once(self):
         order = self._workflow_order()
-        frappe.set_user(HR_USER)
+        frappe.set_user(self.hr_user)
         key = uuid4().hex
         final = api.send_hiring_order_for_review(order["name"], order["revision"], key)["data"]
         self.assertEqual(final["status"], "final")

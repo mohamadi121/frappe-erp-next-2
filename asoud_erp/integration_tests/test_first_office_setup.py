@@ -105,11 +105,23 @@ class TestFirstOfficeSetup(fixtures.APITestCase):
             self.create()
 
     def test_native_password_policy_failure_is_persian(self):
+        from frappe.core.doctype.user.user import test_password_strength
+
+        from asoud_erp.services.first_office_setup import format_password_policy_error
+
         settings = frappe.get_single("System Settings")
         settings.enable_password_policy = 1
         settings.minimum_password_score = "4"
         settings.save(ignore_permissions=True)
         frappe.clear_cache(doctype="System Settings")
-        with self.assertRaisesRegex(frappe.ValidationError, "رمز موقت ضعیف"):
-            self.create(temporary_password="password")
-        self.assertFalse(frappe.db.exists("User", self.contact))
+        self.addCleanup(frappe.clear_cache, doctype="System Settings")
+        # Native zxcvbn wording/ranking can differ between dependency versions.
+        for password in ("password", "Hr@12345"):
+            feedback = test_password_strength(password, user_data=(
+                "علی رضایی", self.username, self.contact, ""))["feedback"]
+            self.assertIs(feedback["password_policy_validation_passed"], False)
+            with self.assertRaises(frappe.ValidationError) as error:
+                self.create(temporary_password=password)
+            self.assertEqual(str(error.exception), format_password_policy_error(feedback))
+            self.assertIn("رمز موقت ضعیف است", str(error.exception))
+            self.assertFalse(frappe.db.exists("User", self.contact))

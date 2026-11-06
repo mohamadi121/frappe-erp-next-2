@@ -14,12 +14,16 @@ Deactivation only prevents new starts; running instances and historical rows rem
 
 Deletion uses whitelisted POST `workflow.delete_workflow(name)` (or existing POST `frappe.client.delete(doctype="ASOUD Workflow Definition",
 name=...)`). Native delete permission, company scope and manager
-role are required. The definition controller rejects system definitions, any execution
-or request history, version history, referenced form revisions, and ordinary native
-link dependencies. Only its own technical transitions/stages may be removed, within
-the same transaction; unrelated documents are never force-deleted. Failures retain
-the original graph/status. Persian messages explain incomplete design, permissions,
-history/dependency blocks; no framework names appear in UI errors.
+role (`System Manager` or `Accounts Manager`) are required. Deletion is allowed
+only for a non-system definition that has never run: no execution, task, activity
+or request history may reference it. Form/source bindings, referenced form revisions,
+and ordinary native links also block deletion. An eligible definition is deleted
+with its owned stages, transitions and edit Version rows in one savepoint.
+Execution-history refusal is a Persian ValidationError (417); soft deletion is
+planned under #47. Success returns `{name: string, deleted: true}` in the standard
+`success(data, meta)` envelope. Invalid/missing names are rejected in Persian.
+Failures retain the original graph/status and edit history. Unrelated documents
+are never force-deleted.
 
 The client confirms deletion, does not optimistically mutate cards, and reloads the
 current search/status/sort after success. Network failures do not imply success or
@@ -40,3 +44,5 @@ permission/service prerequisite is available. An older server without the summar
 is shown as unverified, never as fabricated complete/incomplete information.
 Related request/document titles already exist in saved `submission_source` stage
 configuration; otherwise use the existing target type's Persian display label.
+
+The ASOUD endpoint authorizes company access and delete permission before calling native deletion. The controller rechecks authorization before its lifecycle lock and execution/request/form/native dependency checks. Edit history alone does not prevent deletion of an unused definition. Version cleanup shares the graph savepoint, so a later dependency failure restores both history and graph. The endpoint delegates to the same native lifecycle guard.

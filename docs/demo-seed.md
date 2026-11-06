@@ -18,8 +18,7 @@ Safety (see `asoud_erp/demo/markers.py`):
 
 - Refuses to run when `frappe.conf.developer_mode` is off, unless
   `force=True`.
-- Refuses on any site whose name contains neither `test` nor `demo`,
-  unless `force=True`.
+- Refuses on any site whose name contains neither `test` nor `demo`, including with `force=True`.
 
 Passwords: all four demo users share one password. Pass it with
 `password=...`; otherwise a random one is generated and **printed once**
@@ -28,10 +27,18 @@ passwords are left alone).
 
 ## What it creates
 
+Site-level Desk and system settings:
+- Sets `desktop:home_page` default to `workspace` in `tabDefaultValue` so Desk
+  opens into workspaces without bouncing to `/app/setup-wizard`.
+- Fills missing `System Settings.language` (`fa`) and `time_zone` (`Asia/Tehran`), and sets
+  `setup_complete=1` so saving System Settings succeeds without mandatory field errors.
+- Marks `is_setup_complete=1` only on the installed Frappe/ERPNext/HRMS/ASOUD child rows of
+  `Installed Applications`; unrelated app setup hooks are preserved.
+
 Company «شرکت نمونه آسود» (IRR, Iran, Standard chart) with a fiscal year
 for the current calendar year, an `ASOUD Company Setup` row with
-`office_saved=1`, `accounting_saved=1`, `roles_saved=1` and `enabled_roles_json`
-`["System Manager"]` so setup status resolves as complete, then:
+`office_saved=1`, `accounting_saved=1`, `roles_saved=1`, `bootstrap_completed=1` and
+`enabled_roles_json` `["System Manager"]` so setup status resolves as complete, then:
 
 - Departments (فروش، مالی، فناوری اطلاعات، اداری و منابع انسانی —
   ERPNext adds its own standard departments to the new company as well),
@@ -118,3 +125,7 @@ it. Nothing else is touched.
   records gone, ledger purged, an unrelated Employee untouched),
   refusal without developer_mode/force. In the CI loop in
   `.github/workflows/erpnext-v15-integration.yml`.
+
+### Integration safety corrections
+
+`force=True` bypasses developer mode only; a site name containing `test` or `demo` is always required, including reset. Site checks run before changing the session user. Existing System Settings language and time zone are preserved; missing values default to `fa` and `Asia/Tehran`. Setup completion updates only rows belonging to `Installed Applications` for the installed `frappe`, `erpnext`, `hrms`, and `asoud_erp` apps. Other app rows are preserved. Repeated runs do not rewrite unchanged setup rows.
