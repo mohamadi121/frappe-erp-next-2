@@ -232,7 +232,7 @@ class TestSetupReset(APITestCase):
             self.addCleanup(frappe.cache.delete_value, f"asoud_setup_reset:{preview_data['token']}")
             self.assertIn('ASOUD Floating Detail', preview_data['counts'])
             groups, blockers, digest = service._collect(actor)
-            self.assertEqual(blockers, [])
+            self.assertEqual(blockers, [], service._collect(actor, include_access_blockers=True)[3])
             service._save_receipt(job, actor, 'running', digest=digest)
             service._execute(actor, digest)
             self.assertFalse(frappe.db.exists('ASOUD Party Profile', party.name))

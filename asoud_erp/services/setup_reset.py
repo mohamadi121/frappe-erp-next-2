@@ -117,8 +117,10 @@ def _collect(actor, include_access_blockers=False):
         fields=['name', 'role_profile', 'parent_role'], limit_page_length=LIMIT)
     access_blockers = []
     profiles = [r.role_profile for r in role_rows if r.role_profile]
-    outside_profiles = frappe.get_all('User', filters={'role_profile_name': ['in', profiles or ['']],
-        'name': ['not in', [actor, *owned_users]]}, fields=['name', 'role_profile_name'])
+    # role_profile_name is nullable: Frappe turns `in ('')` into ifnull(col, '') in (''), which would
+    # match every user without a profile. With no profiles there is nothing to protect, so skip.
+    outside_profiles = frappe.get_all('User', filters={'role_profile_name': ['in', profiles],
+        'name': ['not in', [actor, *owned_users]]}, fields=['name', 'role_profile_name']) if profiles else []
     if outside_profiles:
         blockers.append('نقش اختصاصی شما به حسابی خارج از محدوده متصل است؛ ابتدا وابستگی را بررسی کنید.')
         for u in outside_profiles:
