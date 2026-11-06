@@ -21,7 +21,12 @@ class ASOUDWorkflowStage(Document):
         previous = self.get_doc_before_save()
         if previous:
             old = json.loads(previous.config_json or '{}')
-            if (config.get('action_contract_version') == 1 or old.get('action_contract_version') == 1) and (
+            config_changed = (old != config or previous.stage_type != self.stage_type)
+            if config_changed:
+                task_count = frappe.db.count('ASOUD Workflow Task', {'workflow_stage': self.name})
+                if task_count > 0:
+                    frappe.throw(f'این مرحله توسط {task_count} کار در گردش‌کار استفاده می‌شود؛ تغییر تنظیمات یا ساختار نیازمند بازطراحی روی یک کپی مستقل است.')
+            elif (config.get('action_contract_version') == 1 or old.get('action_contract_version') == 1) and (
                     old != config or previous.stage_title != self.stage_title or previous.stage_type != self.stage_type) and frappe.db.exists(
                     'ASOUD Workflow Task', {'workflow_stage': self.name}):
                 frappe.throw('برای حفظ اطلاعات و سوابق اقدام‌های قبلی، بازطراحی را روی یک کپی مستقل انجام دهید.')
