@@ -238,11 +238,15 @@ class TestSetupReset(APITestCase):
             self.assertFalse(frappe.db.exists('ASOUD Party Profile', party.name))
             self.assertFalse(frappe.db.exists('ASOUD Floating Detail', fd.name))
 
-    def test_ledger_prefilter_excludes_only_referenced_floating_details(self):
+    # Named test_zz_* so unittest (alphabetical) runs it last: it leaves its office behind (a ledger
+    # row blocks the reset), and _collect() looks at every office, so earlier tests that execute a
+    # real reset would otherwise see this office's role profile holders as outside blockers.
+    def test_zz_ledger_prefilter_excludes_only_referenced_floating_details(self):
         actor, office, *_ = self.reset_fixture()
         suffix = uuid4().hex[:10]
         party = frappe.get_doc({'doctype': 'ASOUD Party Profile', 'display_name': 'شخص آزمون دفتر',
-            'party_type': 'Individual', 'company': office, 'user': actor}).insert(ignore_permissions=True)
+            'party_type': 'Individual', 'company': office, 'user': actor,
+            'roles_text': '["Employee"]'}).insert(ignore_permissions=True)
         group = frappe.get_doc({'doctype': 'ASOUD Detail Group', 'group_code': f'LEDGER-{suffix}',
             'group_name': 'گروه آزمون دفتر'}).insert(ignore_permissions=True)
         details = [frappe.get_doc({'doctype': 'ASOUD Floating Detail', 'detail_code': f'{suffix}-{index}',
