@@ -68,7 +68,8 @@ def reset_chart(company, revision):
         return success({'rows': [], 'revision': 0, 'reset': True})
     doc = frappe.get_doc('ASOUD Organization Chart', name, for_update=True)
     doc.check_permission('write')
-    if expected != int(doc.revision or 0):
+    pre_revision = int(doc.revision or 0)
+    if expected != pre_revision:
         frappe.throw('ساختار تغییر کرده است؛ دوباره بارگذاری کنید.', frappe.TimestampMismatchError)
 
     existing_rows = json.loads(doc.structure_json or "[]")
@@ -91,7 +92,7 @@ def reset_chart(company, revision):
             target=doc.name,
             company=company,
             details={
-                "revision": int(doc.revision or 0),
+                "revision": pre_revision,
                 "positions_removed": positions_count,
                 "occupants_removed": occupants_count,
                 "assignment_history_removed": history_count,

@@ -728,6 +728,18 @@ def start_workflow_instance(
             request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
             if request.workflow_definition != definition or (requester_only and request.owner != frappe.session.user):
                 frappe.throw('درخواست اصلی با این گردش‌کار یا حساب شما سازگار نیست.', frappe.PermissionError)
+    if not configured_start and reference_doctype == "ASOUD Workflow Request" and reference_name:
+        request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
+        if requester_only and request.owner != frappe.session.user:
+            frappe.throw(_("شروع گردش کار فقط برای درخواست خودتان مجاز است."), frappe.PermissionError)
+        if request.workflow_definition != definition:
+            frappe.throw("Request workflow does not match")
+
+    workflow = frappe.get_doc("ASOUD Workflow Definition", definition, for_update=True)
+    if workflow.status != "Active" or workflow.readiness_status != "Ready":
+        frappe.throw(_("Only an active workflow can be started"))
+
+    if configured_start:
         lookup = {
             'workflow_definition': definition, 'reference_doctype': reference_doctype,
             'reference_name': reference_name}
@@ -751,19 +763,11 @@ def start_workflow_instance(
         if existing:
             return success(dict(existing))
     if not configured_start and reference_doctype == "ASOUD Workflow Request" and reference_name:
-        request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
-        if requester_only and request.owner != frappe.session.user:
-            frappe.throw(_("شروع گردش کار فقط برای درخواست خودتان مجاز است."), frappe.PermissionError)
-        if request.workflow_definition != definition:
-            frappe.throw("Request workflow does not match")
         existing = frappe.db.get_value("ASOUD Workflow Instance", {
             "reference_doctype": reference_doctype, "reference_name": reference_name},
             ["name", "status"], as_dict=True)
         if existing:
             return success(dict(existing))
-    workflow = frappe.get_doc("ASOUD Workflow Definition", definition, for_update=True)
-    if workflow.status != "Active" or workflow.readiness_status != "Ready":
-        frappe.throw(_("Only an active workflow can be started"))
     start = frappe.db.get_value(
         "ASOUD Workflow Stage",
         {"workflow_definition": definition, "stage_type": "Start"},
