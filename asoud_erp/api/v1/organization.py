@@ -2,8 +2,10 @@ import base64
 import json
 
 import frappe
+from frappe.utils import now_datetime
 
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services import security_audit
 from asoud_erp.services.organization_contract import validate_rows
 from asoud_erp.services.organization_employees import normalize_assignments
 from asoud_erp.services.organization_labels import localize_position, organization_label
@@ -50,6 +52,8 @@ def get_chart(company):
 def reset_chart(company, revision):
     """Explicit whole-chart reset; retain native Version, never erase HR masters."""
     _access(company, write=True)
+    if "System Manager" not in frappe.get_roles():
+        frappe.throw("Not permitted", frappe.PermissionError)
     from asoud_erp.services.organization_contract import reset_revision
 
     try:
@@ -66,11 +70,38 @@ def reset_chart(company, revision):
     doc.check_permission('write')
     if expected != int(doc.revision or 0):
         frappe.throw('ساختار تغییر کرده است؛ دوباره بارگذاری کنید.', frappe.TimestampMismatchError)
+
+    existing_rows = json.loads(doc.structure_json or "[]")
+    positions_count = len(existing_rows)
+    occupants_count = sum(len(set(r.get("occupants") or ([r["employee"]] if r.get("employee") else []))) for r in existing_rows)
+    history_count = sum(len(r.get("assignment_history") or []) for r in existing_rows)
+
+    frappe.db.savepoint("organization_reset")
     previous = getattr(frappe.flags, 'asoud_reset_chart', None)
     try:
         frappe.flags.asoud_reset_chart = doc.name
         doc.structure_json = '[]'
         doc.save()
+
+        audit_row = security_audit.build_row(
+            actor=frappe.session.user,
+            action="organization.chart.reset",
+            result="success",
+            target_type="ASOUD Organization Chart",
+            target=doc.name,
+            company=company,
+            details={
+                "revision": int(doc.revision or 0),
+                "positions_removed": positions_count,
+                "occupants_removed": occupants_count,
+                "assignment_history_removed": history_count,
+            },
+            occurred_on=now_datetime(),
+        )
+        frappe.get_doc(audit_row).insert(ignore_permissions=True)
+    except Exception:
+        frappe.db.rollback(save_point="organization_reset")
+        raise
     finally:
         frappe.flags.asoud_reset_chart = previous
     return success({**_snapshot(doc), 'reset': True})
