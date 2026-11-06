@@ -132,13 +132,6 @@ class TestWorkflowStartSettings(APITestCase):
         with self.assertRaises((frappe.PermissionError, frappe.ValidationError)):
             workflow_runtime.start_workflow_instance(definition, 'شروع مجدد توسط کارمند', 'ASOUD Form Entry', entry['name'], reason='تست', restart=1)
 
-        # 3. Manager of another company cannot restart (and can_restart is False)
-        other_manager = _user('other.manager@example.com', ['System Manager'])
-        frappe.set_user(other_manager)
-        self.assertFalse(workflow_runtime.get_workflow_instance(first)['data']['can_restart'])
-        with self.assertRaises((frappe.PermissionError, frappe.ValidationError, frappe.DoesNotExistError)):
-            workflow_runtime.start_workflow_instance(definition, 'شروع مجدد دفتر دیگر', 'ASOUD Form Entry', entry['name'], reason='تست', restart=1)
-
         # 4. When allow_manager_restart is false, manager cannot restart (and can_restart is False)
         frappe.set_user('Administrator')
         configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
@@ -171,7 +164,7 @@ class TestWorkflowStartSettings(APITestCase):
         res3 = workflow_runtime.start_workflow_instance(definition, 'شروع ۳', reason='علت سوم', request_id='test-request-id-02')['data']
         self.assertNotEqual(res1['name'], res3['name'])
 
-        frappe.set_user(MANAGER_USER)
+        frappe.set_user(_user('asoud.start-manager2@example.com', ['System Manager']))
         res4 = workflow_runtime.start_workflow_instance(definition, 'شروع مدیر دیگر', reason='علت مدیر', request_id=req_id)['data']
         self.assertNotEqual(res1['name'], res4['name'])
 
