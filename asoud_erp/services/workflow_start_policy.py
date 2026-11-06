@@ -1,5 +1,13 @@
 """Pure policy for explicit v1 start configuration; no parallel workflow engine."""
+import re
+
 from asoud_erp.services.workflow_submission_policy import normalize
+
+
+def validate_request_id(request_id: str | None) -> None:
+    if request_id is not None and request_id != '':
+        if not isinstance(request_id, str) or not re.match(r'^[A-Za-z0-9_-]{8,64}$', request_id):
+            raise ValueError('شناسهٔ درخواست (request_id) معتبر نیست؛ باید بین ۸ تا ۶۴ نویسه و شامل حروف، ارقام، خط تیره یا زیرخط باشد.')
 
 
 def normalize_settings(value):

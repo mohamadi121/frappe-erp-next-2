@@ -158,3 +158,22 @@ class TestWorkflowStartSettings(APITestCase):
             reason='بازبینی مدیریتی ثبت‌شده توسط غیر', restart=1)['data']['name']
         self.assertNotEqual(second, first)
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', second, 'started_by'), self.initiator)
+
+    def test_idempotent_manual_start_with_request_id(self):
+        definition, _ = make_definition(self.company, approvals=0, fields=[])
+        configure(definition, {'trigger_type': 'Manual', 'initiator_roles': ['System Manager']})
+        frappe.set_user(self.initiator)
+        req_id = 'test-request-id-01'
+        res1 = workflow_runtime.start_workflow_instance(definition, 'شروع ۱', reason='علت اول', request_id=req_id)['data']
+        res2 = workflow_runtime.start_workflow_instance(definition, 'شروع ۲', reason='علت دوم', request_id=req_id)['data']
+        self.assertEqual(res1['name'], res2['name'])
+
+        res3 = workflow_runtime.start_workflow_instance(definition, 'شروع ۳', reason='علت سوم', request_id='test-request-id-02')['data']
+        self.assertNotEqual(res1['name'], res3['name'])
+
+        frappe.set_user(MANAGER_USER)
+        res4 = workflow_runtime.start_workflow_instance(definition, 'شروع مدیر دیگر', reason='علت مدیر', request_id=req_id)['data']
+        self.assertNotEqual(res1['name'], res4['name'])
+
+        with self.assertRaises(frappe.ValidationError):
+            workflow_runtime.start_workflow_instance(definition, 'نامعتبر', reason='علت', request_id='bad id!')

@@ -22,10 +22,13 @@ definition/revision through `open_builtin`, never a business entry or execution.
 Manual start clears the form routing link. Changing mode
 requires explicit save; other workflows are untouched.
 
-Existing `workflow_runtime.start_workflow_instance` accepts optional `reason`
-and `restart` (0/1). For v1 Manual starts, allowed initiator roles and company scope
-are enforced; a nonblank reason is mandatory. Manual mode cannot
-be started by submitted Form Entry. A v1 Document Event workflow requires its
+Existing `workflow_runtime.start_workflow_instance` accepts optional `reason`,
+`restart` (0/1), and `request_id` (`str`, 8..64 chars, `[A-Za-z0-9_-]`). For v1 Manual starts, allowed initiator roles and company scope
+are enforced; a nonblank reason is mandatory. When `request_id` is provided, if an
+ASOUD Workflow Activity 'Workflow Started' already exists for the same actor + definition
++ request_id, the existing instance (`success({'name', 'status'})`) is returned
+idempotently without creating another one. Malformed request IDs are rejected with a Persian error.
+Manual mode cannot be started by submitted Form Entry. A v1 Document Event workflow requires its
 validated original Form Entry. Legacy workflows keep their existing entry paths.
 
 Record-bound repeated calls normally return their existing instance (idempotency).

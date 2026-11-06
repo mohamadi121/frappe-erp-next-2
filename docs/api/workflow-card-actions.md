@@ -12,8 +12,8 @@ then updates readiness and status atomically. The ASOUD runtime does not require
 separate native Workflow link; an existing link is preserved and checked as before.
 Deactivation only prevents new starts; running instances and historical rows remain.
 
-Deletion uses existing POST `frappe.client.delete(doctype="ASOUD Workflow Definition",
-name=...)`, not a parallel API. Native delete permission, company scope and manager
+Deletion uses whitelisted POST `workflow.delete_workflow(name)` (or existing POST `frappe.client.delete(doctype="ASOUD Workflow Definition",
+name=...)`). Native delete permission, company scope and manager
 role are required. The definition controller rejects system definitions, any execution
 or request history, version history, referenced form revisions, and ordinary native
 link dependencies. Only its own technical transitions/stages may be removed, within

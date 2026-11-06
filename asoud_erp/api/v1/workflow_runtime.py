@@ -19,6 +19,7 @@ from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
 from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
 from asoud_erp.services.workflow_response import normalize_form_response
+from asoud_erp.services.workflow_start_policy import validate_request_id
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".xlsx", ".docx"}
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
@@ -645,6 +646,13 @@ def _run_system_action(instance, stage, config: dict, source_task=None) -> None:
         )
 
 
+def _validate_request_id(request_id: str | None) -> None:
+    try:
+        validate_request_id(request_id)
+    except ValueError as error:
+        frappe.throw(str(error))
+
+
 @frappe.whitelist(methods=["POST"])
 def start_workflow_instance(
     definition: str,
@@ -653,7 +661,9 @@ def start_workflow_instance(
     reference_name: str | None = None,
     reason: str = '',
     restart: int | str = 0,
+    request_id: str | None = None,
 ) -> dict:
+    _validate_request_id(request_id)
     if (not isinstance(definition, str) or not definition or len(definition) > 140
             or not isinstance(subject, str) or len(subject.strip()) < 3 or len(subject) > 140):
         frappe.throw('گردش‌کار و عنوان اجرا معتبر نیست؛ عنوان باید بین ۳ تا ۱۴۰ نویسه باشد.')
@@ -728,6 +738,26 @@ def start_workflow_instance(
     if workflow.status != "Active" or workflow.readiness_status != "Ready":
         frappe.throw(_("Only an active workflow can be started"))
 
+    if request_id:
+        activity_rows = frappe.db.sql("""
+            SELECT a.workflow_instance, i.status, a.change_json
+            FROM `tabASOUD Workflow Activity` a
+            JOIN `tabASOUD Workflow Instance` i ON i.name = a.workflow_instance
+            WHERE a.action = 'Workflow Started'
+              AND a.actor = %(actor)s
+              AND i.workflow_definition = %(definition)s
+        """, {
+            "actor": frappe.session.user,
+            "definition": definition,
+        }, as_dict=True)
+        for row in activity_rows:
+            try:
+                cjson = json.loads(row.change_json or "{}")
+                if cjson.get("request_id") == request_id:
+                    return success({"name": row.workflow_instance, "status": row.status})
+            except Exception:
+                pass
+
     if configured_start:
         if reference_doctype == 'ASOUD Workflow Request' and reference_name:
             request = frappe.get_doc(reference_doctype, reference_name, for_update=True)
@@ -789,11 +819,16 @@ def start_workflow_instance(
         }
     ).insert(ignore_permissions=True)
     if configured_start:
+        change_data = {
+            'start_mode': start_config.get('trigger_type', 'Manual'),
+            'previous_instance': existing.name if restarting and existing else None,
+        }
+        if request_id:
+            change_data['request_id'] = request_id
         frappe.get_doc({'doctype': 'ASOUD Workflow Activity', 'workflow_instance': instance.name,
             'workflow_stage': start, 'actor': frappe.session.user, 'action': 'Workflow Started',
             'comment': reason.strip(), 'created_on': instance.started_on,
-            'change_json': json.dumps({'start_mode': start_config['trigger_type'],
-                'previous_instance': existing.name if restarting and existing else None}, ensure_ascii=False),
+            'change_json': json.dumps(change_data, ensure_ascii=False),
             'reference_doctype': reference_doctype, 'reference_name': reference_name}).insert(ignore_permissions=True)
     stage = _next_stage(instance, start)
     if not stage:
