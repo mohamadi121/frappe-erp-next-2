@@ -21,15 +21,12 @@ class ASOUDWorkflowStage(Document):
         previous = self.get_doc_before_save()
         if previous:
             old = json.loads(previous.config_json or '{}')
-            config_changed = (old != config or previous.stage_type != self.stage_type)
-            if config_changed:
-                task_count = frappe.db.count('ASOUD Workflow Task', {'workflow_stage': self.name})
-                if task_count > 0:
+            is_v1 = (config.get('action_contract_version') == 1 or old.get('action_contract_version') == 1)
+            if is_v1 and frappe.db.exists('ASOUD Workflow Task', {'workflow_stage': self.name}):
+                config_or_type_changed = (old != config or previous.stage_type != self.stage_type)
+                if config_or_type_changed:
+                    task_count = frappe.db.count('ASOUD Workflow Task', {'workflow_stage': self.name})
                     frappe.throw(f'این مرحله توسط {task_count} کار در گردش‌کار استفاده می‌شود؛ تغییر تنظیمات یا ساختار نیازمند بازطراحی روی یک کپی مستقل است.')
-            elif (config.get('action_contract_version') == 1 or old.get('action_contract_version') == 1) and (
-                    old != config or previous.stage_title != self.stage_title or previous.stage_type != self.stage_type) and frappe.db.exists(
-                    'ASOUD Workflow Task', {'workflow_stage': self.name}):
-                frappe.throw('برای حفظ اطلاعات و سوابق اقدام‌های قبلی، بازطراحی را روی یک کپی مستقل انجام دهید.')
         if self.stage_type == 'User Task' and config.get('action_contract_version') is not None and (
                 not previous or old != config or previous.configuration_status != self.configuration_status):
             from asoud_erp.services.workflow_user_action import validate_design

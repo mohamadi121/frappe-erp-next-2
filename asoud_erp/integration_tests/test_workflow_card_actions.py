@@ -142,12 +142,21 @@ class TestWorkflowCardActions(APITestCase):
         frappe.get_doc({'doctype': 'ASOUD Workflow Task', 'workflow_instance': instance.name,
             'workflow_stage': stage_name, 'task_title': 'تکلیف', 'assigned_to': 'Administrator', 'status': 'Open'}).insert()
 
+        # 1. Non-v1 (legacy) stage config change still allowed
         stage_doc = frappe.get_doc('ASOUD Workflow Stage', stage_name)
-        stage_doc.stage_title = 'عنوان جدید'
-        stage_doc.save()
-        self.assertEqual(stage_doc.stage_title, 'عنوان جدید')
+        stage_doc.config_json = json.dumps({'legacy_param': 1})
+        stage_doc.save() # Should not raise
 
-        stage_doc.config_json = json.dumps({'changed': True})
+        # 2. v1 stage title-only change OK
+        stage_doc.config_json = json.dumps({'action_contract_version': 1})
+        stage_doc.save()
+        stage_doc.stage_title = 'عنوان جدید v1'
+        stage_doc.save()
+        self.assertEqual(stage_doc.stage_title, 'عنوان جدید v1')
+
+        # 3. v1 stage config change blocked with count in message
+        stage_doc.config_json = json.dumps({'action_contract_version': 1, 'changed': True})
         with self.assertRaises(frappe.ValidationError) as ctx:
             stage_doc.save()
+        self.assertIn('1', str(ctx.exception))
         self.assertIn('کار', str(ctx.exception))
