@@ -660,7 +660,7 @@ def start_workflow_instance(
     if any(value is not None and (not isinstance(value, str) or not value or len(value) > 140)
            for value in (reference_doctype, reference_name)):
         frappe.throw('نوع یا شناسهٔ رکورد شروع معتبر نیست.')
-    workflow = frappe.get_doc("ASOUD Workflow Definition", definition, for_update=True)
+    workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
     if workflow.get('source_form') and reference_doctype != 'ASOUD Form Entry':
         frappe.throw('این گردش‌کار فقط با ارسال فرم اصلی متصل به آن شروع می‌شود.')
     from asoud_erp.services.request_access import require_company
