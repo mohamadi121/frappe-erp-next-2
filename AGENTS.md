@@ -113,3 +113,43 @@ The Flutter app (`flutter-asoud-erp`) consumes this API. Its own `AGENTS.md` has
 - Re-read your diff from top to bottom.
 - Confirm every item in section 4.
 - Write down what you did **not** test. A report that says "all tests pass" without the command output will be rejected.
+
+## 11. Lessons from the November 2026 review (each item was found in merged code)
+
+Read this before every change that touches workflows, resets, locks, schedulers or candidate lists.
+
+### Destructive and bulk endpoints
+- Anything that deletes or resets a whole structure (`reset_chart`, setup reset, wipe, bulk delete) is limited to `System Manager` unless the spec names another role. An HR or office-level write role is not enough.
+- Every such endpoint writes an `ASOUD Security Audit` row (actor, company, counts of removed records) in the **same savepoint** as the change, so a failed audit rolls the change back.
+- A "reset" flag must never silently skip a domain guard (`reconcile`, `deletion_review`, dependency checks). If the reset really must bypass a guard, list in the docs what is removed and what stays dangling, and show the counts to the caller before confirming.
+- Before using "a `Version` row exists" or any history table as a delete rule, check `track_changes` in the DocType JSON. With `track_changes = 1` every edited record has Versions, so the rule blocks almost everything.
+
+### Locks and concurrency
+- Order: authorize first (company, role, permission), then take `for_update` locks. Do not let an unauthorized caller lock rows.
+- Lock parent before child in one fixed order everywhere (definition, then request, then instance). Another order invites deadlocks.
+- Idempotency and duplicate lookups ("does an instance already exist?") must run **after** the lock that serializes them. A lookup before the lock is a race.
+
+### Limits, filters and candidate lists
+- Never apply `limit_page_length` / `limit` before the filters that decide who qualifies. Filter in the query (join), then cap. A cap on raw `Has Role` rows breaks as soon as a role is common.
+- A SQL prefilter must be a **superset** of the authoritative check (`company_access`). Say in a comment that the prefilter only narrows and the authority decides, and test a user that only the authority accepts.
+- When you take "the first" candidate, sort first (`order_by` or `sorted`). `frappe.get_all` default order is `modified desc` and changes by itself.
+
+### Schedulers and background jobs
+- One bad row must not stop the job. Wrap each item in a savepoint, `try/except Exception`, `frappe.log_error(title=...)` with the item name, roll back to the savepoint and continue.
+- A job that raises in the middle of an hourly run silently starves every later item. Test it with one failing item among good ones.
+
+### Replacing an old path with a new contract
+- List every side effect of the old path (notifications, activities, reassignment) and carry each one over, or write in the docs and CHANGELOG that it was dropped on purpose. A new path that quietly stops notifying escalation roles is a regression.
+- Run an expensive validation once (the validator that owns the rule), not in the endpoint and again in the DocType.
+- Do not force a state (`readiness_status = 'Ready'`) that another source owns. Derive it from the requirement check.
+- Remove an allowance (extension, role) from both the validator and the upload endpoint together. They must agree.
+
+### Quality of your own report
+- Do not write "tests added" for tests you could not run. Name the command, its output, and what could not run on your machine.
+- A test must fail on the old code. If you cannot show that, the test is not evidence.
+- Keep a change minimal. Do not move unrelated blocks while fixing one thing; reviewers cannot see what changed.
+
+
+## Project skills
+
+Shared agent skills live in `.claude/skills/` (`asoud-erp-expert`, `soroush-style`, `software-development`, `graphify`). Load `asoud-erp-expert` before changing code here: read its `references/engineering-principles.md` and `references/gotchas.md` first. The rules in this file win if a skill disagrees.
