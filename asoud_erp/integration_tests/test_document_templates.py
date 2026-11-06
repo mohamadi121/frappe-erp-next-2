@@ -449,17 +449,16 @@ class TestDocumentTemplates(APITestCase):
         with self.assertRaises(frappe.PermissionError):
             get("ASOUD Workflow Request", request["name"])
 
-        # HR Manager without native Company read permission: company_access is False, so neither lists nor reads
+        # HR Manager with an explicit Company User Permission is in scope (account-only first HR lead design)
         hr_manager = self._user_with_roles("hr_mgr_pin", ["HR Manager"])
         frappe.get_doc({"doctype": "User Permission", "user": hr_manager, "allow": "Company",
                         "for_value": self.company, "apply_to_all_doctypes": 1}).insert()
 
         frappe.set_user(hr_manager)
         listed_hr = [row.name for row in get_list("ASOUD Workflow Request", filters={"name": request["name"]}, fields=["name"])]
-        self.assertEqual(listed_hr, [])
-        self.assertFalse(frappe.has_permission("ASOUD Workflow Request", "read", request["name"]))
-        with self.assertRaises(frappe.PermissionError):
-            get("ASOUD Workflow Request", request["name"])
+        self.assertEqual(listed_hr, [request["name"]])
+        self.assertTrue(frappe.has_permission("ASOUD Workflow Request", "read", request["name"]))
+        self.assertEqual(get("ASOUD Workflow Request", request["name"])["name"], request["name"])
 
     def _user_with_roles(self, prefix: str, roles: list[str]) -> str:
         frappe.set_user("Administrator")
