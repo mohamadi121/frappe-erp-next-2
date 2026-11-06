@@ -31,7 +31,8 @@ validated original Form Entry. Legacy workflows keep their existing entry paths.
 Record-bound repeated calls normally return their existing instance (idempotency).
 Explicit restart never duplicates a Running instance. Closed-record restart is
 allowed only when configured and explicitly requested by a System Manager or
-Accounts Manager with native workflow write and company permission, with a reason.
+Accounts Manager with native workflow write and company permission, with a reason (supports
+entries submitted by other users in the company, whereas plain starts require entry ownership).
 It appends a new instance/activity; it never rewrites previous instances/history.
 Start actor/time/reference and reason are recorded in existing Instance/Activity
 records in the same transaction. General-subject manual starts have no record to
