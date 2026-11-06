@@ -911,19 +911,25 @@ def set_workflow_status(name: str, status: str) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-def delete_workflow(name: str) -> dict:
+def delete_workflow(name=None) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
     if not isinstance(name, str) or not name.strip() or len(name) > 140:
         frappe.throw('شناسهٔ گردش‌کار معتبر نیست.')
     if not frappe.db.exists("ASOUD Workflow Definition", name):
         frappe.throw('گردش‌کار موردنظر یافت نشد.')
-    doc = frappe.get_doc("ASOUD Workflow Definition", name, for_update=True)
+    doc = frappe.get_doc("ASOUD Workflow Definition", name)
     if doc.company:
         require_company(doc.company)
     doc.check_permission('delete')
+    # Native on_trash owns authorization, serialization, history and cleanup.
+    frappe.db.savepoint('delete_workflow_api')
     try:
         frappe.delete_doc("ASOUD Workflow Definition", name)
     except frappe.LinkExistsError:
+        frappe.db.rollback(save_point='delete_workflow_api')
         frappe.clear_messages()
         frappe.throw('این گردش‌کار یا مراحل آن وابستگی دارد؛ برای حفظ اطلاعات، حذف انجام نشد.')
+    except Exception:
+        frappe.db.rollback(save_point='delete_workflow_api')
+        raise
     return success({"name": name, "deleted": True})

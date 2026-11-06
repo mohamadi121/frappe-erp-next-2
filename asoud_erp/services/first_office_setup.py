@@ -8,6 +8,66 @@ from asoud_erp.services.credential_policy import clean_name, normalize_email, no
 
 INTERNAL_SUFFIX = "@users.asoud.invalid"
 
+ZXCVBN_WARNINGS_FA = {
+    "This is similar to a commonly used password.": "این رمز شبیه یکی از رمزهای پرکاربرد است.",
+    "This is a top-10 common password.": "این رمز جزو ۱۰ رمز عبور بسیار رایج و ناامن است.",
+    "This is a top-100 common password.": "این رمز جزو ۱۰۰ رمز عبور بسیار رایج است.",
+    "This is a very common password.": "این رمز جزو رمزهای عبور بسیار رایج است.",
+    "Straight rows of keys are easy to guess.": "الگوهای ردیفی روی صفحه‌کلید به‌راحتی قابل حدس هستند.",
+    "Short keyboard patterns are easy to guess.": "الگوهای کوتاه صفحه‌کلید به‌راحتی قابل حدس هستند.",
+    'Repeats like "aaa" are easy to guess.': 'تکرار نویسه‌ها (مانند "aaa") به‌راحتی قابل حدس است.',
+    'Repeats like "abcabcabc" are only slightly harder to guess than "abc".': 'تکرار الگوها به‌راحتی قابل حدس است.',
+    'Sequences like "abc" or "6543" are easy to guess.': 'توالی حروف یا اعداد به‌راحتی قابل حدس است.',
+    "Recent years are easy to guess.": "استفاده از سال‌های اخیر به‌راحتی قابل حدس است.",
+    "Dates are often easy to guess.": "تاریخ‌ها به‌راحتی قابل حدس هستند.",
+    "A word by itself is easy to guess.": "استفاده از یک کلمه به‌تنهایی به‌راحتی قابل حدس است.",
+    "Names and surnames by themselves are easy to guess.": "نام و نام‌خانوادگی به‌تنهایی به‌راحتی قابل حدس است.",
+    "Common names and surnames are easy to guess.": "نام‌ها و نام‌های خانوادگی رایج به‌راحتی قابل حدس هستند.",
+}
+
+ZXCVBN_SUGGESTIONS_FA = {
+    "Add another word or two. Uncommon words are better.": "یک یا دو کلمه دیگر اضافه کنید؛ استفاده از کلمات غیرمعمول بهتر است.",
+    "Use a few words, avoid common phrases.": "از ترکیب چند کلمه استفاده کنید و از عبارات رایج بپرهیزید.",
+    "No need for symbols, digits, or uppercase letters.": "نیازی به نمادها، ارقام یا حروف بزرگ نیست.",
+    "Use a longer keyboard pattern with more turns.": "از الگوهای پیچیده‌تر صفحه‌کلید با تغییر جهت استفاده کنید.",
+    "Avoid repeated words and characters.": "از تکرار کلمات و نویسه‌ها بپرهیزید.",
+    "Avoid sequences.": "از دنباله‌ها و توالی حروف یا اعداد بپرهیزید.",
+    "Avoid recent years.": "از سال‌های اخیر بپرهیزید.",
+    "Avoid years that are associated with you.": "از سال‌های مرتبط با خودتان بپرهیزید.",
+    "Avoid dates and years that are associated with you.": "از تاریخ‌ها و سال‌های مرتبط با خود بپرهیزید.",
+    "Capitalization doesn't help very much.": "بزرگ کردن حروف اول کمک چندانی به امنیت رمز نمی‌کند.",
+    "All-uppercase is almost as easy to guess as all-lowercase.": "استفاده کامل از حروف بزرگ به‌اندازه حروف کوچک قابل حدس است.",
+    "Reversed words aren't much harder to guess.": "معکوس کردن کلمات حدس زدن آنها را سخت‌تر نمی‌کند.",
+    "Predictable substitutions like '@' instead of 'a' don't help very much.": "جایگزینی‌های قابل پیش‌بینی (مانند '@' به‌جای 'a') کمک چندانی نمی‌کنند.",
+}
+
+
+def format_password_policy_error(feedback: dict | None) -> str:
+    """Format zxcvbn warning and suggestions into a Persian error message."""
+    fb = feedback or {}
+    warning_en = (fb.get("warning") or "").strip()
+    suggestions_en = fb.get("suggestions") or []
+
+    warning_fa = ZXCVBN_WARNINGS_FA.get(warning_en)
+    if not warning_fa and warning_en:
+        warning_fa = "این رمز به‌راحتی قابل حدس است."
+
+    suggestions_fa = [
+        ZXCVBN_SUGGESTIONS_FA[s]
+        for s in suggestions_en
+        if s and s in ZXCVBN_SUGGESTIONS_FA
+    ]
+
+    details = []
+    if warning_fa:
+        details.append(warning_fa)
+    if suggestions_fa:
+        details.append("پیشنهاد: " + " ".join(suggestions_fa))
+
+    if details:
+        return f"رمز موقت ضعیف است؛ {' '.join(details)}"
+    return "رمز موقت ضعیف است؛ رمز قوی‌تری با حروف و نویسه‌های متنوع انتخاب کنید."
+
 
 def internal_email(value):
     return parseaddr(str(value or ""))[1].lower().endswith(INTERNAL_SUFFIX)
@@ -130,8 +190,9 @@ def create_hr_lead(company, full_name, username, contact, temporary_password):
     if mobile and frappe.db.exists("User", {"mobile_no": mobile}):
         frappe.throw("شماره موبایل قبلاً برای حساب دیگری ثبت شده است.")
     strength = test_password_strength(temporary_password, user_data=(name, username, mail or "", mobile or ""))
-    if strength.get("feedback", {}).get("password_policy_validation_passed") is False:
-        frappe.throw("رمز موقت ضعیف است؛ رمز قوی‌تری با حروف و نویسه‌های متنوع انتخاب کنید.")
+    feedback = strength.get("feedback") or {}
+    if feedback.get("password_policy_validation_passed") is False:
+        frappe.throw(format_password_policy_error(feedback))
     user = frappe.get_doc({"doctype": "User", "email": mail or f"{uuid4().hex}{INTERNAL_SUFFIX}",
         "first_name": name, "username": username, "mobile_no": mobile,
         "enabled": 1, "user_type": "System User", "send_welcome_email": 0,

@@ -54,7 +54,8 @@ guest-accessible. Uses the authenticated enabled System Manager, native password
 verification and no offline/idempotency queue (passwords must never be staged).
 
 POST `asoud_erp.api.v1.setup_reset.preview()` returns `{token, companies: [title],
-counts: {doctype: count}, blockers: [Persian reason], preserved: [Persian text]}`.
+counts: {doctype: count}, blockers: [Persian reason], blocking_roles: [{user, role, native_role}],
+blocking_users: [user], access_blockers: [{user, role, native_role}], preserved: [Persian text]}`.
 Token is actor-bound, expires in 5 minutes and commits to names/modified tokens.
 With an unfinished previous operation, preview returns `{job}` instead of a plan.
 Scope is companies the actor created/administers, their setup/personnel/organization
@@ -104,3 +105,5 @@ Deployment: no schema migration. Explicitly enable on the intended backed-up sit
 use the temporary login entry, then disable/remove the flag. This environment does
 not execute a live reset. See [the reset review report](../setup-reset-review.md)
 for actual verification results.
+
+Preview policy v3 invalidates earlier tokens on deployment; obtain a fresh preview. Party-derived floating details are deleted before party profiles through normal native link checks. Ledger references block the reset; no ledger row or surviving detail link is cleared. Default `_collect(actor)` callers retain the three-value result; only preview requests the fourth access-blocker result.

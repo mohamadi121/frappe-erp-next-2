@@ -10,9 +10,8 @@
 
 import { writeFileSync } from 'node:fs';
 import { expect, test } from '../support/fixtures';
-import type { ApiSession } from '../support/api';
 import { METHOD, errorText } from '../support/api';
-import { requestId, subject, type UserKey } from '../support/config';
+import { requestId, subject } from '../support/config';
 import { loadState } from '../support/state';
 
 const state = loadState();
@@ -150,7 +149,7 @@ test.describe('document templates and ERPNext generation', () => {
           document_type: 'Journal Entry',
           mapping: templateMapping,
         }),
-        source_workflow: docDefinition,
+        source_workflow: docDefinition!,
       },
     );
 
