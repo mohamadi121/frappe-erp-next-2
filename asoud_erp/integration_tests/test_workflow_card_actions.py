@@ -120,3 +120,34 @@ class TestWorkflowCardActions(APITestCase):
         self.assertTrue(frappe.db.exists('Version', {'ref_doctype': versioned.doctype, 'docname': versioned.name}))
         with self.assertRaises(frappe.ValidationError):
             delete(versioned.doctype, versioned.name)
+
+    def test_delete_workflow_endpoint(self):
+        name = self.draft()
+        res = workflow.delete_workflow(name)
+        self.assertTrue(res['data']['deleted'])
+        self.assertFalse(frappe.db.exists('ASOUD Workflow Definition', name))
+
+        name2 = self.draft()
+        frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': name2,
+            'subject': 'سابقهٔ اجرا', 'status': 'Running'}).insert()
+        with self.assertRaises(frappe.ValidationError):
+            workflow.delete_workflow(name2)
+
+    def test_stage_update_lock_title_vs_config(self):
+        name = self.draft()
+        self.complete(name)
+        stage_name = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': name, 'stage_type': 'User Task'}, 'name')
+        instance = frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': name,
+            'subject': 'اجرا', 'status': 'Running'}).insert()
+        frappe.get_doc({'doctype': 'ASOUD Workflow Task', 'workflow_instance': instance.name,
+            'workflow_stage': stage_name, 'task_title': 'تکلیف', 'assigned_to': 'Administrator', 'status': 'Open'}).insert()
+
+        stage_doc = frappe.get_doc('ASOUD Workflow Stage', stage_name)
+        stage_doc.stage_title = 'عنوان جدید'
+        stage_doc.save()
+        self.assertEqual(stage_doc.stage_title, 'عنوان جدید')
+
+        stage_doc.config_json = json.dumps({'changed': True})
+        with self.assertRaises(frappe.ValidationError) as ctx:
+            stage_doc.save()
+        self.assertIn('کار', str(ctx.exception))
