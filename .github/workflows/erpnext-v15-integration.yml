@@ -3,15 +3,36 @@ name: ERPNext v15 Integration
 on:
   pull_request:
     branches: [main]
+    # Docs-only or app-only changes do not need a 20 minute bench run.
+    paths:
+      - 'asoud_erp/**'
+      - 'pyproject.toml'
+      - '.github/integration-modules.txt'
+      - '.github/workflows/erpnext-v15-integration.yml'
   workflow_dispatch:
+    inputs:
+      fail_fast:
+        description: 'Stop a shard at its first failed module (default: run all and list every failure)'
+        type: boolean
+        default: false
+
+# A newer push supersedes the run in progress for the same PR/branch.
+concurrency:
+  group: erpnext-integration-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  setup-flow:
+  integration-shard:
+    name: integration-shard (${{ matrix.shard }}/4)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     services:
       mariadb:
         image: mariadb:10.6
@@ -40,10 +61,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - uses: actions/setup-node@v4
         with:
           node-version: "18"
+
+      - name: Cache Frappe download caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/yarn
+            ~/.npm
+          key: frappe-v15-downloads-${{ runner.os }}-${{ hashFiles('.github/workflows/erpnext-v15-integration.yml') }}
+          restore-keys: |
+            frappe-v15-downloads-${{ runner.os }}-
 
       - name: Install Bench prerequisites
         run: |
@@ -82,33 +115,69 @@ jobs:
         run: bench --site test.localhost execute erpnext.setup.utils.before_tests
 
       - name: Run ASOUD setup integration tests
+        if: matrix.shard == 0
         working-directory: frappe-bench
         run: >-
           bench --site test.localhost run-tests --app asoud_erp
           --module asoud_erp.asoud_erp.doctype.asoud_company_setup.test_asoud_company_setup
 
       - name: Run native HR integration tests
+        if: matrix.shard == 0
         working-directory: frappe-bench
         run: >-
           bench --site test.localhost run-tests --app asoud_erp --skip-test-records
           --module asoud_erp.asoud_erp.doctype.asoud_personnel_record.test_asoud_personnel_record
 
       - name: Run workflow request and access integration tests
+        if: matrix.shard == 0
         working-directory: frappe-bench
         run: >-
           bench --site test.localhost run-tests --app asoud_erp --skip-test-records
           --module asoud_erp.asoud_erp.doctype.asoud_workflow_request.test_asoud_workflow_request
 
-      - name: Run API module integration tests
+      - name: Run API module integration tests (shard ${{ matrix.shard }})
         working-directory: frappe-bench
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARDS: 4
+          FAIL_FAST: ${{ github.event.inputs.fail_fast }}
         run: |
-          for module in test_workflow_condition_v2 test_workflow_user_actions test_workflow_start_settings test_selling_payments test_sales_orders test_stock_buying test_hr_self_service \
-                        test_payroll test_projects test_financial_reports test_pos test_dashboard_support_sync \
-                          test_personnel_file test_document_templates test_workflow_templates test_workflow_card_actions test_workflow_submission_source test_setup_reset test_report_company_scope \
-                        test_party_company_scope test_party_employee_sod test_purchase_request_company_scope test_company_scope_enforced \
-                        test_projects_timesheet test_role_gate_enforcement test_hr_manager_access test_demo_seed test_account_ops \
-                        test_persian_digits test_forms test_form_execution test_calendar test_directives test_organization test_request_stages test_request_viewer test_request_resubmit test_request_execution test_form_execution_employee_advance test_attendance_correction_execution test_form_execution_asset_movement test_form_execution_shift_request test_form_execution_exit test_form_execution_training test_confidential_fields test_request_void test_form_execution_certificate test_form_execution_receipt test_form_execution_leave_mission_overtime \
-                        test_hr_document_privacy test_hr_documents_lifecycle test_hr_role_grants test_employment_contracts test_employment_certificates test_hiring_orders test_personnel_introduction_letters test_salary_change_orders test_login_onboarding test_first_office_setup test_request_templates_seed; do
-            bench --site test.localhost run-tests --app asoud_erp --skip-test-records \
-              --module asoud_erp.integration_tests.$module
-          done
+          failed_modules=()
+          index=0
+          while read -r module; do
+            [ -z "$module" ] && continue
+            if [ $((index % SHARDS)) -ne "$SHARD" ]; then
+              index=$((index + 1))
+              continue
+            fi
+            index=$((index + 1))
+            echo "::group::$module"
+            if bench --site test.localhost run-tests --app asoud_erp --skip-test-records \
+                --module asoud_erp.integration_tests.$module; then
+              echo "PASS: $module"
+            else
+              failed_modules+=("$module")
+              echo "::error::Integration module failed: $module"
+              if [ "$FAIL_FAST" = "true" ]; then
+                echo "::endgroup::"
+                break
+              fi
+            fi
+            echo "::endgroup::"
+          done < "$GITHUB_WORKSPACE/.github/integration-modules.txt"
+          if ((${#failed_modules[@]})); then
+            printf 'Failed integration module: %s\n' "${failed_modules[@]}"
+            exit 1
+          fi
+
+  # Keeps the original check name for branch protection while the work runs in shards.
+  setup-flow:
+    needs: integration-shard
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: All shards passed
+        run: |
+          result='${{ needs.integration-shard.result }}'
+          echo "shards: $result"
+          [ "$result" = "success" ]

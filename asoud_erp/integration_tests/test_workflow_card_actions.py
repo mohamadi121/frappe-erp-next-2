@@ -106,7 +106,7 @@ class TestWorkflowCardActions(APITestCase):
         with self.assertRaises(frappe.PermissionError):
             delete('ASOUD Workflow Definition', name)
 
-    def test_json_dependency_and_versions_are_preserved(self):
+    def test_json_dependency_blocks_but_edit_history_alone_does_not(self):
         name, other = self.draft(), self.draft()
         stage = frappe.get_doc('ASOUD Workflow Stage', {'workflow_definition': other})
         stage.config_json = json.dumps({'request_definition': name})
@@ -116,7 +116,161 @@ class TestWorkflowCardActions(APITestCase):
         self.assertTrue(frappe.db.exists('ASOUD Workflow Definition', name))
         versioned = frappe.get_doc('ASOUD Workflow Definition', self.draft())
         versioned.workflow_title = 'ویرایش دارای سابقه'
-        versioned.save()
+        # Frappe suppresses Versions in tests unless explicitly requested.
+        versioned.save(ignore_version=False)
         self.assertTrue(frappe.db.exists('Version', {'ref_doctype': versioned.doctype, 'docname': versioned.name}))
+        # Issue #47: native deletion also permits edit history on unused graphs.
+        delete(versioned.doctype, versioned.name)
+        self.assertFalse(frappe.db.exists(versioned.doctype, versioned.name))
+        self.assertFalse(frappe.db.exists('Version', {'ref_doctype': versioned.doctype, 'docname': versioned.name}))
+
+    def test_delete_workflow_missing_or_invalid_name_is_persian(self):
+        with self.assertRaisesRegex(frappe.ValidationError, 'شناسهٔ گردش‌کار معتبر نیست'):
+            workflow.delete_workflow()
+        for name in ('', ' ', [], {}, 'x' * 141):
+            with self.subTest(name=name), self.assertRaisesRegex(
+                    frappe.ValidationError, 'شناسهٔ گردش‌کار معتبر نیست'):
+                workflow.delete_workflow(name)
+        with self.assertRaisesRegex(frappe.ValidationError, 'گردش‌کار موردنظر یافت نشد'):
+            workflow.delete_workflow('MISSING-' + frappe.generate_hash(length=20))
+
+    def test_delete_workflow_endpoint(self):
+        name = self.draft()
+        res = workflow.delete_workflow(name)
+        self.assertTrue(res['data']['deleted'])
+        self.assertFalse(frappe.db.exists('ASOUD Workflow Definition', name))
+
+        name2 = self.draft()
+        frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': name2,
+            'subject': 'سابقهٔ اجرا', 'status': 'Running'}).insert()
         with self.assertRaises(frappe.ValidationError):
-            delete(versioned.doctype, versioned.name)
+            workflow.delete_workflow(name2)
+
+    def test_edited_unused_workflow_deletion_clears_versions(self):
+        name = self.draft()
+        self.complete(name)
+        doc = frappe.get_doc('ASOUD Workflow Definition', name)
+        doc.workflow_title = 'عنوان ویرایش‌شده بدون اجرا'
+        doc.save(ignore_version=False)
+
+        stages = frappe.get_all('ASOUD Workflow Stage', filters={'workflow_definition': name}, pluck='name')
+        for s in stages:
+            stage_doc = frappe.get_doc('ASOUD Workflow Stage', s)
+            stage_doc.stage_title = 'مرحلهٔ ویرایش‌شده'
+            stage_doc.save(ignore_version=False)
+
+        transitions = frappe.get_all('ASOUD Workflow Transition', filters={'workflow_definition': name}, pluck='name')
+        for t in transitions:
+            tr_doc = frappe.get_doc('ASOUD Workflow Transition', t)
+            tr_doc.transition_label = 'مسیر ویرایش‌شده'
+            tr_doc.save(ignore_version=False)
+
+        self.assertTrue(frappe.db.exists('Version', {'ref_doctype': 'ASOUD Workflow Definition', 'docname': name}))
+        for s in stages:
+            self.assertTrue(frappe.db.exists('Version', {'ref_doctype': 'ASOUD Workflow Stage', 'docname': s}))
+        for t in transitions:
+            self.assertTrue(frappe.db.exists('Version', {'ref_doctype': 'ASOUD Workflow Transition', 'docname': t}))
+
+        res = workflow.delete_workflow(name)
+        self.assertTrue(res['data']['deleted'])
+        self.assertFalse(frappe.db.exists('ASOUD Workflow Definition', name))
+        self.assertFalse(frappe.db.exists('ASOUD Workflow Stage', {'workflow_definition': name}))
+        self.assertFalse(frappe.db.exists('ASOUD Workflow Transition', {'workflow_definition': name}))
+        self.assertFalse(frappe.db.exists('Version', {'ref_doctype': 'ASOUD Workflow Definition', 'docname': name}))
+        for s in stages:
+            self.assertFalse(frappe.db.exists('Version', {'ref_doctype': 'ASOUD Workflow Stage', 'docname': s}))
+        for t in transitions:
+            self.assertFalse(frappe.db.exists('Version', {'ref_doctype': 'ASOUD Workflow Transition', 'docname': t}))
+
+    def test_workflow_with_instance_refuses_deletion_and_preserves_all(self):
+        name = self.draft()
+        instance = frappe.get_doc({
+            'doctype': 'ASOUD Workflow Instance',
+            'workflow_definition': name,
+            'subject': 'تست سابقهٔ اجرا',
+            'status': 'Running'
+        }).insert()
+
+        with self.assertRaises(frappe.ValidationError):
+            workflow.delete_workflow(name)
+
+        self.assertTrue(frappe.db.exists('ASOUD Workflow Definition', name))
+        self.assertTrue(frappe.db.exists('ASOUD Workflow Instance', instance.name))
+        self.assertTrue(frappe.db.exists('ASOUD Workflow Stage', {'workflow_definition': name}))
+
+    def test_native_stage_link_failure_restores_graph_and_versions(self):
+        name, other = self.draft(), self.draft()
+        self.complete(name)
+        doc = frappe.get_doc('ASOUD Workflow Definition', name)
+        doc.workflow_title = 'گردش دارای وابستگی خارجی'
+        doc.save(ignore_version=False)
+        graph = workflow.get_workflow_design(name)['data']
+        versions = frappe.get_all('Version', filters={
+            'ref_doctype': doc.doctype, 'docname': name}, pluck='name')
+        self.assertTrue(versions)
+        stage = graph['stages'][0]['name']
+        # Legacy external reference accepted by the native schema. The native
+        # link guard must fail after Version/transition cleanup has started.
+        instance = frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': other,
+            'subject': 'وابستگی مرحله', 'status': 'Running', 'current_stage': stage}).insert()
+        with self.assertRaises(frappe.ValidationError):
+            workflow.delete_workflow(name)
+        self.assertEqual(workflow.get_workflow_design(name)['data'], graph)
+        self.assertTrue(all(frappe.db.exists('Version', version) for version in versions))
+        self.assertEqual(frappe.db.get_value(instance.doctype, instance.name, 'current_stage'), stage)
+
+    def test_stage_update_lock_title_vs_config(self):
+        name = self.draft()
+        self.complete(name)
+        stage_name = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': name, 'stage_type': 'User Task'}, 'name')
+        # Legacy edits remain supported, but adoption of v1 must precede tasks.
+        stage_doc = frappe.get_doc('ASOUD Workflow Stage', stage_name)
+        stage_doc.config_json = json.dumps({'legacy_param': 1})
+        stage_doc.save()
+        instance = frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': name,
+            'subject': 'اجرا', 'status': 'Running'}).insert()
+        task = frappe.get_doc({'doctype': 'ASOUD Workflow Task', 'workflow_instance': instance.name,
+            'workflow_stage': stage_name, 'task_title': 'تکلیف', 'assigned_to': 'Administrator', 'status': 'Open'}).insert()
+        stage_doc.config_json = json.dumps({'legacy_param': 2})
+        stage_doc.save()
+        self.assertEqual(json.loads(stage_doc.reload().config_json), {'legacy_param': 2})
+
+        v1 = {'action_contract_version': 1,
+            'assignment_rule': {'basis': 'Subject', 'subject': 'Initiator'}}
+        # An existing task also blocks legacy -> v1 conversion.
+        stage_doc.config_json = json.dumps(v1)
+        with self.assertRaises(frappe.ValidationError):
+            stage_doc.save()
+
+        # A separate, valid v1 stage is configured before any task refers to it.
+        v1_name = self.draft()
+        self.complete(v1_name)
+        v1_stage = frappe.get_doc('ASOUD Workflow Stage',
+            {'workflow_definition': v1_name, 'stage_type': 'User Task'})
+        config = json.loads(v1_stage.config_json)
+        v1_stage.config_json = json.dumps({**config, **v1})
+        v1_stage.save()
+        v1_instance = frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': v1_name,
+            'subject': 'اجرای نسخه یک', 'status': 'Running'}).insert()
+        frappe.get_doc({'doctype': 'ASOUD Workflow Task', 'workflow_instance': v1_instance.name,
+            'workflow_stage': v1_stage.name, 'task_title': 'تکلیف', 'assigned_to': 'Administrator',
+            'status': 'Open'}).insert()
+        original_config = json.loads(v1_stage.config_json)
+        v1_stage.stage_title = 'عنوان جدید v1'
+        v1_stage.save()
+        self.assertEqual(v1_stage.reload().stage_title, 'عنوان جدید v1')
+        self.assertEqual(json.loads(v1_stage.config_json), original_config)
+
+        for changes in ({'config_json': json.dumps({**original_config, 'allow_draft': False})},
+                        {'stage_type': 'Approval'}, {'config_json': '{}'}):
+            with self.subTest(changes=changes):
+                v1_stage.reload()
+                v1_stage.update(changes)
+                with self.assertRaises(frappe.ValidationError) as ctx:
+                    v1_stage.save()
+                self.assertIn('1', str(ctx.exception))
+                self.assertIn('کار', str(ctx.exception))
+                v1_stage.reload()
+                self.assertEqual(v1_stage.stage_type, 'User Task')
+                self.assertEqual(json.loads(v1_stage.config_json), original_config)
+        self.assertTrue(frappe.db.exists('ASOUD Workflow Task', task.name))

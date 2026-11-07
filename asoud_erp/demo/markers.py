@@ -23,6 +23,11 @@ CURRENCY = "IRR"
 COUNTRY = "Iran"
 CHART_OF_ACCOUNTS = "Standard"
 
+# Desk and system defaults to prevent setup-wizard redirect loop and mandatory field errors.
+DEFAULT_DESK_HOME_PAGE = "workspace"
+DEFAULT_LANGUAGE = "fa"
+DEFAULT_TIME_ZONE = "Asia/Tehran"
+
 # Technical marker for codes and global DocTypes without a company field.
 PREFIX = "ASOUD-DEMO"
 # Display marker inside Persian names shown on the phone.
@@ -165,17 +170,15 @@ def guard_error(site: str | None, developer_mode: bool, force: bool) -> str | No
     """Pure safety check for the seed command.
 
     Returns an error message when the command must refuse to run, else None.
-    ``force=True`` bypasses both guards (explicit operator override).
+    ``force=True`` bypasses developer mode, never the site-name guard.
     """
-    if force:
-        return None
     if not site_allowed(site):
         return (
             f"Refusing to seed site '{site}': "
             "the demo seed only runs on sites whose name contains "
-            "'test' or 'demo' (pass force=True to override)."
+            "'test' or 'demo'."
         )
-    if not developer_mode:
+    if not developer_mode and not force:
         return (
             "Refusing to seed: developer_mode is off "
             "(pass force=True to override)."
@@ -213,3 +216,8 @@ def fiscal_year_reset_action(name: str, start, end, company_rows: list, company:
     if seed_shaped and set(company_rows) == {company}:
         return "delete"
     return "remove_row"
+
+
+def setup_apps(installed_apps):
+    """Only seed-owned app setup hooks may be completed on this site."""
+    return sorted(set(installed_apps) & {"frappe", "erpnext", "hrms", "asoud_erp"})

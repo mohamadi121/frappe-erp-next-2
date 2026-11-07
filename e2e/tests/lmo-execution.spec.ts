@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { expect, test } from '../support/fixtures';
+import { expect, test, type ApiFixture } from '../support/fixtures';
 import { PYTHON } from '../support/config';
 import { loadState } from '../support/state';
 
@@ -74,7 +74,7 @@ test('Leave Type options: employee reads them without optional leave; anonymous 
   expect(other.status).toBe(403);
 });
 
-async function approve(api: any, kind: string, values: Record<string, unknown>): Promise<Request> {
+async function approve(api: ApiFixture, kind: string, values: Record<string, unknown>): Promise<Request> {
   const employee = await api.login('employee');
   const approver = await api.login('approver');
   const admin = await api.login('admin');
@@ -85,7 +85,7 @@ async function approve(api: any, kind: string, values: Record<string, unknown>):
   });
   const request = await employee.read<Request>(requests + 'get_request', {name: entry.reference_name});
   const tasks = await approver.read<Array<{name: string; workflow_instance: string}>>(runtime + 'list_my_workflow_tasks', {});
-  const task = tasks.find(value => value.workflow_instance === request.workflow_instance);
+  const task = tasks.find((value: { workflow_instance: string }) => value.workflow_instance === request.workflow_instance);
   expect(task).toBeTruthy();
   await approver.mutate(runtime + 'complete_workflow_task', {task: task!.name, action: 'Approve'});
   return admin.read<Request>(requests + 'get_request', {name: request.name});

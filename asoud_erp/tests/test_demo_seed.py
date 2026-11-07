@@ -25,9 +25,10 @@ class TestDemoSiteGuard(unittest.TestCase):
     def test_guard_passes_on_test_site_with_developer_mode(self):
         self.assertIsNone(m.guard_error("asoud.test", True, False))
 
-    def test_force_overrides_both_guards(self):
-        self.assertIsNone(m.guard_error("erp.local", False, True))
-        self.assertIsNone(m.guard_error("erp.local", True, True))
+    def test_force_only_overrides_developer_mode(self):
+        self.assertIsNotNone(m.guard_error("erp.local", False, True))
+        self.assertIsNotNone(m.guard_error("erp.local", True, True))
+        self.assertIsNone(m.guard_error("demo.local", False, True))
 
 
 class TestDemoNaming(unittest.TestCase):
@@ -84,6 +85,11 @@ class TestDemoNaming(unittest.TestCase):
         self.assertNotEqual(m.PRICE_LIST_SELLING, m.PRICE_LIST_BUYING)
         self.assertTrue(m.PRICE_LIST_SELLING.startswith(m.PREFIX))
         self.assertTrue(m.PRICE_LIST_BUYING.startswith(m.PREFIX))
+
+    def test_demo_desk_and_system_settings_constants(self):
+        self.assertEqual(m.DEFAULT_DESK_HOME_PAGE, "workspace")
+        self.assertEqual(m.DEFAULT_LANGUAGE, "fa")
+        self.assertEqual(m.DEFAULT_TIME_ZONE, "Asia/Tehran")
 
 
 class TestDemoFiscalYearRules(unittest.TestCase):
@@ -161,3 +167,8 @@ class TestDemoLeaveDates(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_demo_setup_apps_excludes_uninstalled_and_unrelated_apps():
+    assert m.setup_apps(["frappe", "erpnext", "unrelated", "frappe"]) == ["erpnext", "frappe"]
+    assert m.setup_apps([]) == []

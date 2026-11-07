@@ -22,7 +22,8 @@ to ``ASOUD Workflow Request`` (a compatibility reference shared with
 any workflow on that DocType); it is documented in ``docs/demo-seed.md``.
 
 Safety: refuses to run when ``developer_mode`` is off, and never on a
-site whose name contains neither "test" nor "demo", unless ``force=True``.
+site whose name contains neither "test" nor "demo". ``force=True`` bypasses
+developer mode only.
 """
 
 import base64
@@ -76,18 +77,80 @@ def run(reset: bool = False, force: bool = False, password: str | None = None) -
     """Seed (default) or reset (``reset=True``) the demo dataset."""
     global SUMMARY
     SUMMARY = {}
-    frappe.set_user("Administrator")
     site = frappe.local.site
-    developer_mode = bool(frappe.conf.get("developer_mode"))
-    error = m.guard_error(site, developer_mode, bool(force))
+    developer_mode = bool(cint(frappe.conf.get("developer_mode")))
+    error = m.guard_error(site, developer_mode, bool(cint(force)))
     if error:
         frappe.throw(error, frappe.PermissionError)
+    frappe.set_user("Administrator")
     if cint(reset):
         _reset()
     else:
         _seed(password)
     frappe.db.commit()
     return {"site": site, "reset": bool(cint(reset)), "summary": SUMMARY}
+
+
+# ------------------------------------------------------------------ desk & system defaults
+
+def _ensure_desk_defaults() -> None:
+    """Ensure Desk default home page is set to workspace, preventing setup-wizard loop."""
+    current = frappe.db.get_default("desktop:home_page")
+    if current != m.DEFAULT_DESK_HOME_PAGE:
+        frappe.db.set_default("desktop:home_page", m.DEFAULT_DESK_HOME_PAGE)
+        frappe.clear_cache()
+        _count("desk_defaults", created=1)
+    else:
+        _count("desk_defaults", skipped=1)
+
+
+def _ensure_system_settings() -> None:
+    """Ensure System Settings has language and time_zone configured."""
+    settings = frappe.get_single("System Settings")
+    changed = False
+    if not settings.language:
+        if not frappe.db.exists("Language", m.DEFAULT_LANGUAGE):
+            frappe.get_doc({
+                "doctype": "Language",
+                "name": m.DEFAULT_LANGUAGE,
+                "language_code": m.DEFAULT_LANGUAGE,
+                "language_name": "Persian",
+            }).insert(ignore_permissions=True)
+        settings.language = m.DEFAULT_LANGUAGE
+        changed = True
+    if not settings.time_zone:
+        settings.time_zone = m.DEFAULT_TIME_ZONE
+        changed = True
+    if not settings.get("setup_complete"):
+        settings.setup_complete = 1
+        changed = True
+    if changed:
+        settings.save(ignore_permissions=True)
+        frappe.clear_cache(doctype="System Settings")
+        _count("system_settings", created=1)
+    else:
+        _count("system_settings", skipped=1)
+
+
+def _ensure_installed_apps_setup_complete() -> None:
+    """Mark is_setup_complete on Installed Application rows so wizard hooks do not re-run."""
+    if not frappe.db.table_exists("Installed Application"):
+        return
+    apps = m.setup_apps(frappe.get_installed_apps())
+    uncompleted = frappe.get_all(
+        "Installed Application",
+        filters={"is_setup_complete": 0, "app_name": ["in", apps or [""]],
+                 "parent": "Installed Applications", "parenttype": "Installed Applications",
+                 "parentfield": "installed_applications"},
+        fields=["name", "app_name"],
+    )
+    if uncompleted:
+        for app in uncompleted:
+            frappe.db.set_value("Installed Application", app.name, "is_setup_complete", 1)
+        frappe.clear_cache()
+        _count("installed_apps_setup", created=len(uncompleted))
+    else:
+        _count("installed_apps_setup", skipped=1)
 
 
 # ------------------------------------------------------------------ company
@@ -121,11 +184,12 @@ def _ensure_company_setup() -> None:
                 "accounting_saved": 1,
                 "roles_saved": 1,
                 "enabled_roles_json": json.dumps(["System Manager"]),
+                "bootstrap_completed": 1,
             },
         )
         _count("company_setup", skipped=1)
         return
-    frappe.get_doc({
+    doc = frappe.get_doc({
         "doctype": "ASOUD Company Setup",
         "company": m.COMPANY,
         "office_type": "Legal",
@@ -133,6 +197,7 @@ def _ensure_company_setup() -> None:
         "accounting_saved": 1,
         "roles_saved": 1,
         "enabled_roles_json": json.dumps(["System Manager"]),
+        "bootstrap_completed": 1,
         "chart_template": "Iran Standard",
         "display_currency": "Rial",
         "accounting_basis": "Accrual",
@@ -143,7 +208,9 @@ def _ensure_company_setup() -> None:
         "activity_type": "Commercial",
         "province": "Tehran",
         "city": "Tehran",
-    }).insert(ignore_permissions=True)
+    })
+    doc.flags.first_office_bootstrap = True
+    doc.insert(ignore_permissions=True)
     _count("company_setup", created=1)
 
 
@@ -773,6 +840,9 @@ def _ensure_requests(warehouse: str, holiday_list: str) -> None:
 
 
 def _seed(password: str | None) -> None:
+    _ensure_desk_defaults()
+    _ensure_system_settings()
+    _ensure_installed_apps_setup_complete()
     _ensure_company()
     _ensure_company_setup()
     _ensure_fiscal_year()
@@ -958,6 +1028,15 @@ def check() -> dict:
 
 
 def _reset() -> None:
+    # Lets the system-workflow delete guard allow cleanup of the demo company's own workflows.
+    frappe.flags.asoud_demo_reset = True
+    try:
+        _reset_records()
+    finally:
+        frappe.flags.asoud_demo_reset = False
+
+
+def _reset_records() -> None:
     deleted: dict = {}
 
     def wipe(doctype: str, names: list, purge_ledger: bool = False) -> None:

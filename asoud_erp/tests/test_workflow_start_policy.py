@@ -1,10 +1,23 @@
 import pytest
 
-from asoud_erp.services.workflow_start_policy import normalize_settings, start_decision
+from asoud_erp.services.workflow_start_policy import normalize_settings, start_decision, validate_request_id
 
 
 def manual(**extra):
     return {'trigger_type': 'Manual', 'initiator_roles': ['System Manager'], **extra}
+
+
+@pytest.mark.parametrize('req_id', ['short', 'toolong' + 'a'*60, 'invalid.id!', None, ''])
+def test_request_id_validation(req_id):
+    if req_id is None or req_id == '':
+        validate_request_id(req_id)
+    else:
+        with pytest.raises(ValueError):
+            validate_request_id(req_id)
+
+
+def test_request_id_valid():
+    validate_request_id('valid-req_123')
 
 
 def test_start_settings_are_typed_and_manual_has_no_form_link():

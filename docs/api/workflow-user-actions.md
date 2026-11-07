@@ -106,3 +106,5 @@ definition/stage identities, version 1 and Pending configuration; no execution,
 history or native workflow link is copied. Original and other-company records
 remain untouched. Pending v1 action copies validate the config's structure;
 published-form/subject bindings must be explicitly reviewed before activation.
+
+Candidate resolution queries (Role and Unit bases) filter candidates by enabled system users and company/department scope directly in the database query before enforcing the 200 cap, ensuring large global role counts do not block task completion. Overdue escalation (`escalate`) notifies all configured escalation roles (avoiding duplicate notifications) and sorts escalation candidates deterministically. Background deadline processing (`process_workflow_deadlines`) isolates each task in a database savepoint with error logging (`frappe.log_error`), preventing a failure in one task from interrupting execution of others.

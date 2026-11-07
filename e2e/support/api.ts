@@ -112,8 +112,13 @@ export class ApiSession {
   }
 
   /** A GET call, the read path a phone uses. */
-  async get<T = unknown>(method: string, params: Record<string, string> = {}): Promise<FrappeResponse<T>> {
-    const query = new URLSearchParams(params).toString();
+  async get<T = unknown>(method: string, params: Record<string, any> = {}): Promise<FrappeResponse<T>> {
+    const stringifiedParams: Record<string, string> = {};
+    for (const [key, val] of Object.entries(params)) {
+      if (val === undefined || val === null) continue;
+      stringifiedParams[key] = typeof val === 'object' ? JSON.stringify(val) : String(val);
+    }
+    const query = new URLSearchParams(stringifiedParams).toString();
     const url = `/api/method/${method}${query ? `?${query}` : ''}`;
     return parse<T>(await this.context.get(url));
   }
@@ -124,9 +129,14 @@ export class ApiSession {
    */
   async post<T = unknown>(
     method: string,
-    form: Record<string, string> = {},
+    form: Record<string, any> = {},
     options: { csrf?: boolean } = {},
   ): Promise<FrappeResponse<T>> {
+    const stringifiedForm: Record<string, string> = {};
+    for (const [key, val] of Object.entries(form)) {
+      if (val === undefined || val === null) continue;
+      stringifiedForm[key] = typeof val === 'object' ? JSON.stringify(val) : String(val);
+    }
     const headers: Record<string, string> = {};
     if (options.csrf !== false) headers['X-Frappe-CSRF-Token'] = await this.csrf();
     const send = async () =>
@@ -153,7 +163,7 @@ export class ApiSession {
   }
 
   /** GET + envelope unwrap; fails the test when the envelope is not `ok`. */
-  async read<T = unknown>(method: string, params: Record<string, string> = {}): Promise<T> {
+  async read<T = unknown>(method: string, params: Record<string, any> = {}): Promise<T> {
     const result = await this.get<T>(method, params);
     expect(result.status, `${method}: ${errorText(result)}`).toBe(200);
     expect(result.envelope.ok, `${method} envelope`).toBe(true);
@@ -164,7 +174,7 @@ export class ApiSession {
   /** POST + CSRF token + envelope unwrap. */
   async mutate<T = unknown>(
     method: string,
-    form: Record<string, string> = {},
+    form: Record<string, any> = {},
   ): Promise<T> {
     const result = await this.post<T>(method, form);
     expect(result.status, `${method}: ${errorText(result)}`).toBe(200);

@@ -7,3 +7,7 @@ node_modules
 e2e/test-results/
 e2e/playwright-report/
 
+
+# graphify: keep the graph, drop local caches and dated snapshots
+graphify-out/cache/
+graphify-out/20*/

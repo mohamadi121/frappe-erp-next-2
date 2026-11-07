@@ -1,10 +1,11 @@
 """Run on an installed Frappe/ERPNext/HRMS test site, not production."""
 import json
+from unittest.mock import patch
 
 import frappe
 
 from asoud_erp.api.v1 import organization
-from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER, APITestCase
+from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER, APITestCase, _employee, _user
 
 
 class TestOrganization(APITestCase):
@@ -27,15 +28,28 @@ class TestOrganization(APITestCase):
         with self.assertRaises(frappe.PermissionError):
             organization.reset_chart(self.company, saved["revision"])
         frappe.set_user("Administrator")
+        hr_manager = _user("hr-manager-" + frappe.generate_hash(length=6) + "@example.com", ["HR Manager"])
+        _employee(hr_manager, "Reset HR")
+        frappe.set_user(hr_manager)
+        self.assertEqual(organization.get_chart(self.company)["data"]["revision"], saved["revision"])
+        with self.assertRaises(frappe.PermissionError):
+            organization.reset_chart(self.company, saved["revision"])
+        frappe.set_user("Administrator")
         chart = frappe.db.get_value("ASOUD Organization Chart", {"company": self.company}, "name")
         before = frappe.db.get_value("ASOUD Organization Chart", chart, "structure_json")
-        result = organization.reset_chart(self.company, saved["revision"])["data"]
+        # Exercise native Version creation, which Frappe disables in test mode.
+        with patch.dict(frappe.flags, {"in_test": False}):
+            result = organization.reset_chart(self.company, saved["revision"])["data"]
         self.assertTrue(result["reset"])
         self.assertEqual(result["rows"], [])
         self.assertEqual(result["revision"], saved["revision"] + 1)
         self.assertEqual(organization.get_chart(self.company)["data"]["rows"], [])
         self.assertTrue(frappe.db.exists("Employee", employee))
         self.assertTrue(frappe.db.exists("Department", name))
+        audit = frappe.get_all("ASOUD Security Audit", filters={"action": "organization.chart.reset", "target": chart}, fields=["details"], limit=1)
+        self.assertTrue(audit)
+        details = json.loads(audit[0].details)
+        self.assertGreaterEqual(details["positions_removed"], 2)
         versions = frappe.get_all("Version", filters={"ref_doctype": "ASOUD Organization Chart",
             "docname": chart}, pluck="data")
         self.assertTrue(any(any(change[0] == "structure_json" and change[1] == before

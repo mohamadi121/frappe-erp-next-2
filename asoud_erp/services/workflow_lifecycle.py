@@ -53,8 +53,6 @@ def delete_definition(doc):
         if frappe.db.sql(f'select name from `tab{doctype}` where workflow_definition=%s limit 1 for update',
                 (doc.name,)):
             frappe.throw('این گردش‌کار دارای درخواست یا سابقهٔ اجرا است؛ حذف آن مجاز نیست. می‌توانید آن را غیرفعال کنید.')
-    if not resetting and frappe.db.exists('Version', {'ref_doctype': DEFINITION, 'docname': doc.name}):
-        frappe.throw('این گردش‌کار دارای نسخه‌های تاریخی است و برای حفظ سوابق قابل حذف نیست.')
     if frappe.db.sql('select name from `tabASOUD Form Revision` where '
             "JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(schema_json),schema_json,'{}'), %s))=%s limit 1",
             ('$.workflow', doc.name)):
@@ -74,15 +72,20 @@ def delete_definition(doc):
     owned = {doctype: set(frappe.get_all(doctype, filters={'workflow_definition': doc.name},
         pluck='name', limit_page_length=0))
         for doctype in ('ASOUD Workflow Transition', 'ASOUD Workflow Stage')}
-    for doctype, names in owned.items():
-        if not resetting and names and frappe.db.exists('Version', {'ref_doctype': doctype, 'docname': ['in', list(names)]}):
-            frappe.throw('مراحل این گردش‌کار دارای نسخه‌های تاریخی هستند؛ حذف مجاز نیست.')
+    stage_names = sorted(owned['ASOUD Workflow Stage'])
+    for doctype in ('ASOUD Workflow Task', 'ASOUD Workflow Activity'):
+        if stage_names and frappe.db.exists(doctype, {'workflow_stage': ['in', stage_names]}):
+            frappe.throw('این گردش‌کار سابقهٔ اجرا دارد و قابل حذف نیست.')
     frappe.db.savepoint('workflow_card_delete')
     try:
+        # Edit history is removable only after the locked never-run/dependency checks.
+        for doctype, names in {DEFINITION: {doc.name}, **owned}.items():
+            if names:
+                frappe.db.delete('Version', {'ref_doctype': doctype, 'docname': ['in', sorted(names)]})
         # These are definition-owned technical records, not execution/history.
         # Native link checking remains enabled, including links to individual stages.
         for doctype in ('ASOUD Workflow Transition', 'ASOUD Workflow Stage'):
-            for name in owned[doctype]:
+            for name in sorted(owned[doctype]):
                 frappe.delete_doc(doctype, name, ignore_permissions=True)
         # Run native checks here as well, while the rollback savepoint still
         # covers the graph cleanup. The framework checks again after on_trash.

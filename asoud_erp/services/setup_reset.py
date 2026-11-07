@@ -13,7 +13,7 @@ CONFIG = 'asoud_allow_setup_reset'
 LIMIT = 2000
 BUSY_KEY = 'asoud_setup_reset_busy'
 RECEIPT_TTL = 86400
-RESET_POLICY_VERSION = 2
+RESET_POLICY_VERSION = 3
 COMPANY_DATA = ('ASOUD Office Role Assignment', 'ASOUD Personnel Record',
     'ASOUD Organization Chart', 'ASOUD Document Template', 'ASOUD Party Profile',
     'ASOUD Company Setup', 'Employee', 'Department', 'ASOUD Form', 'ASOUD Workflow Definition')
@@ -41,7 +41,7 @@ def rows(doctype, filters, order_by='name asc'):
     return [dict(row) for row in result]
 
 
-def _collect(actor):
+def _collect(actor, include_access_blockers=False):
     offices = frappe.get_all('ASOUD Company Setup', pluck='company', limit_page_length=LIMIT + 1)
     if len(offices) > LIMIT:
         frappe.throw('تعداد دفاتر برای بازنشانی موقت بیش از حد مجاز است.')
@@ -57,6 +57,22 @@ def _collect(actor):
     if any(frappe.db.get_value('ASOUD Party Profile', r['name'], 'company') not in [None, '', *names] for r in personal):
         blockers.append('مشخصات مدیر به دفتر دیگری متصل است؛ حذف خودکار متوقف شد.')
     groups['ASOUD Party Profile'] = list({r['name']: r for r in [*groups['ASOUD Party Profile'], *personal]}.values())
+    profile_names = [r['name'] for r in groups['ASOUD Party Profile']]
+    floating_details = rows('ASOUD Floating Detail', {'linked_doctype': 'ASOUD Party Profile',
+        'linked_document': ['in', profile_names or ['']]})
+    detail_names = [row['name'] for row in floating_details]
+    used_details = set()
+    if detail_names:
+        used_details.update(frappe.get_all('GL Entry',
+            filters={'party_type': 'ASOUD Floating Detail', 'party': ['in', detail_names]},
+            pluck='party', distinct=True, order_by='party asc'))
+        if frappe.db.has_column('GL Entry', 'floating_detail'):
+            used_details.update(frappe.get_all('GL Entry',
+                filters={'floating_detail': ['in', detail_names]},
+                pluck='floating_detail', distinct=True, order_by='floating_detail asc'))
+    if used_details:
+        blockers.append('حساب تفصیلی وابسته دارای تراکنش مالی است؛ حذف خودکار مجاز نیست.')
+    groups['ASOUD Floating Detail'] = [row for row in floating_details if row['name'] not in used_details]
     fiscal_names = frappe.get_all('Fiscal Year Company', filters={'company': ['in', names or ['']]}, pluck='parent')
     groups['Fiscal Year'] = rows('Fiscal Year', {'name': ['in', fiscal_names or ['']]})
     for row in groups['Fiscal Year']:
@@ -99,13 +115,22 @@ def _collect(actor):
     codes = [r['name'] for r in roles]
     role_rows = frappe.get_all('ASOUD Role Definition', filters={'name': ['in', codes or ['']]},
         fields=['name', 'role_profile', 'parent_role'], limit_page_length=LIMIT)
+    access_blockers = []
     profiles = [r.role_profile for r in role_rows if r.role_profile]
-    if frappe.db.exists('User', {'role_profile_name': ['in', profiles or ['']], 'name': ['not in', [actor, *owned_users]]}):
+    # role_profile_name is nullable: Frappe turns `in ('')` into ifnull(col, '') in (''), which would
+    # match every user without a profile. With no profiles there is nothing to protect, so skip.
+    outside_profiles = frappe.get_all('User', filters={'role_profile_name': ['in', profiles],
+        'name': ['not in', [actor, *owned_users]]}, fields=['name', 'role_profile_name']) if profiles else []
+    if outside_profiles:
         blockers.append('نقش اختصاصی شما به حسابی خارج از محدوده متصل است؛ ابتدا وابستگی را بررسی کنید.')
+        for u in outside_profiles:
+            matched = next((r.name for r in role_rows if r.role_profile == u.role_profile_name), '')
+            access_blockers.append({'user': u.name, 'role': matched, 'native_role': ''})
     groups['Role Profile'] = rows('Role Profile', {'name': ['in', profiles or ['']]})
     groups['ASOUD Access Assignment'] = rows('ASOUD Access Assignment', {'managed_role': ['in', codes or ['']]})
     from asoud_erp.api.v1.user_access import _native
     adapter_roles = {_native(code) for code in codes}
+    role_by_adapter = {_native(code): code for code in codes}
     for assignment in frappe.get_all('ASOUD Access Assignment',
             filters={'managed_role': ['in', codes or ['']]}, fields=['managed_role', 'user', 'native_role']):
         expected = {_native(assignment.managed_role), _native(assignment.managed_role, assignment.user or '')}
@@ -113,14 +138,30 @@ def _collect(actor):
             blockers.append('یک مجوز اختصاصی با نقش سیستمی سازگار نیست؛ حذف خودکار متوقف شد.')
         else:
             adapter_roles.add(assignment.native_role)
+            role_by_adapter[assignment.native_role] = assignment.managed_role
     groups['Role'] = rows('Role', {'name': ['in', sorted(adapter_roles) or ['']]})
     groups['Custom DocPerm'] = rows('Custom DocPerm', {'role': ['in', sorted(adapter_roles) or ['']]})
-    if frappe.db.exists('Has Role', {'role': ['in', sorted(adapter_roles) or ['']],
-            'parenttype': 'User', 'parent': ['not in', [actor, *owned_users]]}):
+    outside_roles = frappe.get_all('Has Role', filters={'role': ['in', sorted(adapter_roles) or ['']],
+        'parenttype': 'User', 'parent': ['not in', [actor, *owned_users]]}, fields=['parent as user', 'role'])
+    if outside_roles:
         blockers.append('مجوز اختصاصی نقش به کاربر خارج از محدوده متصل است؛ حذف خودکار مجاز نیست.')
-    if any(frappe.db.get_value('ASOUD Access Assignment', row['name'], 'user') not in [actor, *owned_users]
-           for row in groups['ASOUD Access Assignment']):
+        for hr in outside_roles:
+            access_blockers.append({'user': hr.user, 'role': role_by_adapter.get(hr.role, hr.role), 'native_role': hr.role})
+    outside_assignments = frappe.get_all('ASOUD Access Assignment',
+        filters={'name': ['in', [r['name'] for r in groups['ASOUD Access Assignment']] or ['']],
+                 'user': ['not in', [actor, *owned_users]]},
+        fields=['user', 'managed_role', 'native_role'])
+    if outside_assignments:
         blockers.append('نقش اختصاصی به حساب دیگری دسترسی داده است؛ حذف این دسترسی بدون بررسی مجاز نیست.')
+        for oa in outside_assignments:
+            access_blockers.append({'user': oa.user, 'role': oa.managed_role, 'native_role': oa.native_role or ''})
+    deduped_access = []
+    seen_access = set()
+    for item in access_blockers:
+        key = (item['user'], item['role'], item.get('native_role', ''))
+        if key not in seen_access:
+            seen_access.add(key)
+            deduped_access.append(item)
     groups['User Permission'] = rows('User Permission', {'allow': 'Company', 'for_value': ['in', names or ['']]})
     # Do not erase operational records: a real linked record blocks the whole reset.
     allowed = set(COMPANY_DATA) | set(NATIVE_COMPANY_DATA) | {'Company'}
@@ -166,22 +207,28 @@ def _collect(actor):
     state_token = frappe.db.get_value('ASOUD Account State', actor, 'modified')
     digest = hashlib.sha256(json.dumps([RESET_POLICY_VERSION, actor, groups, str(profile), str(state_token)],
         sort_keys=True, default=str).encode()).hexdigest()
+    if include_access_blockers:
+        return groups, list(dict.fromkeys(blockers)), digest, deduped_access
     return groups, list(dict.fromkeys(blockers)), digest
 
 
 def preview():
     actor = access()
-    job = frappe.cache.get_value(f'asoud_setup_reset_latest:{actor}')
+    job = frappe.cache.get_value(f'asoud_setup_reset_latest:{actor}', expires=True)
     if job:
         receipt = _receipt(job)
         if not receipt or receipt.get('state') in {'queued', 'running'}:
             return {'job': job}
-    groups, blockers, digest = _collect(actor)
+    groups, blockers, digest, access_blockers = _collect(actor, include_access_blockers=True)
     token = frappe.generate_hash(length=40)
     frappe.cache.set_value(f'asoud_setup_reset:{token}', {'actor': actor, 'digest': digest}, expires_in_sec=300)
     return {'token': token, 'companies': [r['name'] for r in groups['Company']],
         'counts': {key: len(value) for key, value in groups.items() if value},
-        'blockers': blockers, 'preserved': PRESERVED}
+        'blockers': blockers,
+        'blocking_roles': access_blockers,
+        'blocking_users': sorted(list({b['user'] for b in access_blockers if b.get('user')})),
+        'access_blockers': access_blockers,
+        'preserved': PRESERVED}
 
 
 def _execute(actor, expected_digest):
@@ -233,8 +280,6 @@ def _execute(actor, expected_digest):
                 year.set('companies', remaining)
                 year.save()
             else:
-                if frappe.db.get_single_value('Global Defaults', 'current_fiscal_year') == year.name:
-                    frappe.db.set_single_value('Global Defaults', 'current_fiscal_year', None)
                 frappe.delete_doc('Fiscal Year', year.name, ignore_permissions=True)
         for row in groups['ASOUD Access Assignment']:
             frappe.delete_doc('ASOUD Access Assignment', row['name'], ignore_permissions=True)
@@ -256,7 +301,7 @@ def _execute(actor, expected_digest):
         order = ('ASOUD Access Assignment', 'ASOUD Office Role Assignment', 'ASOUD Personnel Record',
             'ASOUD Organization Chart', 'ASOUD Workflow Transition', 'ASOUD Workflow Stage',
             'ASOUD Form Revision', 'ASOUD Form', 'Version', 'ASOUD Workflow Definition', 'ASOUD Document Template',
-            'ASOUD Party Profile', 'Employee', 'Department', 'ASOUD Company Setup', 'User Permission',
+            'ASOUD Floating Detail', 'ASOUD Party Profile', 'Employee', 'Department', 'ASOUD Company Setup', 'User Permission',
             'ASOUD Account Token', 'ASOUD Account State', 'User', 'ASOUD Role Definition',
             'Role Profile', 'Custom DocPerm', 'Role', 'Company')
         for doctype in order:
@@ -274,6 +319,7 @@ def _execute(actor, expected_digest):
                 'company_groups': [companies[i:i + 50] for i in range(0, len(companies), 50)]})
         frappe.get_doc(receipt).insert(ignore_permissions=True)
     except Exception:
+        frappe.log_error(title='ASOUD setup reset failed', message=frappe.get_traceback())
         frappe.db.rollback(save_point='asoud_setup_reset')
         frappe.clear_messages()
         frappe.throw('بازنشانی به دلیل وابستگی یا قاعدهٔ حذف متوقف شد؛ هیچ حذف جزئی تأیید نشد. مدیر سرور باید وابستگی را بررسی کند.')
@@ -284,7 +330,7 @@ def _execute(actor, expected_digest):
 
 
 def _receipt(job):
-    return frappe.cache.get_value(f'asoud_setup_reset_job:{job}')
+    return frappe.cache.get_value(f'asoud_setup_reset_job:{job}', expires=True)
 
 
 def _save_receipt(job, actor, state, message='', digest=None):
@@ -299,6 +345,11 @@ def _save_receipt(job, actor, state, message='', digest=None):
 
 def allows_workflow_cleanup(doc):
     from asoud_erp.services.setup_reset_policy import workflow_reset_allowed
+
+    if getattr(frappe.flags, 'asoud_demo_reset', False):
+        from asoud_erp.demo import markers as m
+        if doc.company == m.COMPANY:
+            return True
 
     if not cint(frappe.conf.get(CONFIG)) or not is_system_admin():
         return False
@@ -332,7 +383,7 @@ def status(job=None, preview_token=None):
     if preview_token is not None:
         if not isinstance(preview_token, str) or len(preview_token) != 40:
             frappe.throw('شناسهٔ پیش‌نمایش برای پیگیری معتبر نیست.')
-        authorization = frappe.cache.get_value(f'asoud_setup_reset_authorization:{preview_token}')
+        authorization = frappe.cache.get_value(f'asoud_setup_reset_authorization:{preview_token}', expires=True)
         if not authorization or authorization.get('actor') != actor:
             frappe.throw('عملیات پذیرفته‌شده‌ای برای این پیش‌نمایش پیدا نشد؛ موفقیتی تأیید نشده است.')
         job = authorization['job']
@@ -367,16 +418,16 @@ def perform(token=None, password=None, confirmation=None, backup_confirmed=0):
         frappe.throw('رمز حساب، تأیید نسخهٔ پشتیبان و عبارت «شروع دوباره» لازم است.')
     # Fresh verification is explicitly rate limited; secret is never queued.
     rate_key = f'asoud_setup_reset_password:{actor}'
-    if cint(frappe.cache.get_value(rate_key)) >= 8:
+    if cint(frappe.cache.get_value(rate_key, expires=True)) >= 8:
         frappe.throw('تلاش‌های ناموفق زیاد است؛ ده دقیقه دیگر دوباره تلاش کنید.')
     try:
         check_password(actor, password)
     except frappe.AuthenticationError:
-        frappe.cache.set_value(rate_key, cint(frappe.cache.get_value(rate_key)) + 1, expires_in_sec=600)
+        frappe.cache.set_value(rate_key, cint(frappe.cache.get_value(rate_key, expires=True)) + 1, expires_in_sec=600)
         raise
     frappe.cache.delete_value(rate_key)
     with frappe.cache.lock('asoud_setup_reset_authorize', timeout=30, blocking_timeout=3):
-        previous = frappe.cache.get_value(f'asoud_setup_reset_latest:{actor}')
+        previous = frappe.cache.get_value(f'asoud_setup_reset_latest:{actor}', expires=True)
         if previous:
             receipt = _receipt(previous)
             if not receipt or receipt.get('state') in {'queued', 'running'}:
@@ -385,7 +436,7 @@ def perform(token=None, password=None, confirmation=None, backup_confirmed=0):
             frappe.throw('بازنشانی دیگری روی سرور در حال اجراست؛ پس از پایان دوباره تلاش کنید.')
         if not isinstance(token, str) or len(token) != 40:
             frappe.throw('پیش‌نمایش بازنشانی معتبر نیست.')
-        stored = frappe.cache.get_value(f'asoud_setup_reset:{token}')
+        stored = frappe.cache.get_value(f'asoud_setup_reset:{token}', expires=True)
         if not stored or stored.get('actor') != actor:
             frappe.throw('پیش‌نمایش بازنشانی منقضی شده است؛ دوباره دریافت کنید.')
         groups, blockers, digest = _collect(actor)
