@@ -25,6 +25,13 @@ def require_activation_ready(doc):
     from asoud_erp.api.v1.automatic_actions import require_execution_ready
     from asoud_erp.services.workflow_user_action import validate_design
     for stage in stages:
+        if stage.stage_type == 'Condition' and json.loads(stage.config_json or '{}').get('condition_version') == 2:
+            from asoud_erp.services.workflow_condition_binding import catalog, validate_bindings
+
+            try:
+                validate_bindings(json.loads(stage.config_json), catalog(doc.name, stage.name))
+            except ValueError as error:
+                frappe.throw(str(error))
         if stage.stage_type == 'User Task':
             validate_design(doc.name, json.loads(stage.config_json or '{}'))
 

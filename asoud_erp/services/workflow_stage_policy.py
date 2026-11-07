@@ -365,6 +365,10 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
         }
 
     if stage_type == "Condition":
+        if raw.get('condition_version') == 2:
+            from asoud_erp.services.workflow_condition import normalize_group
+
+            return normalize_group({**raw, 'title': title})
         source_kind = raw.get("source_kind") or "Document"
         if source_kind not in {"Document", "Form"}:
             raise ValueError("Invalid condition source")

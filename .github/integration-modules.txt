@@ -57,3 +57,4 @@ test_salary_change_orders
 test_login_onboarding
 test_first_office_setup
 test_request_templates_seed
+test_workflow_condition_v2

@@ -109,6 +109,7 @@ payload is rejected with `REQUEST_KEY_CONFLICT`.
 - [Submitted request/document workflow source](workflow-submission-source.md)
 
 - [Independent workflow template copies](workflow-templates.md)
+- [Condition stage version 2](workflow-condition.md)
 
 - `asoud_erp/tests/` — pure unit tests, run anywhere:
   `uvx --with pytest pytest -q asoud_erp/tests`.
