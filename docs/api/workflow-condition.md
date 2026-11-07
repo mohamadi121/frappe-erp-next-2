@@ -29,11 +29,14 @@ Both boolean outputs remain in existing native Workflow Transition rows with
 `condition_json.result: true | false`. Destination selection is Canvas-only.
 Draft settings may be saved without exits; activation requires exactly one of
 each output via existing graph validation. Condition v2 updates are rejected
-while instances of that definition are running. Use an independent definition
+while the definition is active or instances of that definition are running. Use an independent definition
 copy for redesign; existing execution history is never rewritten.
 
 Errors are Persian validation messages, identifying the row where possible.
 The existing company scope and designer/native document permissions apply.
+The existing `connect_workflow_stages` accepts `{result: true|false}` for a
+Condition source, updates the existing output transition in place, and removes
+only that connection when `to_stage` is empty. It never deletes the destination.
 Evaluation does not execute code or SQL supplied by users and does not create
 documents or human tasks during settings validation. No migration is needed
 because config JSON is additive; deploy client and backend together.

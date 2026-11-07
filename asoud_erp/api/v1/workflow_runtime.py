@@ -358,7 +358,19 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
         instance.save(ignore_permissions=True)
         return
     if stage.stage_type == "Condition":
-        if config.get("source_kind") == "Form":
+        if config.get('condition_version') == 2:
+            from asoud_erp.services.workflow_condition import evaluate_group
+            from asoud_erp.services.workflow_condition_binding import catalog, resolver, validate_bindings
+
+            try:
+                available = catalog(instance.workflow_definition, stage.name)
+                validate_bindings(config, available)
+                result = evaluate_group(config, resolver(instance, config, available))
+            except ValueError as error:
+                frappe.log_error(title='خطا در ارزیابی شرط گردش کار', message=str(error))
+                frappe.throw(str(error))
+            actual = None
+        elif config.get("source_kind") == "Form":
             actual = _latest_form_value(
                 instance, config.get("source_field"), source_task=source_task
             )
@@ -369,9 +381,10 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
                     instance.reference_doctype, instance.reference_name, config.get("source_field")
                 )
         try:
-            result = evaluate_condition(
-                config.get("operator"), actual, config.get("compare_value")
-            )
+            if config.get('condition_version') != 2:
+                result = evaluate_condition(
+                    config.get("operator"), actual, config.get("compare_value")
+                )
             rows = frappe.get_all(
                 "ASOUD Workflow Transition",
                 filters={
@@ -402,7 +415,8 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
                 "workflow_stage": stage.name,
                 "actor": frappe.session.user,
                 "action": "Condition True" if result else "Condition False",
-                "comment": f"{config.get('source_field')} = {actual}",
+                "comment": ('ارزیابی شروط ترکیبی انجام شد.' if config.get('condition_version') == 2
+                            else f"{config.get('source_field')} = {actual}"),
                 "created_on": now_datetime(),
             }
         ).insert(ignore_permissions=True)

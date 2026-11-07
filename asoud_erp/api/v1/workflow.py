@@ -424,6 +424,37 @@ def connect_workflow_stages(
         (definition,),
     )
     source = _assert_stage_in_definition(from_stage, definition)
+    if source.stage_type == 'Condition':
+        from asoud_erp.services.workflow_condition_binding import assert_editable
+
+        assert_editable(definition)
+        raw = json.loads(condition) if isinstance(condition, str) else condition
+        if not isinstance(raw, dict) or type(raw.get('result')) is not bool:
+            frappe.throw('خروجی شرط باید برقرار یا برقرار نیست باشد.')
+        if to_stage:
+            destination = _assert_stage_in_definition(to_stage, definition)
+            if destination.stage_type == 'Start':
+                frappe.throw('خروجی شرط نمی‌تواند به شروع فرایند متصل شود.')
+        existing = frappe.get_all('ASOUD Workflow Transition',
+            filters={'workflow_definition': definition, 'from_stage': from_stage},
+            fields=['name', 'condition_json'], limit_page_length=1001)
+        matches = [row for row in existing if json.loads(row.condition_json or '{}').get('result') is raw['result']]
+        if len(matches) > 1 or len(existing) > 1000:
+            frappe.throw('مسیرهای خروجی شرط تکراری یا نامعتبرند؛ ابتدا طراحی را بازبینی کنید.')
+        if matches:
+            edge = frappe.get_doc('ASOUD Workflow Transition', matches[0].name)
+            if to_stage:
+                edge.to_stage = to_stage
+                edge.save()
+            else:
+                edge.delete()
+        elif to_stage:
+            frappe.get_doc(dict(doctype='ASOUD Workflow Transition', workflow_definition=definition,
+                from_stage=from_stage, to_stage=to_stage, condition_json=json.dumps({'result': raw['result']}),
+                transition_label='شرط برقرار است' if raw['result'] else 'شرط برقرار نیست',
+                sequence_no=1 if raw['result'] else 2)).insert()
+        _touch_workflow(definition)
+        return success(_design_payload(definition))
     _assert_stage_in_definition(to_stage, definition)
     if source.stage_type == "End":
         frappe.throw(_("The end stage cannot have an outgoing route"))
@@ -578,7 +609,12 @@ def workflow_condition_fields(definition: str, stage: str | None = None) -> dict
         fields = [item for item in fields if item['source'] != 'Document']
     fields.extend(source_fields)
     fields = list({(item["source"], item["fieldname"]): item for item in fields}.values())
-    return success({"doctype": target_doctype, "fields": fields})
+    result = {"doctype": target_doctype, "fields": fields}
+    if stage:
+        from asoud_erp.services.workflow_condition_binding import catalog
+
+        result['condition_fields_v2'] = catalog(definition, stage)
+    return success(result)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -599,6 +635,10 @@ def add_condition_branch(
     condition = frappe.get_doc("ASOUD Workflow Stage", condition_stage)
     if condition.workflow_definition != definition or condition.stage_type != "Condition":
         frappe.throw(_("Selected stage is not a condition in this workflow"))
+    if json.loads(condition.config_json or '{}').get('condition_version') == 2:
+        from asoud_erp.services.workflow_condition_binding import assert_editable
+
+        assert_editable(definition)
     transitions = frappe.get_all(
         "ASOUD Workflow Transition",
         filters={"workflow_definition": definition, "from_stage": condition.name},
@@ -661,6 +701,9 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
     raw = json.loads(config) if isinstance(config, str) else config
     if not isinstance(raw, dict):
         frappe.throw(_("Stage configuration must be an object"))
+    if (doc.stage_type == 'Condition' and json.loads(doc.config_json or '{}').get('condition_version') == 2
+            and raw.get('condition_version') != 2):
+        frappe.throw('برای حفظ شروط ترکیبی، این مرحله را با نسخهٔ به‌روز برنامه ویرایش کنید.')
     if doc.stage_type == 'User Task' and raw.get('submission_source'):
         start_config = frappe.db.get_value('ASOUD Workflow Stage',
             {'workflow_definition': definition, 'stage_type': 'Start'}, 'config_json')
@@ -715,7 +758,19 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
             ):
                 frappe.throw(_("Selected employees must belong to the workflow company"))
     if doc.stage_type == "Condition":
-        if normalized["source_kind"] == "Document":
+        if normalized.get('condition_version') == 2:
+            from asoud_erp.services.workflow_condition_binding import (
+                assert_editable,
+                catalog,
+                validate_bindings,
+            )
+
+            assert_editable(definition)
+            try:
+                validate_bindings(normalized, catalog(definition, stage))
+            except ValueError as error:
+                frappe.throw(str(error))
+        elif normalized["source_kind"] == "Document":
             target_doctype = frappe.db.get_value("ASOUD Workflow Definition", definition, "target_doctype")
             meta = frappe.get_meta(target_doctype)
             field = meta.get_field(normalized["source_field"])
