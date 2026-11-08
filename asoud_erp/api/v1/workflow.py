@@ -618,6 +618,48 @@ def workflow_condition_fields(definition: str, stage: str | None = None) -> dict
 
 
 @frappe.whitelist(methods=["POST"])
+def test_workflow_condition(definition: str, stage: str, config: str | dict, samples: str | dict) -> dict:
+    """Evaluate a condition with caller-supplied sample values; it never writes anything."""
+    require_roles(("System Manager", "Accounts Manager", "HR Manager"))
+    company = frappe.db.get_value("ASOUD Workflow Definition", definition, "company")
+    if company:
+        require_company(company)
+    raw = json.loads(config) if isinstance(config, str) else config
+    if not isinstance(raw, dict):
+        frappe.throw(_("Stage configuration must be an object"))
+    raw_samples = json.loads(samples) if isinstance(samples, str) else samples
+    if not isinstance(raw_samples, dict):
+        frappe.throw('نمونه‌ها باید یک شیء با کلید شناسهٔ شرط باشند.')
+    from asoud_erp.services.workflow_condition import EMPTY_OPERATORS, evaluate_group, normalize_group
+    from asoud_erp.services.workflow_condition_binding import catalog, validate_bindings
+
+    try:
+        normalized = normalize_group(raw)
+        validate_bindings(normalized, catalog(definition, stage))
+    except ValueError as error:
+        frappe.throw(str(error))
+    frappe.db.savepoint('asoud_condition_test')
+    try:
+        rows, errored = [], False
+        for row in normalized['conditions']:
+            if row['operator'] not in EMPTY_OPERATORS and row['id'] not in raw_samples:
+                rows.append(dict(id=row['id'], result=None, error='برای این شرط مقدار نمونه وارد نشده است.'))
+                errored = True
+                continue
+            one_row = dict(normalized, conditions=[row])
+            try:
+                result = evaluate_group(one_row, lambda rule, _row=row: raw_samples.get(_row['id']))
+                rows.append(dict(id=row['id'], result=result, error=None))
+            except ValueError as error:
+                rows.append(dict(id=row['id'], result=None, error=str(error)))
+                errored = True
+        final = None if errored else evaluate_group(normalized, lambda rule: raw_samples.get(rule['id']))
+        return success({"result": final, "rows": rows})
+    finally:
+        frappe.db.rollback(save_point='asoud_condition_test')
+
+
+@frappe.whitelist(methods=["POST"])
 def add_condition_branch(
     definition: str,
     condition_stage: str,

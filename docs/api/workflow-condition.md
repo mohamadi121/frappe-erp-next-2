@@ -78,3 +78,39 @@ Correction policy selected for the separate approval work: preserve the original
 submitted entry and create an explicitly linked amended version within the same
 workflow instance, using native document amendment where applicable. This
 condition contract does not claim that amendment workflow is implemented.
+
+## Condition test
+
+`POST asoud_erp.api.v1.workflow.test_workflow_condition(definition, stage, config, samples)`
+evaluates a condition with caller-supplied sample values so a designer can check a rule
+before saving or activating it. It is read-only: it creates no documents, tasks,
+transitions, activities, logs or notifications, and runs inside a savepoint that is
+rolled back as a guard.
+
+Arguments:
+- `definition`: the workflow definition name.
+- `stage`: the Condition stage name (must belong to `definition`).
+- `config`: the v2 condition config (object or JSON string), the same shape `save_stage_settings`
+  accepts. It is parsed with `normalize_group` and its bindings checked with `catalog` +
+  `validate_bindings`, exactly as on save.
+- `samples`: an object (or JSON string) mapping each condition row `id` to a sample value.
+
+Roles and company scope are the same as `workflow_condition_fields`:
+`System Manager`, `Accounts Manager`, `HR Manager`, plus the definition's company scope.
+
+Response `data`:
+- `result`: `true | false | null`. `null` when any row errored.
+- `rows`: one entry per condition row, in config order: `{id, result, error}`. `result` is
+  `true | false | null` and `error` is a Persian string or `null`.
+
+Per-row evaluation uses the same `evaluate_group` logic as the runtime (each row is evaluated
+on a one-row config, then the full config is evaluated for the final result), so the test
+outcome can never differ from a real run. A row whose operator needs a value but has no
+sample gets `result: null` and the error «برای این شرط مقدار نمونه وارد نشده است.».
+A `ValueError` from `normalize_group` or `validate_bindings` is returned as a Persian
+validation error.
+
+The runtime Condition stage records the chosen output in the Activity comment for both
+versions, e.g. «نتیجه: برقرار است؛ مسیر: <destination stage title>» or «نتیجه: برقرار
+نیست؛ مسیر: <destination stage title>». The legacy comment no longer writes the compared
+field value, so a condition on a sensitive field (for example a salary) never leaks it.
