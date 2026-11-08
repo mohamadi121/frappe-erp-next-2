@@ -65,6 +65,18 @@ class TestWorkflowCardActions(APITestCase):
         self.assertTrue(any(row['name'] == name for row in
             workflow.list_workflows(company=self.company, status='Inactive')['data']))
 
+    def test_incomplete_draft_is_listed_and_searchable_by_title_and_code(self):
+        name = self.draft()
+        doc = frappe.get_doc('ASOUD Workflow Definition', name)
+        self.assertEqual(doc.status, 'Inactive')
+
+        listed = workflow.list_workflows(company=self.company)['data']
+        self.assertTrue(any(row['name'] == name for row in listed))
+        self.assertTrue(any(row['name'] == name for row in
+            workflow.list_workflows(company=self.company, search=doc.workflow_title)['data']))
+        self.assertTrue(any(row['name'] == name for row in
+            workflow.list_workflows(company=self.company, search=doc.workflow_code)['data']))
+
     def test_details_summary_is_fresh_read_only_for_all_three_states(self):
         name = self.draft()
         pending = workflow.get_workflow_design(name)['data']['details_summary']
