@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Workflow condition test: new read-only `test_workflow_condition` endpoint evaluates a v2 condition with caller-supplied sample values (same `normalize_group`/`validate_bindings`/`evaluate_group` as save and runtime, per-row plus final result, no writes, savepoint rolled back as a guard); the runtime Condition Activity comment now records the chosen route for both versions and no longer writes the compared field value, so a condition on a sensitive field (e.g. salary) never leaks it. No new DocType, migration or permission change.
+
 - Role catalog (`role_management.catalog`) now returns a per-role `completion` state and a `summary` (`roles`, `categories`, `incomplete`, `uncategorized`) for the «مشاهده و تکمیل نقش‌ها» page. A non-system role is incomplete only when it has no base roles and no role-wide read grant; no new DocType, migration or permission change.
 
 - Condition v2 extends the existing workflow JSON and evaluator with typed exact-decimal/date predicates, inclusive ranges and All/Any groups, stable condition IDs, authoritative field bindings and guaranteed prior-action sources. Existing single-condition configs are unchanged. The existing Canvas connection API updates/removes boolean exits without recreating stages; activation rechecks both exits and bindings. No migration or new tables. Deploy backend before the matching client; live instances block condition rewrites. Real-site integration/HTTP tests are registered but require the disposable Frappe bench.
