@@ -107,6 +107,30 @@ def test_missing_sample_marks_row_error_and_null_result(env):
     assert by_id["c2"]["error"] == "برای این شرط مقدار نمونه وارد نشده است."
 
 
+def test_blank_text_sample_is_a_missing_error(env):
+    out = env.run(config(note_row(operator="Equals")), {"c2": ""})
+    assert out["data"]["result"] is None
+    assert out["data"]["rows"] == [{"id": "c2", "result": None, "error": "برای این شرط مقدار نمونه وارد نشده است."}]
+
+
+def test_whitespace_text_sample_is_a_missing_error(env):
+    out = env.run(config(note_row(operator="Equals")), {"c2": "   "})
+    assert out["data"]["result"] is None
+    assert out["data"]["rows"] == [{"id": "c2", "result": None, "error": "برای این شرط مقدار نمونه وارد نشده است."}]
+
+
+def test_is_empty_with_blank_sample_is_true(env):
+    out = env.run(config(note_row(operator="Is Empty")), {"c2": ""})
+    assert out["data"]["result"] is True
+    assert out["data"]["rows"] == [{"id": "c2", "result": True, "error": None}]
+
+
+def test_non_dict_config_is_a_persian_error(env):
+    with pytest.raises(fake.ValidationError) as excinfo:
+        env.run([1, 2], {"c1": "100"})
+    assert str(excinfo.value) == "تنظیمات شرط معتبر نیست."
+
+
 def test_invalid_range_is_a_validation_error(env):
     with pytest.raises(fake.ValidationError):
         env.run(config(amount_row(operator="Between", value="10", value_to="5")), {"c1": "3"})

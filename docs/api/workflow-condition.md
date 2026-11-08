@@ -97,6 +97,9 @@ Arguments:
   accepts. It is parsed with `normalize_group` and its bindings checked with `catalog` +
   `validate_bindings`, exactly as on save.
 - `samples`: an object (or JSON string) mapping each condition row `id` to a sample value.
+  For a row whose operator is not `Is Empty`/`Is Set`, a missing, `null` or blank (whitespace-only)
+  sample is treated as missing data: that row gets the error «برای این شرط مقدار نمونه وارد نشده است.»
+  and the final `result` is `null` — a blank sample is never evaluated as an empty value.
 
 Roles and company scope are the same as `workflow_condition_fields`:
 `System Manager`, `Accounts Manager`, `HR Manager`, plus the definition's company scope.

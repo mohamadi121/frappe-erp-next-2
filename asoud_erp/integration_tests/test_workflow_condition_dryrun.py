@@ -54,6 +54,13 @@ class TestWorkflowConditionDryRun(APITestCase):
         self.assertEqual(out['data']['rows'], [
             {'id': 'owner', 'result': None, 'error': 'برای این شرط مقدار نمونه وارد نشده است.'}])
 
+    def test_dry_run_blank_text_sample_is_a_row_error_and_null_result(self):
+        definition, gate, config = self.graph()
+        out = workflow.test_workflow_condition(definition, gate, config, {'owner': ''})
+        self.assertIsNone(out['data']['result'])
+        self.assertEqual(out['data']['rows'], [
+            {'id': 'owner', 'result': None, 'error': 'برای این شرط مقدار نمونه وارد نشده است.'}])
+
     def test_dry_run_invalid_range_is_a_validation_error(self):
         definition, gate, _ = self.graph()
         bad = dict(title='بازه', condition_version=2, combine='All', conditions=[
