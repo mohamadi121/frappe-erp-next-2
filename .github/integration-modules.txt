@@ -58,3 +58,5 @@ test_login_onboarding
 test_first_office_setup
 test_request_templates_seed
 test_workflow_condition_v2
+test_workflow_condition_catalog
+test_workflow_condition_dryrun

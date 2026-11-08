@@ -408,6 +408,8 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
         except ValueError as error:
             frappe.throw(_(str(error)))
         instance.save(ignore_permissions=True)
+        destination_title = frappe.db.get_value("ASOUD Workflow Stage", destination, "stage_title") or destination
+        comment = ('نتیجه: برقرار است؛ مسیر: ' if result else 'نتیجه: برقرار نیست؛ مسیر: ') + destination_title
         frappe.get_doc(
             {
                 "doctype": "ASOUD Workflow Activity",
@@ -416,8 +418,7 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
                 "workflow_stage": stage.name,
                 "actor": frappe.session.user,
                 "action": "Condition True" if result else "Condition False",
-                "comment": ('ارزیابی شروط ترکیبی انجام شد.' if config.get('condition_version') == 2
-                            else f"{config.get('source_field')} = {actual}"),
+                "comment": comment,
                 "created_on": now_datetime(),
             }
         ).insert(ignore_permissions=True)

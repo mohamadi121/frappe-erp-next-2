@@ -25,6 +25,39 @@ guaranteed on every graph path to this condition. System exposes only actual
 instance fields. Hidden/sensitive fields are excluded. Save and runtime recheck
 the catalog, not client-supplied field types or options.
 
+## Field catalog metadata
+
+Every `condition_fields_v2` entry may carry three optional keys so the app can
+render a picker that stores the stable id and show the right unit:
+
+- `value_source`: `user`, `employee` or `department` for a reference field the
+  app can turn into a picker; `null` otherwise.
+- `link_doctype`: the linked DocType of a reference field (`User`, `Employee`,
+  `Department`, …); `null` for non-reference fields.
+- `currency`: the ISO currency code for a form-builder `Money` field, taken
+  from the workflow company's default currency. A native `Currency` field's
+  currency is per document (its `options` name another field), so it is left
+  `null`. `null` for every other field.
+
+`field_type` is unchanged for every existing entry; these keys are additive.
+
+The System source now exposes, in addition to `started_by` and `started_on`:
+
+- `requester_unit` (Text, `value_source: department`, `link_doctype: Department`):
+  the requester's organisational unit, resolved at evaluation time from the
+  requester's Employee `department`. If the requester has no Employee or the
+  Employee has no department, evaluation raises a Persian error instead of
+  guessing.
+
+`started_by` keeps `field_type: Text` and its stored `source_field` so existing
+configs keep working, and gains `value_source: user` and `link_doctype: User`.
+There is no "subject person" System field: the instance has no person field
+other than the requester, so none is invented. There is also no instance-status
+System field: a condition is evaluated only while the instance is Running, so
+`instance.status` is always `Running` at that moment and could never route
+differently; a native document's own status field (if it exists and is allowed)
+already appears under the Original source.
+
 Both boolean outputs remain in existing native Workflow Transition rows with
 `condition_json.result: true | false`. Destination selection is Canvas-only.
 Draft settings may be saved without exits; activation requires exactly one of
@@ -45,3 +78,39 @@ Correction policy selected for the separate approval work: preserve the original
 submitted entry and create an explicitly linked amended version within the same
 workflow instance, using native document amendment where applicable. This
 condition contract does not claim that amendment workflow is implemented.
+
+## Condition test
+
+`POST asoud_erp.api.v1.workflow.test_workflow_condition(definition, stage, config, samples)`
+evaluates a condition with caller-supplied sample values so a designer can check a rule
+before saving or activating it. It is read-only: it creates no documents, tasks,
+transitions, activities, logs or notifications, and runs inside a savepoint that is
+rolled back as a guard.
+
+Arguments:
+- `definition`: the workflow definition name.
+- `stage`: the Condition stage name (must belong to `definition`).
+- `config`: the v2 condition config (object or JSON string), the same shape `save_stage_settings`
+  accepts. It is parsed with `normalize_group` and its bindings checked with `catalog` +
+  `validate_bindings`, exactly as on save.
+- `samples`: an object (or JSON string) mapping each condition row `id` to a sample value.
+
+Roles and company scope are the same as `workflow_condition_fields`:
+`System Manager`, `Accounts Manager`, `HR Manager`, plus the definition's company scope.
+
+Response `data`:
+- `result`: `true | false | null`. `null` when any row errored.
+- `rows`: one entry per condition row, in config order: `{id, result, error}`. `result` is
+  `true | false | null` and `error` is a Persian string or `null`.
+
+Per-row evaluation uses the same `evaluate_group` logic as the runtime (each row is evaluated
+on a one-row config, then the full config is evaluated for the final result), so the test
+outcome can never differ from a real run. A row whose operator needs a value but has no
+sample gets `result: null` and the error «برای این شرط مقدار نمونه وارد نشده است.».
+A `ValueError` from `normalize_group` or `validate_bindings` is returned as a Persian
+validation error.
+
+The runtime Condition stage records the chosen output in the Activity comment for both
+versions, e.g. «نتیجه: برقرار است؛ مسیر: <destination stage title>» or «نتیجه: برقرار
+نیست؛ مسیر: <destination stage title>». The legacy comment no longer writes the compared
+field value, so a condition on a sensitive field (for example a salary) never leaks it.

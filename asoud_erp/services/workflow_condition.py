@@ -11,6 +11,13 @@ TYPE_OPERATORS = {
     'Select': {'Equals', 'Not Equals'},
 }
 _DIGITS = str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٫', '01234567890123456789.')
+_TEXT_TRANSLATE = str.maketrans({'ي': 'ی', 'ى': 'ی', 'ك': 'ک', '‌': ' '})
+_TEXT_SPACES = re.compile(r'\s+')
+
+
+def normalize_text(value: str) -> str:
+    """Persian-safe comparison form: unify ي/ى/ك, ZWNJ to space, collapse spaces, casefold Latin."""
+    return _TEXT_SPACES.sub(' ', value.translate(_TEXT_TRANSLATE)).strip().casefold()
 
 
 def condition_value(kind, value):
@@ -69,6 +76,8 @@ def normalize_group(raw):
                 if row.get('value') in (None, ''):
                     raise ValueError('مقدار مقایسه وارد نشده است.')
                 first = condition_value(kind, row['value'])
+                if kind == 'Text' and not normalize_text(str(first)):
+                    raise ValueError('مقدار مقایسه وارد نشده است.')
                 item['value'] = str(first)
                 if operator == 'Between':
                     last = condition_value(kind, row.get('value_to'))
@@ -97,6 +106,8 @@ def evaluate_group(config, resolve):
             continue
         left = condition_value(row['field_type'], actual)
         right = condition_value(row['field_type'], row['value'])
+        if row['field_type'] == 'Text':
+            left, right = normalize_text(str(left)), normalize_text(str(right))
         if operator == 'Between':
             result = right <= left <= condition_value(row['field_type'], row['value_to'])
         elif operator == 'Contains':
