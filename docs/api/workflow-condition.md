@@ -25,6 +25,39 @@ guaranteed on every graph path to this condition. System exposes only actual
 instance fields. Hidden/sensitive fields are excluded. Save and runtime recheck
 the catalog, not client-supplied field types or options.
 
+## Field catalog metadata
+
+Every `condition_fields_v2` entry may carry three optional keys so the app can
+render a picker that stores the stable id and show the right unit:
+
+- `value_source`: `user`, `employee` or `department` for a reference field the
+  app can turn into a picker; `null` otherwise.
+- `link_doctype`: the linked DocType of a reference field (`User`, `Employee`,
+  `Department`, …); `null` for non-reference fields.
+- `currency`: the ISO currency code for a form-builder `Money` field, taken
+  from the workflow company's default currency. A native `Currency` field's
+  currency is per document (its `options` name another field), so it is left
+  `null`. `null` for every other field.
+
+`field_type` is unchanged for every existing entry; these keys are additive.
+
+The System source now exposes, in addition to `started_by` and `started_on`:
+
+- `requester_unit` (Text, `value_source: department`, `link_doctype: Department`):
+  the requester's organisational unit, resolved at evaluation time from the
+  requester's Employee `department`. If the requester has no Employee or the
+  Employee has no department, evaluation raises a Persian error instead of
+  guessing.
+
+`started_by` keeps `field_type: Text` and its stored `source_field` so existing
+configs keep working, and gains `value_source: user` and `link_doctype: User`.
+There is no "subject person" System field: the instance has no person field
+other than the requester, so none is invented. There is also no instance-status
+System field: a condition is evaluated only while the instance is Running, so
+`instance.status` is always `Running` at that moment and could never route
+differently; a native document's own status field (if it exists and is allowed)
+already appears under the Original source.
+
 Both boolean outputs remain in existing native Workflow Transition rows with
 `condition_json.result: true | false`. Destination selection is Canvas-only.
 Draft settings may be saved without exits; activation requires exactly one of
