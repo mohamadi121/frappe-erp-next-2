@@ -27,6 +27,7 @@ test_demo_seed
 test_account_ops
 test_persian_digits
 test_forms
+test_stage_forms
 test_form_execution
 test_calendar
 test_directives
