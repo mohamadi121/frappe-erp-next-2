@@ -137,6 +137,14 @@ def test_text_equals_ignores_arabic_ya_ka_zwnj_spaces_and_case():
     assert text_rule('Equals', 'خرید  تجهیزات', 'خرید تجهیزات') is True
     assert text_rule('Equals', 'ERP', 'erp') is True
     assert text_rule('Not Equals', 'خرید', 'خرید') is False
+
+
+def test_text_equals_unifies_arabic_ya_and_kaf():
+    # خريد uses Arabic ya U+064A, كالا uses Arabic kaf U+0643
+    assert text_rule('Equals', 'خرید', 'خريد') is True
+    assert text_rule('Equals', 'کالا', 'كالا') is True
+    # ى U+0649 in the actual value matches a search for ی
+    assert text_rule('Contains', 'ی', 'درخواست ىادداشت') is True
     assert text_rule('Not Equals', 'خرید', 'فروش') is True
 
 

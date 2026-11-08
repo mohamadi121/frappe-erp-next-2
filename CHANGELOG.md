@@ -2,11 +2,13 @@
 
 ## Unreleased
 
+- Workflow condition runtime: a failing v2 condition now writes its Error Log row with the workflow instance as reference and a deferred insert, so the row survives the request rollback and the admin can see why the condition failed. No migration.
+
 - Condition v2 Text comparisons now normalize Persian text on both sides (unify ي/ى/ك, ZWNJ to space, collapse whitespace, casefold Latin) so Equals/Not Equals/Contains/Not Contains match across spelling and spacing variants; whitespace-only Text values are rejected at save. Number/Date/Select and legacy single-condition configs are unchanged. No migration.
 
 - Condition fields: «اطلاعات سیستم» adds the requester's organisational unit (the requester Employee's department; an undeterminable unit is an evaluation error, never a guess), and catalog entries carry optional `value_source` (user/employee/department), `link_doctype` and `currency` (company default for form-builder Money fields only) so the app can store stable ids. The instance status is not offered (always Running during evaluation). No migration.
 
-- Workflow condition test: new read-only `test_workflow_condition` endpoint evaluates a v2 condition with caller-supplied sample values (same `normalize_group`/`validate_bindings`/`evaluate_group` as save and runtime, per-row plus final result, no writes, savepoint rolled back as a guard); the runtime Condition Activity comment now records the chosen route for both versions and no longer writes the compared field value, so a condition on a sensitive field (e.g. salary) never leaks it. No new DocType, migration or permission change.
+- Workflow condition test: new read-only `test_workflow_condition` endpoint evaluates a v2 condition with caller-supplied sample values (same `normalize_group`/`validate_bindings`/`evaluate_group` as save and runtime, per-row plus final result, no writes, savepoint rolled back as a guard); the runtime Condition Activity comment now records the chosen route for both versions and no longer writes the compared field value, so a condition on a sensitive field (e.g. salary) never leaks it. A blank (missing, null or whitespace-only) sample for a row whose operator is not `Is Empty`/`Is Set` is now a row error with a `null` final result instead of being evaluated as an empty value, and a non-object config reports the Persian «تنظیمات شرط معتبر نیست.» No new DocType, migration or permission change.
 
 - Role catalog (`role_management.catalog`) now returns a per-role `completion` state and a `summary` (`roles`, `categories`, `incomplete`, `uncategorized`) for the «مشاهده و تکمیل نقش‌ها» page. A non-system role is incomplete only when it has no base roles and no role-wide read grant; no new DocType, migration or permission change.
 

@@ -626,7 +626,7 @@ def test_workflow_condition(definition: str, stage: str, config: str | dict, sam
         require_company(company)
     raw = json.loads(config) if isinstance(config, str) else config
     if not isinstance(raw, dict):
-        frappe.throw(_("Stage configuration must be an object"))
+        frappe.throw('تنظیمات شرط معتبر نیست.')
     raw_samples = json.loads(samples) if isinstance(samples, str) else samples
     if not isinstance(raw_samples, dict):
         frappe.throw('نمونه‌ها باید یک شیء با کلید شناسهٔ شرط باشند.')
@@ -642,10 +642,13 @@ def test_workflow_condition(definition: str, stage: str, config: str | dict, sam
     try:
         rows, errored = [], False
         for row in normalized['conditions']:
-            if row['operator'] not in EMPTY_OPERATORS and row['id'] not in raw_samples:
-                rows.append(dict(id=row['id'], result=None, error='برای این شرط مقدار نمونه وارد نشده است.'))
-                errored = True
-                continue
+            # The app sends a sample for every row; a blank one is missing data, not an empty value.
+            if row['operator'] not in EMPTY_OPERATORS:
+                sample = raw_samples.get(row['id'])
+                if sample is None or (isinstance(sample, str) and not sample.strip()):
+                    rows.append(dict(id=row['id'], result=None, error='برای این شرط مقدار نمونه وارد نشده است.'))
+                    errored = True
+                    continue
             one_row = dict(normalized, conditions=[row])
             try:
                 result = evaluate_group(one_row, lambda rule, _row=row: raw_samples.get(_row['id']))
