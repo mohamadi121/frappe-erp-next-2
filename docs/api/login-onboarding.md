@@ -118,6 +118,17 @@ requires the office-manager roles. The role is part of the role-management catal
 - `role_management.system_admin_permissions()` returns the administrator row (title «مدیر کل سیستم», scope global,
   full permission list derived from the real permissions plus the ASOUD capabilities).
 - `role_management.catalog` adds `system_roles`.
+- Each role row in `role_management.catalog` carries `completion` (`"complete"` | `"incomplete"`),
+  and the catalog adds a `summary` object. A non-system role is `"incomplete"` only when its Role
+  Profile has no base roles **and** its role-wide native role has no read permission; a role-wide
+  grant (the shared `ASOUD-ACCESS-ROLE-…` role) makes it complete, but per-user access assignments
+  never do. System roles are always `"complete"`.
+
+```
+summary: {roles: 12, categories: 8, incomplete: 1, uncategorized: 0}
+# roles = managed (non-system) ASOUD roles only; uncategorized = roles whose category is
+# empty or not in the returned categories list.
+```
 - `role_access.assign_role(user, role, company?)` / `unassign_role(user, role, company?)` POST: global definitions use
   `ASOUD Access Assignment`; office definitions use `ASOUD Office Role Assignment` (one account may hold different roles
   in different offices; they never leak into the global roles). Gates: administrator or holder of `ASOUD Role Assigner`;

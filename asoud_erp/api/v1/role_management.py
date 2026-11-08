@@ -11,6 +11,7 @@ from frappe.utils import cint
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services import security_audit
 from asoud_erp.services.erp_documents import require_roles
+from asoud_erp.services.role_completion import completion, summary
 from asoud_erp.services.role_templates import BASE_ROLES, CATEGORIES, TEMPLATES
 
 
@@ -56,17 +57,24 @@ def _base_roles(values, allow_empty=False):
 
 
 def _row(doc):
+    from asoud_erp.api.v1.user_access import _native
+
     profile = frappe.get_doc("Role Profile", doc.role_profile)
     assigned = set(frappe.get_all("User", filters={"role_profile_name": profile.name}, pluck="name"))
     if frappe.db.exists("DocType", "ASOUD Access Assignment"):
         assigned.update(frappe.get_all("ASOUD Access Assignment", filters={"managed_role": doc.name}, pluck="user"))
+    base_roles = sorted(row.role for row in profile.roles)
+    system = bool(doc.is_system)
+    # Role-wide grant: Custom DocPerm rows on the shared native role, not per-user assignments.
+    role_grant_count = frappe.db.count("Custom DocPerm", {"role": _native(doc.name), "permlevel": 0, "read": 1})
     return {
         "code": doc.role_code, "title": doc.title, "category": doc.category,
         "parent": doc.parent_role or "", "description": doc.description or "",
         "enabled": bool(doc.enabled), "profile": profile.name,
-        "base_roles": sorted(row.role for row in profile.roles),
+        "base_roles": base_roles,
         "modified": str(doc.modified), "profile_modified": str(profile.modified),
-        "assigned_users": len(assigned), "scope": doc.scope or "global", "system": bool(doc.is_system),
+        "assigned_users": len(assigned), "scope": doc.scope or "global", "system": system,
+        "completion": completion(base_roles, system, role_grant_count),
     }
 
 
@@ -76,11 +84,13 @@ def catalog():
     installed = set(frappe.get_all("Role", filters={"disabled": 0}, pluck="name"))
     roles = [_row(frappe.get_doc("ASOUD Role Definition", name))
              for name in frappe.get_all("ASOUD Role Definition", pluck="name", order_by="title asc")]
+    categories = [{"code": row.name, "title": row.title, "style": row.style}
+                  for row in frappe.get_all("ASOUD Role Category",
+                      fields=["name", "title", "style"], order_by="creation asc")]
     return success({
         "system_roles": [system_admin_row()],
-        "categories": [{"code": row.name, "title": row.title, "style": row.style}
-                       for row in frappe.get_all("ASOUD Role Category",
-                           fields=["name", "title", "style"], order_by="creation asc")],
+        "categories": categories,
+        "summary": summary(roles, categories),
         "roles": roles,
         "base_roles": [{"name": name, "title": label, "description": description,
                         "available": name in installed}
