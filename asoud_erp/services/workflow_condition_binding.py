@@ -14,7 +14,6 @@ TYPE_MAP = {
 }
 # Reference fields the app can render as a picker that stores the stable id.
 _VALUE_SOURCE = {'User': 'user', 'Employee': 'employee', 'Department': 'department'}
-_MONEY_TYPES = {'Currency', 'Money'}
 
 
 def _link_doctype(field):
@@ -38,7 +37,9 @@ def assert_editable(definition):
 
 
 def _is_money(field):
-    return field.get('fieldtype') in _MONEY_TYPES or field.get('type') in _MONEY_TYPES
+    # Only a form-builder Money field has a known currency (the company default);
+    # a native Currency field's currency is per document (its options name a field).
+    return field.get('type') == 'Money'
 
 
 def _fields(fields, source, stage='', stage_title='', currency=None):
@@ -111,11 +112,6 @@ def catalog(definition, stage):
             field_type='Date', options=[], value_source=None, link_doctype=None, currency=None),
         dict(source_kind='System', source_stage='', source_field='requester_unit', label='واحد سازمانی ثبت‌کننده',
             field_type='Text', options=[], value_source='department', link_doctype='Department', currency=None),
-        dict(source_kind='System', source_stage='', source_field='status', label='وضعیت فرایند',
-            field_type='Select', options=['Running', 'Completed', 'Rejected', 'Cancelled', 'Failed'],
-            option_labels={'Running': 'در حال گردش', 'Completed': 'تکمیل‌شده', 'Rejected': 'ردشده',
-                           'Cancelled': 'لغوشده', 'Failed': 'ناموفق'},
-            value_source=None, link_doctype=None, currency=None),
     ])
     return result
 

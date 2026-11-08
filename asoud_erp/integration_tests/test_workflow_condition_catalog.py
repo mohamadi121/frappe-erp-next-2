@@ -26,17 +26,14 @@ class TestWorkflowConditionCatalog(APITestCase):
         definition, gate = self._definition_with_condition()
         rows = self._system_rows(definition, gate)
         self.assertIn('requester_unit', rows)
-        self.assertIn('status', rows)
         self.assertEqual(rows['started_by']['value_source'], 'user')
         self.assertEqual(rows['started_by']['link_doctype'], 'User')
         self.assertEqual(rows['started_by']['field_type'], 'Text')
         self.assertEqual(rows['requester_unit']['value_source'], 'department')
         self.assertEqual(rows['requester_unit']['link_doctype'], 'Department')
         self.assertEqual(rows['requester_unit']['field_type'], 'Text')
-        self.assertEqual(rows['status']['field_type'], 'Select')
-        self.assertEqual(rows['status']['options'], ['Running', 'Completed', 'Rejected', 'Cancelled', 'Failed'])
-        self.assertEqual(rows['status']['option_labels']['Running'], 'در حال گردش')
-        self.assertEqual(rows['status']['option_labels']['Failed'], 'ناموفق')
+        # The instance status is always Running while a condition evaluates, so it is not offered.
+        self.assertNotIn('status', rows)
 
     def test_stored_started_by_config_still_validates(self):
         definition, gate = self._definition_with_condition()
@@ -48,12 +45,10 @@ class TestWorkflowConditionCatalog(APITestCase):
         self.assertEqual(stored['conditions'][0]['source_field'], 'started_by')
         self.assertEqual(stored['conditions'][0]['field_type'], 'Text')
 
-    def test_status_condition_validates_only_with_a_real_option(self):
+    def test_status_is_not_a_condition_source(self):
         definition, gate = self._definition_with_condition()
-        good = dict(title='وضعیت', condition_version=2, combine='All', conditions=[
+        config = dict(title='وضعیت', condition_version=2, combine='All', conditions=[
             dict(id='st', source_kind='System', source_stage='', source_field='status',
                 field_type='Select', operator='Equals', value='Running')])
-        workflow.save_stage_settings(definition, gate, good)
-        bad = dict(good, conditions=[dict(good['conditions'][0], id='st2', value='NotAStatus')])
         with self.assertRaises(frappe.ValidationError):
-            workflow.save_stage_settings(definition, gate, bad)
+            workflow.save_stage_settings(definition, gate, config)

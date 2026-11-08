@@ -34,9 +34,10 @@ render a picker that stores the stable id and show the right unit:
   app can turn into a picker; `null` otherwise.
 - `link_doctype`: the linked DocType of a reference field (`User`, `Employee`,
   `Department`, …); `null` for non-reference fields.
-- `currency`: the ISO currency code for an amount field (native `Currency` or
-  form-builder `Money`), taken from the workflow company's default currency;
-  `null` for every other field.
+- `currency`: the ISO currency code for a form-builder `Money` field, taken
+  from the workflow company's default currency. A native `Currency` field's
+  currency is per document (its `options` name another field), so it is left
+  `null`. `null` for every other field.
 
 `field_type` is unchanged for every existing entry; these keys are additive.
 
@@ -47,14 +48,15 @@ The System source now exposes, in addition to `started_by` and `started_on`:
   requester's Employee `department`. If the requester has no Employee or the
   Employee has no department, evaluation raises a Persian error instead of
   guessing.
-- `status` (Select): the workflow instance status, with the real option values
-  `Running`, `Completed`, `Rejected`, `Cancelled`, `Failed` and their Persian
-  labels.
 
 `started_by` keeps `field_type: Text` and its stored `source_field` so existing
 configs keep working, and gains `value_source: user` and `link_doctype: User`.
 There is no "subject person" System field: the instance has no person field
-other than the requester, so none is invented.
+other than the requester, so none is invented. There is also no instance-status
+System field: a condition is evaluated only while the instance is Running, so
+`instance.status` is always `Running` at that moment and could never route
+differently; a native document's own status field (if it exists and is allowed)
+already appears under the Original source.
 
 Both boolean outputs remain in existing native Workflow Transition rows with
 `condition_json.result: true | false`. Destination selection is Canvas-only.
