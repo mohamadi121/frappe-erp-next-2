@@ -10,6 +10,8 @@ Policy:
 - System Manager and Accounts Manager access remains unchanged.
 """
 
+from uuid import uuid4
+
 import frappe
 
 from asoud_erp.api.v1 import (
@@ -63,6 +65,43 @@ class TestHrManagerAccess(APITestCase):
 
         res_implicit = setup.get_setup_status()
         self.assertEqual(res_implicit["data"]["company"], self.first)
+
+    def test_new_workflow_draft_is_persisted_with_start_settings(self):
+        frappe.set_user(MANAGER_USER)
+        title = f"پیش‌نویس آزمایشی {uuid4().hex[:8]}"
+        created = workflow.create_workflow_draft(
+            workflow_title=title,
+            module_key="HR",
+            target_doctype="Leave Application",
+            company=self.first,
+            icon_key="leave",
+            color_hex="#1769F6",
+        )["data"]
+
+        self.assertEqual(created["status"], "Inactive")
+        self.assertTrue(
+            frappe.db.exists("ASOUD Workflow Definition", created["name"])
+        )
+        self.assertEqual(created["icon_key"], "leave")
+        self.assertEqual(created["color_hex"], "#1769F6")
+
+        by_title = workflow.list_workflows(
+            search=title, company=self.first
+        )["data"]
+        by_code = workflow.list_workflows(
+            search=created["workflow_code"], company=self.first
+        )["data"]
+        self.assertEqual([row["name"] for row in by_title], [created["name"]])
+        self.assertEqual([row["name"] for row in by_code], [created["name"]])
+
+        design = workflow.get_workflow_design(definition=created["name"])["data"]
+        start = next(
+            stage for stage in design["stages"] if stage["stage_type"] == "Start"
+        )
+        self.assertEqual(start["config"]["trigger_type"], "Manual")
+        self.assertEqual(
+            start["config"]["subject_source"], "Referenced Document"
+        )
 
     def test_hr_manager_rejected_setup_status_foreign_company(self):
         frappe.set_user(HR_MANAGER_USER)
