@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Workflow condition runtime: a failing v2 condition now writes its Error Log row with the workflow instance as reference and a deferred insert, so the row survives the request rollback and the admin can see why the condition failed. No migration.
+
 - Condition v2 Text comparisons now normalize Persian text on both sides (unify ي/ى/ك, ZWNJ to space, collapse whitespace, casefold Latin) so Equals/Not Equals/Contains/Not Contains match across spelling and spacing variants; whitespace-only Text values are rejected at save. Number/Date/Select and legacy single-condition configs are unchanged. No migration.
 
 - Condition fields: «اطلاعات سیستم» adds the requester's organisational unit (the requester Employee's department; an undeterminable unit is an evaluation error, never a guess), and catalog entries carry optional `value_source` (user/employee/department), `link_doctype` and `currency` (company default for form-builder Money fields only) so the app can store stable ids. The instance status is not offered (always Running during evaluation). No migration.

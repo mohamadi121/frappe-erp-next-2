@@ -6,6 +6,7 @@ database behavior is covered by `integration_tests/test_workflow_condition_dryru
 """
 
 import importlib
+import json
 import sys
 import types
 
@@ -124,3 +125,63 @@ def test_endpoint_writes_nothing(env, monkeypatch):
     monkeypatch.setattr(env.site, "add", no_write)
     out = env.run(config(amount_row(), note_row(), combine="Any"), {"c1": "100", "c2": "فوری"})
     assert out["data"]["result"] is True
+
+
+# The runtime test below imports the real `workflow_runtime` (not the stub the dry-run
+# fixture installs) so it exercises the actual `frappe.log_error` call in `_activate_stage`.
+RELOADED_RT = [
+    "asoud_erp.api.v1.workflow_runtime", "asoud_erp.services.workflow_condition_binding",
+    "asoud_erp.services.request_access", "asoud_erp.services.erp_documents",
+    "asoud_erp.services.request_link_values", "asoud_erp.api.v1.document_templates",
+]
+
+
+@pytest.fixture
+def runtime_env(monkeypatch):
+    site = fake.Site()
+    frappe, utils = fake.install(site)
+    utils.add_to_date = lambda *args, **kwargs: "now"
+    naming = types.ModuleType("frappe.model.naming")
+    naming.make_autoname = lambda key: key
+    model = types.ModuleType("frappe.model")
+    model.naming = naming
+    frappe.model = model
+    for name, module in {"frappe": frappe, "frappe.utils": utils, "frappe.model": model,
+                         "frappe.model.naming": naming}.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    restore = fake.isolate(RELOADED_RT)
+    site.user = "Administrator"
+    runtime = importlib.import_module("asoud_erp.api.v1.workflow_runtime")
+    binding = importlib.import_module("asoud_erp.services.workflow_condition_binding")
+    env = Env()
+    env.site, env.frappe, env.runtime, env.binding = site, frappe, runtime, binding
+    yield env
+    restore()
+
+
+def test_failing_v2_condition_logs_with_defer_insert_and_instance_reference(runtime_env, monkeypatch):
+    env = runtime_env
+    config = dict(title="شرط و مسیر", condition_version=2, combine="All", conditions=[
+        dict(id="c1", source_kind="Original", source_stage="", source_field="amount",
+             field_type="Number", operator="Greater Than", value="50")])
+    instance = types.SimpleNamespace(name="WFI-0001", workflow_definition="DEF",
+                                     reference_doctype=None, reference_name=None,
+                                     current_stage=None, save=lambda **kwargs: None)
+    stage = types.SimpleNamespace(name="GATE", stage_type="Condition", config_json=json.dumps(config))
+    monkeypatch.setattr(env.binding, "catalog", lambda definition, stage: [])
+
+    def boom(cfg, available):
+        raise ValueError("شرط ۱: منبع یا فیلد حذف شده یا در این مسیر معتبر نیست.")
+
+    monkeypatch.setattr(env.binding, "validate_bindings", boom)
+    calls = []
+    monkeypatch.setattr(env.frappe, "log_error", lambda **kwargs: calls.append(kwargs))
+    with pytest.raises(fake.ValidationError):
+        env.runtime._activate_stage(instance, stage)
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["defer_insert"] is True
+    assert call["reference_doctype"] == "ASOUD Workflow Instance"
+    assert call["reference_name"] == "WFI-0001"
+    assert call["title"] == "خطا در ارزیابی شرط گردش کار"
+    assert "شرط ۱" in call["message"]

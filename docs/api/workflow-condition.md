@@ -16,6 +16,9 @@ Operators are restricted by the server-owned field type. Decimal comparisons
 are exact; numeric/date Between includes both endpoints. Empty comparisons need
 no value. Invalid ranges, missing fields or missing prior-stage data are errors,
 not the False outcome. All predicates are evaluated before combining results.
+When a condition fails at runtime, the failure is written to the Error Log with
+the workflow instance as its reference and a deferred insert, so the row survives
+the request rollback and the admin can find why the condition failed.
 
 The existing fields response adds `condition_fields_v2`, an array of allowed
 field bindings with source_kind/source_stage, source_field, label, field_type,
