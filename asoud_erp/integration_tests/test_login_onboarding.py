@@ -611,6 +611,31 @@ class TestRoleCatalogAndHrModes(LoginOnboardingBase):
         after = user_access.editor("LOHR4")["data"]
         self.assertEqual(after["advanced_grants"]["Leave Application"], ["print"])
 
+    def test_role_completion_and_summary(self):
+        self.login(ADMIN)
+        # A role with base roles is complete.
+        self.make_role("LOCOMP", ["HR User"])
+        # A role with no base roles is incomplete until a role-wide grant exists.
+        self.make_role("LOEMPTY", [])
+        data = role_management.catalog()["data"]
+        rows = {r["code"]: r for r in data["roles"]}
+        self.assertEqual(rows["LOCOMP"]["completion"], "complete")
+        self.assertEqual(rows["LOEMPTY"]["completion"], "incomplete")
+        # The summary is consistent with the rows it aggregates.
+        managed = [r for r in data["roles"] if not r["system"]]
+        self.assertEqual(data["summary"]["roles"], len(managed))
+        self.assertEqual(data["summary"]["categories"], len(data["categories"]))
+        self.assertEqual(data["summary"]["incomplete"],
+                         sum(1 for r in managed if r["completion"] == "incomplete"))
+        # A role-wide grant (no user) makes the empty-base role complete.
+        editor = user_access.editor("LOEMPTY")["data"]
+        doctypes = [r["doctype"] for r in editor["catalog"]]
+        grants = {dt: [] for dt in doctypes}
+        grants["Leave Application"] = ["read"]
+        user_access.apply(json.dumps({"code": "LOEMPTY", "grants": grants, "token": editor["token"]}))
+        after = {r["code"]: r for r in role_management.catalog()["data"]["roles"]}
+        self.assertEqual(after["LOEMPTY"]["completion"], "complete")
+
 
 class TestRoleAssignment(LoginOnboardingBase):
     @classmethod
