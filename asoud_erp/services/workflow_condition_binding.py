@@ -12,6 +12,18 @@ TYPE_MAP = {
     'Decimal': 'Number', 'Currency': 'Number', 'Money': 'Number', 'Formula': 'Number',
     'Date': 'Date', 'Select': 'Select', 'Choice': 'Select',
 }
+# Reference fields the app can render as a picker that stores the stable id.
+_VALUE_SOURCE = {'User': 'user', 'Employee': 'employee', 'Department': 'department'}
+_MONEY_TYPES = {'Currency', 'Money'}
+
+
+def _link_doctype(field):
+    """The linked DocType of a reference field, or None for non-Link fields."""
+    if field.get('fieldtype') == 'Link':
+        return field.get('options')
+    if field.get('type') == 'Link':
+        return field.get('source')
+    return None
 
 
 def assert_editable(definition):
@@ -25,7 +37,11 @@ def assert_editable(definition):
         frappe.throw('برای حفظ اجراها، گردش کار را غیرفعال کنید و تا پایان اجراهای جاری منتظر بمانید؛ یا یک کپی مستقل برای طراحی بسازید.')
 
 
-def _fields(fields, source, stage='', stage_title=''):
+def _is_money(field):
+    return field.get('fieldtype') in _MONEY_TYPES or field.get('type') in _MONEY_TYPES
+
+
+def _fields(fields, source, stage='', stage_title='', currency=None):
     result = []
     for field in fields:
         kind = TYPE_MAP.get(field.get('type') or field.get('fieldtype'))
@@ -42,10 +58,13 @@ def _fields(fields, source, stage='', stage_title=''):
         key = field.get('key') or field.get('fieldname')
         if not key:
             continue
+        link = _link_doctype(field)
         result.append(dict(source_kind=source, source_stage=stage, stage_title=stage_title,
             source_field=key, label=field.get('label') or key, field_type=kind,
             options=options if kind == 'Select' else [], option_labels=labels,
-            required=bool(field.get('required') or field.get('reqd'))))
+            required=bool(field.get('required') or field.get('reqd')),
+            value_source=_VALUE_SOURCE.get(link), link_doctype=link,
+            currency=currency if _is_money(field) else None))
     return result
 
 
@@ -62,11 +81,13 @@ def catalog(definition, stage):
     current = next((row for row in stages if row.name == stage and row.stage_type == 'Condition'), None)
     if not current:
         frappe.throw('ایستگاه شرط متعلق به این گردش کار نیست.')
+    currency = frappe.get_cached_value('Company', workflow.company, 'default_currency') if workflow.company else None
     if workflow.get('source_revision'):
         revision = frappe.get_doc('ASOUD Form Revision', workflow.source_revision)
-        result = _fields(fields(json.loads(revision.schema_json)), 'Original')
+        result = _fields(fields(json.loads(revision.schema_json)), 'Original', currency=currency)
     else:
-        result = _fields([field.as_dict() for field in frappe.get_meta(workflow.target_doctype).fields], 'Original')
+        result = _fields([field.as_dict() for field in frappe.get_meta(workflow.target_doctype).fields], 'Original',
+            currency=currency)
     prior = guaranteed_predecessors(stages, edges, stage)
     for row in stages:
         if row.name not in prior:
@@ -82,12 +103,19 @@ def catalog(definition, stage):
             saved_fields = fields(schema)
         else:
             saved_fields = config.get('form_fields') or []
-        result.extend(_fields(saved_fields, 'Stage', row.name, row.stage_title))
+        result.extend(_fields(saved_fields, 'Stage', row.name, row.stage_title, currency=currency))
     result.extend([
         dict(source_kind='System', source_stage='', source_field='started_by', label='ثبت‌کننده درخواست',
-            field_type='Text', options=[]),
+            field_type='Text', options=[], value_source='user', link_doctype='User', currency=None),
         dict(source_kind='System', source_stage='', source_field='started_on', label='تاریخ شروع فرایند',
-            field_type='Date', options=[]),
+            field_type='Date', options=[], value_source=None, link_doctype=None, currency=None),
+        dict(source_kind='System', source_stage='', source_field='requester_unit', label='واحد سازمانی ثبت‌کننده',
+            field_type='Text', options=[], value_source='department', link_doctype='Department', currency=None),
+        dict(source_kind='System', source_stage='', source_field='status', label='وضعیت فرایند',
+            field_type='Select', options=['Running', 'Completed', 'Rejected', 'Cancelled', 'Failed'],
+            option_labels={'Running': 'در حال گردش', 'Completed': 'تکمیل‌شده', 'Rejected': 'ردشده',
+                           'Cancelled': 'لغوشده', 'Failed': 'ناموفق'},
+            value_source=None, link_doctype=None, currency=None),
     ])
     return result
 
@@ -123,6 +151,14 @@ def resolver(instance, config, available):
     def resolve(rule):
         source, key = rule['source_kind'], rule['source_field']
         if source == 'System':
+            if key == 'requester_unit':
+                # The requester's unit is their Employee's department, the same rule the
+                # notification context uses; a missing unit is an error, never a guess.
+                employee = frappe.db.get_value('Employee', {'user_id': instance.started_by},
+                    'department', as_dict=True)
+                if not employee or not employee.get('department'):
+                    raise ValueError('واحد سازمانی ثبت‌کننده قابل تعیین نیست.')
+                return employee.get('department')
             value = instance.get(key)
             if key == 'started_on' and value:
                 from frappe.utils import get_datetime
