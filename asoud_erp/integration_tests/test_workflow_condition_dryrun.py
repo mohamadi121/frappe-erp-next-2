@@ -115,12 +115,10 @@ class TestWorkflowConditionDryRun(APITestCase):
         workflow.set_workflow_status(definition, 'Active')
         with self.assertRaises(frappe.ValidationError):
             workflow_runtime.start_workflow_instance(definition, 'آزمون خطای شرط')
-        # The throw raised but did not roll back, so the instance row is still in the
-        # open transaction; capture its name before the rollback removes it.
+        # frappe.throw does not roll back in tests; the rollback below stands in for the request one.
         instance = frappe.db.get_value('ASOUD Workflow Instance',
             {'workflow_definition': definition, 'started_by': 'Administrator', 'status': 'Running'})
         self.assertTrue(instance, 'the failing instance row should still be in the open transaction')
-        # The throw rolled the request back; the deferred Error Log must survive it.
         frappe.db.rollback()
         save_to_db()
         logs = frappe.get_all('Error Log', filters={'reference_doctype': 'ASOUD Workflow Instance',
