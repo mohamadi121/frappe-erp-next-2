@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Condition v2 Text comparisons now normalize Persian text on both sides (unify ي/ى/ك, ZWNJ to space, collapse whitespace, casefold Latin) so Equals/Not Equals/Contains/Not Contains match across spelling and spacing variants; whitespace-only Text values are rejected at save. Number/Date/Select and legacy single-condition configs are unchanged. No migration.
+
 - Role catalog (`role_management.catalog`) now returns a per-role `completion` state and a `summary` (`roles`, `categories`, `incomplete`, `uncategorized`) for the «مشاهده و تکمیل نقش‌ها» page. A non-system role is incomplete only when it has no base roles and no role-wide read grant; no new DocType, migration or permission change.
 
 - Condition v2 extends the existing workflow JSON and evaluator with typed exact-decimal/date predicates, inclusive ranges and All/Any groups, stable condition IDs, authoritative field bindings and guaranteed prior-action sources. Existing single-condition configs are unchanged. The existing Canvas connection API updates/removes boolean exits without recreating stages; activation rechecks both exits and bindings. No migration or new tables. Deploy backend before the matching client; live instances block condition rewrites. Real-site integration/HTTP tests are registered but require the disposable Frappe bench.

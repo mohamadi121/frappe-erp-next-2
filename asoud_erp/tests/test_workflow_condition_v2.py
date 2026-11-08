@@ -1,6 +1,11 @@
 import pytest
 
-from asoud_erp.services.workflow_condition import evaluate_group, guaranteed_predecessors, normalize_group
+from asoud_erp.services.workflow_condition import (
+    evaluate_group,
+    guaranteed_predecessors,
+    normalize_group,
+    normalize_text,
+)
 
 
 def rule(**values):
@@ -99,3 +104,53 @@ def test_six_conditions_and_every_numeric_operator():
         assert isinstance(evaluate_group(normalize_group(config(row)), lambda _: '50'), bool)
     rows = [dict(rule(), id=f'item{i}') for i in range(6)]
     assert len(normalize_group(config(*rows))['conditions']) == 6
+
+
+def text_rule(operator, value, actual):
+    row = rule()
+    row.update(field_type='Text', operator=operator, value=value)
+    return evaluate_group(normalize_group(config(row)), lambda _: actual)
+
+
+def test_normalize_text_unifies_persian_and_spaces():
+    assert normalize_text('درخواست خريد') == normalize_text('درخواست خرید')
+    assert normalize_text('می‌خواهم') == normalize_text('می خواهم')
+    assert normalize_text('  ERP   ') == 'erp'
+    assert normalize_text('خرید  تجهیزات') == 'خرید تجهیزات'
+    # diacritics, digits and ه/ة/أ/ا are untouched
+    assert normalize_text('مَبل ۵۰') == 'مَبل ۵۰'
+
+
+def test_text_contains_matches_normalized_substrings():
+    actual = 'درخواست خرید تجهیزات کامپیوتری'
+    assert text_rule('Contains', 'تجهیزات', actual) is True
+    assert text_rule('Contains', 'خرید تجهیزات', actual) is True
+    assert text_rule('Contains', 'مبلمان', actual) is False
+    assert text_rule('Not Contains', 'مبلمان', actual) is True
+    assert text_rule('Not Contains', 'خرید تجهیزات', actual) is False
+
+
+def test_text_equals_ignores_arabic_ya_ka_zwnj_spaces_and_case():
+    assert text_rule('Equals', 'خرید', 'درخواست خريد') is False
+    assert text_rule('Equals', 'خرید', 'خرید') is True
+    assert text_rule('Equals', 'می‌خواهم', 'می خواهم') is True
+    assert text_rule('Equals', 'خرید  تجهیزات', 'خرید تجهیزات') is True
+    assert text_rule('Equals', 'ERP', 'erp') is True
+    assert text_rule('Not Equals', 'خرید', 'خرید') is False
+    assert text_rule('Not Equals', 'خرید', 'فروش') is True
+
+
+def test_whitespace_only_text_value_rejected():
+    row = rule()
+    row.update(field_type='Text', operator='Contains', value='   ')
+    with pytest.raises(ValueError, match='مقدار مقایسه وارد نشده است'):
+        normalize_group(config(row))
+
+
+def test_number_and_select_are_not_text_normalized():
+    row = rule()
+    row.update(field_type='Select', operator='Equals', value='ERP')
+    assert evaluate_group(normalize_group(config(row)), lambda _: 'erp') is False
+    assert evaluate_group(normalize_group(config(row)), lambda _: 'ERP') is True
+    assert evaluate_group(normalize_group(config(rule())), lambda _: ' 51 ') is True
+    assert evaluate_group(normalize_group(config(rule())), lambda _: ' 49 ') is False
