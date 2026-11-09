@@ -18,6 +18,13 @@ from asoud_erp.services.request_templates.base import validate_form_stage_respon
 from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
 from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
+from asoud_erp.services.stage_supplementary_form import (
+    RESERVED_KEY,
+    read_binding,
+    merge_supplementary,
+    supplementary_of,
+    without_required,
+)
 from asoud_erp.services.workflow_response import normalize_form_response
 from asoud_erp.services.workflow_start_policy import validate_request_id
 
@@ -1155,9 +1162,16 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
         from asoud_erp.services.workflow_user_action import prepare
 
         action_data = prepare(doc, config)
+    supplementary_form = None
+    binding = read_binding(config)
+    if binding:
+        response_data = json.loads(doc.response_json or "{}")
+        stored = supplementary_of(response_data) or supplementary_of(json.loads(doc.draft_json or "{}"))
+        supplementary_form = _supplementary_payload(binding, stored["values"] if stored else {})
     return success(
         {
             **action_data,
+            **({"supplementary_form": supplementary_form} if supplementary_form else {}),
             "name": doc.name,
             "workflow_instance": doc.workflow_instance,
             "workflow_stage": doc.workflow_stage,
@@ -1184,7 +1198,7 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
 
 
 @frappe.whitelist(methods=["POST"])
-def save_workflow_task_draft(task: str, response: str | dict) -> dict:
+def save_workflow_task_draft(task: str, response: str | dict, supplementary_values: str | dict | None = None) -> dict:
     doc = frappe.get_doc("ASOUD Workflow Task", task)
     from asoud_erp.services.directive_access import reject_generic
     reject_generic(doc)
@@ -1196,6 +1210,17 @@ def save_workflow_task_draft(task: str, response: str | dict) -> dict:
         frappe.throw(_("Workflow draft must be an object"))
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
     stage_config = json.loads(stage.config_json or "{}")
+    binding = read_binding(stage_config)
+    if binding:
+        if supplementary_values is not None:
+            checked = json.loads(supplementary_values) if isinstance(supplementary_values, str) else supplementary_values
+            if not isinstance(checked, dict):
+                frappe.throw(_("اطلاعات فرم تکمیلی باید یک شیء باشد."))
+            values = merge_supplementary(values, binding, checked)
+        else:
+            # Keep the previously saved supplementary values when not re-sent.
+            stored = supplementary_of(json.loads(doc.draft_json or "{}"))
+            values = merge_supplementary(values, binding, stored["values"] if stored else {})
     if stage_config.get('action_contract_version') == 1:
         from asoud_erp.services.workflow_user_action import assert_writable, prepare
 
@@ -1214,7 +1239,7 @@ def save_workflow_task_draft(task: str, response: str | dict) -> dict:
         frappe.throw(_("Drafts are disabled for this workflow stage"))
     fields = stage_config.get("form_fields", [])
     allowed_keys = {field.get("key") for field in fields if isinstance(field, dict)}
-    if set(values) - allowed_keys:
+    if set(values) - allowed_keys - {RESERVED_KEY}:
         frappe.throw(_("Workflow draft contains unknown fields"))
     _validate_response_attachments(fields, values)
     doc.draft_json = json.dumps(values, ensure_ascii=False)
@@ -1278,6 +1303,33 @@ def _validate_response_attachments(fields, values):
             frappe.throw("Not permitted to use this attachment", frappe.PermissionError)
 
 
+def _supplementary_schema(binding):
+    """Load the pinned revision's migrated schema and title for a binding."""
+    from asoud_erp.services.form_schema import migrate_schema
+
+    revision = frappe.db.get_value(
+        "ASOUD Form Revision", binding["revision"], ["name", "form", "schema_json"], as_dict=True)
+    if not revision or revision.form != binding["form"]:
+        frappe.throw(_("نسخهٔ فرم تکمیلی مرحله در دسترس نیست."))
+    schema = migrate_schema(json.loads(revision.schema_json))
+    return schema, schema.get("title", "")
+
+
+def _supplementary_payload(binding, values):
+    schema, title = _supplementary_schema(binding)
+    return {"form": binding["form"], "revision": binding["revision"], "title": title,
+            "schema": schema, "values": values or {}}
+
+
+def _validate_supplementary_values(binding, company, values, enforce_required):
+    from asoud_erp.services.form_schema import validate_values
+
+    schema, _ = _supplementary_schema(binding)
+    if not enforce_required:
+        schema = without_required(schema)
+    return validate_values(schema, values, company)
+
+
 @frappe.whitelist(methods=["POST"])
 def complete_workflow_task(
     task: str,
@@ -1285,6 +1337,7 @@ def complete_workflow_task(
     comment: str | None = None,
     response: str | dict | None = None,
     assignee: str | None = None,
+    supplementary_values: str | dict | None = None,
 ) -> dict:
     from asoud_erp.services.directive_access import reject_generic
     original = frappe.get_doc("ASOUD Workflow Task", task)
@@ -1365,6 +1418,17 @@ def complete_workflow_task(
             )
     if not versioned_action:
         _validate_response_attachments(config.get("form_fields", []), normalized_response)
+    binding = read_binding(config)
+    if binding:
+        if supplementary_values is None:
+            checked = {}
+        else:
+            checked = json.loads(supplementary_values) if isinstance(supplementary_values, str) else supplementary_values
+            if not isinstance(checked, dict):
+                frappe.throw(_("اطلاعات فرم تکمیلی باید یک شیء باشد."))
+            checked = _validate_supplementary_values(
+                binding, workflow_company(doc.workflow_instance), checked, action == "Approve")
+        normalized_response = merge_supplementary(normalized_response, binding, checked)
     # Serialize the final assignee's output with other completions in this instance.
     # Native inserts and task completion share this POST transaction.
     if action == "Complete" and config.get("task_purpose", "Existing") != "Existing":
