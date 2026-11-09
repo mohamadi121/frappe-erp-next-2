@@ -61,4 +61,5 @@ test_request_templates_seed
 test_workflow_condition_v2
 test_workflow_condition_catalog
 test_workflow_condition_dryrun
+test_workflow_check
 test_stage_supplementary_form
