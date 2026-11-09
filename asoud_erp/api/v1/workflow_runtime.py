@@ -15,16 +15,17 @@ from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_execution import activity_change
 from asoud_erp.services.request_link_values import validate_link_values, workflow_company
 from asoud_erp.services.request_templates.base import validate_form_stage_response
-from asoud_erp.services.workflow_assignment import assignment_values
-from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
-from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
 from asoud_erp.services.stage_supplementary_form import (
     RESERVED_KEY,
-    read_binding,
     merge_supplementary,
+    read_binding,
+    strip_supplementary,
     supplementary_of,
     without_required,
 )
+from asoud_erp.services.workflow_assignment import assignment_values
+from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
+from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
 from asoud_erp.services.workflow_response import normalize_form_response
 from asoud_erp.services.workflow_start_policy import validate_request_id
 
@@ -320,7 +321,7 @@ def _completed_task_rows(instance, exclude_task: str | None = None) -> list[dict
 def _previous_task_data(instance, exclude_task: str | None = None) -> list[dict]:
     sections = []
     for row in reversed(_completed_task_rows(instance, exclude_task)):
-        response = json.loads(row.get("response_json") or "{}")
+        response = strip_supplementary(json.loads(row.get("response_json") or "{}"))
         if not response:
             continue
         action_schema = row.get('action_schema')
@@ -1187,7 +1188,7 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
             "stage_type": stage.stage_type,
             "config": config,
             "draft": draft,
-            "response": json.loads(doc.response_json or "{}"),
+            "response": strip_supplementary(json.loads(doc.response_json or "{}")),
             "history": history,
             "previous_data": _previous_task_data(instance, exclude_task=doc.name),
             "document": document_context,
