@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Workflow route guard: `workflow.save_stage_routes` now refuses a `Return` route whose target is an `End` or `Wait` stage (a return is for correction, not termination), matching the app's route editor. `Reject` -> `End` (the "end as rejected" path) stays allowed. No new DocType, migration or permission change.
+
 - Workflow start traceability: when a start is bound to a record (`reference_name` set), the 'Workflow Started' activity's `change_json` now stores `reference_modified` (the referenced record's `modified` timestamp at start time), so the start event is traceable to the exact version of the submitted request/document. Additive only; no new DocType, field, migration or permission change.
 
 - Workflow validity check and side-effect-free simulation: new read-only `workflow.validate_workflow` (GET) and `workflow.simulate_workflow` (POST) endpoints. The check reuses the existing readiness engine and adds graph-shape issues (self-loops, no-exit loops, disabled-decision routes, deleted form references); the simulation walks the stored graph with the runtime's route selection (Condition stages take a caller-chosen True/False, never evaluated against data) and writes nothing — it runs in a savepoint that is always rolled back. No new DocType, migration or permission change.

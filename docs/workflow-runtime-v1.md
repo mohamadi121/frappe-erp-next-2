@@ -53,6 +53,9 @@ target removes it. Saving the main route (Approve, Complete, Success) replaces
 the unlabeled default route the designer creates. Without its own route a
 rejection ends the instance as Rejected and a return goes back to the latest
 editable user task; only forward decisions fall back to a single default route.
+A `Return` route must point at an earlier executable stage: the server refuses a
+`Return` whose target is an `End` or `Wait` stage (a return is for correction, not
+termination). `Reject` -> `End` stays allowed (the "end as rejected" path).
 
 Stage settings stored with the configuration: `description`,
 `reject_comment_required` (User Task and Approval), and for User Task

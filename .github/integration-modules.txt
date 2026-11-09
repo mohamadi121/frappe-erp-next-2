@@ -15,6 +15,7 @@ test_workflow_templates
 test_workflow_card_actions
 test_workflow_submission_source
 test_workflow_start_phase3
+test_workflow_return_route
 test_setup_reset
 test_report_company_scope
 test_party_company_scope
