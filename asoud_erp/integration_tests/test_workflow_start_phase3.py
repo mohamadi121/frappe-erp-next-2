@@ -76,6 +76,10 @@ class TestWorkflowStartPhase3(APITestCase):
     def test_changing_start_method_of_a_running_workflow_is_refused(self):
         result = self._submit(uuid4().hex)
         self.assertTrue(result['workflow_instance'])
+        # _submit leaves the session as the employee; the start-settings
+        # endpoint requires a manager role. Switch back so the refusal below
+        # comes from the "running instance" guard, not from the role gate.
+        frappe.set_user("Administrator")
         # While an instance is running, the start method cannot be silently changed.
         with self.assertRaises(frappe.ValidationError):
             workflow.save_start_settings(
