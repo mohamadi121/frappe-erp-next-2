@@ -38,8 +38,12 @@ Accounts Manager with native workflow write and company permission, with a reaso
 entries submitted by other users in the company, whereas plain starts require entry ownership).
 It appends a new instance/activity; it never rewrites previous instances/history.
 Start actor/time/reference and reason are recorded in existing Instance/Activity
-records in the same transaction. General-subject manual starts have no record to
-deduplicate; each intentional call is a separate run. No new engine/ledger/schema.
+records in the same transaction. When the start is bound to a record
+(`reference_name` set), the 'Workflow Started' activity's `change_json` also stores
+`reference_modified` — the referenced record's `modified` timestamp at start time —
+so the start event is traceable to the exact version of the submitted record.
+General-subject manual starts have no record to deduplicate; each intentional call
+is a separate run. No new engine/ledger/schema.
 
 `workflow.list_workflows` adds boolean `can_start_manual`, computed from persisted
 Active/Ready state, v1 Manual mode and the session's configured native roles. It
