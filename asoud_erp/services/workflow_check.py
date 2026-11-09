@@ -92,11 +92,11 @@ def _in_cycle(targets):
 
 
 def referenced_forms(stages):
-    """Form names a stage config points at (submission source or result form)."""
+    """Form names a stage config points at (submission source, result or supplementary form)."""
     forms = set()
     for row in stages:
         config = _config(row)
-        for key in ('submission_source', 'result_form'):
+        for key in ('submission_source', 'result_form', 'supplementary_form'):
             value = config.get(key)
             if isinstance(value, dict) and isinstance(value.get('form'), str) and value['form']:
                 forms.add(value['form'])

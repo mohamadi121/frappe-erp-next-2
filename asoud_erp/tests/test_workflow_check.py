@@ -1,7 +1,7 @@
 """Pure tests for the read-only workflow validity check."""
 import json
 
-from asoud_erp.services.workflow_check import validate_workflow
+from asoud_erp.services.workflow_check import referenced_forms, validate_workflow
 
 
 def _stage(name, stage_type, title, config=None, status="Complete"):
@@ -115,3 +115,12 @@ def test_route_to_external_stage_is_an_error():
     result = validate_workflow(stages, transitions)
     assert result["ok"] is False
     assert "route_external" in _codes(result)
+
+
+def test_referenced_forms_includes_supplementary_form():
+    stages = [
+        _stage("U", "User Task", "ثبت", {**USER_TASK, "submission_source": {"form": "SUB", "revision": "1"}}),
+        _stage("A", "Approval", "تأیید", {**APPROVAL, "result_form": {"form": "RES", "revision": "2"},
+                                          "supplementary_form": {"form": "SUPP", "revision": "3"}}),
+    ]
+    assert referenced_forms(stages) == {"SUB", "RES", "SUPP"}
