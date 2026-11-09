@@ -27,7 +27,7 @@ from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
 from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
 from asoud_erp.services.workflow_response import normalize_form_response
-from asoud_erp.services.workflow_start_policy import validate_request_id
+from asoud_erp.services.workflow_start_policy import start_change_data, validate_request_id
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".xlsx", ".docx"}
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
@@ -845,15 +845,10 @@ def start_workflow_instance(
         }
     ).insert(ignore_permissions=True)
     if configured_start:
-        change_data = {
-            'start_mode': start_config.get('trigger_type', 'Manual'),
-            'previous_instance': existing.name if restarting and existing else None,
-        }
-        if request_id:
-            change_data['request_id'] = request_id
-        if reference_name:
-            # The start event is traceable to the exact version of the submitted record.
-            change_data['reference_modified'] = frappe.db.get_value(reference_doctype, reference_name, 'modified')
+        reference_modified = (frappe.db.get_value(reference_doctype, reference_name, 'modified')
+                              if reference_name else None)
+        change_data = start_change_data(start_config.get('trigger_type', 'Manual'),
+            existing.name if restarting and existing else None, request_id, reference_modified)
         frappe.get_doc({'doctype': 'ASOUD Workflow Activity', 'workflow_instance': instance.name,
             'workflow_stage': start, 'actor': frappe.session.user, 'action': 'Workflow Started',
             'comment': reason.strip(), 'created_on': instance.started_on,

@@ -69,9 +69,9 @@ class TestWorkflowStartPhase3(APITestCase):
         self.assertEqual(change.get('start_mode'), 'Document Event')
         self.assertEqual(activity.reference_doctype, 'ASOUD Form Entry')
         self.assertEqual(activity.reference_name, result['name'])
-        # The start event is traceable to the exact version of the submitted record.
+        # The start event is traceable to the exact version of the submitted record (stored as text).
         entry_modified = frappe.db.get_value('ASOUD Form Entry', result['name'], 'modified')
-        self.assertEqual(change.get('reference_modified'), entry_modified)
+        self.assertEqual(change.get('reference_modified'), str(entry_modified))
 
     def test_changing_start_method_of_a_running_workflow_is_refused(self):
         result = self._submit(uuid4().hex)

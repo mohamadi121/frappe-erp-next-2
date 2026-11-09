@@ -4,9 +4,16 @@ The endpoint behaviour (draft vs final submit, duplicate suppression, start-even
 traceability) is covered by the integration module; here we pin the decision
 matrix that the endpoint relies on so a regression in the policy is caught fast.
 """
+import json
+from datetime import datetime
+
 import pytest
 
-from asoud_erp.services.workflow_start_policy import normalize_settings, start_decision
+from asoud_erp.services.workflow_start_policy import (
+    normalize_settings,
+    start_change_data,
+    start_decision,
+)
 
 
 def _manual(**extra):
@@ -65,3 +72,22 @@ def test_restart_refused_when_manager_restart_not_enabled():
     config = _manual()  # allow_manager_restart defaults to False
     with pytest.raises(ValueError):
         start_decision(config, 'Completed', True, True, 'علت')
+
+
+def test_start_change_data_serializes_a_datetime_record_version():
+    # The record version arrives as a datetime; the activity row must serialize to JSON.
+    modified = datetime(2026, 11, 9, 12, 30, 45)
+    data = start_change_data('Document Event', request_id='req-12345678', reference_modified=modified)
+    raw = json.dumps(data, ensure_ascii=False)  # would raise TypeError on a raw datetime
+    parsed = json.loads(raw)
+    assert parsed['reference_modified'] == str(modified)
+    assert parsed['request_id'] == 'req-12345678'
+    assert parsed['start_mode'] == 'Document Event'
+    assert parsed['previous_instance'] is None
+
+
+def test_start_change_data_omits_absent_optional_fields():
+    data = start_change_data('Manual')
+    assert data == {'start_mode': 'Manual', 'previous_instance': None}
+    assert 'request_id' not in data
+    assert 'reference_modified' not in data
