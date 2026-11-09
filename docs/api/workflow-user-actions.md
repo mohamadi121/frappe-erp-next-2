@@ -39,8 +39,13 @@ into `action_contract_version: 1`; the Persian name is اقدام کاربر. Ex
 `save_stage_settings` manager/write/company checks remain authoritative.
 
 Config: `result_mode` (Simple/Form), `result_form` ({form, revision}, published
-same-company form), `allow_add_attachments`, existing `allow_draft` and
-`document_access`, and `assignment_rule` with:
+same-company form of kind `Request` or `Document`), `allow_add_attachments`, existing
+`allow_draft` and `document_access`, and `assignment_rule` with:
+
+A `result_form` of kind `Stage` is refused: a Stage form is the supplementary-stage
+concept (bound via `supplementary_form` on Approval stages) and must not be reused as a
+task result form. The refusal is enforced in the result-form loader at design time and
+again at task completion.
 
 - basis: Unit, Subject Unit, Subject, Manager, Role;
 - subject: Initiator/Form Employee; employee_field: actual source Employee link;

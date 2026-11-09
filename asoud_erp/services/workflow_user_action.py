@@ -32,6 +32,10 @@ def form_schema(definition, config, *, designing=False, history=False):
             {'name': source['revision'], 'form': source['form']}):
         frappe.throw('فرم ثبت نتیجه یا نسخهٔ انتخاب‌شده دیگر در دسترس نیست؛ تنظیمات را بازبینی کنید.')
     form = forms.load(source['form'], edit=designing)
+    if form.kind == 'Stage':
+        # A Stage form is the supplementary-stage concept (bound via `supplementary_form`);
+        # it must not be reused as a task result form.
+        frappe.throw('فرم ثبت نتیجه نمی‌تواند فرم تکمیلی مرحله باشد؛ فرم دیگری انتخاب کنید.')
     if form.company != company or form.disabled or not form.active_revision or (designing and form.active_revision != source['revision']):
         frappe.throw('فرم ثبت نتیجه باید فعال و نسخهٔ منتشرشدهٔ همین دفتر باشد؛ انتخاب را تازه کنید.')
     schema = forms.migrate_schema(json.loads(forms.revision(form, source['revision']).schema_json))
