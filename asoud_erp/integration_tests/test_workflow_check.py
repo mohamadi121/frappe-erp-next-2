@@ -26,11 +26,26 @@ class TestWorkflowCheck(APITestCase):
                 frappe.db.count('ASOUD Workflow Task'),
                 frappe.db.count('Notification Log'))
 
+    def _ready_definition(self, company):
+        """A make_definition graph whose Start stage carries a valid trigger config."""
+        definition, _ = make_definition(company, approvals=1, fields=[])
+        start = self._stage_names(definition)['Start']
+        frappe.db.set_value('ASOUD Workflow Stage', start, 'config_json',
+                            json.dumps({"title": "شروع", "trigger_type": "Manual",
+                                        "initiator_roles": ["Employee"]}, ensure_ascii=False))
+        return definition
+
     def test_validate_reports_ok_on_complete_graph(self):
-        definition, _ = make_definition(self.company, approvals=1, fields=[])
+        definition = self._ready_definition(self.company)
         result = workflow.validate_workflow(definition)['data']
         self.assertTrue(result['ok'])
         self.assertEqual(result['issues'], [])
+
+    def test_validate_reports_stage_invalid_when_start_lacks_trigger(self):
+        definition, _ = make_definition(self.company, approvals=1, fields=[])
+        result = workflow.validate_workflow(definition)['data']
+        self.assertFalse(result['ok'])
+        self.assertIn('stage_invalid', [issue['code'] for issue in result['issues']])
 
     def test_validate_reports_unreachable_stage(self):
         definition, _ = make_definition(self.company, approvals=1, fields=[])
@@ -117,7 +132,7 @@ class TestWorkflowCheck(APITestCase):
             workflow.validate_workflow(other)
 
     def test_user_without_employee_record_can_validate(self):
-        definition, _ = make_definition(self.company, approvals=1, fields=[])
+        definition = self._ready_definition(self.company)
         # Administrator has no Employee record; the check must still work.
         self.assertFalse(frappe.db.exists('Employee', {'user_id': 'Administrator'}))
         result = workflow.validate_workflow(definition)['data']
