@@ -65,3 +65,4 @@ test_workflow_condition_catalog
 test_workflow_condition_dryrun
 test_workflow_check
 test_stage_supplementary_form
+test_workflow_return_phase4
