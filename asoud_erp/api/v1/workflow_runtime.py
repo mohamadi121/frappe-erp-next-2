@@ -851,6 +851,9 @@ def start_workflow_instance(
         }
         if request_id:
             change_data['request_id'] = request_id
+        if reference_name:
+            # The start event is traceable to the exact version of the submitted record.
+            change_data['reference_modified'] = frappe.db.get_value(reference_doctype, reference_name, 'modified')
         frappe.get_doc({'doctype': 'ASOUD Workflow Activity', 'workflow_instance': instance.name,
             'workflow_stage': start, 'actor': frappe.session.user, 'action': 'Workflow Started',
             'comment': reason.strip(), 'created_on': instance.started_on,
