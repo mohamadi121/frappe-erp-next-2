@@ -42,8 +42,9 @@ class TestRejectRoute(APITestCase):
         # No open task survives the ended instance.
         self.assertEqual(_open_tasks(self.instance), [])
         # The approval stage after the reject (stage 3) never received a task.
-        titles = [row.stage_title for row in frappe.get_all(
-            "ASOUD Workflow Task", filters={"workflow_instance": self.instance}, fields=["name"])]
+        stages = [row.workflow_stage for row in frappe.get_all(
+            "ASOUD Workflow Task", filters={"workflow_instance": self.instance}, fields=["workflow_stage"])]
+        titles = [_stage_title(self.instance, stage) for stage in stages]
         self.assertNotIn("تأیید 3", titles)
 
     def test_reject_keeps_the_decision_and_its_decider_in_history(self):

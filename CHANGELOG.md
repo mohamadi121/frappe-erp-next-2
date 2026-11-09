@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Workflow user-action result form: a User Task's `result_form` now refuses a form of kind `Stage`. A Stage form is the supplementary-stage concept (bound via `supplementary_form` on Approval stages) and must not be reused as a task result form, which would conflate the two. The refusal is enforced in the result-form loader (`workflow_user_action.form_schema`) at design time and at task completion. No new DocType, migration or permission change.
+
 - Workflow validity check and side-effect-free simulation: new read-only `workflow.validate_workflow` (GET) and `workflow.simulate_workflow` (POST) endpoints. The check reuses the existing readiness engine and adds graph-shape issues (self-loops, no-exit loops, disabled-decision routes, deleted form references); the simulation walks the stored graph with the runtime's route selection (Condition stages take a caller-chosen True/False, never evaluated against data) and writes nothing — it runs in a savepoint that is always rolled back. No new DocType, migration or permission change.
 
 - Approval stages can now be bound to a published ASOUD Form of kind `Stage` (a pinned revision) as a supplementary form: `save_stage_settings` validates the binding (kind, company, not disabled, revision ownership) and stores it with a server-filled title; `get_workflow_task` returns the pinned schema and saved values; `complete_workflow_task`/`save_workflow_task_draft` accept `supplementary_values`, enforce required fields only on Approve, and store them under the reserved `_supplementary` response key per approver. The legacy inline approval form is unchanged. No new DocType, migration or permission change.
