@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Approval stages can now be bound to a published ASOUD Form of kind `Stage` (a pinned revision) as a supplementary form: `save_stage_settings` validates the binding (kind, company, not disabled, revision ownership) and stores it with a server-filled title; `get_workflow_task` returns the pinned schema and saved values; `complete_workflow_task`/`save_workflow_task_draft` accept `supplementary_values`, enforce required fields only on Approve, and store them under the reserved `_supplementary` response key per approver. The legacy inline approval form is unchanged. No new DocType, migration or permission change.
+
 - Condition v2 Text comparisons now normalize Persian text on both sides (unify ي/ى/ك, ZWNJ to space, collapse whitespace, casefold Latin) so Equals/Not Equals/Contains/Not Contains match across spelling and spacing variants; whitespace-only Text values are rejected at save. Number/Date/Select and legacy single-condition configs are unchanged. No migration.
 
 - Condition fields: «اطلاعات سیستم» adds the requester's organisational unit (the requester Employee's department; an undeterminable unit is an evaluation error, never a guess), and catalog entries carry optional `value_source` (user/employee/department), `link_doctype` and `currency` (company default for form-builder Money fields only) so the app can store stable ids. The instance status is not offered (always Running during evaluation). No migration.
