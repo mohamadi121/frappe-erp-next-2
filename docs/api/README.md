@@ -110,6 +110,7 @@ payload is rejected with `REQUEST_KEY_CONFLICT`.
 
 - [Independent workflow template copies](workflow-templates.md)
 - [Condition stage version 2](workflow-condition.md)
+- [Workflow validity check and side-effect-free simulation](workflow-check.md)
 
 - `asoud_erp/tests/` — pure unit tests, run anywhere:
   `uvx --with pytest pytest -q asoud_erp/tests`.

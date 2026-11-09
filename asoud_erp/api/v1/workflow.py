@@ -1033,3 +1033,58 @@ def delete_workflow(name=None) -> dict:
         frappe.db.rollback(save_point='delete_workflow_api')
         raise
     return success({"name": name, "deleted": True})
+
+
+def _graph_rows(definition: str):
+    """Raw stage/transition rows (with config_json) for the pure check/simulation services."""
+    stages = frappe.get_all(
+        "ASOUD Workflow Stage",
+        filters={"workflow_definition": definition},
+        fields=["name", "stage_type", "stage_title", "configuration_status", "config_json", "sequence_no"],
+        order_by="sequence_no asc",
+        limit_page_length=0,
+    )
+    transitions = frappe.get_all(
+        "ASOUD Workflow Transition",
+        filters={"workflow_definition": definition},
+        fields=["name", "from_stage", "to_stage", "transition_label", "condition_json", "sequence_no"],
+        order_by="sequence_no asc",
+        limit_page_length=0,
+    )
+    return stages, transitions
+
+
+@frappe.whitelist()
+def validate_workflow(definition: str) -> dict:
+    require_roles(("System Manager", "Accounts Manager", "Accounts User", "HR Manager"))
+    doc = frappe.get_doc("ASOUD Workflow Definition", definition)
+    if doc.company:
+        require_company(doc.company)
+    from asoud_erp.services.workflow_check import validate_workflow as check
+
+    stages, transitions = _graph_rows(definition)
+    existing_forms = set(frappe.get_all("ASOUD Form", pluck="name", limit_page_length=0))
+    return success(check(stages, transitions, existing_forms=existing_forms))
+
+
+@frappe.whitelist(methods=["POST"])
+def simulate_workflow(definition: str, decisions: str | list | None = None) -> dict:
+    require_roles(("System Manager", "Accounts Manager", "Accounts User", "HR Manager"))
+    doc = frappe.get_doc("ASOUD Workflow Definition", definition)
+    if doc.company:
+        require_company(doc.company)
+    from asoud_erp.services.workflow_simulation import simulate_workflow as walk
+
+    if decisions is None:
+        raw = []
+    else:
+        raw = json.loads(decisions) if isinstance(decisions, str) else decisions
+        if not isinstance(raw, list):
+            frappe.throw('فهرست تصمیم‌ها باید یک آرایه باشد.')
+    stages, transitions = _graph_rows(definition)
+    # The walk is read-only; the savepoint is a guard so no stray write survives.
+    frappe.db.savepoint('asoud_workflow_simulation')
+    try:
+        return success(walk(stages, transitions, raw))
+    finally:
+        frappe.db.rollback(save_point='asoud_workflow_simulation')

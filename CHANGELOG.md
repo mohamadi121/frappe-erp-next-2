@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Workflow validity check and side-effect-free simulation: new read-only `workflow.validate_workflow` (GET) and `workflow.simulate_workflow` (POST) endpoints. The check reuses the existing readiness engine and adds graph-shape issues (self-loops, no-exit loops, disabled-decision routes, deleted form references); the simulation walks the stored graph with the runtime's route selection (Condition stages take a caller-chosen True/False, never evaluated against data) and writes nothing — it runs in a savepoint that is always rolled back. No new DocType, migration or permission change.
+
 - Workflow condition runtime: a failing v2 condition now writes its Error Log row with the workflow instance as reference and a deferred insert, so the row survives the request rollback and the admin can see why the condition failed. No migration.
 
 - Condition v2 Text comparisons now normalize Persian text on both sides (unify ي/ى/ك, ZWNJ to space, collapse whitespace, casefold Latin) so Equals/Not Equals/Contains/Not Contains match across spelling and spacing variants; whitespace-only Text values are rejected at save. Number/Date/Select and legacy single-condition configs are unchanged. No migration.
