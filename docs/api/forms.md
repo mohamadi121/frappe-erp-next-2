@@ -34,6 +34,31 @@ missing company access are rejected. No schema or DocType migration is required;
 deploy the matching server before the client. The shipped raw presets create no
 approval workflow or native transaction implicitly.
 
+## Workflow-stage forms (kind `Stage`)
+
+A form of kind `Stage` (فرم مرحله گردش کار) is a supplementary approval form bound to a
+workflow Approval stage. It is never a request or a document: `list_forms(kind='Request')`
+and `list_forms(kind='Document')` never return it, and `submit_form` rejects it with
+«فرم مرحله گردش کار به‌صورت درخواست مستقل ثبت نمی‌شود.».
+
+The five trusted defaults are shipped in `services/stage_form_presets.json`
+(`stage_request_checklist`, `stage_expert_opinion`, `stage_hr_review`,
+`stage_finance_review`, `stage_operations_review`). `list_forms(company, kind='Stage')`
+includes them as virtual catalog rows (`builtin_pending: true`, `draft_version: 0`) until
+first opened, exactly like the HR defaults; names are deterministic per company and key
+(`asoud-builtin-stage:<company>:<key>`). `open_builtin(company, key)` materializes a
+`Stage` form with a published v1 and returns the normal `get_form` envelope.
+
+`copy_form(company, name, title=None)` (POST, designers only) copies a published `Stage`
+form into a new company-owned `Stage` form whose draft and published v1 are the source's
+active revision schema. The default title is `<source title> - نسخه اختصاصی`. The source
+form and its revisions are never changed. A form without an active revision, or a form
+that is not kind `Stage`, is rejected with a Persian error.
+
+The optional top-level schema key `usage` (a string of at most 40 characters, e.g.
+`approval`) is additive and does not change `schema_version`. `module` already exists
+(`''` = general). No module filter is applied in any UI.
+
 ## Schema and revisions
 
 `save_form(company, schema, name?, expected_version?, client_id?)` saves a draft.

@@ -166,9 +166,12 @@ def validate_schema(raw):
         version = 1
     if version not in (1, 2) or isinstance(version, bool):
         fail("نسخه ساختار فرم معتبر نیست.")
-    if (schema.get("kind") not in {"Request", "Document"}
+    if (schema.get("kind") not in {"Request", "Document", "Stage"}
             or not 1 <= len(str(schema.get("title", "")).strip()) <= 140):
         fail("عنوان و نوع فرم را مشخص کنید.")
+    usage = schema.get("usage")
+    if usage is not None and (not isinstance(usage, str) or len(usage) > 40):
+        fail("کاربرد فرم معتبر نیست.")
     sections = schema.get("sections")
     if not isinstance(sections, list) or not 1 <= len(sections) <= 30:
         fail("فرم باید بین یک تا سی بخش داشته باشد.")

@@ -78,24 +78,31 @@ def matches_access(schema, user_roles, department):
     return {'all': True, 'roles': roles, 'departments': unit, 'and': roles and unit, 'or': roles or unit}.get(mode, False)
 
 
+def _builtin_key(company, name):
+    from asoud_erp.services.hr_form_catalog import builtin_key as hr_key
+    from asoud_erp.services.stage_form_catalog import builtin_key as stage_key
+    return hr_key(company, name) or stage_key(company, name)
+
+
 def row(doc, schema=False):
-    from asoud_erp.services.hr_form_catalog import builtin_key
     active = revision(doc) if doc.active_revision else None
     result = {key: doc.get(key) for key in ('name', 'title', 'company', 'kind', 'module_key', 'draft_version', 'active_revision', 'disabled', 'pending_review')}
     result['status'] = 'Inactive' if doc.disabled else 'Pending' if doc.pending_review else 'Published' if active else 'Draft'
     result['version'] = active.version if active else 0
     result['has_changes'] = bool(active and doc.draft_json != active.schema_json)
-    key = builtin_key(doc.company, doc.name)
+    key = _builtin_key(doc.company, doc.name)
     if key:
         result['builtin_key'] = key
     if schema:
         result['schema'] = migrate_schema(json.loads(doc.draft_json)) if doc.draft_json else {}
+        if doc.kind == 'Stage':
+            result.update(usage=result['schema'].get('usage', ''), description=result['schema'].get('description', ''),
+                          color=result['schema'].get('color', ''), icon=result['schema'].get('icon', ''))
     return result
 
 
 @frappe.whitelist()
 def list_forms(company, kind='Request', manage=0):
-    from asoud_erp.services.hr_form_catalog import builtin_key, catalog_rows
     require_company(company)
     manage = bool(int(manage))
     if manage:
@@ -103,17 +110,23 @@ def list_forms(company, kind='Request', manage=0):
     result = []
     defaults = []
     names = frappe.get_all('ASOUD Form', filters={'company': company, 'kind': kind}, pluck='name', order_by='modified desc', limit_page_length=500)
-    if kind == 'Request':
+    if kind in {'Request', 'Stage'}:
         # Include all catalog identities even if outside the ordinary list limit:
         # disabled tombstones must not reappear as virtual defaults.
-        from asoud_erp.services.hr_form_catalog import catalog, form_name
+        from asoud_erp.services.hr_form_catalog import catalog as hr_catalog
+        from asoud_erp.services.hr_form_catalog import catalog_rows as hr_rows
+        from asoud_erp.services.hr_form_catalog import form_name as hr_name
+        from asoud_erp.services.stage_form_catalog import catalog as stage_catalog
+        from asoud_erp.services.stage_form_catalog import catalog_rows as stage_rows
+        from asoud_erp.services.stage_form_catalog import form_name as stage_name
+        catalog, form_name, catalog_rows = (stage_catalog, stage_name, stage_rows) if kind == 'Stage' else (hr_catalog, hr_name, hr_rows)
         identities = [form_name(company, key) for key in catalog()]
         existing = frappe.get_all('ASOUD Form', filters={'company': company, 'name': ['in', identities]}, pluck='name')
         defaults = catalog_rows(company, existing)
         names = list(dict.fromkeys([*names, *existing]))
     for name in names:
         doc = load(name)
-        key = builtin_key(company, name)
+        key = _builtin_key(company, name)
         if key and doc.disabled:
             continue
         if manage:
@@ -122,7 +135,11 @@ def list_forms(company, kind='Request', manage=0):
             rev = revision(doc)
             schema = migrate_schema(json.loads(rev.schema_json))
             if allowed(schema, company):
-                result.append({'name': doc.name, 'title': schema['title'], 'company': company, 'kind': schema['kind'], 'module_key': schema.get('module'), 'category': schema.get('category', ''), 'status': 'Published', 'version': rev.version, **({'builtin_key': key} if key else {})})
+                item = {'name': doc.name, 'title': schema['title'], 'company': company, 'kind': schema['kind'], 'module_key': schema.get('module'), 'category': schema.get('category', ''), 'status': 'Published', 'version': rev.version, **({'builtin_key': key} if key else {})}
+                if schema['kind'] == 'Stage':
+                    item.update(usage=schema.get('usage', ''), description=schema.get('description', ''),
+                                color=schema.get('color', ''), icon=schema.get('icon', ''))
+                result.append(item)
     return success([*result, *defaults])
 
 
@@ -131,8 +148,9 @@ def open_builtin(company, key, manage=0):
     require_company(company)
     if int(manage):
         require_roles(DESIGNERS)
-    from asoud_erp.services.hr_form_catalog import ensure_builtin
-    doc = ensure_builtin(company, key)
+    from asoud_erp.services import stage_form_catalog
+    from asoud_erp.services.hr_form_catalog import ensure_builtin as hr_ensure
+    doc = stage_form_catalog.ensure_builtin(company, key) if key in stage_form_catalog.catalog() else hr_ensure(company, key)
     if doc.disabled:
         frappe.throw('این قالب از فهرست شرکت حذف شده است.', frappe.PermissionError)
     return get_form(doc.name, manage=manage)
@@ -150,6 +168,35 @@ def remove_builtin(company, key):
         store(doc)
         doc.add_comment('Info', 'حذف قالب پیش‌فرض از فهرست شرکت؛ سوابق حفظ شدند.')
     return success({'name': doc.name, 'removed': True})
+
+
+@frappe.whitelist(methods=['POST'])
+def copy_form(company, name, title=None):
+    """Copy a published stage form into a new company-owned stage form; the source is never changed."""
+    require_roles(DESIGNERS)
+    require_company(company)
+    source = load(name, edit=True, lock=True)
+    if source.company != company:
+        fail('فرم باید متعلق به همین دفتر باشد.')
+    if source.kind != 'Stage':
+        fail('فقط فرم مرحله گردش کار قابل کپی است.')
+    if not source.active_revision:
+        fail('فرم هنوز منتشر نشده است.')
+    rev = revision(source)
+    schema = migrate_schema(json.loads(rev.schema_json))
+    encoded = json.dumps(schema, ensure_ascii=False, sort_keys=True)
+    new_name = frappe.generate_hash(length=32)
+    doc = frappe.get_doc({'doctype': 'ASOUD Form', 'name': new_name, 'company': company,
+                          'title': (title or f'{source.title} - نسخه اختصاصی')[:140], 'kind': 'Stage',
+                          'module_key': source.module_key, 'draft_json': encoded, 'draft_version': 1})
+    doc.flags.name_set = True
+    store(doc)
+    new_rev = store(frappe.get_doc({'doctype': 'ASOUD Form Revision', 'form': doc.name, 'version': 1,
+        'schema_json': encoded, 'published_by': frappe.session.user,
+        'published_on': now_datetime(), 'change_note': 'کپی از فرم مرحله'}))
+    doc.active_revision = new_rev.name
+    store(doc)
+    return success(row(doc, schema=True))
 
 
 @frappe.whitelist()
@@ -588,6 +635,8 @@ def _validate_execution_submit(schema, values, company):
 @frappe.whitelist(methods=['POST'])
 def submit_form(name, revision_name, subject, values, request_key):
     doc = load(name, lock=True)
+    if doc.kind == 'Stage':
+        fail('فرم مرحله گردش کار به‌صورت درخواست مستقل ثبت نمی‌شود.')
     if not 8 <= len(request_key) <= 100 or not 3 <= len(subject.strip()) <= 140:
         fail('عنوان یا شناسه ثبت معتبر نیست.')
     raw = parse(values)
