@@ -1063,7 +1063,10 @@ def validate_workflow(definition: str) -> dict:
     from asoud_erp.services.workflow_check import validate_workflow as check
 
     stages, transitions = _graph_rows(definition)
-    existing_forms = set(frappe.get_all("ASOUD Form", pluck="name", limit_page_length=0))
+    form_filters = {"disabled": 0}
+    if doc.company:
+        form_filters["company"] = doc.company
+    existing_forms = set(frappe.get_all("ASOUD Form", filters=form_filters, pluck="name", limit_page_length=0))
     return success(check(stages, transitions, existing_forms=existing_forms))
 
 

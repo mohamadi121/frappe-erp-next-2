@@ -1,4 +1,7 @@
 """Real-site tests for the read-only workflow validity check and simulation."""
+import json
+from uuid import uuid4
+
 import frappe
 
 from asoud_erp.api.v1 import workflow
@@ -40,6 +43,24 @@ class TestWorkflowCheck(APITestCase):
         self.assertFalse(result['ok'])
         self.assertIn('disconnected', [issue['code'] for issue in result['issues']])
         self.assertTrue(frappe.db.exists('ASOUD Workflow Stage', orphan.name))
+
+    def test_validate_reports_disabled_form_as_missing(self):
+        definition, _ = make_definition(self.company, approvals=1, fields=[])
+        user_task = next(row['name'] for row in frappe.get_all('ASOUD Workflow Stage',
+            filters={'workflow_definition': definition, 'stage_type': 'User Task'}, fields=['name']))
+        # A disabled form of the same company must not count as an available source.
+        form = frappe.get_doc({'doctype': 'ASOUD Form', 'title': 'فرم غیرفعال ' + uuid4().hex[:6],
+                               'company': self.company, 'disabled': 1})
+        form.flags.form_service = True
+        form.insert()
+        stage = frappe.get_doc('ASOUD Workflow Stage', user_task)
+        config = json.loads(stage.config_json or '{}')
+        config['submission_source'] = {'form': form.name, 'revision': '1'}
+        stage.config_json = json.dumps(config, ensure_ascii=False)
+        stage.save()
+        result = workflow.validate_workflow(definition)['data']
+        self.assertFalse(result['ok'])
+        self.assertIn('form_missing', [issue['code'] for issue in result['issues']])
 
     def test_simulate_approve_reject_and_return_paths(self):
         definition, _ = make_definition(self.company, approvals=1, fields=[])
