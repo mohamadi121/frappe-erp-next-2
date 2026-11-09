@@ -91,6 +91,9 @@ def test_disabled_decision_with_route_is_a_warning():
     issue = next(issue for issue in result["issues"] if issue["code"] == "disabled_decision_route")
     assert issue["route"] == "Reject"
     assert issue["stage"] == "A"
+    # The message names the action in Persian, not the English code.
+    assert "رد" in issue["message"]
+    assert "Reject" not in issue["message"]
 
 
 def test_reference_to_missing_form_is_an_error():

@@ -17,6 +17,11 @@ _ALLOWED_ACTIONS = {
     'System Action': ['Success', 'Error'],
     'Condition': ['True', 'False'],
 }
+# Persian labels for user-facing messages; the route/action fields stay English codes.
+ACTION_LABELS = {
+    'Approve': 'تأیید', 'Reject': 'رد', 'Return': 'بازگشت', 'Complete': 'انجام',
+    'Success': 'موفق', 'Error': 'خطا', 'True': 'درست', 'False': 'نادرست',
+}
 
 
 def _as_dict(value):
@@ -119,7 +124,7 @@ def simulate_workflow(stages, transitions, decisions):
 
         allowed = _allowed_actions(kind)
         if allowed and action not in allowed:
-            return _error(steps, f'اقدام «{action}» برای مرحلهٔ «{title}» معتبر نیست.')
+            return _error(steps, f'اقدام «{ACTION_LABELS.get(action, action)}» برای مرحلهٔ «{title}» معتبر نیست.')
         if kind == 'Condition':
             result = action == 'True'
             try:

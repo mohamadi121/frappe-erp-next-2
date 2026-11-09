@@ -114,6 +114,21 @@ def test_condition_stage_uses_caller_true_false():
     assert false_run["outcome"] == "Rejected"
 
 
+def test_invalid_action_message_uses_persian_label():
+    stages = [
+        _stage("S", "Start", "شروع", {"trigger_type": "Manual", "initiator_roles": ["Employee"]}),
+        _stage("A", "Approval", "تأیید", {"title": "تأیید", "approval_mode": "All",
+                                          "assignment_type": "Role", "approver_roles": ["Employee"]}),
+        _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"}),
+    ]
+    transitions = [_edge("e1", "S", "A"), _edge("e2", "A", "E", action="Approve", label="تأیید")]
+    # "Complete" is not a valid action for an Approval stage.
+    result = simulate_workflow(stages, transitions, [{"stage": "A", "action": "Complete"}])
+    assert result["status"] == "error"
+    assert "انجام" in result["errors"][0]
+    assert "Complete" not in result["errors"][0]
+
+
 def test_loop_guard_stops_after_two_hundred_steps():
     stages = [
         _stage("S", "Start", "شروع", {"trigger_type": "Manual", "initiator_roles": ["Employee"]}),

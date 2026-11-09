@@ -7,6 +7,7 @@ it already owns and adds only the graph-shape checks that engine does not cover
 import json
 
 from asoud_erp.services.workflow_contract import DISCONNECTED_PATHS, activation_requirements
+from asoud_erp.services.workflow_simulation import ACTION_LABELS
 
 # Readiness-engine messages -> stable issue codes (the engine owns these rules).
 _READINESS_CODES = {
@@ -130,7 +131,7 @@ def validate_workflow(stages, transitions, existing_forms=None):
                 if config.get(flag, defaults[flag]) is False:
                     if any(_route_action(e).casefold() == action.casefold() for e in edges[name]):
                         issues.append({'code': 'disabled_decision_route', 'severity': 'warning',
-                                       'message': f'مسیر «{action}» در مرحلهٔ «{title}» غیرفعال است؛ این اقدام در آن مرحله ممکن نیست.',
+                                       'message': f'مسیر «{ACTION_LABELS.get(action, action)}» در مرحلهٔ «{title}» غیرفعال است؛ این اقدام در آن مرحله ممکن نیست.',
                                        'stage': name, 'route': action})
         if existing_forms is not None:
             for form in sorted(referenced_forms([row])):
