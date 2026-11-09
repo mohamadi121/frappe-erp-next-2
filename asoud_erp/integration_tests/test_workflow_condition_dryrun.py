@@ -7,6 +7,7 @@ the chosen route without leaking the compared field value.
 import json
 
 import frappe
+from frappe.deferred_insert import save_to_db
 
 from asoud_erp.api.v1 import workflow, workflow_runtime
 from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER, APITestCase
@@ -49,6 +50,13 @@ class TestWorkflowConditionDryRun(APITestCase):
     def test_dry_run_missing_sample_is_a_row_error_and_null_result(self):
         definition, gate, config = self.graph()
         out = workflow.test_workflow_condition(definition, gate, config, {})
+        self.assertIsNone(out['data']['result'])
+        self.assertEqual(out['data']['rows'], [
+            {'id': 'owner', 'result': None, 'error': 'برای این شرط مقدار نمونه وارد نشده است.'}])
+
+    def test_dry_run_blank_text_sample_is_a_row_error_and_null_result(self):
+        definition, gate, config = self.graph()
+        out = workflow.test_workflow_condition(definition, gate, config, {'owner': ''})
         self.assertIsNone(out['data']['result'])
         self.assertEqual(out['data']['rows'], [
             {'id': 'owner', 'result': None, 'error': 'برای این شرط مقدار نمونه وارد نشده است.'}])
@@ -96,3 +104,32 @@ class TestWorkflowConditionDryRun(APITestCase):
         self.assertIn('پایان برقراری', activity.comment)
         self.assertIn('نتیجه: برقرار است؛ مسیر:', activity.comment)
         self.assertNotIn('Administrator', activity.comment)
+
+    def test_failing_condition_keeps_the_error_log_after_rollback(self):
+        # A System `requester_unit` condition raises at runtime for Administrator (no
+        # Employee/department), so the condition stage fails and the request rolls back.
+        definition = workflow.create_workflow_draft(workflow_title='آزمون ثبت خطای شرط',
+            company=self.company, module_key='HR', target_doctype='ASOUD Workflow Request')['data']['name']
+        workflow.save_start_settings(definition, 'Manual', ['System Manager'], 'General Subject')
+        start = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'Start'})
+        workflow.add_workflow_stage(definition, 'Condition', start)
+        gate = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'Condition'})
+        config = dict(title='بررسی واحد ثبت‌کننده', condition_version=2, combine='All', conditions=[
+            dict(id='unit', source_kind='System', source_stage='', source_field='requester_unit',
+                field_type='Text', operator='Is Set')])
+        workflow.save_stage_settings(definition, gate, config)
+        self.exits(definition, gate)
+        workflow.set_workflow_status(definition, 'Active')
+        with self.assertRaises(frappe.ValidationError):
+            workflow_runtime.start_workflow_instance(definition, 'آزمون خطای شرط')
+        # frappe.throw does not roll back in tests; the rollback below stands in for the request one.
+        instance = frappe.db.get_value('ASOUD Workflow Instance',
+            {'workflow_definition': definition, 'started_by': 'Administrator', 'status': 'Running'})
+        self.assertTrue(instance, 'the failing instance row should still be in the open transaction')
+        frappe.db.rollback()
+        save_to_db()
+        logs = frappe.get_all('Error Log', filters={'reference_doctype': 'ASOUD Workflow Instance',
+            'reference_name': instance}, fields=['reference_name', 'method'], limit=1)
+        self.assertTrue(logs, 'deferred Error Log row is missing after the rollback')
+        self.assertEqual(logs[0].reference_name, instance)
+        self.assertEqual(logs[0].method, 'خطا در ارزیابی شرط گردش کار')

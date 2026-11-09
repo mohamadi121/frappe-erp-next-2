@@ -376,7 +376,10 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
                 validate_bindings(config, available)
                 result = evaluate_group(config, resolver(instance, config, available))
             except ValueError as error:
-                frappe.log_error(title='خطا در ارزیابی شرط گردش کار', message=str(error))
+                # defer_insert=True so the row survives the rollback that frappe.throw triggers.
+                frappe.log_error(title='خطا در ارزیابی شرط گردش کار', message=str(error),
+                                 reference_doctype='ASOUD Workflow Instance', reference_name=instance.name,
+                                 defer_insert=True)
                 frappe.throw(str(error))
             actual = None
         elif config.get("source_kind") == "Form":

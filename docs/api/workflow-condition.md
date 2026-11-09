@@ -16,6 +16,9 @@ Operators are restricted by the server-owned field type. Decimal comparisons
 are exact; numeric/date Between includes both endpoints. Empty comparisons need
 no value. Invalid ranges, missing fields or missing prior-stage data are errors,
 not the False outcome. All predicates are evaluated before combining results.
+When a condition fails at runtime, the failure is written to the Error Log with
+the workflow instance as its reference and a deferred insert, so the row survives
+the request rollback and the admin can find why the condition failed.
 
 The existing fields response adds `condition_fields_v2`, an array of allowed
 field bindings with source_kind/source_stage, source_field, label, field_type,
@@ -94,6 +97,9 @@ Arguments:
   accepts. It is parsed with `normalize_group` and its bindings checked with `catalog` +
   `validate_bindings`, exactly as on save.
 - `samples`: an object (or JSON string) mapping each condition row `id` to a sample value.
+  For a row whose operator is not `Is Empty`/`Is Set`, a missing, `null` or blank (whitespace-only)
+  sample is treated as missing data: that row gets the error «برای این شرط مقدار نمونه وارد نشده است.»
+  and the final `result` is `null` — a blank sample is never evaluated as an empty value.
 
 Roles and company scope are the same as `workflow_condition_fields`:
 `System Manager`, `Accounts Manager`, `HR Manager`, plus the definition's company scope.
