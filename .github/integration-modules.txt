@@ -27,6 +27,7 @@ test_demo_seed
 test_account_ops
 test_persian_digits
 test_forms
+test_stage_forms
 test_form_execution
 test_calendar
 test_directives
@@ -60,3 +61,4 @@ test_request_templates_seed
 test_workflow_condition_v2
 test_workflow_condition_catalog
 test_workflow_condition_dryrun
+test_stage_supplementary_form

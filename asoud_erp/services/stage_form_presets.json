@@ -1,0 +1,257 @@
+{
+  "stage_request_checklist": {
+    "schema_version": 2,
+    "format": 1,
+    "kind": "Stage",
+    "title": "چک‌لیست بررسی درخواست",
+    "module": "",
+    "icon": "checklist",
+    "color": "#2E9E5B",
+    "description": "کنترل اطلاعات و مدارک",
+    "usage": "approval",
+    "sections": [
+      {
+        "id": "checklist",
+        "title": "بررسی درخواست",
+        "icon": "checklist",
+        "color": "#2E9E5B",
+        "background_color": "#E5F7EF",
+        "fields": [
+          {
+            "key": "info_complete",
+            "label": "کامل بودن اطلاعات",
+            "type": "Boolean"
+          },
+          {
+            "key": "documents_checked",
+            "label": "بررسی مدارک",
+            "type": "Boolean"
+          },
+          {
+            "key": "conditions_met",
+            "label": "رعایت شرایط درخواست",
+            "type": "Boolean"
+          },
+          {
+            "key": "review_notes",
+            "label": "توضیحات بررسی",
+            "type": "LongText"
+          }
+        ]
+      }
+    ],
+    "rules": []
+  },
+  "stage_expert_opinion": {
+    "schema_version": 2,
+    "format": 1,
+    "kind": "Stage",
+    "title": "فرم ثبت نظر کارشناسی",
+    "module": "",
+    "icon": "fact_check",
+    "color": "#8E5BD0",
+    "description": "ثبت نتیجه بررسی تخصصی",
+    "usage": "approval",
+    "sections": [
+      {
+        "id": "opinion",
+        "title": "نظر کارشناسی",
+        "icon": "fact_check",
+        "color": "#8E5BD0",
+        "background_color": "#F2EAFE",
+        "fields": [
+          {
+            "key": "expert_review",
+            "label": "شرح بررسی کارشناسی",
+            "type": "LongText",
+            "required": true
+          },
+          {
+            "key": "suggestions",
+            "label": "نکات و پیشنهادها",
+            "type": "LongText"
+          },
+          {
+            "key": "extra_notes",
+            "label": "توضیحات تکمیلی",
+            "type": "LongText"
+          },
+          {
+            "key": "documents",
+            "label": "پیوست مستندات",
+            "type": "File"
+          }
+        ]
+      }
+    ],
+    "rules": []
+  },
+  "stage_hr_review": {
+    "schema_version": 2,
+    "format": 1,
+    "kind": "Stage",
+    "title": "فرم بررسی منابع انسانی",
+    "module": "HR",
+    "icon": "person",
+    "color": "#2F80ED",
+    "description": "بررسی شرایط پرسنلی",
+    "usage": "approval",
+    "sections": [
+      {
+        "id": "hr_review",
+        "title": "بررسی منابع انسانی",
+        "icon": "person",
+        "color": "#2F80ED",
+        "background_color": "#E8F2FF",
+        "fields": [
+          {
+            "key": "personnel_conditions",
+            "label": "بررسی شرایط پرسنلی",
+            "type": "Select",
+            "options": [
+              {
+                "id": "compliant",
+                "label": "مطابق"
+              },
+              {
+                "id": "needs_review",
+                "label": "نیازمند بررسی"
+              },
+              {
+                "id": "mismatch",
+                "label": "مغایر"
+              }
+            ]
+          },
+          {
+            "key": "leave_balance_checked",
+            "label": "بررسی مانده مرخصی",
+            "type": "Select",
+            "options": [
+              {
+                "id": "checked",
+                "label": "بررسی شد"
+              },
+              {
+                "id": "not_relevant",
+                "label": "مرتبط نیست"
+              }
+            ]
+          },
+          {
+            "key": "schedule_conflict",
+            "label": "تداخل برنامه کاری دارد",
+            "type": "Boolean"
+          },
+          {
+            "key": "hr_notes",
+            "label": "توضیحات مسئول منابع انسانی",
+            "type": "LongText"
+          }
+        ]
+      }
+    ],
+    "rules": []
+  },
+  "stage_finance_review": {
+    "schema_version": 2,
+    "format": 1,
+    "kind": "Stage",
+    "title": "فرم بررسی مالی",
+    "module": "Accounts",
+    "icon": "payments",
+    "color": "#C99A2E",
+    "description": "کنترل هزینه و اعتبار",
+    "usage": "approval",
+    "sections": [
+      {
+        "id": "finance_review",
+        "title": "بررسی مالی",
+        "icon": "payments",
+        "color": "#C99A2E",
+        "background_color": "#FFF0DD",
+        "fields": [
+          {
+            "key": "related_amount",
+            "label": "مبلغ مرتبط",
+            "type": "Money"
+          },
+          {
+            "key": "cost_center",
+            "label": "اعتبار یا مرکز هزینه",
+            "type": "Link",
+            "source": "Cost Center"
+          },
+          {
+            "key": "discrepancy",
+            "label": "مغایرت احتمالی دارد",
+            "type": "Boolean"
+          },
+          {
+            "key": "finance_notes",
+            "label": "توضیحات مالی",
+            "type": "LongText"
+          }
+        ]
+      }
+    ],
+    "rules": []
+  },
+  "stage_operations_review": {
+    "schema_version": 2,
+    "format": 1,
+    "kind": "Stage",
+    "title": "فرم بررسی عملیاتی / تولید",
+    "module": "Operations",
+    "icon": "build",
+    "color": "#1FA2A6",
+    "description": "بررسی اثر بر برنامه کاری",
+    "usage": "approval",
+    "sections": [
+      {
+        "id": "operations_review",
+        "title": "بررسی عملیاتی",
+        "icon": "build",
+        "color": "#1FA2A6",
+        "background_color": "#E6F6F7",
+        "fields": [
+          {
+            "key": "schedule_impact",
+            "label": "تأثیر بر برنامه کاری یا تولید",
+            "type": "Select",
+            "options": [
+              {
+                "id": "no_impact",
+                "label": "بدون تأثیر"
+              },
+              {
+                "id": "minor_impact",
+                "label": "تأثیر جزئی"
+              },
+              {
+                "id": "serious_impact",
+                "label": "تأثیر جدی"
+              }
+            ]
+          },
+          {
+            "key": "needs_substitute",
+            "label": "نیاز به جانشین",
+            "type": "Boolean"
+          },
+          {
+            "key": "capacity_limits",
+            "label": "ظرفیت یا محدودیت عملیاتی",
+            "type": "LongText"
+          },
+          {
+            "key": "supervisor_notes",
+            "label": "توضیحات سرپرست",
+            "type": "LongText"
+          }
+        ]
+      }
+    ],
+    "rules": []
+  }
+}

@@ -733,6 +733,37 @@ def _assert_form_is_editable(definition: str, stage) -> None:
         frappe.throw(_("فرم این نوع درخواست توسط سیستم مدیریت می‌شود"))
 
 
+def _validate_supplementary_binding(definition: str, raw: dict) -> dict | None:
+    """Validate an Approval stage's ``supplementary_form`` binding and return it with a title."""
+    from asoud_erp.services import stage_supplementary_form as ssf
+
+    binding = ssf.read_binding(raw)
+    if binding is None:
+        return None
+    try:
+        binding = ssf.validate_binding_shape(binding)
+    except ValueError as error:
+        frappe.throw(_(str(error)))
+    form = frappe.db.get_value(
+        "ASOUD Form", binding["form"],
+        ["name", "company", "kind", "disabled"], as_dict=True)
+    if not form:
+        frappe.throw(_("فرم تکمیلی مرحله پیدا نشد."))
+    if form.kind != "Stage":
+        frappe.throw(_("فرم تکمیلی مرحله باید از نوع فرم مرحله باشد."))
+    company = frappe.db.get_value("ASOUD Workflow Definition", definition, "company")
+    if company and form.company != company:
+        frappe.throw(_("فرم تکمیلی مرحله باید متعلق به همین دفتر باشد."))
+    if form.disabled:
+        frappe.throw(_("فرم تکمیلی مرحله غیرفعال است."))
+    revision = frappe.db.get_value(
+        "ASOUD Form Revision", binding["revision"], ["name", "form", "schema_json"], as_dict=True)
+    if not revision or revision.form != binding["form"]:
+        frappe.throw(_("نسخهٔ انتخاب‌شده متعلق به این فرم نیست."))
+    schema = json.loads(revision.schema_json)
+    return {**binding, "title": schema.get("title", "")}
+
+
 @frappe.whitelist(methods=["POST"])
 def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
@@ -746,6 +777,13 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
     raw = json.loads(config) if isinstance(config, str) else config
     if not isinstance(raw, dict):
         frappe.throw(_("Stage configuration must be an object"))
+    supplementary = None
+    if "supplementary_form" in raw:
+        if doc.stage_type != "Approval":
+            frappe.throw(_("فرم تکمیلی فقط برای مرحلهٔ تأیید قابل تنظیم است."))
+        supplementary = _validate_supplementary_binding(definition, raw)
+        if supplementary is not None and (raw.get("form_fields") or raw.get("form_layout")):
+            frappe.throw(_("با انتخاب فرم تکمیلی، فیلدهای درون‌خطی مرحله باید خالی باشند."))
     if (doc.stage_type == 'Condition' and json.loads(doc.config_json or '{}').get('condition_version') == 2
             and raw.get('condition_version') != 2):
         frappe.throw('برای حفظ شروط ترکیبی، این مرحله را با نسخهٔ به‌روز برنامه ویرایش کنید.')
@@ -766,6 +804,8 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
             validate_for_workflow(definition, normalized['form_fields'])
     except ValueError as error:
         frappe.throw(_(str(error)))
+    if supplementary is not None:
+        normalized["supplementary_form"] = supplementary
 
     role_field = ROLE_BASED_TYPES.get(doc.stage_type)
     if doc.stage_type == "User Task":
