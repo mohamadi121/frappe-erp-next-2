@@ -10,6 +10,17 @@ def validate_request_id(request_id: str | None) -> None:
             raise ValueError('شناسهٔ درخواست (request_id) معتبر نیست؛ باید بین ۸ تا ۶۴ نویسه و شامل حروف، ارقام، خط تیره یا زیرخط باشد.')
 
 
+def start_change_data(start_mode, previous_instance=None, request_id=None, reference_modified=None):
+    """The 'Workflow Started' activity payload; always JSON-serializable."""
+    data = {'start_mode': start_mode, 'previous_instance': previous_instance}
+    if request_id:
+        data['request_id'] = request_id
+    if reference_modified is not None:
+        # The record version is stored as text so the activity row serializes to JSON.
+        data['reference_modified'] = str(reference_modified)
+    return data
+
+
 def normalize_settings(value):
     allowed = {'trigger_type', 'initiator_roles', 'submission_source', 'allow_manager_restart', 'require_manual_reason'}
     if not isinstance(value, dict) or set(value) - allowed:

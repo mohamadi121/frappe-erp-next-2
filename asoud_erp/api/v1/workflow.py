@@ -958,6 +958,8 @@ def save_stage_routes(definition: str, stage: str, routes: str | dict) -> dict:
             destination = _assert_stage_in_definition(target, definition)
             if target == stage or destination.stage_type == "Start":
                 frappe.throw(_("Invalid workflow transition"))
+            if action == "Return" and destination.stage_type in {"End", "Wait"}:
+                frappe.throw(_("مسیر بازگشت برای اصلاح باید به یک ایستگاه قابل‌اجرای قبلی برود."))
             if (source.stage_type == "System Action" and action == "Error"
                     and json.loads(source.config_json or "{}").get("schema_version") == 2
                     and destination.stage_type != "User Task"):
