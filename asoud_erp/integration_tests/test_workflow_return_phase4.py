@@ -118,6 +118,26 @@ class TestReturnForCorrection(APITestCase):
             workflow_request.update_request(self.request["name"], values=json.dumps({"reason": "دوباره"}))
         self.assertEqual(status_key(self.request["name"]), "returned")
 
+    def test_a_configured_return_route_reactivates_the_same_stage(self):
+        # Add an explicit Return route from the second approval back to the form stage,
+        # so the runtime takes the saved transition instead of the dynamic fallback.
+        approval2 = frappe.db.get_value("ASOUD Workflow Stage",
+                                        {"workflow_definition": self.definition, "stage_title": "تأیید 2"}, "name")
+        frappe.get_doc({"doctype": "ASOUD Workflow Transition", "workflow_definition": self.definition,
+                        "from_stage": approval2, "to_stage": self._form_stage(),
+                        "condition_json": json.dumps({"action": "Return"})}).insert(ignore_permissions=True)
+        act(self.instance, "Approve")
+        act(self.instance, "Return", comment="مبلغ را اصلاح کنید")
+        # The same form stage is reactivated (no duplicate design stage).
+        self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", self.instance, "current_stage"),
+                         self._form_stage())
+        frappe.set_user(EMPLOYEE_USER)
+        workflow_request.update_request(self.request["name"], values=json.dumps({"reason": "دلیل اصلاح‌شده"}))
+        # After resubmit the route continues by the saved transitions: back to the first approval.
+        task = open_task(self.instance, APPROVER_USER)
+        self.assertEqual(_stage_title(self.instance, frappe.db.get_value(
+            "ASOUD Workflow Task", task.name, "workflow_stage")), "تأیید 1")
+
 
 class TestResultFormRefusesStageKind(APITestCase):
     """A Stage-kind form is the supplementary-stage concept; it must not be a task result form."""
