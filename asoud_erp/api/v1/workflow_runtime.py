@@ -1421,13 +1421,16 @@ def complete_workflow_task(
     binding = read_binding(config)
     if binding:
         if supplementary_values is None:
-            checked = {}
+            # The app sends the plain decision path when the user typed nothing;
+            # fall back to the saved draft so required fields are still enforced.
+            stored = supplementary_of(json.loads(doc.draft_json or "{}"))
+            checked = stored["values"] if stored else {}
         else:
             checked = json.loads(supplementary_values) if isinstance(supplementary_values, str) else supplementary_values
             if not isinstance(checked, dict):
                 frappe.throw(_("اطلاعات فرم تکمیلی باید یک شیء باشد."))
-            checked = _validate_supplementary_values(
-                binding, workflow_company(doc.workflow_instance), checked, action == "Approve")
+        checked = _validate_supplementary_values(
+            binding, workflow_company(doc.workflow_instance), checked, action == "Approve")
         normalized_response = merge_supplementary(normalized_response, binding, checked)
     # Serialize the final assignee's output with other completions in this instance.
     # Native inserts and task completion share this POST transaction.
