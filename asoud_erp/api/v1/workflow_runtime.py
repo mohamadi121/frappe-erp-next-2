@@ -1388,6 +1388,8 @@ def complete_workflow_task(
         raw_response = response if response is not None else json.loads(doc.draft_json or "{}")
         if isinstance(raw_response, str):
             raw_response = json.loads(raw_response)
+        # The reserved supplementary key is handled separately, not as a form field.
+        raw_response = strip_supplementary(raw_response)
         try:
             fields = config.get("form_fields", [])
             if config.get("require_all_fields"):
