@@ -31,7 +31,7 @@
       "fieldname": "kind",
       "label": "kind",
       "fieldtype": "Select",
-      "options": "Request\nDocument"
+      "options": "Request\nDocument\nStage"
     },
     {
       "fieldname": "module_key",
