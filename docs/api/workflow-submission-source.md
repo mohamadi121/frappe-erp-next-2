@@ -7,7 +7,8 @@ System Manager/Accounts Manager, company scope and native definition write acces
 Saving takes the source-form lock, pins its immutable revision, and stores indexed
 `source_form`/`source_revision` links on the workflow definition. All source-bearing
 stages in one definition must agree. A form has at most one non-archived bound
-workflow, including drafts; an existing schema.workflow route cannot be overridden.
+workflow in the legacy contract. The additive shared-source contract below
+replaces this exclusivity without changing native ERPNext Workflow rules.
 An existing system template cannot be rebound. Clearing its last stage binding
 clears the definition routing links. Existing workflows without a source are unchanged.
 
@@ -40,3 +41,33 @@ fields and source routing are separate; no new output is implied by source selec
 
 Deployment: `bench migrate` for definition source links and index, restart workers,
 then release Flutter. Tests are authored but not executed at the owner's request.
+
+## Shared source routing (additive)
+
+Start settings optionally accept `source_route`: `Available`, `Default`, or
+`Conditional`. Binding alone is always allowed for published same-company forms.
+The first binding becomes Default if there is no existing binding or legacy
+schema.workflow route. Later bindings are Available until explicitly configured.
+There can be at most one Default binding; existing implicit legacy bindings count
+as Default. No existing default or history is silently overwritten.
+
+Conditional routing uses the existing v2 Condition immediately after Start. Its
+predicates must use Original fields only; they are evaluated with the existing
+exact evaluator against validated submitted values. There is no separate rule
+language, table or runtime. Exactly one matching ready/active conditional wins;
+multiple matches are a Persian conflict, never first-row selection. If none match,
+the unique default must be ready/active, or the existing legacy schema.workflow
+route is used unchanged. Inactive/Available designs do not compete with the default.
+The saved entry and existing instance stay the authority for retries.
+
+`create_workflow_draft` accepts optional `start_settings`; creation and Start save
+are atomic. `save_start_settings` adds `validate_only=1, company` with an empty
+definition for a permission-checked read-only preflight before draft/metadata
+writes. No preflight creates a definition, entry or instance. It returns
+`{valid: true}`. Saving repeats validation under the existing form/definition locks.
+Clients keep failed selections, never reinterpret a Pending legacy Manual default
+as a deliberate user choice, and open the designer only after complete success.
+
+No new DocType fields or migration are required. Deploy backend before client;
+native Workflow active-per-DocType restrictions remain unchanged. Existing drafts
+(including WF-1405-044), immutable form revisions and executions are not migrated.
