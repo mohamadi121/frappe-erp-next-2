@@ -28,9 +28,6 @@ class ASOUDWorkflowDefinition(Document):
             form = frappe.get_doc('ASOUD Form', self.source_form, for_update=True)
             if form.company != self.company or form.disabled or form.active_revision != self.source_revision:
                 frappe.throw('منبع گردش‌کار باید فعال و نسخهٔ منتشرشدهٔ همین دفتر باشد.')
-            if frappe.db.exists('ASOUD Workflow Definition', {'source_form': form.name,
-                    'name': ['!=', self.name], 'status': ['!=', 'Archived']}):
-                frappe.throw('این فرم قبلاً به گردش‌کار دیگری متصل شده است.')
         if self.status == "Active" and self.readiness_status != "Ready":
             frappe.throw(_("A workflow with incomplete prerequisites cannot be activated"))
         if self.template_key and frappe.db.exists("ASOUD Workflow Definition", {

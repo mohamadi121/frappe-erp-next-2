@@ -296,8 +296,12 @@ def _normalize_assignment(raw: dict[str, Any], prefix: str) -> dict[str, Any]:
 def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, Any]:
     if stage_type not in STAGE_TYPES:
         raise ValueError("Unsupported stage type")
+    if stage_type == 'End' and not isinstance(raw.get('title'), str):
+        raise ValueError('عنوان مرحلهٔ پایان باید متن باشد.')
     title = str(raw.get("title") or "").strip()
     if len(title) < 2:
+        if stage_type == 'End':
+            raise ValueError('عنوان مرحلهٔ پایان را وارد کنید.')
         raise ValueError("Stage title is required")
 
     if stage_type == "User Task":
@@ -393,6 +397,10 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
         return {"title": title, "description": _description(raw), **_system_action(raw)}
 
     if stage_type == "Wait":
+        if raw.get('wait_version') == 1:
+            from asoud_erp.services.workflow_wait_policy import normalize
+
+            return normalize(raw)
         wait_type = raw.get("wait_type")
         if wait_type not in {"Duration", "Date", "Event"}:
             raise ValueError("Invalid wait type")
@@ -407,9 +415,14 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
         return {"title": title, "wait_type": wait_type, "wait_value": value, "wait_unit": unit}
 
     outcome = raw.get("outcome")
-    if outcome not in {"Completed", "Rejected", "Cancelled", "Stopped"}:
-        raise ValueError("Invalid workflow outcome")
-    return {"title": title, "outcome": outcome, "result_label": str(raw.get("result_label") or "").strip()}
+    if not isinstance(outcome, str) or outcome not in {"Completed", "Rejected", "Cancelled", "Stopped"}:
+        raise ValueError("نتیجه نهایی پایان عملیات معتبر نیست.")
+    message = raw.get('result_label', '')
+    if message is None:
+        message = ''
+    if not isinstance(message, str):
+        raise ValueError('پیام نتیجه باید متن باشد.')
+    return {"title": title, "outcome": outcome, "result_label": message.strip()}
 
 
 def _description(raw: dict[str, Any]) -> str:

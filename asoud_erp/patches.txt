@@ -10,3 +10,4 @@ asoud_erp.patches.v0_18.ensure_security_roles_and_backfill
 asoud_erp.patches.v0_18.add_first_office_bootstrap
 asoud_erp.patches.v0_18.add_department_description
 asoud_erp.patches.v0_18.add_workflow_submission_source
+asoud_erp.patches.v0_18.add_workflow_wait

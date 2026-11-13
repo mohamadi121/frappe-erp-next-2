@@ -5,7 +5,7 @@
   "autoname": "format:WFI-{YYYY}-{#####}",
   "title_field": "subject",
   "track_changes": 1,
-  "field_order": ["workflow_definition", "subject", "reference_doctype", "reference_name", "status", "current_stage", "started_by", "started_on", "completed_on"],
+  "field_order": ["workflow_definition", "subject", "reference_doctype", "reference_name", "status", "current_stage", "started_by", "started_on", "completed_on", "wait_due_utc", "wait_snapshot_json"],
   "fields": [
     {"fieldname": "workflow_definition", "label": "Workflow Definition", "fieldtype": "Link", "options": "ASOUD Workflow Definition", "reqd": 1, "in_list_view": 1},
     {"fieldname": "subject", "label": "Subject", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
@@ -15,7 +15,9 @@
     {"fieldname": "current_stage", "label": "Current Stage", "fieldtype": "Link", "options": "ASOUD Workflow Stage"},
     {"fieldname": "started_by", "label": "Started By", "fieldtype": "Link", "options": "User", "read_only": 1},
     {"fieldname": "started_on", "label": "Started On", "fieldtype": "Datetime", "read_only": 1},
-    {"fieldname": "completed_on", "label": "Completed On", "fieldtype": "Datetime", "read_only": 1}
+    {"fieldname": "completed_on", "label": "Completed On", "fieldtype": "Datetime", "read_only": 1},
+    {"fieldname": "wait_due_utc", "label": "Wait Due UTC", "fieldtype": "Datetime", "read_only": 1, "hidden": 1, "search_index": 1},
+    {"fieldname": "wait_snapshot_json", "label": "Wait Snapshot", "fieldtype": "Long Text", "read_only": 1, "hidden": 1}
   ],
   "permissions": [
     {"role": "System Manager", "create": 1, "read": 1, "write": 1, "delete": 1},

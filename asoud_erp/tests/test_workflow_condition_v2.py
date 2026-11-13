@@ -162,3 +162,46 @@ def test_number_and_select_are_not_text_normalized():
     assert evaluate_group(normalize_group(config(row)), lambda _: 'ERP') is True
     assert evaluate_group(normalize_group(config(rule())), lambda _: ' 51 ') is True
     assert evaluate_group(normalize_group(config(rule())), lambda _: ' 49 ') is False
+@pytest.mark.parametrize('kind,actual,value,expected', [
+    ('Boolean', False, 'false', True), ('Boolean', True, 'false', False),
+    ('DateTime', '2026-11-19T12:10:00', '2026-11-19T12:10:00', True),
+    ('Time', '12:10:00', '12:10', True),
+])
+def test_additional_real_form_scalar_types(kind, actual, value, expected):
+    raw = {'condition_version': 2, 'combine': 'All', 'conditions': [{
+        'id': 'typed', 'source_kind': 'Original', 'source_field': 'field',
+        'field_type': kind, 'operator': 'Equals', 'value': value}]}
+    assert evaluate_group(raw, lambda _: actual) is expected
+
+
+@pytest.mark.parametrize('actual,expected', [(['a', 'b'], True), (['b'], False), ([], False)])
+def test_multiselect_compares_option_ids_not_string_fragments(actual, expected):
+    raw = config(dict(id='tags', source_kind='Original', source_field='tags',
+        field_type='MultiSelect', operator='Contains', value='a'))
+    assert evaluate_group(raw, lambda _: actual) is expected
+    if actual:
+        raw['conditions'][0]['operator'] = 'Not Contains'
+        assert evaluate_group(raw, lambda _: actual) is not expected
+
+
+@pytest.mark.parametrize('actual', [None, '', 0, False])
+def test_null_zero_and_false_are_not_conflated(actual):
+    row = dict(id='value', source_kind='Original', source_field='field', field_type='Text', operator='Is Empty')
+    assert evaluate_group(config(row), lambda _: actual) is (actual is None or actual == '')
+
+
+def test_long_action_reports_are_compared_without_truncating_the_source():
+    row = dict(id='report', source_kind='Stage', source_stage='action', source_field='action_note',
+        field_type='Text', operator='Contains', value='پایان گزارش')
+    assert evaluate_group(config(row), lambda _: 'متن ' * 1000 + 'پایان گزارش') is True
+
+
+def test_native_time_values_keep_clock_semantics():
+    from datetime import timedelta
+
+    row = dict(id='clock', source_kind='Original', source_field='clock',
+        field_type='Time', operator='Equals', value='08:15:00')
+    assert evaluate_group(config(row), lambda _: timedelta(hours=8, minutes=15)) is True
+    for invalid in (timedelta(days=1), timedelta(seconds=-1)):
+        with pytest.raises(ValueError):
+            evaluate_group(config(row), lambda _: invalid)

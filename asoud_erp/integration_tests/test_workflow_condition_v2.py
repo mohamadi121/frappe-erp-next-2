@@ -31,7 +31,7 @@ class TestWorkflowConditionV2(APITestCase):
 
     def test_real_execution_selects_exactly_one_boolean_output(self):
         for expected, outcome, action in [('Administrator', 'Completed', 'Condition True'),
-                ('not-the-initiator', 'Rejected', 'Condition False')]:
+                (EMPLOYEE_USER, 'Rejected', 'Condition False')]:
             definition, gate, _ = self.graph(expected)
             exits = self.exits(definition, gate)
             workflow.save_stage_settings(definition, exits[False], {'title': 'پایان با رد', 'outcome': 'Rejected'})

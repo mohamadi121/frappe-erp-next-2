@@ -1,5 +1,5 @@
 import re
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -9,6 +9,10 @@ TYPE_OPERATORS = {
     'Date': {'Equals', 'Greater Than', 'Less Than', 'Between'},
     'Text': {'Equals', 'Not Equals', 'Contains', 'Not Contains'},
     'Select': {'Equals', 'Not Equals'},
+    'Boolean': {'Equals', 'Not Equals'},
+    'MultiSelect': {'Contains', 'Not Contains'},
+    'DateTime': {'Equals', 'Greater Than', 'Less Than', 'Between'},
+    'Time': {'Equals', 'Greater Than', 'Less Than', 'Between'},
 }
 _DIGITS = str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٫', '01234567890123456789.')
 _TEXT_TRANSLATE = str.maketrans({'ي': 'ی', 'ى': 'ی', 'ك': 'ک', '‌': ' '})
@@ -20,7 +24,34 @@ def normalize_text(value: str) -> str:
     return _TEXT_SPACES.sub(' ', value.translate(_TEXT_TRANSLATE)).strip().casefold()
 
 
-def condition_value(kind, value):
+def condition_value(kind, value, *, for_actual=False):
+    if kind == 'Boolean':
+        if isinstance(value, bool):
+            return value
+        if type(value) is int and value in (0, 1):
+            return bool(value)
+        if isinstance(value, str) and value.casefold() in {'true', 'false', '0', '1'}:
+            return value.casefold() in {'true', '1'}
+        raise ValueError('مقدار بله یا خیر معتبر نیست.')
+    if kind in {'DateTime', 'Time'}:
+        try:
+            # Native MariaDB TIME values may be returned as timedelta by Frappe.
+            if kind == 'Time' and for_actual and isinstance(value, timedelta):
+                if not timedelta(0) <= value < timedelta(days=1):
+                    raise ValueError
+                return (datetime.min + value).time()
+            text = str(value).translate(_DIGITS)
+            pattern = r'\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?'
+            if kind == 'DateTime':
+                pattern = r'\d{4}-\d{2}-\d{2}[T ]' + pattern
+            if not re.fullmatch(pattern, text):
+                raise ValueError
+            result = (datetime if kind == 'DateTime' else time).fromisoformat(text)
+            if result.tzinfo is not None:
+                raise ValueError
+            return result
+        except (ValueError, TypeError):
+            raise ValueError('تاریخ یا ساعت شرط معتبر نیست.') from None
     if kind == 'Number':
         try:
             number = Decimal(str(value).translate(_DIGITS).strip())
@@ -38,7 +69,7 @@ def condition_value(kind, value):
             return date.fromisoformat(str(value).translate(_DIGITS))
         except ValueError:
             raise ValueError('تاریخ شرط معتبر نیست.') from None
-    if not isinstance(value, str) or len(value) > 2000:
+    if not isinstance(value, str) or len(value) > (100000 if for_actual else 2000):
         raise ValueError('مقدار متنی شرط معتبر نیست.')
     return value
 
@@ -78,7 +109,7 @@ def normalize_group(raw):
                 first = condition_value(kind, row['value'])
                 if kind == 'Text' and not normalize_text(str(first)):
                     raise ValueError('مقدار مقایسه وارد نشده است.')
-                item['value'] = str(first)
+                item['value'] = ('true' if first else 'false') if kind == 'Boolean' else str(first)
                 if operator == 'Between':
                     last = condition_value(kind, row.get('value_to'))
                     if first > last:
@@ -96,7 +127,7 @@ def evaluate_group(config, resolve):
     results = []
     for row in config['conditions']:
         actual = resolve(row)  # A missing source/field must raise, not return None.
-        empty = actual is None or actual == ''
+        empty = actual is None or actual == '' or (row['field_type'] == 'MultiSelect' and actual == [])
         operator = row['operator']
         if operator in EMPTY_OPERATORS:
             results.append(empty if operator == 'Is Empty' else not empty)
@@ -104,7 +135,13 @@ def evaluate_group(config, resolve):
         if empty:
             results.append(False)
             continue
-        left = condition_value(row['field_type'], actual)
+        if row['field_type'] == 'MultiSelect':
+            if not isinstance(actual, list) or len(actual) > 1000 or any(not isinstance(value, str) for value in actual):
+                raise ValueError('مقدار چندانتخابی شرط معتبر نیست.')
+            result = row['value'] in actual
+            results.append(result if operator == 'Contains' else not result)
+            continue
+        left = condition_value(row['field_type'], actual, for_actual=True)
         right = condition_value(row['field_type'], row['value'])
         if row['field_type'] == 'Text':
             left, right = normalize_text(str(left)), normalize_text(str(right))

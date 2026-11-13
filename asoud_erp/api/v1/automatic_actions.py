@@ -18,16 +18,18 @@ from asoud_erp.services.automatic_action_metadata import (
 )
 from asoud_erp.services.automatic_action_policy import ACTIONS
 from asoud_erp.services.document_templates import TARGET_FIELDS
+from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.request_access import require_company
 
 
 def _access(definition, stage):
-    frappe.only_for(("System Manager", "Accounts Manager"))
+    require_roles(("System Manager", "Accounts Manager"))
     workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
     require_company(workflow.company)
+    workflow.check_permission('write')
     doc = frappe.get_doc("ASOUD Workflow Stage", stage)
     if doc.workflow_definition != definition or doc.stage_type != "System Action":
-        frappe.throw("The selected stage is not an automatic action of this workflow")
+        frappe.throw('مرحلهٔ انتخاب‌شده اقدام خودکارِ همین گردش‌کار نیست.')
     return workflow, doc
 
 
@@ -57,7 +59,7 @@ def options(definition: str, stage: str):
         if row.name == definition:
             continue
         try:
-            fields = request_fields(row.name, workflow.company)
+            fields = request_fields(row.name, workflow.company, writable=True)
         except (ValueError, frappe.ValidationError):
             continue
         requests.append({"id": row.name, "label": row.workflow_title, "fields": fields})
@@ -81,6 +83,23 @@ def options(definition: str, stage: str):
         if row.user_id not in {"Guest", "Administrator"}
         and frappe.db.get_value("User", row.user_id, "enabled")
     ]
+    from asoud_erp.api.v1.user_access import _native
+
+    managed_roles = frappe.get_all('ASOUD Role Definition', filters={'enabled': 1},
+        fields=['name', 'title'], limit_page_length=201)
+    native_roles = set(frappe.get_all('Role', filters={'disabled': 0}, pluck='name', limit_page_length=0))
+    recipient_options = [{'id': 'initiator', 'label': 'درخواست‌کننده'},
+        {'id': 'direct_manager', 'label': 'مدیر مستقیم درخواست‌کننده'},
+        *[{'id': 'role:' + row.name, 'label': 'نقش: ' + row.title}
+          for row in managed_roles if _native(row.name) in native_roles],
+        *[{'id': 'department:' + row.name, 'label': 'واحد: ' + row.department_name} for row in
+          frappe.get_all('Department', filters={'company': workflow.company, 'disabled': 0},
+              fields=['name', 'department_name'], limit_page_length=201)]]
+    next_links = frappe.get_all('ASOUD Workflow Transition', filters={
+        'workflow_definition': definition, 'from_stage': stage}, fields=['to_stage', 'condition_json'], limit_page_length=1001)
+    forward = [row.to_stage for row in next_links if json.loads(row.condition_json or '{}').get('action') == 'Success']
+    if len(forward) == 1 and frappe.db.get_value('ASOUD Workflow Stage', forward[0], 'stage_type') in {'User Task', 'Approval'}:
+        recipient_options.append({'id': 'next_assignee', 'label': 'مسئول مرحلهٔ بعد'})
     return success(
         {
             "schema_version": 2,
@@ -90,10 +109,15 @@ def options(definition: str, stage: str):
             "records": [{"id": dt, "label": dt, "fields": record_fields(dt)} for dt in RECORDS],
             "requests": requests,
             "users": users,
+            'recipient_options': recipient_options,
             "transitions": transitions,
             "channels": ["in_app", "email"],
             "execution_ready": user is not None,
             "blocked_reason": blocked,
+            "execution_state": 'Ready' if user else 'Configuration Required',
+            "blocked_message": None if user else (
+                'نوع رکورد مبدأ هنوز برای اجرای خودکار پشتیبانی نمی‌شود.' if workflow.target_doctype not in RECORDS else
+                'مدیر سامانه باید حساب اجرایی محدود، دسترسی دفتر و مجوزهای لازم عملیات را پیکربندی کند.'),
         }
     )
 
@@ -125,8 +149,13 @@ def save(definition: str, stage: str, config: str | dict, routes: str | dict):
     except ValueError as error:
         frappe.throw(str(error))
     # Both changes share one POST transaction. A route failure rolls back settings.
-    save_stage_settings(definition, stage, raw)
-    save_stage_routes(definition, stage, exits)
+    frappe.db.savepoint('automatic_settings_routes')
+    try:
+        save_stage_settings(definition, stage, raw)
+        save_stage_routes(definition, stage, exits)
+    except Exception:
+        frappe.db.rollback(save_point='automatic_settings_routes')
+        raise
     return success(_design_payload(definition))
 
 

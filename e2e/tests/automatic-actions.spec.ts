@@ -96,7 +96,7 @@ test.describe('automatic actions schema 2 without a service user', () => {
     const admin = await api.login('admin');
     const result = await admin.get(OPTIONS, { definition, stage: stages['Approval'] });
     expect(result.status).toBe(417);
-    expect(errorText(result)).toContain('The selected stage is not an automatic action of this workflow');
+    expect(errorText(result)).toContain('مرحلهٔ انتخاب‌شده اقدام خودکارِ همین گردش‌کار نیست.');
   });
 
   test('invalid configurations are refused with 417 and change nothing', async ({ api }) => {

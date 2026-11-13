@@ -91,15 +91,21 @@ class TestWorkflowSubmissionSource(APITestCase):
                 {'note': 'اطلاعات معتبر'}, uuid4().hex)
         self.assertEqual(frappe.db.count('ASOUD Form Entry'), before)
 
-    def test_employee_cannot_bind_and_another_definition_cannot_claim_source(self):
+    def test_employee_cannot_bind_but_manager_can_share_source_without_changing_default(self):
         frappe.set_user(EMPLOYEE_USER)
         with self.assertRaises(frappe.PermissionError):
             workflow.save_stage_settings(self.definition, self.stage.name, self.config)
         frappe.set_user('Administrator')
         definition, stages = make_definition(self.company, approvals=0, fields=[])
         stage = next(s for s in stages.values() if s.stage_type == 'User Task')
-        with self.assertRaises(frappe.ValidationError):
-            workflow.save_stage_settings(definition, stage.name, self.config)
+        workflow.save_stage_settings(definition, stage.name, self.config)
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', definition, 'source_form'), self.source['name'])
+        stored = json.loads(frappe.db.get_value('ASOUD Workflow Stage', stage.name, 'config_json'))
+        self.assertEqual(stored['source_route'], 'Available')
+        from asoud_erp.services.workflow_submission_source import route
+
+        self.assertEqual(route(frappe.get_doc('ASOUD Form', self.source['name']),
+            frappe.get_doc('ASOUD Form Revision', self.source['revision'])), self.definition)
 
     def test_snapshot_filters_sensitive_columns_and_private_attachments(self):
         raw = {'sections': [{'fields': [{'key': 'rows', 'type': 'Table', 'columns': [
@@ -107,6 +113,52 @@ class TestWorkflowSubmissionSource(APITestCase):
             {'key': 'file', 'type': 'File'}]}]}
         _, values = sanitized(raw, {'rows': [{'public': 'مجاز', 'private': 'محرمانه'}], 'file': '/private/files/x'})
         self.assertEqual(values, {'rows': [{'public': 'مجاز'}]})
+
+    def conditional_route(self):
+        source = {'form': self.source['name'], 'revision': self.source['revision']}
+        definition = workflow.create_workflow_draft('مسیر مشروط فرم مشترک', 'HR', 'ASOUD Workflow Request',
+            company=self.company, start_settings={'trigger_type': 'Document Event', 'initiator_roles': [],
+                'submission_source': source, 'source_route': 'Conditional'})['data']['name']
+        start = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'Start'})
+        workflow.add_workflow_stage(definition, 'Condition', start)
+        gate = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'Condition'})
+        workflow.save_stage_settings(definition, gate, {'title': 'بررسی نوع ارسال', 'condition_version': 2,
+            'combine': 'All', 'conditions': [{'id': 'special', 'source_kind': 'Original', 'source_stage': '',
+                'source_field': 'note', 'field_type': 'Text', 'operator': 'Equals', 'value': 'ویژه'}]})
+        for result in (True, False):
+            workflow.add_condition_branch(definition, gate, 'End', result)
+        workflow.set_workflow_status(definition, 'Active')
+        return definition
+
+    def test_shared_form_uses_one_primary_route_and_retry_never_duplicates(self):
+        conditional = self.conditional_route()
+        frappe.set_user(EMPLOYEE_USER)
+        key = uuid4().hex
+        special = forms.submit_form(self.source['name'], self.source['revision'], 'ارسال ویژه', {'note': 'ویژه'}, key)['data']
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', special['workflow_instance'], 'workflow_definition'), conditional)
+        replay = forms.submit_form(self.source['name'], self.source['revision'], 'ارسال ویژه', {'note': 'ویژه'}, key)['data']
+        self.assertEqual(replay['name'], special['name'])
+        self.assertEqual(frappe.db.count('ASOUD Workflow Instance', {'reference_doctype': 'ASOUD Form Entry',
+            'reference_name': special['name']}), 1)
+        ordinary = forms.submit_form(self.source['name'], self.source['revision'], 'ارسال عادی', {'note': 'عادی'}, uuid4().hex)['data']
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', ordinary['workflow_instance'], 'workflow_definition'), self.definition)
+
+    def test_overlapping_conditions_report_conflict_and_create_nothing(self):
+        self.conditional_route()
+        self.conditional_route()
+        before = frappe.db.count('ASOUD Form Entry')
+        frappe.set_user(EMPLOYEE_USER)
+        with self.assertRaises(frappe.ValidationError):
+            forms.submit_form(self.source['name'], self.source['revision'], 'ارسال مبهم', {'note': 'ویژه'}, uuid4().hex)
+        self.assertEqual(frappe.db.count('ASOUD Form Entry'), before)
+
+    def test_atomic_creation_rolls_back_on_invalid_start(self):
+        before = frappe.db.count('ASOUD Workflow Definition')
+        with self.assertRaises(frappe.ValidationError):
+            workflow.create_workflow_draft('پیش‌نویس نامعتبر', 'HR', 'ASOUD Workflow Request', company=self.company,
+                start_settings={'trigger_type': 'Document Event', 'submission_source':
+                    {'form': self.source['name'], 'revision': 'missing-revision'}, 'initiator_roles': []})
+        self.assertEqual(frappe.db.count('ASOUD Workflow Definition'), before)
 
     def test_other_company_cannot_claim_source_or_read_its_task(self):
         definition, stages = make_definition(self.second, approvals=0, fields=[])

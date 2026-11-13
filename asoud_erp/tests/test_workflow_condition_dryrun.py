@@ -188,7 +188,7 @@ def test_failing_v2_condition_logs_with_defer_insert_and_instance_reference(runt
     config = dict(title="شرط و مسیر", condition_version=2, combine="All", conditions=[
         dict(id="c1", source_kind="Original", source_stage="", source_field="amount",
              field_type="Number", operator="Greater Than", value="50")])
-    instance = types.SimpleNamespace(name="WFI-0001", workflow_definition="DEF",
+    instance = types.SimpleNamespace(name="WFI-0001", workflow_definition="DEF", status='Running',
                                      reference_doctype=None, reference_name=None,
                                      current_stage=None, save=lambda **kwargs: None)
     stage = types.SimpleNamespace(name="GATE", stage_type="Condition", config_json=json.dumps(config))

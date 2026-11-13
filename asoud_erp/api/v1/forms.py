@@ -634,6 +634,15 @@ def _validate_execution_submit(schema, values, company):
 
 @frappe.whitelist(methods=['POST'])
 def submit_form(name, revision_name, subject, values, request_key):
+    frappe.db.savepoint('submitted_form_primary_route')
+    try:
+        return _submit_form(name, revision_name, subject, values, request_key)
+    except Exception:
+        frappe.db.rollback(save_point='submitted_form_primary_route')
+        raise
+
+
+def _submit_form(name, revision_name, subject, values, request_key):
     doc = load(name, lock=True)
     if doc.kind == 'Stage':
         fail('فرم مرحله گردش کار به‌صورت درخواست مستقل ثبت نمی‌شود.')
@@ -659,11 +668,9 @@ def submit_form(name, revision_name, subject, values, request_key):
     _validate_execution_submit(schema, checked, doc.company)
     from asoud_erp.services.workflow_submission_source import route, start
 
-    source_workflow = route(doc, rev)
-    if source_workflow and schema.get('workflow'):
-        fail('این فرم دو مسیر گردش‌کار دارد؛ مدیر سیستم باید اتصال را اصلاح کند.')
+    source_workflow = route(doc, rev, checked) if schema['kind'] == 'Request' else None
     reference_type = reference_name = ''
-    if schema['kind'] == 'Request' and schema.get('workflow'):
+    if not source_workflow and schema['kind'] == 'Request' and schema.get('workflow'):
         from asoud_erp.api.v1.workflow_request import create_request
         workflow_mapping(schema, doc.company)
         payload = {}
@@ -696,6 +703,10 @@ def submit_form(name, revision_name, subject, values, request_key):
     entry = store(frappe.get_doc({'doctype': 'ASOUD Form Entry', 'form': doc.name, 'revision': rev.name, 'company': doc.company,
         'subject': subject.strip(), 'values_json': json.dumps(checked, ensure_ascii=False) if schema['kind'] == 'Request' else '{}',
         'reference_doctype': reference_type, 'reference_name': reference_name, 'request_key': key, 'fingerprint': fingerprint}))
+    if schema['kind'] == 'Document':
+        from asoud_erp.services.workflow_submission_source import values as source_values
+
+        source_workflow = route(doc, rev, source_values(entry))
     instance_name = start(entry, source_workflow) if source_workflow else None
     if reference_type == 'ASOUD Workflow Request':
         from asoud_erp.api.v1.workflow_request import refresh_search_text

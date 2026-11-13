@@ -56,11 +56,21 @@ def bind(definition, stage, config):
             frappe.throw('این الگو فرم قابل ارسال نیست؛ یک درخواست یا سند قابل تکمیل را انتخاب کنید.')
         if schema['kind'] == 'Document':
             forms.native_mapping(schema)
-        if schema.get('workflow'):
-            frappe.throw('این فرم قبلاً مسیر گردش‌کار دارد؛ ابتدا اتصال قبلی آن را از مدیریت فرم اصلاح کنید.')
-        if frappe.db.exists(DEFINITION, {'source_form': form.name,
-                'name': ['!=', definition], 'status': ['!=', 'Archived']}):
-            frappe.throw('این درخواست یا سند قبلاً به گردش‌کار دیگری متصل شده است.')
+        # Current reads after the shared Form lock: repeatable-read snapshots must
+        # not let two concurrently-created definitions both become the default.
+        others = [row.name for row in frappe.db.sql('select name from `tabASOUD Workflow Definition` '
+            'where source_form=%s and name!=%s and status!=%s limit 201 for update',
+            (form.name, definition, 'Archived'), as_dict=True)]
+        if len(others) > 200:
+            frappe.throw('تعداد گردش‌کارهای مرتبط بیش از حد مجاز است.')
+        previous = json.loads(frappe.db.get_value('ASOUD Workflow Stage', stage, 'config_json') or '{}')
+        mode = config.get('source_route', previous.get('source_route', 'Default' if old_source == form.name else 'Available'))
+        if not others and not schema.get('workflow') and mode == 'Available' and old_source != form.name:
+            mode = 'Default'
+        if mode == 'Default' and (schema.get('workflow') or any(
+                value['mode'] == 'Default' for value in routing_configs(others, current=True).values())):
+            frappe.throw('این فرم گردش‌کار پیش‌فرض دیگری دارد؛ اتصال مجاز است، اما فقط یک مسیر می‌تواند پیش‌فرض باشد.')
+        config['source_route'] = mode
         if source:
             config['submission_source'] = {**chosen, 'title': schema['title'], 'kind': schema['kind']}
         definition_doc.source_form, definition_doc.source_revision = form.name, revision.name
@@ -70,24 +80,96 @@ def bind(definition, stage, config):
     definition_doc.save()
 
 
-def route(form, revision):
+def routing_configs(names, *, current=False):
+    if not names:
+        return {}
+    if current:
+        rows = frappe.db.sql('select name, workflow_definition, stage_type, config_json from `tabASOUD Workflow Stage` '
+            'where workflow_definition in %s limit 40201 for update', (tuple(names),), as_dict=True)
+    else:
+        rows = frappe.get_all('ASOUD Workflow Stage', filters={'workflow_definition': ['in', names]},
+            fields=['name', 'workflow_definition', 'stage_type', 'config_json'], limit_page_length=40201)
+    if len(rows) > 40200:
+        frappe.throw('اندازهٔ مسیرهای فرم بیش از حد مجاز است.')
+    result = {name: {'mode': 'Default', 'stages': []} for name in names}  # Explicit legacy compatibility.
+    for row in sorted(rows, key=lambda value: value.stage_type == 'Start'):
+        result[row.workflow_definition]['stages'].append(row)
+        config = json.loads(row.config_json or '{}')
+        if config.get('submission_source'):
+            result[row.workflow_definition]['mode'] = config.get('source_route', 'Default')
+    return result
+
+
+def entry_condition(definition, *, stages=None, edges=None, available=None):
+    from asoud_erp.services.workflow_condition import normalize_group
+
+    if stages is None:
+        stages = frappe.get_all('ASOUD Workflow Stage', filters={'workflow_definition': definition},
+            fields=['name', 'stage_type', 'config_json'], limit_page_length=201)
+    starts = [row for row in stages if row.stage_type == 'Start']
+    if edges is None:
+        edges = frappe.get_all('ASOUD Workflow Transition', filters={'workflow_definition': definition,
+            'from_stage': starts[0].name if len(starts) == 1 else ''}, fields=['to_stage'], limit_page_length=2)
+    gate = next((row for row in stages if len(edges) == 1 and row.name == edges[0].to_stage and row.stage_type == 'Condition'), None)
+    if not gate:
+        raise ValueError('برای انتخاب مشروط، یک ایستگاه «شرط و مسیر» مستقیماً بعد از شروع قرار دهید.')
+    config = normalize_group(json.loads(gate.config_json or '{}'))
+    if any(row['source_kind'] != 'Original' for row in config['conditions']):
+        raise ValueError('شرط انتخاب گردش‌کار فقط می‌تواند از اطلاعات فرم اصلی استفاده کند.')
+    from asoud_erp.services.workflow_condition_binding import catalog, validate_bindings
+
+    validate_bindings(config, catalog(definition, gate.name) if available is None else available)
+    return config
+
+
+def route(form, revision, submitted=None):
     """Called under the native Form row lock, before any submit writes."""
     if not frappe.get_meta(DEFINITION).has_field('source_form'):
         return None
-    rows = frappe.get_all(DEFINITION, filters={'source_form': form.name, 'status': ['!=', 'Archived']},
-        fields=['name', 'company', 'status', 'readiness_status', 'source_revision'], limit_page_length=2)
+    rows = frappe.db.sql('select name, company, status, readiness_status, source_revision '
+        'from `tabASOUD Workflow Definition` where source_form=%s and status!=%s '
+        'order by name limit 201 for update', (form.name, 'Archived'), as_dict=True)
     if not rows:
         if frappe.db.exists(DEFINITION, {'source_form': form.name, 'status': 'Archived'}):
             frappe.throw('گردش‌کار متصل بایگانی شده است؛ مدیر باید اتصال این فرم را اصلاح کند.')
         return None
-    if len(rows) != 1:
-        frappe.throw('بیش از یک گردش‌کار به این فرم متصل است؛ مدیر سیستم باید اتصال را اصلاح کند.')
-    row = rows[0]
-    if row.company != form.company or row.source_revision != revision.name:
-        frappe.throw('نسخهٔ فرم تغییر کرده است؛ اتصال گردش‌کار باید توسط مدیر به‌روزرسانی شود.')
-    if row.status != 'Active' or row.readiness_status != 'Ready':
-        frappe.throw('گردش‌کار متصل هنوز فعال و آماده نیست؛ مدیر سیستم باید طراحی آن را تکمیل کند.')
-    return row.name
+    if len(rows) > 200 or any(row.company != form.company for row in rows):
+        frappe.throw('تنظیمات مسیرهای این فرم معتبر نیست؛ مدیر باید آن‌ها را بررسی کند.')
+    from asoud_erp.services.workflow_condition import evaluate_group
+    from asoud_erp.services.workflow_submission_policy import choose_route
+
+    configs = routing_configs([row.name for row in rows], current=True)
+    starts = [stage.name for config in configs.values() for stage in config['stages'] if stage.stage_type == 'Start']
+    outgoing = frappe.get_all('ASOUD Workflow Transition', filters={'from_stage': ['in', starts or ['']]},
+        fields=['workflow_definition', 'to_stage'], limit_page_length=40201)
+    if len(outgoing) > 40200:
+        frappe.throw('اندازهٔ مسیرهای فرم بیش از حد مجاز است.')
+    from asoud_erp.services.form_schema import fields
+    from asoud_erp.services.workflow_condition_binding import _fields
+
+    available = _fields(fields(json.loads(revision.schema_json)), 'Original')
+    required = {field['source_field'] for field in available if field.get('required')}
+    candidates = []
+    try:
+        for row in rows:
+            mode = configs[row.name]['mode']
+            if mode not in {'Available', 'Default', 'Conditional'}:
+                raise ValueError('روش انتخاب یکی از گردش‌کارهای مرتبط معتبر نیست؛ مدیر باید تنظیمات شروع را بررسی کند.')
+            candidate = {**dict(row), 'mode': mode, 'stale': row.source_revision != revision.name}
+            if mode == 'Conditional' and row.status == 'Active' and row.readiness_status == 'Ready':
+                if candidate['stale']:
+                    raise ValueError('نسخهٔ فرم مسیر مشروط تغییر کرده است؛ اتصال آن را به‌روزرسانی کنید.')
+                rules = entry_condition(row.name, stages=configs[row.name]['stages'],
+                    edges=[edge for edge in outgoing if edge.workflow_definition == row.name], available=available)
+                data = submitted or {}
+                if any(rule['source_field'] in required and rule['source_field'] not in data for rule in rules['conditions']):
+                    raise ValueError('اطلاعات لازم برای انتخاب مسیر در فرم ثبت نشده است.')
+                # Metadata already validated; absent optional fields are genuinely empty.
+                candidate['matched'] = evaluate_group(rules, lambda rule: data.get(rule['source_field']))
+            candidates.append(candidate)
+        return choose_route(candidates, legacy_default=bool(json.loads(revision.schema_json).get('workflow')))
+    except ValueError as error:
+        frappe.throw(str(error))
 
 
 def assert_reference(workflow, name, *, lock=True, restarting=False):
@@ -118,7 +200,9 @@ def assert_reference(workflow, name, *, lock=True, restarting=False):
     rev = forms.revision(form, entry.revision)
     if form.disabled or form.active_revision != rev.name or not forms.allowed(json.loads(rev.schema_json), entry.company):
         frappe.throw('این فرم در دسترس حساب شما نیست.', frappe.PermissionError)
-    if route(form, rev) != workflow.name:
+    existing = frappe.db.get_value('ASOUD Workflow Instance', {'reference_doctype': ENTRY,
+        'reference_name': entry.name}, 'workflow_definition', order_by='creation asc')
+    if (existing or route(form, rev, values(entry)[1])) != workflow.name:
         frappe.throw('مسیر ثبت فرم با گردش‌کار انتخاب‌شده سازگار نیست.')
     return entry
 

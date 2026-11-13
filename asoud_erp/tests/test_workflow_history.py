@@ -1,6 +1,19 @@
 from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
 
 
+def test_preceding_stages_excludes_correction_edges_and_handles_shared_paths():
+    from asoud_erp.services.workflow_history import preceding_stages
+
+    rows = [
+        {'from_stage': 'entry', 'to_stage': 'approval'},
+        {'from_stage': 'approval', 'to_stage': 'next'},
+        {'from_stage': 'next', 'to_stage': 'approval', 'condition_json': '{"action":"Return"}'},
+        {'from_stage': 'other', 'to_stage': 'approval', 'transition_label': 'رد'},
+    ]
+    assert preceding_stages('approval', rows) == {'entry'}
+    assert preceding_stages('next', rows) == {'entry', 'approval'}
+
+
 def test_latest_correction_overrides_previous_response():
     rows = [
         {"response_json": '{"title": "old", "amount": 10}'},

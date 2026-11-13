@@ -28,7 +28,9 @@ def binding(monkeypatch):
     frappe = _fake_frappe()
     monkeypatch.setitem(sys.modules, "frappe", frappe)
     module = importlib.import_module("asoud_erp.services.workflow_condition_binding")
-    return types.SimpleNamespace(module=importlib.reload(module), frappe=frappe)
+    module = importlib.reload(module)
+    monkeypatch.setattr(module, 'original_request_fields', lambda definition: [])
+    return types.SimpleNamespace(module=module, frappe=frappe)
 
 
 class _Attr:
@@ -112,6 +114,26 @@ def test_catalog_system_fields_carry_stable_metadata(binding):
     assert 'status' not in rows
 
 
+def test_options_and_scalar_metadata_follow_the_real_schema(binding):
+    rows = _by_field(binding.module._fields([
+        {'key': 'choice', 'type': 'Select', 'options': [{'id': 'sick', 'label': 'استعلاجی'}]},
+        {'key': 'old_choice', 'type': 'Choice', 'options': ['one'], 'option_labels': {'one': 'یک'}},
+        {'key': 'leave', 'type': 'Link', 'source': 'Leave Type'},
+        {'key': 'flag', 'type': 'Boolean'}, {'key': 'when', 'type': 'DateTime'},
+        {'key': 'tags', 'type': 'MultiSelect', 'options': ['a', 'b']},
+        {'key': 'private', 'type': 'Text', 'sensitive': True},
+        {'key': 'table', 'type': 'Table'},
+    ], 'Original'))
+    assert rows['choice']['options'] == ['sick']
+    assert rows['choice']['option_labels'] == {'sick': 'استعلاجی'}
+    assert rows['old_choice']['option_labels'] == {'one': 'یک'}
+    assert rows['leave']['link_doctype'] == 'Leave Type'
+    assert rows['flag']['field_type'] == 'Boolean'
+    assert rows['when']['field_type'] == 'DateTime'
+    assert rows['tags']['field_type'] == 'MultiSelect'
+    assert 'private' not in rows and 'table' not in rows
+
+
 def _instance(**kw):
     base = dict(name='inst-1', reference_doctype='X', reference_name=None,
         started_by='user@example.com', started_on=None, status='Running')
@@ -124,14 +146,19 @@ def _system_config(field):
 
 
 def test_resolver_reads_requester_unit_from_the_requester_employee(binding):
-    binding.frappe.db.get_value = lambda doctype, filters, field, as_dict=False: {'department': 'HR'}
-    resolve = binding.module.resolver(_instance(), _system_config('requester_unit'), [])
+    def employee(doctype, filters, field, as_dict=False):
+        assert filters == {'user_id': 'user@example.com', 'company': 'company-a', 'status': 'Active'}
+        return {'department': 'HR'}
+    binding.frappe.db.get_value = employee
+    available = [{'source_kind': 'System', 'source_field': 'requester_unit', 'company': 'company-a'}]
+    resolve = binding.module.resolver(_instance(), _system_config('requester_unit'), available)
     assert resolve({'source_kind': 'System', 'source_field': 'requester_unit'}) == 'HR'
 
 
 def test_resolver_requester_unit_without_a_department_is_an_error(binding):
     binding.frappe.db.get_value = lambda *a, **k: None
-    resolve = binding.module.resolver(_instance(), _system_config('requester_unit'), [])
+    resolve = binding.module.resolver(_instance(), _system_config('requester_unit'),
+        [{'source_kind': 'System', 'source_field': 'requester_unit', 'company': 'company-a'}])
     with pytest.raises(ValueError, match='واحد سازمانی ثبت‌کننده قابل تعیین نیست'):
         resolve({'source_kind': 'System', 'source_field': 'requester_unit'})
     binding.frappe.db.get_value = lambda *a, **k: {'department': ''}
