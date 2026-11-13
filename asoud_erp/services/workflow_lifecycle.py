@@ -22,9 +22,23 @@ def require_activation_ready(doc):
     errors = activation_requirements(stages, edges)
     if errors:
         frappe.throw('فعال‌سازی ممکن نیست: ' + ' '.join(errors))
+    if any(stage.stage_type == 'Start' and json.loads(stage.config_json or '{}').get('source_route') == 'Conditional' for stage in stages):
+        from asoud_erp.services.workflow_submission_source import entry_condition
+
+        try:
+            entry_condition(doc.name)
+        except ValueError as error:
+            frappe.throw(str(error))
     from asoud_erp.api.v1.automatic_actions import require_execution_ready
     from asoud_erp.services.workflow_user_action import validate_design
     for stage in stages:
+        if stage.stage_type == 'Wait':
+            from asoud_erp.services.workflow_wait import validate_design
+
+            try:
+                validate_design(doc.name, stage.name, {'title': stage.stage_title, **json.loads(stage.config_json or '{}')})
+            except ValueError as error:
+                frappe.throw(str(error))
         if stage.stage_type == 'Condition' and json.loads(stage.config_json or '{}').get('condition_version') == 2:
             from asoud_erp.services.workflow_condition_binding import catalog, validate_bindings
 

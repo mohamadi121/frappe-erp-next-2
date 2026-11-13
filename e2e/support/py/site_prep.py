@@ -343,6 +343,35 @@ def main() -> None:
         result = mark_active(options["definition"])
     elif action == "drop-definition":
         result = drop_definition(options["definition"])
+    elif action in {'drop-wait-test', 'drop-end-test'}:
+        definition = options['definition']
+        title = frappe.db.get_value('ASOUD Workflow Definition', definition, 'workflow_title') or ''
+        expected = 'E2E-Wait ' if action == 'drop-wait-test' else 'E2E-End '
+        if not title.startswith(expected):
+            raise ValueError('Only the explicitly scoped isolated test definitions may be cleaned')
+        instances = frappe.get_all('ASOUD Workflow Instance', filters={'workflow_definition': definition},
+            fields=['name', 'reference_name'], limit_page_length=0)
+        if any(row.reference_name for row in instances):
+            raise ValueError('Business references must never be removed by Wait-test cleanup')
+        for row in instances:
+            for kind in ('ASOUD Workflow Activity', 'ASOUD Workflow Task'):
+                for name in frappe.get_all(kind, filters={'workflow_instance': row.name}, pluck='name', limit_page_length=0):
+                    frappe.delete_doc(kind, name, ignore_permissions=True)
+            frappe.delete_doc('ASOUD Workflow Instance', row.name, ignore_permissions=True)
+        result = drop_definition(definition)
+    elif action == "run-wait":
+        from asoud_erp.services.workflow_wait import run
+
+        instance = frappe.get_doc('ASOUD Workflow Instance', options['instance'])
+        title = frappe.db.get_value('ASOUD Workflow Definition', instance.workflow_definition, 'workflow_title')
+        if not title or not title.startswith(PREFIX):
+            raise ValueError('Only isolated E2E workflows may be resumed by this helper')
+        run(instance.name)
+        frappe.db.commit()
+        instance.reload()
+        result = {'status': instance.status, 'wait': json.loads(instance.wait_snapshot_json or '{}'),
+            'completed_waits': frappe.db.count('ASOUD Workflow Activity', {
+                'workflow_instance': instance.name, 'action': 'Wait Completed'})}
     elif action == "attach":
         result = attach(options["request"], options.get("filename", "receipt.txt"), options.get("content", "e2e receipt content"))
     elif action == "mark-native-failed":

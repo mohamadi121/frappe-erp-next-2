@@ -22,7 +22,7 @@ def start_change_data(start_mode, previous_instance=None, request_id=None, refer
 
 
 def normalize_settings(value):
-    allowed = {'trigger_type', 'initiator_roles', 'submission_source', 'allow_manager_restart', 'require_manual_reason'}
+    allowed = {'trigger_type', 'initiator_roles', 'submission_source', 'allow_manager_restart', 'require_manual_reason', 'source_route'}
     if not isinstance(value, dict) or set(value) - allowed:
         raise ValueError('تنظیمات شروع گردش‌کار معتبر نیست.')
     trigger = value.get('trigger_type')
@@ -37,11 +37,17 @@ def normalize_settings(value):
     if value.get('require_manual_reason', True) is not True:
         raise ValueError('ثبت علت شروع دستی الزامی است و غیرفعال نمی‌شود.')
     source = normalize(value.get('submission_source'))
+    route = value.get('source_route', 'Available')
+    if not isinstance(route, str) or route not in {'Available', 'Default', 'Conditional'}:
+        raise ValueError('روش انتخاب گردش‌کار برای فرم معتبر نیست.')
+    if trigger == 'Manual' and route != 'Available':
+        raise ValueError('انتخاب مسیر فرم فقط برای شروع با ارسال فرم مجاز است.')
     if trigger == 'Manual' and (source or not roles):
         raise ValueError('برای شروع دستی نقش مجاز انتخاب کنید؛ اتصال فرم در این حالت مجاز نیست.')
     if trigger == 'Document Event' and not source:
         raise ValueError('برای شروع با ارسال فرم، درخواست یا سند منتشرشده را انتخاب کنید.')
     return {'start_settings_version': 1, 'trigger_type': trigger,
+        **({'source_route': route} if 'source_route' in value else {}),
         'initiator_roles': list(dict.fromkeys(role.strip() for role in roles)),
         'submission_source': source, 'allow_manager_restart': value.get('allow_manager_restart', False),
         'require_manual_reason': value.get('require_manual_reason', True),

@@ -19,7 +19,7 @@ from asoud_erp.services.automatic_action_metadata import (
     service_user,
     validate_config,
 )
-from asoud_erp.services.automatic_action_policy import VARIABLE, calculate, resolve, retry_delay
+from asoud_erp.services.automatic_action_policy import VARIABLE, resolve, retry_delay
 from asoud_erp.services.document_templates import build_document
 
 RECEIPT = "ASOUD Action Execution"
@@ -34,7 +34,7 @@ def _company(instance):
 
 
 def _record(doctype, name, company):
-    if doctype not in RECORDS:
+    if doctype not in {*RECORDS, 'ASOUD Form Entry'}:
         raise frappe.PermissionError("Record type is not allowlisted")
     doc = frappe.get_doc(doctype, name)
     if doc.company != company:
@@ -44,6 +44,12 @@ def _record(doctype, name, company):
 
 
 def _values(doc):
+    if doc.doctype == 'ASOUD Form Entry':
+        from asoud_erp.services.workflow_submission_source import sanitized, values
+
+        schema, data = values(doc)
+        _, data = sanitized(schema, data)
+        return {**data, 'subject': doc.subject, 'name': doc.name}
     values = {field["key"]: doc.get(field["key"]) for field in record_fields(doc.doctype)}
     if doc.doctype == "ASOUD Workflow Request":
         values.update(json.loads(doc.values_json or "{}"))
@@ -183,7 +189,44 @@ def _request_attachments(values, definition, instance, execution):
     return map_attachment_values(fields, values, copy), attachments
 
 
-def _notify(op, context, instance):
+def _notification_recipients(op, instance, stage):
+    from asoud_erp.api.v1.user_access import _native
+    from asoud_erp.api.v1.workflow_runtime import _system_route, _users_for_stage
+    from asoud_erp.services.workflow_user_action import users_for
+
+    result = set()
+    for token in op['recipients']:
+        if token == 'initiator':
+            result.add(instance.started_by)
+            continue
+        if token == 'next_assignee':
+            target = _system_route(instance, stage, 'Success')
+            if not target or target.stage_type not in {'User Task', 'Approval'}:
+                raise ValueError('مسئول مرحلهٔ بعد از مسیر موفقیت قابل تعیین نیست.')
+            result.update(_users_for_stage(target, instance))
+            continue
+        rule = None
+        if token == 'direct_manager':
+            rule = {'basis': 'Manager', 'subject': 'Initiator'}
+        elif token.startswith('department:'):
+            rule = {'basis': 'Unit', 'department': token[11:], 'delivery': 'Shared'}
+        elif token.startswith('role:'):
+            code = token[5:]
+            if not frappe.db.exists('ASOUD Role Definition', {'name': code, 'enabled': 1}):
+                raise ValueError('نقش گیرندهٔ اعلان دیگر فعال نیست.')
+            rule = {'basis': 'Role', 'role': _native(code), 'scope': 'Company'}
+        if rule:
+            human = frappe._dict(workflow_definition=instance.workflow_definition, config_json=_json({
+                'assignment_rule': rule, 'result_mode': 'Simple'}))
+            result.update(users_for(human, instance))
+        else:
+            result.add(token)
+        if len(result) > 200:
+            raise ValueError('تعداد گیرندگان بیش از حد مجاز است؛ محدودهٔ نقش یا واحد را کوچک‌تر کنید.')
+    return sorted(result)
+
+
+def _notify(op, context, instance, stage):
     from asoud_erp.services.request_access import company_access
 
     def replacement(match):
@@ -193,9 +236,9 @@ def _notify(op, context, instance):
         return str(value)
 
     message = VARIABLE.sub(replacement, op["message"])
+    title = VARIABLE.sub(replacement, op.get('title') or op['message'])[:140]
     results = []
-    recipients = set(instance.started_by if user == "initiator" else user for user in op["recipients"])
-    for user in sorted(recipients):
+    for user in _notification_recipients(op, instance, stage):
         for channel in op["channels"]:
             frappe.db.savepoint("automatic_notification")
             try:
@@ -212,7 +255,7 @@ def _notify(op, context, instance):
                             "type": "Alert",
                             "for_user": user,
                             "from_user": frappe.session.user,
-                            "subject": escape(message[:140]),
+                            "subject": escape(title),
                             "document_type": instance.reference_doctype,
                             "document_name": instance.reference_name,
                             "email_content": escape(message),
@@ -230,7 +273,7 @@ def _notify(op, context, instance):
                     email = frappe.db.get_value("User", user, "email")
                     queue = frappe.sendmail(
                         recipients=[email],
-                        subject=message[:140],
+                        subject=title,
                         message=escape(message),
                         reference_doctype=instance.reference_doctype,
                         reference_name=instance.reference_name,
@@ -265,14 +308,26 @@ def perform(receipt, instance, config, company):
     context = _context(instance, company)
     op, kind = config["operation"], config["action_type"]
     if kind == "Send Notification":
-        return _notify(op, context, instance)
+        return _notify(op, context, instance, receipt.workflow_stage)
     if kind == "Create Request":
         from asoud_erp.api.v1.workflow_request import create_request
 
         values = _mapping(op["mapping"], context)
-        if not frappe.has_permission("ASOUD Workflow Request", "create"):
+        selected = frappe.get_doc('ASOUD Workflow Definition', op['request_type'])
+        published = bool(selected.get('source_form'))
+        if not frappe.has_permission('ASOUD Form Entry' if published else 'ASOUD Workflow Request', "create"):
             raise frappe.PermissionError("Service user cannot create requests")
         subject = values.pop("subject")
+        if published:
+            from asoud_erp.api.v1.forms import submit_form
+
+            result = submit_form(selected.source_form, selected.source_revision, subject, values,
+                request_key=f'auto-{receipt.name}')['data']
+            doc = _record('ASOUD Form Entry', result['name'], company)
+            output = {'doctype': doc.doctype, 'name': doc.name, 'values': _values(doc)}
+            if op['link_original']:
+                output['comment'] = _link(context['record'], doc, 'related', receipt.name)
+            return output
         values, attachments = _request_attachments(values, op["request_type"], instance, receipt.name)
         response = create_request(
             company=company,
@@ -314,12 +369,16 @@ def perform(receipt, instance, config, company):
         if kind == "Update Fields":
             _update(doc, _mapping(op["mapping"], context), company)
         elif kind == "Calculate Value":
+            from asoud_erp.services.form_schema import calculate
+
+            operands = _mapping(op['inputs'], context)
+            # Reuse the form builder's Decimal evaluator, not a second float engine.
+            formula = ({'expression': op['formula']} if op['method'] == 'formula' else
+                {'op': 'add' if op['method'] == 'sum' else 'average', 'inputs': list(operands)})
             _update(
                 doc,
                 {
-                    op["field"]: calculate(
-                        op["method"], _mapping(op["inputs"], context), op.get("formula", "")
-                    )
+                    op["field"]: calculate(formula, operands, raw_decimal=True)
                 },
                 company,
             )

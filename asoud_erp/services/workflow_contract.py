@@ -45,6 +45,9 @@ def _validate_saved_routes(kind, routes):
     elif kind == 'Start':
         if len(routes) != 1:
             raise ValueError
+    elif kind == 'Wait':
+        if len(routes) != 1 or conditions != [{}]:
+            raise ValueError
     elif kind in {'User Task', 'Approval', 'System Action'}:
         main = {'User Task': 'Complete', 'Approval': 'Approve', 'System Action': 'Success'}[kind]
         actions = [str(c.get('action') or e.get('transition_label') or '').casefold()
@@ -78,8 +81,8 @@ def activation_requirements(stages, transitions):
         try:
             _validate_saved_stage(row)
             _validate_saved_routes(kind, outgoing[name])
-            if kind == 'Wait':
-                # The existing runtime explicitly does not execute Wait stages yet.
+            if kind == 'Wait' and json.loads(row.get('config_json') or '{}').get('wait_version') != 1:
+                # Legacy waits require explicit conversion to the executable v1 contract.
                 errors.append('اجرای مرحلهٔ انتظار هنوز پشتیبانی نمی‌شود؛ آن را جایگزین کنید.')
         except (ValueError, TypeError, KeyError):
             errors.append('تنظیمات یا مسیر خروج یکی از مراحل کامل و معتبر نیست.')
@@ -111,7 +114,7 @@ def design_details_summary(stages, transitions):
     for row in stages:
         try:
             _validate_saved_stage(row)
-            if row['stage_type'] == 'Wait':
+            if row['stage_type'] == 'Wait' and json.loads(row.get('config_json') or '{}').get('wait_version') != 1:
                 stages_complete = False
         except (ValueError, TypeError, KeyError):
             stages_complete = False

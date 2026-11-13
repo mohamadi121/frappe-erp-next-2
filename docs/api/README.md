@@ -2,6 +2,12 @@
 
 Workflow user actions: [result forms and shared assignment](workflow-user-actions.md).
 
+Draft path editing: [native insertion, cancellation and safe deletion](workflow-paths.md).
+
+Wait & Scheduling: [persistent server-side waits and the mobile editor](workflow-wait.md).
+
+Approval output destinations: [existing routes and correction history](workflow-approval-routes.md).
+
 Workflow card operations: [status and safe native deletion](workflow-card-actions.md).
 
 The Flutter client talks to this app only through whitelisted methods under
@@ -125,4 +131,6 @@ payload is rejected with `REQUEST_KEY_CONFLICT`.
 
 See [workflow start settings](workflow-start-settings.md) for the additive start-mode,
 source-selection and start-audit contract on the existing APIs.
+
+End stage: [existing settings, terminal outcomes and history](workflow-end.md).
 

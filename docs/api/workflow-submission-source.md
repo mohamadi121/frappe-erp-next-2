@@ -61,7 +61,12 @@ route is used unchanged. Inactive/Available designs do not compete with the defa
 The saved entry and existing instance stay the authority for retries.
 
 `create_workflow_draft` accepts optional `start_settings`; creation and Start save
-are atomic. `save_start_settings` adds `validate_only=1, company` with an empty
+are atomic. `workflow_templates.create_from_template` accepts the same optional
+`start_settings` and rolls back the copied draft if Start fails.
+Both responses include `data.start_settings` with the actually saved Start JSON;
+the client verifies trigger/source from that same transaction response, not from
+a second network request which could fail after a successful creation.
+`save_start_settings` adds `validate_only=1, company` with an empty
 definition for a permission-checked read-only preflight before draft/metadata
 writes. No preflight creates a definition, entry or instance. It returns
 `{valid: true}`. Saving repeats validation under the existing form/definition locks.

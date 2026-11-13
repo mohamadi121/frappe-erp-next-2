@@ -2,6 +2,30 @@
 
 ## Deployment and safe default
 
+### Audit update — 2026-11-11
+
+The isolated local ERPNext v15 site now has native regression coverage in
+`test_automatic_action_audit` (seven operation paths, published-form metadata and
+submission idempotency, Decimal calculation, native status transition and atomic
+save failure) and `test_workflow_path_editing`. HTTP validation uses
+`e2e/tests/automatic-actions.spec.ts` and `workflow-paths.spec.ts`. This is **not**
+production service-account provisioning or a production rollout. It does not
+claim SMTP delivery, worker-kill recovery or simultaneous-worker load testing.
+
+Published source entries are read through their pinned revision and existing
+submission-source sanitizer. They are immutable: update/calculation do not
+advertise writable source-entry fields. A Create Request targeting a published
+form uses the existing `forms.submit_form` path, including primary-route conflict
+handling, rather than copying the form or bypassing its access rules.
+
+Notification `operation.title` is optional (140 characters). Real recipient
+tokens `direct_manager`, `role:<ASOUD role id>`, `department:<Department id>` and
+`next_assignee` supplement `initiator`/explicit enabled users. Company, active
+membership and source read permissions are rechecked at execution; the same
+existing human-assignment resolver is reused. `recipient_options` contains
+display labels, not a new authorization grant. No actual delivery is done by
+opening or previewing the editor.
+
 This is an additive extension to the existing ASOUD stage engine, not a new
 business ledger. Deploy the extension app, run the site's normal `bench migrate`
 to install **ASOUD Action Execution**, and restart workers/scheduler. No site

@@ -20,6 +20,7 @@ RELOADED = [
     "asoud_erp.api.v1.workflow_request", "asoud_erp.services.request_access",
     "asoud_erp.services.erp_documents", "asoud_erp.services.request_link_values",
     "asoud_erp.services.request_comments",
+    "asoud_erp.services.workflow_wait",
 ]
 TOMORROW = (date.today() + timedelta(days=1)).isoformat()
 FIELDS = [

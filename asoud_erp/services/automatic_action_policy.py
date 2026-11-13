@@ -16,8 +16,8 @@ ACTIONS = (
 )
 SOURCES = {"current", "stage", "constant", "system"}
 SYSTEM_FIELDS = {"today": "Date", "now": "Datetime", "company": "Text", "initiator": "User"}
-NUMERIC = {"Number", "Currency", "Int", "Float", "Percent"}
-TEXT = {"Text", "Data", "Short Text", "Long Text", "Small Text", "SmallText", "Select"}
+NUMERIC = {"Number", "Currency", "Int", "Float", "Percent", "Integer", "Decimal", "Money", "Rating", "Formula"}
+TEXT = {"Text", "Data", "Short Text", "Long Text", "LongText", "Small Text", "SmallText", "Select"}
 KEY = re.compile(r"[a-z][a-z0-9_]{0,79}\Z")
 VARIABLE = re.compile(r"\{\{\s*([a-z][a-z0-9_]*)\s*\}\}")
 
@@ -185,7 +185,7 @@ def normalize_action(raw):
         "Create Document": {"doctype", "initial_state", "mapping", "link_original"},
         "Update Fields": {"target", "mapping"},
         "Change Status": {"target", "transition"},
-        "Send Notification": {"recipients", "channels", "message"},
+        "Send Notification": {"recipients", "channels", "message", "title"},
         "Calculate Value": {"target", "field", "method", "inputs", "formula"},
         "Link Record": {"target", "doctype", "lookup_field", "lookup", "relationship", "missing", "multiple"},
     }[kind]
@@ -220,7 +220,9 @@ def normalize_action(raw):
             raise ValueError("Choose in-app notification and/or email")
         result["channels"] = list(dict.fromkeys(channels))
         result["message"] = text(payload.get("message"), "Message", 2000)
-        stripped = VARIABLE.sub("", result["message"])
+        if payload.get('title'):
+            result['title'] = text(payload['title'], 'عنوان اعلان', 140)
+        stripped = VARIABLE.sub("", result["message"] + result.get('title', ''))
         if "{{" in stripped or "}}" in stripped:
             raise ValueError("Invalid message variable")
     elif kind == "Calculate Value":

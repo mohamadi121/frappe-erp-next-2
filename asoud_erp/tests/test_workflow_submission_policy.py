@@ -1,7 +1,34 @@
 import pytest
 
 from asoud_erp.services.workflow_stage_policy import normalize_stage_config
-from asoud_erp.services.workflow_submission_policy import normalize
+from asoud_erp.services.workflow_submission_policy import choose_route, normalize
+
+
+def candidate(name, mode='Default', **values):
+    return dict(name=name, mode=mode, status='Active', readiness_status='Ready', **values)
+
+
+def test_shared_form_default_and_conditional_selection():
+    default = candidate('ordinary')
+    other = candidate('special', 'Conditional', matched=True)
+    assert choose_route([default, other]) == 'special'
+    other['matched'] = False
+    assert choose_route([other, default, candidate('draft', 'Available')]) == 'ordinary'
+
+
+def test_shared_form_never_chooses_random_ambiguous_match_or_default():
+    with pytest.raises(ValueError, match='بیش از یک گردش'):
+        choose_route([candidate('one', 'Conditional', matched=True), candidate('two', 'Conditional', matched=True)])
+    with pytest.raises(ValueError, match='پیش‌فرض'):
+        choose_route([candidate('one'), candidate('two')])
+    assert choose_route([candidate('available', 'Available')], legacy_default=True) is None
+
+
+def test_shared_form_unready_default_is_not_silently_bypassed():
+    pending = candidate('pending')
+    pending['status'] = 'Inactive'
+    with pytest.raises(ValueError, match='آماده'):
+        choose_route([pending, candidate('reserved', 'Available')])
 
 
 @pytest.mark.parametrize('value', [False, [], '', {}, {'form': 'x'},

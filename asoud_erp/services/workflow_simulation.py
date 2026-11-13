@@ -110,6 +110,11 @@ def simulate_workflow(stages, transitions, decisions):
             current = next_stage
             continue
         if kind == 'Wait':
+            if _stage_config(stage).get('wait_version') == 1:
+                steps.append({'stage': current, 'title': title, 'stage_type': kind,
+                    'action': None, 'next': None})
+                waiting_stage, status = current, 'waiting'
+                break
             return _error(steps, 'اجرای مرحلهٔ انتظار هنوز پشتیبانی نمی‌شود؛ آن را جایگزین کنید.')
 
         if pointer < len(decisions) and decisions[pointer].get('stage') == current:

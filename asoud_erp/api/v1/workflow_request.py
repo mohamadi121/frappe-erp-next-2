@@ -475,7 +475,10 @@ def _execution(doc, instance_status, privileged) -> dict:
 
 def _readable_request(name):
     doc = frappe.get_doc(REQUEST_DOCTYPE, name)
-    if not request_permission(doc):
+    readable = request_permission(doc)
+    if readable is None:
+        readable = doc.has_permission('read')
+    if not readable:
         frappe.throw(_("Not permitted to view this request"), frappe.PermissionError)
     return doc
 
@@ -714,7 +717,14 @@ def _activity(instance, action: str, comment: str = "", before: dict | None = No
 @frappe.whitelist(methods=["POST"])
 def cancel_request(name: str, reason: str = ""):
     """The requester withdraws a request that is still in progress."""
+    from asoud_erp.services.workflow_wait import lock_for_cancellation
+
+    waiting = lock_for_cancellation(name)
     doc, instance = _own_running_request(name)
+    if waiting:
+        if waiting.name != doc.workflow_instance:
+            frappe.throw('اجرای درخواست تغییر کرده است؛ صفحه را تازه کنید.')
+        instance = waiting
     frappe.db.set_value("ASOUD Workflow Task", {"workflow_instance": instance.name, "status": "Open"},
                         "status", "Cancelled", update_modified=False)
     instance.status = "Cancelled"

@@ -142,7 +142,7 @@ export class ApiSession {
     const send = async () =>
       parse<T>(
         await this.context.post(`/api/method/${method}`, {
-          form,
+          form: stringifiedForm,
           headers,
           failOnStatusCode: false,
         }),

@@ -186,6 +186,31 @@ def workflow_form_options() -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def create_workflow_draft(
+    workflow_title: str, module_key: str, target_doctype: str, company: str | None = None,
+    process_description: str | None = None, creation_mode: str = 'Custom',
+    icon_key: str | None = None, color_hex: str | None = None, start_settings=None,
+) -> dict:
+    require_roles(('System Manager', 'Accounts Manager'))
+    if start_settings is not None:
+        from asoud_erp.services.workflow_start_settings import validate_selection
+
+        validate_selection(company, start_settings)
+    frappe.db.savepoint('workflow_draft_with_start')
+    try:
+        result = _create_workflow_draft(workflow_title, module_key, target_doctype, company,
+            process_description, creation_mode, icon_key, color_hex)
+        if start_settings is not None:
+            from asoud_erp.services.workflow_start_settings import save
+
+            start = save(result['data']['name'], start_settings)
+            result['data']['start_settings'] = json.loads(start.config_json)
+        return result
+    except Exception:
+        frappe.db.rollback(save_point='workflow_draft_with_start')
+        raise
+
+
+def _create_workflow_draft(
     workflow_title: str,
     module_key: str,
     target_doctype: str,
@@ -271,8 +296,15 @@ def save_start_settings(
     subject_source: str,
     pass_mode: str = "Direct",
     settings: str | dict | None = None,
+    validate_only: int | str = 0,
+    company: str | None = None,
 ) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
+    if str(validate_only) == '1':
+        from asoud_erp.services.workflow_start_settings import validate_selection
+
+        validate_selection(company, settings, definition or None)
+        return success({'valid': True})
     if settings is not None:
         from asoud_erp.services.workflow_start_settings import save
 
@@ -499,10 +531,14 @@ def connect_workflow_stages(
 
 @frappe.whitelist(methods=["POST"])
 def insert_workflow_stage(
-    definition: str, transition: str, stage_type: str
+    definition: str, transition: str, stage_type: str, draft_edit: int = 0
 ) -> dict:
     """Split one existing route into source -> new stage -> old destination."""
     require_roles(("System Manager", "Accounts Manager"))
+    if str(draft_edit) == '1':
+        from asoud_erp.api.v1.workflow_paths import editable
+
+        editable(definition, lock=True)
     if stage_type not in STAGE_TITLES:
         frappe.throw(_("Invalid workflow stage type"))
     frappe.db.sql(
@@ -558,11 +594,24 @@ def insert_workflow_stage(
         }
     ).insert()
     _touch_workflow(definition)
-    return success(_design_payload(definition))
+    result = _design_payload(definition)
+    if str(draft_edit) == '1':
+        from time import time
+
+        from frappe.utils.password import encrypt
+
+        result['insertion_token'] = encrypt(json.dumps({'definition': definition,
+            'stage': stage.name, 'actor': frappe.session.user, 'issued': time(), 'original': {
+                'from_stage': source.name, 'to_stage': destination.name,
+                'transition_label': original['label'], 'condition': json.loads(original['condition']),
+                'sequence_no': original['sequence']}}))
+    return success(result)
 
 
 @frappe.whitelist()
-def workflow_condition_fields(definition: str, stage: str | None = None) -> dict:
+def workflow_condition_fields(definition: str, stage: str | None = None,
+        value_field: str | None = None, value_source_kind: str = 'Original',
+        value_source_stage: str = '', query: str = '') -> dict:
     require_roles(("System Manager", "Accounts Manager", "HR Manager"))
     company = frappe.db.get_value("ASOUD Workflow Definition", definition, "company")
     if company:
@@ -611,9 +660,16 @@ def workflow_condition_fields(definition: str, stage: str | None = None) -> dict
     fields = list({(item["source"], item["fieldname"]): item for item in fields}.values())
     result = {"doctype": target_doctype, "fields": fields}
     if stage:
-        from asoud_erp.services.workflow_condition_binding import catalog
+        from asoud_erp.services.workflow_condition_binding import catalog, reference_choices
 
         result['condition_fields_v2'] = catalog(definition, stage)
+        if value_field:
+            field = next((item for item in result['condition_fields_v2'] if
+                (item['source_kind'], item['source_stage'], item['source_field']) ==
+                (value_source_kind, value_source_stage, value_field)), None)
+            if not field or not field.get('link_doctype'):
+                frappe.throw('فیلد مرجع در این مسیر معتبر نیست؛ دوباره انتخاب کنید.')
+            result['value_options'] = reference_choices(field, query)
     return success(result)
 
 
@@ -621,21 +677,27 @@ def workflow_condition_fields(definition: str, stage: str | None = None) -> dict
 def test_workflow_condition(definition: str, stage: str, config: str | dict, samples: str | dict) -> dict:
     """Evaluate a condition with caller-supplied sample values; it never writes anything."""
     require_roles(("System Manager", "Accounts Manager", "HR Manager"))
+    if not frappe.db.exists('ASOUD Workflow Definition', definition):
+        frappe.throw('گردش‌کار انتخاب‌شده پیدا نشد؛ صفحه را دوباره دریافت کنید.')
     company = frappe.db.get_value("ASOUD Workflow Definition", definition, "company")
     if company:
         require_company(company)
-    raw = json.loads(config) if isinstance(config, str) else config
+    try:
+        raw = json.loads(config) if isinstance(config, str) else config
+        raw_samples = json.loads(samples) if isinstance(samples, str) else samples
+    except (ValueError, TypeError):
+        frappe.throw('ساختار تنظیمات یا مقدارهای نمونه معتبر نیست؛ دوباره بررسی کنید.')
     if not isinstance(raw, dict):
         frappe.throw('تنظیمات شرط معتبر نیست.')
-    raw_samples = json.loads(samples) if isinstance(samples, str) else samples
     if not isinstance(raw_samples, dict):
         frappe.throw('نمونه‌ها باید یک شیء با کلید شناسهٔ شرط باشند.')
     from asoud_erp.services.workflow_condition import EMPTY_OPERATORS, evaluate_group, normalize_group
-    from asoud_erp.services.workflow_condition_binding import catalog, validate_bindings
+    from asoud_erp.services.workflow_condition_binding import catalog, validate_bindings, validate_field_value
 
     try:
         normalized = normalize_group(raw)
-        validate_bindings(normalized, catalog(definition, stage))
+        available = catalog(definition, stage)
+        validate_bindings(normalized, available, check_reference_permissions=True)
     except ValueError as error:
         frappe.throw(str(error))
     frappe.db.savepoint('asoud_condition_test')
@@ -651,6 +713,9 @@ def test_workflow_condition(definition: str, stage: str, config: str | dict, sam
                     continue
             one_row = dict(normalized, conditions=[row])
             try:
+                field = next(item for item in available if (item['source_kind'], item['source_stage'], item['source_field']) ==
+                    (row['source_kind'], row['source_stage'], row['source_field']))
+                validate_field_value(field, raw_samples.get(row['id']))
                 result = evaluate_group(one_row, lambda rule, _row=row: raw_samples.get(_row['id']))
                 rows.append(dict(id=row['id'], result=result, error=None))
             except ValueError as error:
@@ -767,6 +832,12 @@ def _validate_supplementary_binding(definition: str, raw: dict) -> dict | None:
 @frappe.whitelist(methods=["POST"])
 def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
+    # Authorize End design before the definition lock, then recheck editability
+    # under that lock. Saving design must never mutate a live End execution.
+    if frappe.db.get_value('ASOUD Workflow Stage', stage, 'stage_type') == 'End':
+        from asoud_erp.services.workflow_condition_binding import assert_editable
+
+        assert_editable(definition)
     frappe.db.sql('select name from `tabASOUD Workflow Definition` where name=%s for update', (definition,))
     doc = frappe.get_doc("ASOUD Workflow Stage", stage)
     if doc.workflow_definition != definition:
@@ -774,9 +845,18 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
     if doc.stage_type == "Start":
         frappe.throw(_("Use the start settings endpoint for the start stage"))
     _assert_form_is_editable(definition, doc)
-    raw = json.loads(config) if isinstance(config, str) else config
+    if doc.stage_type in {'Wait', 'End'}:
+        from asoud_erp.services.workflow_condition_binding import assert_editable
+
+        assert_editable(definition)
+    try:
+        raw = json.loads(config) if isinstance(config, str) else config
+    except json.JSONDecodeError:
+        if doc.stage_type == 'End':
+            frappe.throw('قالب تنظیمات پایان عملیات معتبر نیست.')
+        raise
     if not isinstance(raw, dict):
-        frappe.throw(_("Stage configuration must be an object"))
+        frappe.throw('تنظیمات پایان عملیات معتبر نیست.' if doc.stage_type == 'End' else _("Stage configuration must be an object"))
     supplementary = None
     if "supplementary_form" in raw:
         if doc.stage_type != "Approval":
@@ -798,6 +878,10 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
             raw = {**raw, 'submission_source': previous_source}
     try:
         normalized = normalize_stage_config(doc.stage_type, raw)
+        if doc.stage_type == 'Wait' and normalized.get('wait_version') == 1:
+            from asoud_erp.services.workflow_wait import validate_design
+
+            validate_design(definition, doc.name, normalized)
         if normalized.get('form_fields'):
             from asoud_erp.services.form_execution.stage_validation import validate_for_workflow
 
@@ -852,7 +936,7 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
 
             assert_editable(definition)
             try:
-                validate_bindings(normalized, catalog(definition, stage))
+                validate_bindings(normalized, catalog(definition, stage), check_reference_permissions=True)
             except ValueError as error:
                 frappe.throw(str(error))
         elif normalized["source_kind"] == "Document":
@@ -934,6 +1018,9 @@ def save_stage_routes(definition: str, stage: str, routes: str | dict) -> dict:
     default route the designer created.
     """
     require_roles(("System Manager", "Accounts Manager"))
+    owner = frappe.get_doc('ASOUD Workflow Definition', definition)
+    require_company(owner.company)
+    owner.check_permission('write')
     frappe.db.sql(
         "select name from `tabASOUD Workflow Definition` where name = %s for update",
         (definition,),
@@ -952,18 +1039,41 @@ def save_stage_routes(definition: str, stage: str, routes: str | dict) -> dict:
         limit_page_length=0,
     )
     removed = set()
+    predecessors = set()
+    if source.stage_type == 'Approval':
+        from asoud_erp.services.workflow_history import preceding_stages
+
+        predecessors = preceding_stages(stage, frappe.get_all('ASOUD Workflow Transition',
+            filters={'workflow_definition': definition},
+            fields=['from_stage', 'to_stage', 'condition_json', 'transition_label'], limit_page_length=0))
+    # Validate the whole selection first; an invalid later item must not remove
+    # a previously saved route when called from an in-process client.
     for action, target in raw.items():
         target = str(target or "").strip()
         if target:
+            if not frappe.db.exists('ASOUD Workflow Stage', target):
+                frappe.throw('مرحلهٔ مقصد حذف شده یا وجود ندارد؛ مقصد را دوباره انتخاب کنید.')
             destination = _assert_stage_in_definition(target, definition)
             if target == stage or destination.stage_type == "Start":
                 frappe.throw(_("Invalid workflow transition"))
             if action == "Return" and destination.stage_type in {"End", "Wait"}:
                 frappe.throw(_("مسیر بازگشت برای اصلاح باید به یک ایستگاه قابل‌اجرای قبلی برود."))
+            if (source.stage_type == 'Approval' and action == 'Approve'
+                    and destination.stage_type == 'End'
+                    and json.loads(destination.config_json or '{}').get('outcome', 'Completed') != 'Completed'):
+                frappe.throw('مسیر تأیید نمی‌تواند به پایان رد یا توقف فرایند متصل شود.')
+            if source.stage_type == 'Approval' and (
+                    (action == 'Return' and target not in predecessors)
+                    or (action == 'Approve' and target in predecessors)):
+                frappe.throw('مقصد انتخاب‌شده معتبر نیست؛ تأیید باید رو به جلو و اصلاح به یک مرحلهٔ قبلی متصل شود.')
+            if source.stage_type == 'Approval' and action == 'Return' and destination.stage_type not in {'User Task', 'Approval'}:
+                frappe.throw('مقصد اصلاح باید یک مرحلهٔ انسانی قبلی باشد.')
             if (source.stage_type == "System Action" and action == "Error"
                     and json.loads(source.config_json or "{}").get("schema_version") == 2
                     and destination.stage_type != "User Task"):
                 frappe.throw(_("Automatic action error routes must target a human task"))
+    for action, target in raw.items():
+        target = str(target or '').strip()
         for row in existing:
             if row.name in removed:
                 continue

@@ -7,6 +7,43 @@ from asoud_erp.services.request_access import require_company
 from asoud_erp.services.workflow_start_policy import normalize_settings
 
 
+def validate_selection(company, settings, definition=None):
+    from asoud_erp.api.v1 import forms
+
+    require_company(company)
+    if definition:
+        workflow = frappe.get_doc('ASOUD Workflow Definition', definition)
+        require_company(workflow.company)
+        workflow.check_permission('write')
+        if workflow.company != company:
+            frappe.throw('دفتر گردش‌کار با انتخاب فعلی سازگار نیست.')
+    try:
+        value = normalize_settings(frappe.parse_json(settings) if isinstance(settings, str) else settings)
+    except (ValueError, TypeError):
+        frappe.throw('تنظیمات شروع معتبر نیست؛ نحوهٔ شروع و انتخاب فرم را بررسی کنید.')
+    roles = set(frappe.get_all('Role', filters={'name': ['in', value['initiator_roles'] or ['']], 'disabled': 0}, pluck='name'))
+    if set(value['initiator_roles']) - roles:
+        frappe.throw('یکی از نقش‌های مجاز شروع غیرفعال است یا وجود ندارد.')
+    if value['submission_source']:
+        source = value['submission_source']
+        form = forms.load(source['form'], edit=True)
+        if form.company != company or form.disabled or form.active_revision != source['revision']:
+            frappe.throw('فرم انتخاب‌شده باید فعال و نسخهٔ منتشرشدهٔ همین دفتر باشد؛ انتخاب را تازه کنید.')
+        schema = json.loads(forms.revision(form, source['revision']).schema_json)
+        if schema.get('kind') not in {'Request', 'Document'}:
+            frappe.throw('یک فرم درخواست یا سند منتشرشده انتخاب کنید.')
+        if schema['kind'] == 'Document':
+            forms.native_mapping(schema)
+        if value.get('source_route') == 'Default':
+            from asoud_erp.services.workflow_submission_source import routing_configs
+
+            names = frappe.get_all('ASOUD Workflow Definition', filters={'source_form': form.name,
+                'name': ['!=', definition or ''], 'status': ['!=', 'Archived']}, pluck='name', limit_page_length=201)
+            if len(names) > 200 or schema.get('workflow') or any(row['mode'] == 'Default' for row in routing_configs(names).values()):
+                frappe.throw('این فرم گردش‌کار پیش‌فرض دیگری دارد؛ فقط اتصال یا انتخاب مشروط را انتخاب کنید، یا پیش‌فرض قبلی را اصلاح کنید.')
+    return value
+
+
 def save(definition, settings):
     try:
         values = normalize_settings(frappe.parse_json(settings) if isinstance(settings, str) else settings)
@@ -35,8 +72,10 @@ def save(definition, settings):
     old_config = json.loads(start.config_json or '{}')
     if old_config.get('start_settings_version') == 1:
         previous = normalize_settings({key: old_config[key] for key in ('trigger_type', 'initiator_roles',
-            'submission_source', 'allow_manager_restart', 'require_manual_reason') if key in old_config})
-        if previous == values:
+            'submission_source', 'allow_manager_restart', 'require_manual_reason', 'source_route') if key in old_config})
+        old_mode = previous.get('source_route', 'Default' if previous['submission_source'] else 'Available')
+        new_mode = values.get('source_route', 'Default' if values['submission_source'] else 'Available')
+        if {**previous, 'source_route': old_mode} == {**values, 'source_route': new_mode}:
             return start  # A metadata-only save must not rewrite a live Start.
     if frappe.db.exists('ASOUD Workflow Instance', {'workflow_definition': definition, 'status': 'Running'}):
         frappe.throw('تا پایان اجراهای در حال انجام، تغییر تنظیمات شروع مجاز نیست.')

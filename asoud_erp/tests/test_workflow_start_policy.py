@@ -3,6 +3,16 @@ import pytest
 from asoud_erp.services.workflow_start_policy import normalize_settings, start_decision, validate_request_id
 
 
+def test_shared_form_route_modes_are_preserved():
+    from asoud_erp.services.workflow_start_policy import normalize_settings
+
+    for mode in ('Available', 'Default', 'Conditional'):
+        result = normalize_settings({'trigger_type': 'Document Event', 'initiator_roles': [],
+            'submission_source': {'form': 'FORM', 'revision': 'REV'}, 'source_route': mode})
+        assert result['source_route'] == mode
+
+
+
 def manual(**extra):
     return {'trigger_type': 'Manual', 'initiator_roles': ['System Manager'], **extra}
 

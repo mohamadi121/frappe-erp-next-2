@@ -194,6 +194,11 @@ class FakeDB:
     def __init__(self, site):
         self.site = site
 
+    def has_column(self, doctype, fieldname):
+        # This in-memory fixture represents only columns present in its rows.
+        # Real schema/migration behavior is covered by native integration tests.
+        return any(fieldname in row for row in self.site.table(doctype).values())
+
     def _rows(self, doctype, filters):
         rows = list(self.site.table(doctype).values())
         if isinstance(filters, str):

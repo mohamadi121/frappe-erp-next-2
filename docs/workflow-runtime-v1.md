@@ -45,6 +45,26 @@ blocked until its scheduler-based executor is implemented.
 
 ## Decision routes
 
+Approval destination settings use the existing `save_stage_routes` contract.
+Approval route targets are current stage IDs from the same definition. Approve
+cannot target an End whose outcome is not Completed. A direct Reject-to-End
+always terminates this instance as Rejected, without modifying the End's shared
+configuration. Reject may still target an existing handling stage. Empty Return
+uses this instance's completed human-task history, including modern result forms;
+no new request or station is created. Missing targets must be reselected.
+Approval forward destinations cannot be preceding stages; an explicit correction
+destination must be a preceding human stage of the same definition (User Task or
+Approval), already completed in this execution when the decision is made.
+Precedence follows existing forward connections, excluding
+Reject/Return edges; it does not depend on canvas coordinates or sequence numbers.
+All submitted destinations are validated before any connection is changed.
+An empty Reject retains the existing Rejected outcome; empty Return retains the
+existing history-based correction selection. No design stages are generated.
+`comment_required` remains the backward-compatible setting, labelled in the app
+as requiring an approval comment. Reject and Return always require a reason at
+runtime, even when legacy `reject_comment_required` is false. No data migration
+or runtime history rewrite is required.
+
 `workflow.save_stage_routes(definition, stage, routes)` sets a stage's exits by
 decision: `Approve`/`Reject`/`Return` for Approval, `Complete`/`Reject`/`Return`
 for User Task and `Success`/`Error` for System Action. Each route is a standard

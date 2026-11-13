@@ -76,13 +76,24 @@ def identity(company):
         frappe.set_user(previous)
 
 
-def request_fields(name, company):
-    from asoud_erp.api.v1.workflow_request import _fields
+def request_fields(name, company, *, writable=False):
+    from asoud_erp.api.v1.workflow_request import _fields_by_name
+    from asoud_erp.services.form_schema import fields
 
     doc = frappe.get_doc("ASOUD Workflow Definition", name)
     if doc.target_doctype != "ASOUD Workflow Request" or doc.company != company:
         raise ValueError("Invalid request type for this company")
-    return [{"key": "subject", "label": "عنوان", "type": "Text", "required": True}, *_fields(doc)]
+    if doc.get('source_revision'):
+        revision = frappe.get_doc('ASOUD Form Revision', doc.source_revision)
+        schema = json.loads(revision.schema_json)
+        values = fields(schema)
+    else:
+        # A metadata read must not enforce the legacy create_request entry path.
+        values = _fields_by_name(doc.name)
+    return [{"key": "subject", "label": "عنوان", "type": "Text", "required": True},
+        *[field for field in values if not field.get('sensitive') and not field.get('hidden') and
+            (not writable or not (field.get('editable') is False or field.get('readonly') or
+                field.get('fetch_from') or field.get('formula') or field.get('default_source')))]]
 
 
 def record_fields(doctype, *, writable=False):
@@ -147,13 +158,14 @@ def _output_type(row, workflow, visited=None):
         return None, None
     op, kind = config["operation"], config["action_type"]
     if kind == "Create Request":
-        return "ASOUD Workflow Request", op["request_type"]
+        published = frappe.db.get_value('ASOUD Workflow Definition', op['request_type'], 'source_form')
+        return ('ASOUD Form Entry' if published else 'ASOUD Workflow Request'), op["request_type"]
     if kind == "Create Document":
         return op["doctype"], None
     if kind == "Send Notification":
         return None, None
     if op["target"]["source"] == "current":
-        return workflow.target_doctype, workflow.name
+        return ('ASOUD Form Entry' if workflow.get('source_revision') else workflow.target_doctype), workflow.name
     previous = frappe.get_doc("ASOUD Workflow Stage", op["target"]["stage"])
     return _output_type(previous, workflow, visited)
 
@@ -166,7 +178,7 @@ def schemas(definition, stage):
     if workflow.target_doctype == "ASOUD Workflow Request":
         current = request_fields(definition, workflow.company) + [
             {"key": "name", "label": "شماره درخواست", "type": "Text"},
-            {"key": "status", "label": "وضعیت", "type": "Text"},
+            *([] if workflow.get('source_revision') else [{"key": "status", "label": "وضعیت", "type": "Text"}]),
         ]
     prior = []
     for name in sorted(prior_stages(definition, stage)):
@@ -174,31 +186,42 @@ def schemas(definition, stage):
         config = json.loads(row.config_json or "{}")
         fields, doctype, request_type = [], None, None
         if row.stage_type in {"User Task", "Approval"}:
-            fields = config.get("form_fields", [])
+            if config.get('action_contract_version') == 1:
+                from asoud_erp.services.form_schema import fields as schema_fields
+                from asoud_erp.services.workflow_user_action_policy import simple_schema
+
+                schema = config.get('result_schema') if config.get('result_mode') == 'Form' else simple_schema(
+                    False, config.get('simple_result_style', 'Report'))
+                fields = schema_fields(schema or {})
+            else:
+                fields = config.get("form_fields", [])
+            fields = [field for field in fields if not field.get('sensitive') and not field.get('hidden')]
         elif row.stage_type == "System Action" and config.get("schema_version") == 2:
             doctype, request_type = _output_type(row, workflow)
-            if doctype == "ASOUD Workflow Request":
+            if doctype in {"ASOUD Workflow Request", 'ASOUD Form Entry'}:
                 fields = request_fields(request_type, workflow.company) + [
                     {"key": "name", "label": "شماره درخواست", "type": "Text"},
-                    {"key": "status", "label": "وضعیت", "type": "Text"},
+                    *([] if doctype == 'ASOUD Form Entry' else [{"key": "status", "label": "وضعیت", "type": "Text"}]),
                 ]
             elif doctype:
                 fields = record_fields(doctype)
         writable = (
-            request_fields(request_type, workflow.company)
+            request_fields(request_type, workflow.company, writable=True)
             if doctype == "ASOUD Workflow Request"
             else record_fields(doctype, writable=True)
-            if doctype
+            if doctype in RECORDS
             else []
         )
         prior.append(
-            {"id": name, "label": row.stage_title, "doctype": doctype, "fields": fields, "writable": writable}
+            {"id": name, "label": row.stage_title, 'stage_type': row.stage_type,
+                "doctype": doctype, "fields": fields, "writable": writable}
         )
     return {
+        'record_doctype': 'ASOUD Form Entry' if workflow.get('source_revision') else workflow.target_doctype,
         "current": current,
         "stages": prior,
         "writable": (
-            request_fields(definition, workflow.company)
+            (request_fields(definition, workflow.company, writable=True) if not workflow.get('source_revision') else [])
             if workflow.target_doctype == "ASOUD Workflow Request"
             else record_fields(workflow.target_doctype, writable=True)
             if workflow.target_doctype in RECORDS
@@ -211,7 +234,7 @@ def schemas(definition, stage):
 def target_doctype(operation, workflow, sources):
     selected = operation.get("target", {"source": "current"})
     if selected["source"] == "current":
-        return workflow.target_doctype
+        return 'ASOUD Form Entry' if workflow.get('source_revision') else workflow.target_doctype
     row = next((s for s in sources["stages"] if s["id"] == selected["stage"]), None)
     if not row or not row["doctype"]:
         raise ValueError("Target must be a previous stage with a record output")
@@ -249,11 +272,13 @@ def validate_mapping(mapping, fields, sources, *, require_all=True):
                 number(entry["value"])
             elif field["type"] == "Date":
                 date.fromisoformat(str(entry["value"]))
-            elif field["type"] == "Checkbox":
+            elif field["type"] in {"Checkbox", "Boolean"}:
                 if type(entry["value"]) is not bool:
                     raise ValueError("Checkbox constant must be a boolean")
-            elif field["type"] == "Choice":
-                if entry["value"] not in field.get("options", []):
+            elif field["type"] in {"Choice", "Select"}:
+                options = [item.get('value', item.get('id')) if isinstance(item, dict) else item
+                    for item in field.get('options', [])]
+                if entry["value"] not in options:
                     raise ValueError("Constant is not one of the field's choices")
             elif not isinstance(entry["value"], str):
                 raise ValueError("Text and link constants must be strings")
@@ -290,6 +315,16 @@ def validate_config(definition, stage, raw):
             seen.add(name)
             if len(seen) > 100:
                 raise ValueError("Automatic request dependency graph is too large")
+            candidate = frappe.get_doc('ASOUD Workflow Definition', name)
+            if candidate.company != workflow.company:
+                raise ValueError('نوع درخواست مقصد باید متعلق به همین دفتر باشد.')
+            if candidate.get('source_form'):
+                if candidate.source_form == workflow.get('source_form'):
+                    raise ValueError('ایجاد خودکار درخواست نباید دوباره همین فرم مبدأ را به گردش بیندازد.')
+                # A submitted form can select any matching existing primary route.
+                related = frappe.get_all('ASOUD Workflow Definition', filters={
+                    'source_form': candidate.source_form, 'status': 'Active'}, pluck='name', limit_page_length=101)
+                pending.extend(value for value in related if value not in seen)
             for row in frappe.get_all(
                 "ASOUD Workflow Stage",
                 filters={"workflow_definition": name},
@@ -300,7 +335,7 @@ def validate_config(definition, stage, raw):
                     pending.append(other["request_definition"])
                 if other.get("schema_version") == 2 and other.get("action_type") == "Create Request":
                     pending.append(other["operation"]["request_type"])
-        validate_mapping(op["mapping"], request_fields(op["request_type"], workflow.company), sources)
+        validate_mapping(op["mapping"], request_fields(op["request_type"], workflow.company, writable=True), sources)
     elif kind in {"Update Fields", "Calculate Value"}:
         target_doctype(op, workflow, sources)
         fields = (
@@ -323,10 +358,20 @@ def validate_config(definition, stage, raw):
             raise ValueError("Transition does not belong to the native workflow")
     elif kind == "Send Notification":
         allowed = {f["key"] for f in sources["current"] if f["type"] not in {"Table", "Item Table"}}
-        if set(VARIABLE.findall(op["message"])) - allowed:
+        if set(VARIABLE.findall(op.get('title', '') + op["message"])) - allowed:
             raise ValueError("Message contains an unknown or non-scalar variable")
         for user in op["recipients"]:
-            if user != "initiator" and (
+            if user in {'initiator', 'direct_manager', 'next_assignee'}:
+                continue
+            if user.startswith('role:'):
+                if not frappe.db.exists('ASOUD Role Definition', {'name': user[5:], 'enabled': 1}):
+                    raise ValueError('نقش انتخاب‌شده برای اعلان فعال یا موجود نیست.')
+                continue
+            if user.startswith('department:'):
+                if not frappe.db.exists('Department', {'name': user[11:], 'company': workflow.company, 'disabled': 0}):
+                    raise ValueError('واحد گیرندهٔ اعلان فعال یا متعلق به این دفتر نیست.')
+                continue
+            if (
                 user in {"Administrator", "Guest"} or not frappe.db.get_value("User", user, "enabled")
             ):
                 raise ValueError("Recipient does not exist or is disabled")
@@ -346,10 +391,12 @@ def validate_permissions(definition, stage, config):
     sources = schemas(definition, stage)
     kind, op = config["action_type"], config["operation"]
     with identity(workflow.company):
-        if not frappe.has_permission(workflow.target_doctype, "read"):
+        source_type = 'ASOUD Form Entry' if workflow.get('source_revision') else workflow.target_doctype
+        if not frappe.has_permission(source_type, "read"):
             raise frappe.PermissionError("Service user cannot read the workflow source type")
         if kind.startswith("Create"):
-            doctype = "ASOUD Workflow Request" if kind == "Create Request" else op["doctype"]
+            doctype = ('ASOUD Form Entry' if frappe.db.get_value('ASOUD Workflow Definition',
+                op['request_type'], 'source_form') else 'ASOUD Workflow Request') if kind == 'Create Request' else op['doctype']
             permission = "create"
         elif kind in {"Update Fields", "Calculate Value", "Change Status"}:
             doctype, permission = target_doctype(op, workflow, sources), "write"

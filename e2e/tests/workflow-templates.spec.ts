@@ -1,5 +1,5 @@
 import { expect, test } from '../support/fixtures';
-import { loadState } from '../support/state';
+import { loadState, sitePrep } from '../support/state';
 
 const state = loadState();
 const prefix = 'asoud_erp.api.v1.workflow_templates.';
@@ -14,7 +14,7 @@ test('system template copies are independent, unpublished and company-scoped ove
   expect(catalog.items.length).toBeGreaterThan(0);
   const source = catalog.items[0];
   const args = {company: state.company, source: source.name, source_modified: source.modified,
-    workflow_title: `گردش مستقل ${Date.now()}`};
+    workflow_title: `E2E-گردش مستقل ${Date.now()}`};
   expect((await employee.get(prefix + 'catalog', {company: state.company})).status).toBe(403);
   expect((await employee.post(prefix + 'create_from_template', args)).status).toBe(403);
   expect((await hr.post(prefix + 'create_from_template', {...args, company: state.second_company})).status).toBe(403);
@@ -35,14 +35,7 @@ test('system template copies are independent, unpublished and company-scoped ove
     expect(design.transitions.every(edge => ids.includes(edge.from_stage) && ids.includes(edge.to_stage))).toBe(true);
     expect(await admin.read('asoud_erp.api.v1.workflow.get_workflow_design', {definition: source.name})).toEqual(before);
   } finally {
-    const design = await admin.read<Design>('asoud_erp.api.v1.workflow.get_workflow_design', {definition: copy.name});
-    const headers = {'X-Frappe-CSRF-Token': await admin.csrf()};
-    for (const [doctype, rows] of [['ASOUD Workflow Transition', design.transitions], ['ASOUD Workflow Stage', design.stages]] as const) {
-      for (const row of rows) {
-        const response = await admin.context.delete(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(row.name)}`, {headers});
-        expect(response.status()).toBe(200);
-      }
-    }
-    expect((await admin.context.delete(`/api/resource/ASOUD%20Workflow%20Definition/${encodeURIComponent(copy.name)}`, {headers})).status()).toBe(200);
+    // Cleanup is test-only; production correctly protects edited history.
+    sitePrep('drop-definition', {definition: copy.name});
   }
 });

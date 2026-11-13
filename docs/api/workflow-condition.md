@@ -10,6 +10,19 @@ The new optional `condition_version: 2` config contains `title`, `description`,
 Each row has a unique stable `id`, `source_kind: Original | Stage | System`,
 `source_field`, optional `source_stage` (required for Stage), `field_type:
 Number | Text | Date | Select`, `operator`, and `value`/`value_to` when applicable.
+Additive comparable kinds also include `DateTime`, `Time`, `Boolean` and
+`MultiSelect`. Boolean values accept booleans or canonical `true`/`false` text;
+MultiSelect supports Contains/Not Contains for one actual option and empty checks.
+DateTime and Time use ISO values, never Persian display text. Existing Date and
+reference Text identifiers retain their storage contract. Catalog entries include
+`data_type` and all actual Select/MultiSelect option labels. Dynamic Link choices
+reuse this same field-catalog API with optional `value_field`, `value_source_kind`,
+`value_source_stage` and `query`, returning bounded `value_options` (`value`, `label`).
+The server resolves the binding and native DocType itself, then applies native read
+permissions, company scope, active/disabled filters and a 30-row search limit. No
+client-supplied DocType is trusted. Expected reference ids are batch-validated on
+save against the same native records. Unsupported
+table/file/display/structure fields are not offered as scalar predicates.
 Operators: Equals, Not Equals, Greater Than, Greater Or Equal, Less Than,
 Less Or Equal, Between, Contains, Not Contains, Is Empty, Is Set.
 Operators are restricted by the server-owned field type. Decimal comparisons
