@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Align the introduction-letter integration fixture with the existing End contract: valid `Stopped` persists as `Failed` without issuing a letter. Add a separate real-database regression proving that an invalid End outcome rejects submission and rolls back the request/instance while preserving the draft and revision. No runtime change or additional migration.
+
 - End-stage audit: preserve the approved three-field UI and four outcomes. Record an idempotent terminal activity with result message and decision context; map Stopped to existing Failed instead of Cancelled. Lock the instance before legacy human completion and reject late replies/nonterminal activation after completion. Validate real incoming/no outgoing edges and protect active/running End settings. No new DocType, status enum, business write or notification is added. Existing native module lifecycle mappings remain intact; no data rewrite/migration for this End-only change. Restart web/workers together; pair with Flutter's invalid-result and save-error handling. Old histories are unchanged.
 
 - Wait & Scheduling v1: complete the existing Wait stage using Frappe's minute scheduler and existing workflow instance. Add indexed `wait_due_utc` and a pinned wait snapshot (migration required), with duration/calendar-day, local date-time and real form-date sources. Preserve legacy waits until explicit conversion; reject invalid dates, disabled scheduling and missing outputs. Lock and resume once, audit planned/actual times, re-evaluate changed form dates by policy and keep cancelled waits inert. Paired Flutter client required; deploy backend, run `bench --site <site> migrate`, restart web/workers/scheduler, then client. No automatic-action or human-deadline policy change.

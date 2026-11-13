@@ -182,13 +182,33 @@ class TestPersonnelIntroductionLetters(APITestCase):
         end = frappe.db.get_value("ASOUD Workflow Stage", {
             "workflow_definition": definition, "stage_type": "End",
         }, "name")
-        # The runtime treats an unknown End outcome as Failed, never Completed.
-        frappe.db.set_value("ASOUD Workflow Stage", end, "config_json", json.dumps({"outcome": "Invalid"}))
+        # Stopped is the valid unsuccessful terminal outcome; its persisted
+        # instance status is Failed. Unknown outcomes must instead be rejected.
+        frappe.db.set_value("ASOUD Workflow Stage", end, "config_json", json.dumps({"outcome": "Stopped"}))
         draft = self._workflow_letter(definition)
         failed = api.finalize_letter(draft["name"], draft["revision"], uuid4().hex)["data"]
         assert failed["status"] == "Failed"
         assert failed["number"] == "—"
         assert frappe.db.get_value("ASOUD Workflow Instance", failed["workflow_instance"], "status") == "Failed"
+
+    def test_invalid_end_outcome_rolls_back_letter_submission(self):
+        definition = self._letter_definition(approvals=0)
+        end = frappe.db.get_value("ASOUD Workflow Stage", {
+            "workflow_definition": definition, "stage_type": "End",
+        }, "name")
+        frappe.db.set_value("ASOUD Workflow Stage", end, "config_json", json.dumps({"outcome": "Invalid"}))
+        draft = self._workflow_letter(definition)
+        with self.assertRaisesRegex(frappe.ValidationError, "نتیجه نهایی پایان عملیات معتبر نیست"):
+            api.finalize_letter(draft["name"], draft["revision"], uuid4().hex)
+        current = api.get_letter(draft["name"])["data"]
+        assert current["status"] == "Draft"
+        assert current["number"] == "—"
+        assert current["revision"] == draft["revision"]
+        assert not current.get("workflow_request")
+        assert not current.get("workflow_instance")
+        assert not frappe.db.exists("ASOUD Workflow Request", {"workflow_definition": definition})
+        assert not frappe.db.exists("ASOUD Workflow Instance", {"workflow_definition": definition})
+        assert json.loads(frappe.db.get_value("ASOUD Workflow Stage", end, "config_json"))["outcome"] == "Invalid"
 
     def test_scoped_manager_without_employee_can_submit_letter_workflow(self):
         definition = self._letter_definition(approvals=0)
