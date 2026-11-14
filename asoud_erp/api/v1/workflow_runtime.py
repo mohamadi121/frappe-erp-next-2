@@ -25,6 +25,7 @@ from asoud_erp.services.stage_supplementary_form import (
 )
 from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
+from asoud_erp.services.workflow_end import _end_outcomes
 from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
 from asoud_erp.services.workflow_response import normalize_form_response
 from asoud_erp.services.workflow_start_policy import start_change_data, validate_request_id
@@ -76,6 +77,7 @@ def _instance_summary(instance) -> dict:
         order_by="assigned_on asc",
         limit_page_length=0,
     )
+    end_outcome = _end_outcomes([instance.name]).get(instance.name)
     return {
         "name": instance.name,
         "subject": instance.subject,
@@ -89,6 +91,7 @@ def _instance_summary(instance) -> dict:
         "started_by": instance.started_by,
         "started_on": instance.started_on,
         "completed_on": instance.completed_on,
+        "end_outcome": end_outcome,
     }
 
 
@@ -915,6 +918,7 @@ def _instance_summaries(names) -> list[dict]:
         fields=["workflow_instance", "assigned_to"], order_by="assigned_on asc", limit_page_length=0,
     ):
         assignees.setdefault(row.workflow_instance, []).append(row.assigned_to)
+    end_outcomes = _end_outcomes(names)
     summaries = []
     for name in names:
         row = instances[name]
@@ -931,6 +935,7 @@ def _instance_summaries(names) -> list[dict]:
             "started_by": row.started_by,
             "started_on": row.started_on,
             "completed_on": row.completed_on,
+            "end_outcome": end_outcomes.get(name),
         })
     return summaries
 
