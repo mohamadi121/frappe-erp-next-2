@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix Document form submission idempotency: `forms._submit_form` renamed inner mapping loop variable to `native_key` to avoid shadowing outer sha256 request idempotency hash `key`, resolving UniqueValidationError on repeated or multiple Document form submissions. Add regression tests for multi-submission unique keys and replay idempotency. No new DocType, migration, or permission change.
+
 - Fix shared form submission routing for Document forms: `forms.submit_form` now correctly passes the values dictionary (`source_values(entry)[1]`) instead of the tuple `(schema, result)` to `route()`, resolving AttributeError / HTTP 500 on conditional document form routing. Add integration test coverage for conditional document routing and missing default workflow error handling. No new DocType, migration, or permission change.
 - Workflow End outcome visibility: add `end_outcome` (`Completed|Rejected|Cancelled|Stopped` or null) to request detail (`execution` block and top-level detail), request list (`list_my_requests`), and workflow instance detail (`get_workflow_instance`, `list_my_workflow_instances`) payloads read from the terminal `پایان عملیات` activity, allowing clients to distinguish a deliberate `Stopped` end from a technical failure or wait error. No schema migration or new DocType field.
 
