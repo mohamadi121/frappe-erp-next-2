@@ -1,4 +1,5 @@
 """Submitted records enter a real instance without copying their form or values."""
+import hashlib
 import json
 from uuid import uuid4
 
@@ -286,3 +287,62 @@ class TestWorkflowSubmissionSource(APITestCase):
         self.assertIn('هیچ مسیر مشروطی منطبق نیست', str(ctx.exception))
         self.assertEqual(frappe.db.count('ASOUD Form Entry'), before_entry)
         self.assertEqual(frappe.db.count('ASOUD Workflow Instance'), before_instance)
+
+    def test_document_submission_idempotency_and_sha256_request_key(self):
+        from frappe.utils import nowdate
+
+        from asoud_erp.integration_tests.fixtures import abbr
+
+        frappe.set_user('Administrator')
+        definition, stages = make_definition(self.company, approvals=0, fields=[])
+        stage = next(s for s in stages.values() if s.stage_type == 'User Task')
+        document = {'kind': 'Document', 'title': 'سند حسابداری یکتایی', 'target': 'Journal Entry',
+            'sections': [{'id': 'main', 'title': 'سند', 'fields': [
+                {'key': 'date', 'label': 'تاریخ', 'type': 'Date', 'native_key': 'posting_date'},
+                {'key': 'rows', 'label': 'ردیف‌ها', 'type': 'Table', 'native_key': 'accounts', 'columns': [
+                    {'key': 'account', 'label': 'حساب', 'type': 'Link', 'source': 'Account', 'native_key': 'account'},
+                    {'key': 'debit', 'label': 'بدهکار', 'type': 'Money', 'native_key': 'debit_in_account_currency'},
+                    {'key': 'credit', 'label': 'بستانکار', 'type': 'Money', 'native_key': 'credit_in_account_currency'}]}]}]}
+        saved = forms.save_form(self.company, document, client_id=uuid4().hex)['data']
+        forms.transition(saved['name'], 'publish', saved['draft_version'])
+        source = forms.get_form(saved['name'])['data']
+        workflow.save_stage_settings(definition, stage.name, {'title': 'بررسی سند یکتایی',
+            'activity_type': 'Review', 'assignment_type': 'Initiator',
+            'submission_source': {'form': source['name'], 'revision': source['revision']}})
+
+        equity = frappe.get_all('Account', filters={'company': self.company, 'root_type': 'Equity',
+            'is_group': 0}, pluck='name', limit_page_length=1)[0]
+        frappe.set_user(ACCOUNTANT_USER)
+
+        key_1 = uuid4().hex
+        key_2 = uuid4().hex
+        payload_1 = {'date': nowdate(), 'rows': [{'account': f'Cash - {abbr()}', 'debit': 100, 'credit': 0},
+            {'account': equity, 'debit': 0, 'credit': 100}]}
+        payload_2 = {'date': nowdate(), 'rows': [{'account': f'Cash - {abbr()}', 'debit': 200, 'credit': 0},
+            {'account': equity, 'debit': 0, 'credit': 200}]}
+
+        res_1 = forms.submit_form(source['name'], source['revision'], 'سند اول', payload_1, key_1)['data']
+        res_2 = forms.submit_form(source['name'], source['revision'], 'سند دوم', payload_2, key_2)['data']
+        self.assertNotEqual(res_1['name'], res_2['name'])
+
+        rk_1 = frappe.db.get_value('ASOUD Form Entry', res_1['name'], 'request_key')
+        rk_2 = frappe.db.get_value('ASOUD Form Entry', res_2['name'], 'request_key')
+
+        expected_1 = hashlib.sha256(f'{ACCOUNTANT_USER}:{self.company}:{key_1}'.encode()).hexdigest()
+        expected_2 = hashlib.sha256(f'{ACCOUNTANT_USER}:{self.company}:{key_2}'.encode()).hexdigest()
+
+        self.assertEqual(rk_1, expected_1)
+        self.assertEqual(rk_2, expected_2)
+        self.assertEqual(len(rk_1), 64)
+        self.assertEqual(len(rk_2), 64)
+        self.assertNotEqual(rk_1, rk_2)
+        self.assertNotEqual(rk_1, 'accounts')
+        self.assertNotEqual(rk_2, 'accounts')
+
+        before_entries = frappe.db.count('ASOUD Form Entry')
+        before_journals = frappe.db.count('Journal Entry')
+        replay_1 = forms.submit_form(source['name'], source['revision'], 'سند اول', payload_1, key_1)['data']
+        self.assertEqual(replay_1['name'], res_1['name'])
+        self.assertEqual(frappe.db.count('ASOUD Form Entry'), before_entries)
+        self.assertEqual(frappe.db.count('Journal Entry'), before_journals)
+

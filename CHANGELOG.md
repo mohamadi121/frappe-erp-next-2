@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix Document form submission idempotency: `forms._submit_form` renamed inner mapping loop variable to `native_key` to avoid shadowing outer sha256 request idempotency hash `key`, resolving UniqueValidationError on repeated or multiple Document form submissions. Add regression tests for multi-submission unique keys and replay idempotency. No new DocType, migration, or permission change.
+
 - Fix shared form submission routing for Document forms: `forms.submit_form` now correctly passes the values dictionary (`source_values(entry)[1]`) instead of the tuple `(schema, result)` to `route()`, resolving AttributeError / HTTP 500 on conditional document form routing. Add integration test coverage for conditional document routing and missing default workflow error handling. No new DocType, migration, or permission change.
 
 - Align the introduction-letter integration fixture with the existing End contract: valid `Stopped` persists as `Failed` without issuing a letter. Add a separate real-database regression proving that an invalid End outcome rejects submission and rolls back the request/instance while preserving the draft and revision. No runtime change or additional migration.

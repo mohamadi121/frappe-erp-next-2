@@ -691,13 +691,13 @@ def _submit_form(name, revision_name, subject, values, request_key):
         native_mapping(schema)
         payload = {'doctype': schema['target'], 'company': doc.company}
         for field in fields(schema):
-            key = field.get('native_key')
-            if not key or field['key'] not in checked:
+            native_key = field.get('native_key')
+            if not native_key or field['key'] not in checked:
                 continue
             value = checked[field['key']]
             if field['type'] == 'Table':
                 value = [{c['native_key']: item.get(c['key']) for c in field['columns'] if c.get('native_key')} for item in (value or [])]
-            payload[key] = value
+            payload[native_key] = value
         native = frappe.get_doc(payload).insert()  # Native permissions + controller. Never auto-submit.
         reference_type, reference_name = native.doctype, native.name
     entry = store(frappe.get_doc({'doctype': 'ASOUD Form Entry', 'form': doc.name, 'revision': rev.name, 'company': doc.company,
