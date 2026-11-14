@@ -220,7 +220,7 @@ class TestWorkflowSubmissionSource(APITestCase):
 
         from asoud_erp.integration_tests.fixtures import abbr
 
-        default_def = self.definition
+        frappe.set_user('Administrator')
         document = {'kind': 'Document', 'title': 'سند شرطی', 'target': 'Journal Entry',
             'sections': [{'id': 'main', 'title': 'سند', 'fields': [
                 {'key': 'date', 'label': 'تاریخ', 'type': 'Date', 'native_key': 'posting_date'},
@@ -232,16 +232,17 @@ class TestWorkflowSubmissionSource(APITestCase):
         saved = forms.save_form(self.company, document, client_id=uuid4().hex)['data']
         forms.transition(saved['name'], 'publish', saved['draft_version'])
         source = forms.get_form(saved['name'])['data']
-        workflow.save_stage_settings(default_def, self.stage.name, {'title': 'بررسی پیش‌فرض',
-            'activity_type': 'Review', 'assignment_type': 'Initiator',
-            'submission_source': {'form': source['name'], 'revision': source['revision']}, 'source_route': 'Default'})
-
-        cond_def, cond_stages = make_definition(self.company, approvals=0, fields=[])
-        cond_stage = next(s for s in cond_stages.values() if s.stage_type == 'User Task')
         source_ref = {'form': source['name'], 'revision': source['revision']}
-        workflow.save_stage_settings(cond_def, cond_stage.name, {'title': 'بررسی مشروط',
+
+        default_def, default_stages = make_definition(self.company, approvals=0, fields=[])
+        default_stage = next(s for s in default_stages.values() if s.stage_type == 'User Task')
+        workflow.save_stage_settings(default_def, default_stage.name, {'title': 'بررسی پیش‌فرض',
             'activity_type': 'Review', 'assignment_type': 'Initiator',
-            'submission_source': source_ref, 'source_route': 'Conditional'})
+            'submission_source': source_ref, 'source_route': 'Default'})
+
+        cond_def = workflow.create_workflow_draft('مسیر مشروط سند', 'HR', 'ASOUD Workflow Request',
+            company=self.company, start_settings={'trigger_type': 'Document Event', 'initiator_roles': [],
+                'submission_source': source_ref, 'source_route': 'Conditional'})['data']['name']
         start = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': cond_def, 'stage_type': 'Start'})
         workflow.add_workflow_stage(cond_def, 'Condition', start)
         gate = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': cond_def, 'stage_type': 'Condition'})
@@ -267,12 +268,15 @@ class TestWorkflowSubmissionSource(APITestCase):
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', res_default['workflow_instance'], 'workflow_definition'), default_def)
 
     def test_only_available_workflow_without_default_raises_error(self):
-        frappe.db.set_value('ASOUD Workflow Definition', self.definition, 'status', 'Archived')
+        frappe.set_user('Administrator')
         avail_def, avail_stages = make_definition(self.company, approvals=0, fields=[])
         avail_stage = next(s for s in avail_stages.values() if s.stage_type == 'User Task')
         workflow.save_stage_settings(avail_def, avail_stage.name, {'title': 'بررسی موجود',
             'activity_type': 'Review', 'assignment_type': 'Initiator',
             'submission_source': {'form': self.source['name'], 'revision': self.source['revision']}, 'source_route': 'Available'})
+        stored = json.loads(frappe.db.get_value('ASOUD Workflow Stage', avail_stage.name, 'config_json'))
+        self.assertEqual(stored['source_route'], 'Available')
+        frappe.db.set_value('ASOUD Workflow Definition', self.definition, 'status', 'Archived')
 
         before_entry = frappe.db.count('ASOUD Form Entry')
         before_instance = frappe.db.count('ASOUD Workflow Instance')
