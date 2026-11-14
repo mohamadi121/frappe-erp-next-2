@@ -57,7 +57,9 @@ an approval is never reported as done.
 | `voided` | Completed, `native_status = Voided` | «سند ابطال شد» |
 
 Additive keys: `can_void` (HR Manager and `native_status = Created`), `can_reissue` (HR Manager,
-`native_status = Voided` and a form request) and, only in the `voided` state and only for System/HR
+`native_status = Voided` and a form request), `end_outcome` (`Completed|Rejected|Cancelled|Stopped`
+when the instance ended through an End stage, else `null`, allowing clients to distinguish deliberate
+`Stopped` end outcomes from technical failures), and, only in the `voided` state and only for System/HR
 Managers, `void = {reason, by_name, on, reference}` (the voided document).
 
 `error` is returned only to System/HR Managers (same rule as `native.error`) and only when the state

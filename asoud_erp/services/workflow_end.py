@@ -61,3 +61,27 @@ def finish(instance, stage, *, previous_stage, source_task=None):
             ensure_ascii=False, default=str)}).insert(ignore_permissions=True)
     locked.save(ignore_permissions=True)  # Existing module lifecycle mappings only.
     instance.reload()
+
+
+def _end_outcomes(instances: list[str]) -> dict[str, str]:
+    if not instances:
+        return {}
+    rows = frappe.get_all(
+        "ASOUD Workflow Activity",
+        filters={"workflow_instance": ["in", instances], "action": "پایان عملیات"},
+        fields=["workflow_instance", "change_json"],
+        order_by="created_on desc",
+        limit_page_length=0,
+    )
+    result = {}
+    for row in rows:
+        if row.workflow_instance in result:
+            continue
+        try:
+            cjson = json.loads(row.change_json or "{}")
+            outcome = cjson.get("end_context", {}).get("outcome")
+            if outcome:
+                result[row.workflow_instance] = outcome
+        except Exception:
+            pass
+    return result

@@ -41,7 +41,10 @@ Migration adds only `wait_due_utc` (UTC-naive technical Datetime, indexed) and
 definition version, timezone, original scheduled time, current due time and next
 native node. Instance remains Running with no human task while waiting.
 
-The minute scheduler enqueues bounded pages of waiting instances. Worker locks
+The minute scheduler enqueues bounded pages of waiting instances that need work:
+rows whose `wait_due_utc <= now` (UTC, naive), plus rows whose wait snapshot uses
+`date_change_policy == 'Recalculate'` (to poll for source date changes). Instances
+with future non-recalculating due dates are not enqueued. Worker locks
 the instance and verifies Running/current Wait/state before resuming; schedule
 and transition commit in the same transaction. Repeated workers cannot advance
 twice. Queue loss/restart is recovered from the persistent snapshot. Recalculate
