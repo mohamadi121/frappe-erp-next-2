@@ -214,3 +214,71 @@ class TestWorkflowSubmissionSource(APITestCase):
         workflow_runtime.complete_workflow_task(task, 'Complete', response={})
         self.assertEqual(frappe.db.count('Journal Entry'), before + 1)
         self.assertEqual(frappe.db.get_value('Journal Entry', result['reference_name'], 'docstatus'), 0)
+
+    def test_document_conditional_route_and_default_fallback(self):
+        from frappe.utils import nowdate
+
+        from asoud_erp.integration_tests.fixtures import abbr
+
+        default_def = self.definition
+        document = {'kind': 'Document', 'title': 'سند شرطی', 'target': 'Journal Entry',
+            'sections': [{'id': 'main', 'title': 'سند', 'fields': [
+                {'key': 'date', 'label': 'تاریخ', 'type': 'Date', 'native_key': 'posting_date'},
+                {'key': 'remark', 'label': 'توضیح', 'type': 'Text', 'native_key': 'user_remark'},
+                {'key': 'rows', 'label': 'ردیف‌ها', 'type': 'Table', 'native_key': 'accounts', 'columns': [
+                    {'key': 'account', 'label': 'حساب', 'type': 'Link', 'source': 'Account', 'native_key': 'account'},
+                    {'key': 'debit', 'label': 'بدهکار', 'type': 'Money', 'native_key': 'debit_in_account_currency'},
+                    {'key': 'credit', 'label': 'بستانکار', 'type': 'Money', 'native_key': 'credit_in_account_currency'}]}]}]}
+        saved = forms.save_form(self.company, document, client_id=uuid4().hex)['data']
+        forms.transition(saved['name'], 'publish', saved['draft_version'])
+        source = forms.get_form(saved['name'])['data']
+        workflow.save_stage_settings(default_def, self.stage.name, {'title': 'بررسی پیش‌فرض',
+            'activity_type': 'Review', 'assignment_type': 'Initiator',
+            'submission_source': {'form': source['name'], 'revision': source['revision']}, 'source_route': 'Default'})
+
+        cond_def, cond_stages = make_definition(self.company, approvals=0, fields=[])
+        cond_stage = next(s for s in cond_stages.values() if s.stage_type == 'User Task')
+        source_ref = {'form': source['name'], 'revision': source['revision']}
+        workflow.save_stage_settings(cond_def, cond_stage.name, {'title': 'بررسی مشروط',
+            'activity_type': 'Review', 'assignment_type': 'Initiator',
+            'submission_source': source_ref, 'source_route': 'Conditional'})
+        start = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': cond_def, 'stage_type': 'Start'})
+        workflow.add_workflow_stage(cond_def, 'Condition', start)
+        gate = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': cond_def, 'stage_type': 'Condition'})
+        workflow.save_stage_settings(cond_def, gate, {'title': 'شرط سند', 'condition_version': 2,
+            'combine': 'All', 'conditions': [{'id': 'c1', 'source_kind': 'Original', 'source_stage': '',
+                'source_field': 'remark', 'field_type': 'Text', 'operator': 'Equals', 'value': 'ویژه'}]})
+        for result in (True, False):
+            workflow.add_condition_branch(cond_def, gate, 'End', result)
+        workflow.set_workflow_status(cond_def, 'Active')
+
+        equity = frappe.get_all('Account', filters={'company': self.company, 'root_type': 'Equity',
+            'is_group': 0}, pluck='name', limit_page_length=1)[0]
+        frappe.set_user(ACCOUNTANT_USER)
+
+        res_special = forms.submit_form(source['name'], source['revision'], 'سند ویژه', {
+            'date': nowdate(), 'remark': 'ویژه', 'rows': [{'account': f'Cash - {abbr()}', 'debit': 100, 'credit': 0},
+                {'account': equity, 'debit': 0, 'credit': 100}]}, uuid4().hex)['data']
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', res_special['workflow_instance'], 'workflow_definition'), cond_def)
+
+        res_default = forms.submit_form(source['name'], source['revision'], 'سند عادی', {
+            'date': nowdate(), 'remark': 'عادی', 'rows': [{'account': f'Cash - {abbr()}', 'debit': 100, 'credit': 0},
+                {'account': equity, 'debit': 0, 'credit': 100}]}, uuid4().hex)['data']
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', res_default['workflow_instance'], 'workflow_definition'), default_def)
+
+    def test_only_available_workflow_without_default_raises_error(self):
+        frappe.db.set_value('ASOUD Workflow Definition', self.definition, 'status', 'Archived')
+        avail_def, avail_stages = make_definition(self.company, approvals=0, fields=[])
+        avail_stage = next(s for s in avail_stages.values() if s.stage_type == 'User Task')
+        workflow.save_stage_settings(avail_def, avail_stage.name, {'title': 'بررسی موجود',
+            'activity_type': 'Review', 'assignment_type': 'Initiator',
+            'submission_source': {'form': self.source['name'], 'revision': self.source['revision']}, 'source_route': 'Available'})
+
+        before_entry = frappe.db.count('ASOUD Form Entry')
+        before_instance = frappe.db.count('ASOUD Workflow Instance')
+        frappe.set_user(EMPLOYEE_USER)
+        with self.assertRaises(frappe.ValidationError) as ctx:
+            forms.submit_form(self.source['name'], self.source['revision'], 'ثبت بدون پیش‌فرض', {'note': 'تست'}, uuid4().hex)
+        self.assertIn('هیچ مسیر مشروطی منطبق نیست', str(ctx.exception))
+        self.assertEqual(frappe.db.count('ASOUD Form Entry'), before_entry)
+        self.assertEqual(frappe.db.count('ASOUD Workflow Instance'), before_instance)
