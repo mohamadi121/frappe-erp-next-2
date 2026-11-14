@@ -35,6 +35,7 @@ from asoud_erp.services.request_status import (
 )
 from asoud_erp.services.request_templates import base as templates
 from asoud_erp.services.request_viewer import build_viewer
+from asoud_erp.services.workflow_end import _end_outcomes
 from asoud_erp.services.workflow_history import merge_completed_responses
 from asoud_erp.services.workflow_response import (
     attachment_references,
@@ -322,11 +323,11 @@ def _instance_row(instance_name):
                                ["name", "status", "current_stage", "started_by"], as_dict=True)
 
 
-def _status_fields(doc, instance_status) -> dict:
+def _status_fields(doc, instance_status, end_outcome=None) -> dict:
     key = doc.status_key or compute_status_key(instance_status, doc.status)
     return {"status": instance_status or doc.status, "display_status": doc.display_status or "",
             "status_key": key, "status_label": status_label(key, doc.display_status, instance_status),
-            "status_group": group_of_status(key)}
+            "status_group": group_of_status(key), "end_outcome": end_outcome}
 
 
 def _has_acted(instance_name, form_stage) -> bool:
@@ -389,6 +390,7 @@ def _stage_rows(definition, instance_name) -> list:
 def _detail(doc) -> dict:
     instance = _instance_row(doc.workflow_instance)
     instance_status = instance.status if instance else None
+    end_outcome = _end_outcomes([doc.workflow_instance]).get(doc.workflow_instance) if doc.workflow_instance else None
     fields = confidential_fields(doc.name, _fields_by_name(doc.workflow_definition))
     values = effective_values(doc.name)
     stored = json.loads(doc.attachments_json or "[]")
@@ -401,7 +403,7 @@ def _detail(doc) -> dict:
     owner = doc.owner == frappe.session.user
     running = instance_status == "Running"
     form_stage = form_stage_name(doc.workflow_definition) if instance else None
-    status = _status_fields(doc, instance_status)
+    status = _status_fields(doc, instance_status, end_outcome)
     returned = running and status["status_key"] == "returned"
     can_edit = owner and running and (returned or not _has_acted(instance.name, form_stage))
     privileged = bool(MANAGER_ROLES & set(frappe.get_roles()))
@@ -431,7 +433,7 @@ def _detail(doc) -> dict:
         "attachments": entries, "fields": fields, "stages": _stage_rows(doc.workflow_definition, doc.workflow_instance),
         "native": {"doctype": doc.native_doctype or "", "name": doc.native_name or "",
                    "status": doc.native_status or "", "error": (doc.native_error or "") if privileged else ""},
-        "execution": _execution(doc, instance_status, privileged),
+        "execution": _execution(doc, instance_status, privileged, end_outcome),
         "certificate": _certificate_summary(doc),
     }
 
@@ -451,7 +453,7 @@ def _certificate_summary(doc):
             "issued_on": str(row.creation)} if row else None
 
 
-def _execution(doc, instance_status, privileged) -> dict:
+def _execution(doc, instance_status, privileged, end_outcome=None) -> dict:
     from asoud_erp.services import request_void as void_rules
     from asoud_erp.services import request_void_actions as void_actions
 
@@ -463,6 +465,7 @@ def _execution(doc, instance_status, privileged) -> dict:
         error=doc.native_error, privileged=privileged, reference=doc.native_name,
         executed_on=str(row.creation) if row else "",
         executed_by_name=get_fullname(row.owner) if row and row.owner != "Administrator" else "")
+    block["end_outcome"] = end_outcome
     hr = "HR Manager" in frappe.get_roles()
     block["can_void"] = hr and void_rules.can_void(instance_status, doc.native_status, doc.native_name)
     voided = doc.native_status == void_rules.VOIDED
@@ -875,7 +878,7 @@ def _names(doctype, names, field, key="name"):
         doctype, filters={key: ["in", names]}, fields=[key, field], limit_page_length=0)}
 
 
-def _list_item(row, instance_status, owner_names, labels, reasons):
+def _list_item(row, instance_status, owner_names, labels, reasons, end_outcome=None):
     values = json.loads(row.values_json or "{}")
     key = row.status_key or compute_status_key(instance_status, row.status)
     request_row = {**row, "rejection_reason": reasons.get(row.workflow_instance, ""), "_labels": labels}
@@ -894,7 +897,7 @@ def _list_item(row, instance_status, owner_names, labels, reasons):
         "department": row.department or "", "workflow_instance": row.workflow_instance or "",
         "status": instance_status or row.status, "display_status": row.display_status or "",
         "status_key": key, "status_label": status_label(key, row.display_status, instance_status),
-        "status_group": group_of_status(key), "request_id": row.request_id, "owner": row.owner,
+        "status_group": group_of_status(key), "end_outcome": end_outcome, "request_id": row.request_id, "owner": row.owner,
         "requester_name": owner_names.get(row.owner) or get_fullname(row.owner),
         "creation": str(row.creation or ""), "item_count": request_serializer.item_count(values),
         "attachment_count": len(json.loads(row.attachments_json or "[]")), "summary": summary,
@@ -945,6 +948,7 @@ def list_my_requests(company: str | None = None, template_key: str | None = None
         order_by="creation desc, name desc", limit_start=start, limit_page_length=length)
     instances = [row.workflow_instance for row in rows if row.workflow_instance]
     instance_status = _names("ASOUD Workflow Instance", instances, "status")
+    end_outcomes = _end_outcomes(instances)
     owner_names = _names("Employee", [row.owner for row in rows], "employee_name", key="user_id")
     summary_values = [json.loads(row.values_json or "{}") for row in rows]
     labels = {
@@ -962,7 +966,7 @@ def list_my_requests(company: str | None = None, template_key: str | None = None
                                                            "status": "Rejected"},
                            fields=["workflow_instance", "comment"], order_by="completed_on desc",
                            limit_page_length=0), "workflow_instance").items()}
-    data = [_list_item(row, instance_status.get(row.workflow_instance), owner_names, labels, reasons)
+    data = [_list_item(row, instance_status.get(row.workflow_instance), owner_names, labels, reasons, end_outcomes.get(row.workflow_instance))
             for row in rows]
     return success(data, meta={"total": counts[status_group], "limit_start": start,
                                "limit_page_length": length, "counts": counts})
