@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Wait dispatch polling: `workflow_wait.dispatch` now selects only rows that require work (`wait_due_utc <= now` or `date_change_policy == 'Recalculate'`), preventing premature queue congestion and row locks for far-future waits while keeping keyset paging and index usage intact.
+
 - Align the introduction-letter integration fixture with the existing End contract: valid `Stopped` persists as `Failed` without issuing a letter. Add a separate real-database regression proving that an invalid End outcome rejects submission and rolls back the request/instance while preserving the draft and revision. No runtime change or additional migration.
 
 - End-stage audit: preserve the approved three-field UI and four outcomes. Record an idempotent terminal activity with result message and decision context; map Stopped to existing Failed instead of Cancelled. Lock the instance before legacy human completion and reject late replies/nonterminal activation after completion. Validate real incoming/no outgoing edges and protect active/running End settings. No new DocType, status enum, business write or notification is added. Existing native module lifecycle mappings remain intact; no data rewrite/migration for this End-only change. Restart web/workers together; pair with Flutter's invalid-result and save-error handling. Old histories are unchanged.

@@ -221,10 +221,13 @@ def run(name):
 def dispatch():
     if not ready():
         return
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
     after = ''
     while True:
         # Scan waiting rows in keyset pages; future Recalculate waits also need polling.
-        rows = frappe.get_all(INSTANCE, filters={'name': ['>', after], 'wait_due_utc': ['is', 'set']},
+        rows = frappe.get_all(INSTANCE,
+            filters=[['name', '>', after], ['status', '=', 'Running'], ['wait_due_utc', 'is', 'set']],
+            or_filters=[['wait_due_utc', '<=', now_naive], ['wait_snapshot_json', 'like', '%Recalculate%']],
             pluck='name', order_by='name asc', limit_page_length=200)
         if not rows:
             break

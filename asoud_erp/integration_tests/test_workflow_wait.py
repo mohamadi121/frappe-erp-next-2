@@ -243,3 +243,29 @@ class TestWorkflowWait(APITestCase):
             self.assertFalse(frappe.db.exists('ASOUD Workflow Instance', {'workflow_definition': definition}))
         finally:
             frappe.conf.pause_scheduler = previous
+
+    def test_dispatch_enqueues_only_due_or_recalculate_waits(self):
+        definition, _ = self.setup_wait({'wait_version': 1, 'title': 'انتظار دور', 'wait_type': 'Duration',
+            'wait_value': 30, 'wait_unit': 'Day', 'past_policy': 'Continue'})
+        res1 = create(self.company, definition=definition)
+        inst1_name = res1['workflow_instance']
+
+        definition_due, _ = self.setup_wait({'wait_version': 1, 'title': 'انتظار گذشته', 'wait_type': 'Date',
+            'wait_value': '2001-01-01T09:00:00', 'past_policy': 'Continue'})
+        res2 = create(self.company, definition=definition_due)
+        inst2_name = res2['workflow_instance']
+
+        future_date = (datetime.now(timezone.utc).date() + timedelta(days=30)).isoformat()
+        config_rec = {'wait_version': 1, 'title': 'انتظار بازمحاسبه', 'wait_type': 'FormDate',
+            'date_source': {'source_kind': 'Original', 'source_stage': '', 'source_field': 'scheduled', 'field_type': 'Date'},
+            'clock': '09:00', 'date_change_policy': 'Recalculate'}
+        _, _, _, inst3 = self.enter(config_rec, {'scheduled': future_date})
+        inst3_name = inst3.name
+
+        enqueued = []
+        with patch('frappe.enqueue', side_effect=lambda *a, **kw: enqueued.append(kw.get('name') or (a[1] if len(a) > 1 else None))):
+            waits.dispatch()
+
+        self.assertNotIn(inst1_name, enqueued)
+        self.assertIn(inst2_name, enqueued)
+        self.assertIn(inst3_name, enqueued)
