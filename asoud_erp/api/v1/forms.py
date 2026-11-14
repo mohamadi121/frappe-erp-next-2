@@ -706,7 +706,7 @@ def _submit_form(name, revision_name, subject, values, request_key):
     if schema['kind'] == 'Document':
         from asoud_erp.services.workflow_submission_source import values as source_values
 
-        source_workflow = route(doc, rev, source_values(entry))
+        source_workflow = route(doc, rev, source_values(entry)[1])
     instance_name = start(entry, source_workflow) if source_workflow else None
     if reference_type == 'ASOUD Workflow Request':
         from asoud_erp.api.v1.workflow_request import refresh_search_text
