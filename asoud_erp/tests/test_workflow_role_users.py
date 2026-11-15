@@ -40,3 +40,16 @@ def test_first_escalation_user_is_deterministic_whatever_the_row_order(runtime):
     site.table("Has Role").update(dict(reversed(list(site.table("Has Role").items()))))
     assert module._users_for_roles(["Manager"], "WP") == first == ["a@x.com", "b@x.com"]
     assert module._users_for_roles(["Manager"]) == sorted(module._users_for_roles(["Manager"]))
+
+
+def test_repeated_draft_saves_keep_one_activity_row_per_task(runtime):
+    # PA-060: every click on "save draft" used to insert another timeline row.
+    module, site = runtime
+    site.add("ASOUD Workflow Task", "T-1", workflow_instance="I-1", workflow_stage="S-1")
+    site.add("ASOUD Workflow Task", "T-2", workflow_instance="I-1", workflow_stage="S-1")
+    for _ in range(10):
+        for name in ("T-1", "T-2"):
+            module._record_draft_saved(fake.FakeDoc(site, site.table("ASOUD Workflow Task")[name]))
+    rows = list(site.table("ASOUD Workflow Activity").values())
+    assert sorted(row["workflow_task"] for row in rows) == ["T-1", "T-2"]
+    assert {row["action"] for row in rows} == {"Draft Saved"}

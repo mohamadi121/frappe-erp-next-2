@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Stop timeline growth from draft saves (PA-060): `save_workflow_task_draft` keeps one `Draft Saved` activity per task and refreshes its time and actor on later saves instead of inserting a row per click. No new DocType or migration.
 - Keep the previous answer when a user action is returned (PA-023): a re-activated version-1 user-action stage now opens with the newest earlier answer of the same stage as its draft (`workflow_history.carried_draft`), limited to fields of the current schema; sensitive fields and attachments are not copied. First visits still start empty. No new DocType or migration.
 - Raise the shared-queue assignee cap (PA-031): `workflow_user_action.users_for` no longer rejects a role with more than 200 raw holders; the cap (default 1000, site config `asoud_workflow_max_assignees`) now applies to the final company/form/reference-authorised list. Form-department lookup and escalation candidates are no longer truncated at 201 rows. No new DocType or migration; new optional site config key `asoud_workflow_max_assignees`.
 - Make overdue reassignment deterministic (PA-030): `_users_for_roles` returns users sorted by name, so `reassign_on_overdue` always picks the same first escalation user instead of the last-modified one. No new DocType or migration.

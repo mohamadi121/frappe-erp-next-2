@@ -112,6 +112,25 @@ def _record_activity(doc, action: str, comment: str = "", *, reference_doctype=N
     ).insert(ignore_permissions=True)
 
 
+def _record_draft_saved(doc) -> None:
+    """One `Draft Saved` row per task: later saves refresh it instead of growing the timeline."""
+    existing = frappe.db.get_value(
+        "ASOUD Workflow Activity",
+        {"workflow_task": doc.name, "action": "Draft Saved"},
+        "name",
+        order_by="created_on asc, name asc",
+    )
+    if not existing:
+        _record_activity(doc, "Draft Saved", "پیش‌نویس اقدام ذخیره شد.")
+        return
+    frappe.db.set_value(
+        "ASOUD Workflow Activity",
+        existing,
+        {"created_on": now_datetime(), "actor": frappe.session.user},
+        update_modified=False,
+    )
+
+
 def _notify_user(
     user: str,
     subject: str,
@@ -1280,7 +1299,7 @@ def save_workflow_task_draft(task: str, response: str | dict, supplementary_valu
         values = prepare(doc, stage_config, draft=True, values=values)
         doc.draft_json = json.dumps(values, ensure_ascii=False)
         doc.save(ignore_permissions=True)
-        _record_activity(doc, 'Draft Saved', 'پیش‌نویس اقدام ذخیره شد.')
+        _record_draft_saved(doc)
         return success({'task': doc.name, 'saved': True})
     if not stage_config.get("allow_draft", True):
         frappe.throw(_("Drafts are disabled for this workflow stage"))
