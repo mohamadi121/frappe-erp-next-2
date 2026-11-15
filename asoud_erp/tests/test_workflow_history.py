@@ -59,3 +59,33 @@ def test_return_prefers_newest_editable_among_user_tasks_and_supplementary_appro
 def test_return_ignores_plain_approval_without_supplementary_form():
     with __import__("pytest").raises(ValueError):
         select_return_stage([{"workflow_stage": "approval", "stage_type": "Approval", "has_supplementary_form": False}])
+
+
+SCHEMA = {'sections': [{'fields': [
+    {'key': 'note', 'type': 'Text'},
+    {'key': 'secret', 'type': 'Text', 'sensitive': True},
+    {'key': 'proof', 'type': 'File'},
+    {'key': 'lines', 'type': 'Table', 'columns': [
+        {'key': 'qty', 'type': 'Integer'}, {'key': 'scan', 'type': 'Image'}, {'key': 'pin', 'type': 'Text', 'sensitive': True}]},
+]}]}
+
+
+def test_returned_user_action_starts_from_the_previous_answer_of_the_same_stage():
+    from asoud_erp.services.workflow_history import carried_draft
+
+    rows = [  # newest first, like _completed_task_rows
+        {'workflow_stage': 'other', 'response_json': '{"note": "wrong stage"}'},
+        {'workflow_stage': 'act', 'response_json': '{"note": "new", "secret": "s", "proof": "f.pdf", '
+            '"lines": [{"qty": 2, "scan": "x.png", "pin": "1"}], "unknown": 1}'},
+        {'workflow_stage': 'act', 'response_json': '{"note": "old"}'},
+    ]
+    assert carried_draft(rows, 'act', SCHEMA) == {'note': 'new', 'lines': [{'qty': 2}]}
+
+
+def test_first_visit_or_unreadable_history_gives_an_empty_draft():
+    from asoud_erp.services.workflow_history import carried_draft
+
+    assert carried_draft([], 'act', SCHEMA) == {}
+    assert carried_draft([{'workflow_stage': 'act', 'response_json': 'not json'}], 'act', SCHEMA) == {}
+    assert carried_draft([{'workflow_stage': 'act', 'response_json': '[1]'}], 'act', SCHEMA) == {}
+    assert carried_draft([{'workflow_stage': 'act', 'response_json': '{"note": "x"}'}], 'act', None) == {}

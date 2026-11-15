@@ -26,7 +26,7 @@ from asoud_erp.services.stage_supplementary_form import (
 from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
 from asoud_erp.services.workflow_end import _end_outcomes
-from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
+from asoud_erp.services.workflow_history import carried_draft, merge_completed_responses, select_return_stage
 from asoud_erp.services.workflow_response import normalize_form_response
 from asoud_erp.services.workflow_start_policy import start_change_data, validate_request_id
 
@@ -499,6 +499,12 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
         if isinstance(field, dict)
     }
     draft_values = {key: value for key, value in previous_values.items() if key in form_keys}
+    if config.get('action_contract_version') == 1:
+        # A returned user action reopens with the previous answer of this stage as its draft.
+        draft = carried_draft(list(reversed(previous_rows)), stage.name, config.get('result_schema'))
+    else:
+        draft = draft_values if config.get("form_fields") else {}
+    draft_json = json.dumps(draft, ensure_ascii=False)
     due_on, reminder_on = _task_deadlines(config)
     users = _users_for_stage(stage, instance)
     if stage.stage_type == "Approval":
@@ -524,9 +530,7 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
                 "assigned_on": now_datetime(),
                 "due_on": due_on,
                 "reminder_on": reminder_on,
-                "draft_json": json.dumps(draft_values, ensure_ascii=False)
-                if config.get("form_fields") and config.get('action_contract_version') != 1
-                else "{}",
+                "draft_json": draft_json,
             }
         ).insert(ignore_permissions=True)
         if config.get('action_contract_version') == 1:
