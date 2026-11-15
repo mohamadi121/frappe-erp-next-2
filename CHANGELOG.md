@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Raise the shared-queue assignee cap (PA-031): `workflow_user_action.users_for` no longer rejects a role with more than 200 raw holders; the cap (default 1000, site config `asoud_workflow_max_assignees`) now applies to the final company/form/reference-authorised list. Form-department lookup and escalation candidates are no longer truncated at 201 rows. No new DocType or migration; new optional site config key `asoud_workflow_max_assignees`.
 - Make overdue reassignment deterministic (PA-030): `_users_for_roles` returns users sorted by name, so `reassign_on_overdue` always picks the same first escalation user instead of the last-modified one. No new DocType or migration.
 - Fix cross-company task leak (PA-013): legacy Role/escalation assignment (`_users_for_stage`, `process_workflow_deadlines`) now keeps only role holders that `company_access` accepts for the workflow company; no company means no assignee. The Has Role read is only a prefilter. No new DocType or migration.
 - Fix Approval self-approval deadlock (PA-008): an Approval stage whose only candidate is the request initiator now falls back to the escalation roles (never the initiator); if nobody independent exists the stage fails with a Persian error and the transition rolls back, instead of leaving an Open task nobody can complete. Logic in `services/workflow_task_assignment.py`. No new DocType or migration.

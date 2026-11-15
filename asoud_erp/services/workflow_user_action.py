@@ -3,6 +3,7 @@ import json
 
 import frappe
 
+from asoud_erp.services.workflow_task_assignment import check_assignee_cap
 from asoud_erp.services.workflow_user_action_policy import normalize_action, simple_schema
 
 _PRESENTATION = object()
@@ -163,13 +164,16 @@ def users_for(stage, instance):
                     or exists (select 1 from `tabHas Role` r where r.parent = u.name and r.parenttype = 'User' and r.role in ('System Manager', 'HR Manager', 'Accounts Manager', 'Accounts User'))
                 )
             """, (rule['role'], company, company, company), pluck=True)
-    if len(candidates) > 200:
-        frappe.throw('تعداد نامزدهای ارجاع بیش از حد مجاز است؛ محدوده را کوچک‌تر کنید.')
     active = candidates
     # Native company authorization is checked per principal; master reads above are batched.
     result = [user for user in dict.fromkeys(active) if user not in ('Guest', 'Administrator') and company_access(company, user)]
     result = filter_form_users(config, company, result)
     result = filter_reference_users(instance, config, result)
+    try:
+        # The cap applies to the final authorised list, not to raw role holders.
+        check_assignee_cap(result, getattr(frappe, 'conf', None) or {})
+    except ValueError as error:
+        frappe.throw(str(error))
     if not result:
         frappe.throw('مسئول فعال و دارای دسترسی به اطلاعات این اقدام پیدا نشد؛ تنظیمات ارجاع و فرم را اصلاح کنید.')
     return result
@@ -210,7 +214,7 @@ def filter_form_users(config, company, users):
     schema = forms.migrate_schema(json.loads(forms.revision(form, source['revision']).schema_json))
     departments = {row.user_id: row.department for row in frappe.get_all('Employee',
         filters={'company': company, 'status': 'Active', 'user_id': ['in', users]},
-        fields=['user_id', 'department'], limit_page_length=201)}
+        fields=['user_id', 'department'], limit_page_length=0)}
     return [user for user in users if forms.matches_access(schema, frappe.get_roles(user), departments.get(user))]
 
 
@@ -297,7 +301,7 @@ def escalation_users(config, company):
         pluck='name', limit_page_length=201)
     candidates = _users_for_roles(roles)
     active = frappe.get_all('User', filters={'name': ['in', candidates or ['']],
-        'enabled': 1, 'user_type': 'System User'}, pluck='name', limit_page_length=201)
+        'enabled': 1, 'user_type': 'System User'}, pluck='name', limit_page_length=0)
     return filter_form_users(config, company,
         [user for user in active if user not in ('Guest', 'Administrator') and company_access(company, user)])
 
