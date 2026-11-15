@@ -31,3 +31,12 @@ def test_roles_are_limited_to_users_of_the_workflow_company(runtime):
     # Old code returned every holder of the role, including the other company's user.
     assert "c@x.com" not in module._users_for_roles(["Manager"], "WP")
     assert module._users_for_roles(["Manager"], "OTHER") == ["c@x.com"]
+
+
+def test_first_escalation_user_is_deterministic_whatever_the_row_order(runtime):
+    module, site = runtime
+    # PA-030: Has Role rows come back in modified-desc order; "b" was inserted first.
+    first = module._users_for_roles(["Manager"], "WP")
+    site.table("Has Role").update(dict(reversed(list(site.table("Has Role").items()))))
+    assert module._users_for_roles(["Manager"], "WP") == first == ["a@x.com", "b@x.com"]
+    assert module._users_for_roles(["Manager"]) == sorted(module._users_for_roles(["Manager"]))

@@ -209,7 +209,8 @@ def _users_for_roles(roles: list[str], company: str | None = None) -> list[str]:
     disabled = set(
         frappe.get_all("User", filters={"name": ["in", users], "enabled": 0}, pluck="name")
     )
-    result = list(
+    # Sorted: callers take "the first" user, and get_all order is `modified desc`.
+    result = sorted(
         dict.fromkeys(
             user
             for user in users

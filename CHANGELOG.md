@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Make overdue reassignment deterministic (PA-030): `_users_for_roles` returns users sorted by name, so `reassign_on_overdue` always picks the same first escalation user instead of the last-modified one. No new DocType or migration.
 - Fix cross-company task leak (PA-013): legacy Role/escalation assignment (`_users_for_stage`, `process_workflow_deadlines`) now keeps only role holders that `company_access` accepts for the workflow company; no company means no assignee. The Has Role read is only a prefilter. No new DocType or migration.
 - Fix Approval self-approval deadlock (PA-008): an Approval stage whose only candidate is the request initiator now falls back to the escalation roles (never the initiator); if nobody independent exists the stage fails with a Persian error and the transition rolls back, instead of leaving an Open task nobody can complete. Logic in `services/workflow_task_assignment.py`. No new DocType or migration.
 - Fix workflow Return to the previous stage (PA-003): `select_return_stage` now also accepts an Approval stage that collected a supplementary form, so a second consecutive approval can return to the first instead of failing with "no previous editable user task". No new DocType or migration.
