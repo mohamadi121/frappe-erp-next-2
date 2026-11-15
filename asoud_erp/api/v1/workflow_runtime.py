@@ -177,16 +177,7 @@ def _users_for_stage(stage, instance) -> list[str]:
             limit_page_length=0,
         )
     else:
-        users = frappe.get_all(
-            "Has Role",
-            filters={"role": ["in", values], "parenttype": "User"},
-            pluck="parent",
-            limit_page_length=0,
-        )
-        disabled = set(
-            frappe.get_all("User", filters={"name": ["in", users], "enabled": 0}, pluck="name")
-        )
-        users = [user for user in users if user not in disabled]
+        users = _scoped_role_users(values, instance)
     result = list(dict.fromkeys(user for user in users if user not in {"Guest", "Administrator"}))
     if not result:
         frappe.throw(_("No active ERPNext user is available for the selected assignment target"))
@@ -202,7 +193,11 @@ def _initiator_employee(instance, fieldname: str):
     return frappe.db.get_value("Employee", filters, fieldname)
 
 
-def _users_for_roles(roles: list[str]) -> list[str]:
+def _users_for_roles(roles: list[str], company: str | None = None) -> list[str]:
+    """Enabled holders of the roles; with `company`, only users that company accepts.
+
+    The Has Role read only narrows the list; `company_access` stays the authority.
+    """
     if not roles:
         return []
     users = frappe.get_all(
@@ -214,13 +209,24 @@ def _users_for_roles(roles: list[str]) -> list[str]:
     disabled = set(
         frappe.get_all("User", filters={"name": ["in", users], "enabled": 0}, pluck="name")
     )
-    return list(
+    result = list(
         dict.fromkeys(
             user
             for user in users
             if user not in disabled and user not in {"Guest", "Administrator"}
         )
     )
+    if company is None:
+        return result
+    from asoud_erp.services.request_access import company_access
+
+    return [user for user in result if company_access(company, user)]
+
+
+def _scoped_role_users(roles: list[str], instance) -> list[str]:
+    """Role holders of the workflow's own company; no company means nobody."""
+    company = workflow_company(instance.name)
+    return _users_for_roles(roles, company) if company else []
 
 
 def _task_deadlines(config: dict) -> tuple[object | None, object | None]:
@@ -500,7 +506,7 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
         try:
             users = approval_assignees(
                 users, instance.started_by,
-                lambda: _users_for_roles(config.get("escalation_roles") or []))
+                lambda: _scoped_role_users(config.get("escalation_roles") or [], instance))
         except ValueError as error:
             frappe.throw(str(error))
     for user in users:
@@ -1637,7 +1643,7 @@ def process_workflow_deadlines() -> None:
                 instance,
                 message=task.task_title,
             )
-            escalation_users = _users_for_roles(config.get("escalation_roles") or [])
+            escalation_users = _scoped_role_users(config.get("escalation_roles") or [], instance)
             for user in escalation_users:
                 _notify_user(
                     user,
