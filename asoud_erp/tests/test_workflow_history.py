@@ -37,3 +37,25 @@ def test_return_rejects_process_without_previous_user_task():
         assert "previous editable" in str(error)
     else:
         raise AssertionError("missing return stage must fail")
+
+
+def test_return_can_target_approval_stage_with_supplementary_form():
+    # PA-003: an Approval stage that collected a supplementary form is editable too.
+    rows = [
+        {"workflow_stage": "approval-2", "stage_type": "Approval", "has_supplementary_form": False},
+        {"workflow_stage": "approval-1", "stage_type": "Approval", "has_supplementary_form": True},
+    ]
+    assert select_return_stage(rows) == "approval-1"
+
+
+def test_return_prefers_newest_editable_among_user_tasks_and_supplementary_approvals():
+    rows = [
+        {"workflow_stage": "approval-1", "stage_type": "Approval", "has_supplementary_form": True},
+        {"workflow_stage": "entry", "stage_type": "User Task", "has_form_fields": True},
+    ]
+    assert select_return_stage(rows) == "approval-1"
+
+
+def test_return_ignores_plain_approval_without_supplementary_form():
+    with __import__("pytest").raises(ValueError):
+        select_return_stage([{"workflow_stage": "approval", "stage_type": "Approval", "has_supplementary_form": False}])

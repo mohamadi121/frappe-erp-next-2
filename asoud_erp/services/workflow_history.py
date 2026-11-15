@@ -34,9 +34,14 @@ def merge_completed_responses(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def select_return_stage(rows: list[dict[str, Any]]) -> str:
-    """Prefer the newest editable user task, then the newest user task."""
+    """Prefer the newest editable human stage, then the newest user task.
+
+    An Approval stage that collected a supplementary form is editable as well.
+    """
     user_tasks = [row for row in rows if row.get("stage_type") == "User Task"]
-    editable = [row for row in user_tasks if row.get("has_form_fields")]
+    supplementary = [row for row in rows
+                     if row.get("stage_type") == "Approval" and row.get("has_supplementary_form")]
+    editable = [row for row in rows if row in supplementary or (row in user_tasks and row.get("has_form_fields"))]
     candidates = editable or user_tasks
     if not candidates or not candidates[0].get("workflow_stage"):
         raise ValueError("Workflow has no previous editable user task")

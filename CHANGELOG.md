@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix workflow Return to the previous stage (PA-003): `select_return_stage` now also accepts an Approval stage that collected a supplementary form, so a second consecutive approval can return to the first instead of failing with "no previous editable user task". No new DocType or migration.
 - Fix Document form submission idempotency: `forms._submit_form` renamed inner mapping loop variable to `native_key` to avoid shadowing outer sha256 request idempotency hash `key`, resolving UniqueValidationError on repeated or multiple Document form submissions. Add regression tests for multi-submission unique keys and replay idempotency. No new DocType, migration, or permission change.
 
 - Fix shared form submission routing for Document forms: `forms.submit_form` now correctly passes the values dictionary (`source_values(entry)[1]`) instead of the tuple `(schema, result)` to `route()`, resolving AttributeError / HTTP 500 on conditional document form routing. Add integration test coverage for conditional document routing and missing default workflow error handling. No new DocType, migration, or permission change.

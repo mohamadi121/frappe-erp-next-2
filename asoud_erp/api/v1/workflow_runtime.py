@@ -338,6 +338,7 @@ def _completed_task_rows(instance, exclude_task: str | None = None) -> list[dict
                 "stage_type": stage.stage_type,
                 "has_form_fields": bool(config.get("form_fields") or config.get('result_schema')
                     or config.get('action_contract_version') == 1),
+                "has_supplementary_form": bool(read_binding(config)),
                 "form_fields": config.get("form_fields", []),
                 "action_schema": config.get('result_schema') if config.get('action_contract_version') == 1 else None,
             }
