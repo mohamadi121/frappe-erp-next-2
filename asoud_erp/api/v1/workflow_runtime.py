@@ -494,16 +494,15 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
     draft_values = {key: value for key, value in previous_values.items() if key in form_keys}
     due_on, reminder_on = _task_deadlines(config)
     users = _users_for_stage(stage, instance)
-    owner_only = False
-    if stage.stage_type == "Approval" and instance.started_by in users:
-        others = [user for user in users if user != instance.started_by]
-        if not others:
-            others = [user for user in _users_for_roles(config.get("escalation_roles") or [])
-                      if user != instance.started_by]
-        if others:
-            users = others
-        else:
-            owner_only = True
+    if stage.stage_type == "Approval":
+        from asoud_erp.services.workflow_task_assignment import approval_assignees
+
+        try:
+            users = approval_assignees(
+                users, instance.started_by,
+                lambda: _users_for_roles(config.get("escalation_roles") or []))
+        except ValueError as error:
+            frappe.throw(str(error))
     for user in users:
         task = frappe.get_doc(
             {
@@ -532,8 +531,6 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
             instance,
             message=instance.subject,
         )
-    if owner_only:
-        _record_activity(task, "Note", _("تأییدکننده‌ای غیر از درخواست‌دهنده برای این مرحله تعریف نشده است."))
 
 
 def _action_context(instance) -> dict:
