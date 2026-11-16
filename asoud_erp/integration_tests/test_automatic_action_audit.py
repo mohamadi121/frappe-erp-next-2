@@ -306,7 +306,7 @@ class TestAutomaticActionAudit(APITestCase):
         self.assertEqual(instance.current_stage, end)
         self.assertIn(instance.status, {'Completed', 'Rejected', 'Cancelled', 'Failed'})
 
-    def test_update_fields_on_a_form_entry_writes_values_json(self):
+    def test_update_fields_on_a_form_entry_is_refused(self):
         from asoud_erp.services.automatic_action_runtime import _update
 
         saved = forms.save_form(self.company, {'kind': 'Request', 'title': 'فرم به‌روزرسانی خودکار',
@@ -318,7 +318,8 @@ class TestAutomaticActionAudit(APITestCase):
         entry = forms.submit_form(published['name'], published['revision'], 'ثبت به‌روزرسانی',
             {'amount': 1, 'note': 'ابتدایی'}, uuid4().hex)['data']
         doc = frappe.get_doc('ASOUD Form Entry', entry['name'])
-        _update(doc, {'amount': 9, 'note': 'به‌روزرسانی‌شده'}, self.company)
+        # A submitted entry is immutable: the action is refused and nothing changes.
+        with self.assertRaisesRegex(frappe.ValidationError, 'تغییرناپذیر'):
+            _update(doc, {'amount': 9, 'note': 'به‌روزرسانی‌شده'}, self.company)
         values = json.loads(frappe.db.get_value('ASOUD Form Entry', entry['name'], 'values_json'))
-        # Integer fields are stored as their normalized string form by the schema validator.
-        self.assertEqual((values['amount'], values['note']), ('9', 'به‌روزرسانی‌شده'))
+        self.assertEqual(values['note'], 'ابتدایی')

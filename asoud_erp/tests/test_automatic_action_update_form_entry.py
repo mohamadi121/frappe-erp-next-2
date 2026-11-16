@@ -1,9 +1,8 @@
 """Update Fields on an ``ASOUD Form Entry`` in `automatic_action_runtime._update`.
 
-Form data lives in the ``values_json`` column, not in document fields. A plain
-``doc.update(values)`` would silently drop every mapped field, so the automatic
-action must merge the mapped values into ``values_json`` and re-validate them against
-the form's published schema (the same validator the submission path uses).
+A submitted form entry is immutable (``form_schema.guard_storage``), and a plain
+``doc.update(values)`` would silently drop every mapped field. The automatic action
+must refuse with a Persian reason and leave the stored values unchanged.
 """
 
 import importlib
@@ -55,27 +54,9 @@ def _entry(site):
                                                               ensure_ascii=False)))
 
 
-def test_update_form_entry_writes_values_json(aar):
+def test_update_form_entry_is_refused_and_values_stay(aar):
     module, site = aar
     entry = _entry(site)
-    module._update(entry, {"amount": "25", "note": "به‌روزرسانی"}, "WP")
-    stored = json.loads(entry.values_json)
-    assert stored["amount"] == "25"
-    assert stored["note"] == "به‌روزرسانی"
-
-
-def test_update_form_entry_merges_with_existing_values(aar):
-    module, site = aar
-    entry = _entry(site)
-    # Only one field is mapped; the other keeps its stored value.
-    module._update(entry, {"amount": "40"}, "WP")
-    stored = json.loads(entry.values_json)
-    assert stored["amount"] == "40"
-    assert stored["note"] == "ابتدایی"
-
-
-def test_update_form_entry_rejects_unknown_field(aar):
-    module, site = aar
-    entry = _entry(site)
-    with pytest.raises(Exception):
-        module._update(entry, {"not_a_field": "x"}, "WP")
+    with pytest.raises(Exception, match="تغییرناپذیر"):
+        module._update(entry, {"amount": "25"}, "WP")
+    assert json.loads(entry.values_json) == {"amount": "10", "note": "ابتدایی"}
