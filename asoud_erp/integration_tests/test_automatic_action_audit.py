@@ -258,12 +258,12 @@ class TestAutomaticActionAudit(APITestCase):
         # A queued automatic action waiting for the background worker.
         queued = frappe.get_doc({'doctype': 'ASOUD Action Execution',
             'workflow_instance': instance.name, 'workflow_stage': list(stages.values())[0].name,
-            'status': 'Pending', 'action_type': 'Send Notification',
+            'trigger_id': uuid4().hex, 'status': 'Pending', 'action_type': 'Send Notification',
             'config_json': '{}', 'routes_json': '{}'}).insert(ignore_permissions=True)
         # A receipt already running is owned by a worker; cancellation must leave it.
         running = frappe.get_doc({'doctype': 'ASOUD Action Execution',
             'workflow_instance': instance.name, 'workflow_stage': list(stages.values())[0].name,
-            'status': 'Running', 'action_type': 'Send Notification',
+            'trigger_id': uuid4().hex, 'status': 'Running', 'action_type': 'Send Notification',
             'config_json': '{}', 'routes_json': '{}'}).insert(ignore_permissions=True)
         frappe.set_user(EMPLOYEE_USER)
         cancel_request(result['name'], 'لغو آزمایشی')
@@ -282,7 +282,7 @@ class TestAutomaticActionAudit(APITestCase):
         # requester must be told, not only System Managers.
         receipt = frappe.get_doc({'doctype': 'ASOUD Action Execution',
             'workflow_instance': instance.name, 'workflow_stage': list(stages.values())[0].name,
-            'status': 'Failed', 'action_type': 'Send Notification', 'attempts': 1,
+            'trigger_id': uuid4().hex, 'status': 'Failed', 'action_type': 'Send Notification', 'attempts': 1,
             'service_user': EMPLOYEE_USER, 'config_json': '{}',
             'routes_json': '{}'}).insert(ignore_permissions=True)
         _final_failure(receipt, instance)
@@ -311,7 +311,7 @@ class TestAutomaticActionAudit(APITestCase):
 
         saved = forms.save_form(self.company, {'kind': 'Request', 'title': 'فرم به‌روزرسانی خودکار',
             'sections': [{'id': 'main', 'title': 'اطلاعات', 'fields': [
-                {'key': 'amount', 'label': 'عدد', 'type': 'Number'},
+                {'key': 'amount', 'label': 'عدد', 'type': 'Integer'},
                 {'key': 'note', 'label': 'توضیح', 'type': 'Text'}]}]}, client_id=uuid4().hex)['data']
         forms.transition(saved['name'], 'publish', saved['draft_version'])
         published = forms.get_form(saved['name'])['data']
@@ -320,5 +320,5 @@ class TestAutomaticActionAudit(APITestCase):
         doc = frappe.get_doc('ASOUD Form Entry', entry['name'])
         _update(doc, {'amount': 9, 'note': 'به‌روزرسانی‌شده'}, self.company)
         values = json.loads(frappe.db.get_value('ASOUD Form Entry', entry['name'], 'values_json'))
-        # Number fields are stored as their normalized string form by the schema validator.
+        # Integer fields are stored as their normalized string form by the schema validator.
         self.assertEqual((values['amount'], values['note']), ('9', 'به‌روزرسانی‌شده'))

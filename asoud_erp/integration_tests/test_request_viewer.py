@@ -151,6 +151,7 @@ class TestSensitiveValues(APITestCase):
 class TestSelfApprovalRouting(APITestCase):
     def _request(self, approvers, escalation_roles=None):
         definition, _stages = make_definition(self.company, approvals=1)
+        self.definition = definition  # read back by the failure test below
         stage = frappe.get_doc("ASOUD Workflow Stage", {"workflow_definition": definition, "stage_type": "Approval"})
         config = frappe.parse_json(stage.config_json)
         config.update(assignment_type="Employee", approver_employees=[

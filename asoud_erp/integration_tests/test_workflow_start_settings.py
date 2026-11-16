@@ -55,8 +55,11 @@ class TestWorkflowStartSettings(APITestCase):
         activity = frappe.get_doc('ASOUD Workflow Activity', {'workflow_instance': instance.name, 'action': 'Workflow Started'})
         self.assertEqual(activity.comment, 'بررسی اطلاعات')
         self.assertEqual(activity.actor, self.initiator)
-        with self.assertRaises(frappe.ValidationError):
-            configure(definition, {'trigger_type': 'Manual', 'initiator_roles': ['System Manager'], 'allow_manager_restart': True})
+        # PA-026: the manager-restart flag is metadata, so it may change while an
+        # instance runs (only the trigger, form and route stay locked).
+        configure(definition, {'trigger_type': 'Manual', 'initiator_roles': ['System Manager'], 'allow_manager_restart': True})
+        start = frappe.get_doc('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'Start'})
+        self.assertTrue(json.loads(start.config_json)['allow_manager_restart'])
         self.assertEqual(configure(definition, {'trigger_type': 'Manual',
             'initiator_roles': ['System Manager']})['name'], saved['name'])
 

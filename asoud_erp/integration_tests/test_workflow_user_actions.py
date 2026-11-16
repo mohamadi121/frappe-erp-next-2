@@ -310,7 +310,7 @@ class TestWorkflowUserActions(APITestCase):
         # A real instance so the reminder path (instance lookup + notification)
         # succeeds. The real task from `start` has no deadline configured
         # (due_on/reminder_on are None), so it never matches the deadline filters.
-        definition, _ = self.make_action()
+        definition, stage = self.make_action()
         instance, _ = self.start(definition)
         # A table of due tasks larger than one page, so the job must walk several
         # keyset pages.
@@ -318,12 +318,12 @@ class TestWorkflowUserActions(APITestCase):
         names = [f'WFT-DEADLINE-{i:05d}' for i in range(total)]
         for name in names:
             frappe.get_doc({
-                'doctype': 'ASOUD Workflow Task', 'name': name,
-                'workflow_instance': instance, 'workflow_stage': 'WFS-DEADLINE',
-                'task_title': 'تسک آزمایشی', 'assigned_to': 'nobody@example.com',
+                'doctype': 'ASOUD Workflow Task',
+                'workflow_instance': instance, 'workflow_stage': stage,
+                'task_title': 'تسک آزمایشی', 'assigned_to': EMPLOYEE_USER,
                 'status': 'Open', 'due_on': add_to_date(now_datetime(), hours=1),
                 'reminder_on': add_to_date(now_datetime(), hours=-1),
-            }).insert(ignore_permissions=True)
+            }).insert(ignore_permissions=True, set_name=name)
         try:
             pages = []
             original_get_all = workflow_runtime.frappe.get_all

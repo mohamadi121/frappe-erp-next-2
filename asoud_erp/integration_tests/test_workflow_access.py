@@ -24,6 +24,7 @@ from asoud_erp.integration_tests.fixtures import (
     warehouse,
 )
 from asoud_erp.integration_tests.request_fixtures import make_definition
+from asoud_erp.integration_tests.request_helpers import valid_pdf_bytes
 
 
 class TestWorkflowAccess(APITestCase):
@@ -80,8 +81,10 @@ class TestWorkflowAccess(APITestCase):
             frappe.get_doc({
                 'doctype': 'ASOUD Workflow Activity', 'workflow_instance': instance,
                 'workflow_task': task, 'actor': EMPLOYEE_USER, 'action': 'Note',
-                'comment': f'ردیف {i}', 'created_on': f'2026-01-01 00:{i // 60:02d}:{i % 60:02d}',
+                'comment': f'ردیف {i}', 'created_on': f'2099-01-01 00:{i // 60:02d}:{i % 60:02d}',
             }).insert(ignore_permissions=True)
+        # The notes are dated after the instance's own start activities, so the
+        # newest 200 rows are exactly notes 5..204.
         rows = workflow_runtime._workflow_history(instance, ['name', 'comment', 'created_on'])
         # Bounded to the newest 200 rows, returned oldest-first for the timeline.
         self.assertEqual(len(rows), 200)
@@ -111,7 +114,7 @@ class TestWorkflowAccess(APITestCase):
         with self.assertRaises(frappe.ValidationError):
             workflow_runtime.upload_workflow_attachment(task, 'invoice.pdf', png)
         # A real PDF header is accepted.
-        pdf = base64.b64encode(b'%PDF-1.7 body').decode()
+        pdf = base64.b64encode(valid_pdf_bytes()).decode()
         result = workflow_runtime.upload_workflow_attachment(task, 'invoice.pdf', pdf)
         self.assertTrue(result['ok'])
         self.assertEqual(result['data']['file_name'], 'invoice.pdf')
@@ -167,7 +170,8 @@ class TestWorkflowAccess(APITestCase):
         for index, (kind, config) in enumerate([
             ("Start", {"title": "شروع"}),
             ("User Task", {"title": "بررسی سفارش", "activity_type": "Data Entry",
-                           "assignment_type": "Initiator", "allow_add_attachments": True}),
+                           "assignment_type": "Role", "assignee_roles": ["Accounts User"],
+                           "allow_add_attachments": True}),
             ("End", {"title": "پایان", "outcome": "Completed"}),
         ]):
             stages.append(frappe.get_doc({
@@ -183,11 +187,12 @@ class TestWorkflowAccess(APITestCase):
         instance = workflow_runtime.start_workflow_instance(
             definition.name, 'بررسی سفارش خرید', reference_doctype='Purchase Order',
             reference_name=po, reason='آزمون')['data']['name']
-        task = frappe.db.get_value('ASOUD Workflow Task', {'workflow_instance': instance}, 'name')
-        # The task is assigned to the starter (Administrator); move it to a PO reader.
-        frappe.db.set_value('ASOUD Workflow Task', task, 'assigned_to', ACCOUNTANT_USER)
+        # The task goes to the Accounts User role, so ACCOUNTANT_USER (a PO reader) holds it.
+        task = frappe.db.get_value('ASOUD Workflow Task',
+                                   {'workflow_instance': instance, 'assigned_to': ACCOUNTANT_USER}, 'name')
+        self.assertTrue(task)
         frappe.set_user(ACCOUNTANT_USER)
-        pdf = base64.b64encode(b'%PDF-1.7 body').decode()
+        pdf = base64.b64encode(valid_pdf_bytes()).decode()
         file_name = workflow_runtime.upload_workflow_attachment(task, 'order.pdf', pdf)['data']['name']
         file_doc = frappe.get_doc('File', file_name)
         # A user with native read on the PO can download the task attachment.
