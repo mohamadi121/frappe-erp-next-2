@@ -49,11 +49,11 @@ first opened, exactly like the HR defaults; names are deterministic per company 
 (`asoud-builtin-stage:<company>:<key>`). `open_builtin(company, key)` materializes a
 `Stage` form with a published v1 and returns the normal `get_form` envelope.
 
-`copy_form(company, name, title=None)` (POST, designers only) copies a published `Stage`
-form into a new company-owned `Stage` form whose draft and published v1 are the source's
-active revision schema. The default title is `<source title> - نسخه اختصاصی`. The source
-form and its revisions are never changed. A form without an active revision, or a form
-that is not kind `Stage`, is rejected with a Persian error.
+`copy_form(company, name, title=None)` (POST, designers only) copies a published form of
+any kind (`Stage`, `Request` or `Document`) into a new company-owned form of the **same
+kind** whose draft and published v1 are the source's active revision schema. The default
+title is `<source title> - نسخه اختصاصی`. The source form and its revisions are never
+changed. A form without an active revision is rejected with a Persian error.
 
 The optional top-level schema key `usage` (a string of at most 40 characters, e.g.
 `approval`) is additive and does not change `schema_version`. `module` already exists

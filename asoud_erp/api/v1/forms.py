@@ -172,14 +172,12 @@ def remove_builtin(company, key):
 
 @frappe.whitelist(methods=['POST'])
 def copy_form(company, name, title=None):
-    """Copy a published stage form into a new company-owned stage form; the source is never changed."""
+    """Copy a published form (any kind) into a new company-owned form of the same kind; the source is never changed."""
     require_roles(DESIGNERS)
     require_company(company)
     source = load(name, edit=True, lock=True)
     if source.company != company:
         fail('فرم باید متعلق به همین دفتر باشد.')
-    if source.kind != 'Stage':
-        fail('فقط فرم مرحله گردش کار قابل کپی است.')
     if not source.active_revision:
         fail('فرم هنوز منتشر نشده است.')
     rev = revision(source)
@@ -187,13 +185,13 @@ def copy_form(company, name, title=None):
     encoded = json.dumps(schema, ensure_ascii=False, sort_keys=True)
     new_name = frappe.generate_hash(length=32)
     doc = frappe.get_doc({'doctype': 'ASOUD Form', 'name': new_name, 'company': company,
-                          'title': (title or f'{source.title} - نسخه اختصاصی')[:140], 'kind': 'Stage',
+                          'title': (title or f'{source.title} - نسخه اختصاصی')[:140], 'kind': source.kind,
                           'module_key': source.module_key, 'draft_json': encoded, 'draft_version': 1})
     doc.flags.name_set = True
     store(doc)
     new_rev = store(frappe.get_doc({'doctype': 'ASOUD Form Revision', 'form': doc.name, 'version': 1,
         'schema_json': encoded, 'published_by': frappe.session.user,
-        'published_on': now_datetime(), 'change_note': 'کپی از فرم مرحله'}))
+        'published_on': now_datetime(), 'change_note': 'کپی از فرم'}))
     doc.active_revision = new_rev.name
     store(doc)
     return success(row(doc, schema=True))
