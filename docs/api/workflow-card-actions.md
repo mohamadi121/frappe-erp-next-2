@@ -10,10 +10,7 @@ serialized-definition response (also includes `can_delete`). System/Accounts Man
 native write permission. Activation validates the saved stage graph and configuration,
 then updates readiness and status atomically. The ASOUD runtime does not require a
 separate native Workflow link; an existing link is preserved and checked as before.
-Deactivation (`Inactive`) and archiving (`Archived`) are refused with a Persian
-ValidationError while the definition has a `Running` instance, so a definition
-cannot be switched off mid-execution; once the running instance finishes, the
-status change succeeds. Historical (non-running) rows never block the change.
+Deactivation only prevents new starts; running instances and historical rows remain.
 
 Deletion uses whitelisted POST `workflow.delete_workflow(name)` (or existing POST `frappe.client.delete(doctype="ASOUD Workflow Definition",
 name=...)`). Native delete permission, company scope and manager

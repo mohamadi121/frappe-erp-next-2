@@ -65,23 +65,6 @@ class TestWorkflowCardActions(APITestCase):
         self.assertTrue(any(row['name'] == name for row in
             workflow.list_workflows(company=self.company, status='Inactive')['data']))
 
-    def test_deactivate_refused_while_instances_are_running(self):
-        # PA-038: an Active definition with a Running instance cannot be
-        # deactivated or archived until the running instance finishes.
-        name = self.draft()
-        self.complete(name)
-        workflow.set_workflow_status(name, 'Active')
-        instance = frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': name,
-            'subject': 'اجرای جاری', 'status': 'Running'}).insert()
-        with self.assertRaises(frappe.ValidationError):
-            workflow.set_workflow_status(name, 'Inactive')
-        with self.assertRaises(frappe.ValidationError):
-            workflow.set_workflow_status(name, 'Archived')
-        self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', name, 'status'), 'Active')
-        # Once the instance finishes, deactivation is allowed again.
-        frappe.db.set_value('ASOUD Workflow Instance', instance.name, 'status', 'Completed')
-        self.assertEqual(workflow.set_workflow_status(name, 'Inactive')['data']['status'], 'Inactive')
-
     def test_active_or_running_workflow_refuses_graph_edits(self):
         # PA-006: drawing a route or adding a stage must be refused while the
         # definition is Active or has a Running instance, for every stage type.
