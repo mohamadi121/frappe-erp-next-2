@@ -12,11 +12,6 @@ decision; the tasks of an earlier round are already settled.
 
 MODES = {"Any", "All", "Majority"}
 
-# Tasks of one round are created in a single loop, so their `assigned_on`
-# values are milliseconds apart. A re-activation happens later (minutes or
-# more), so a window this wide never mixes two rounds.
-_ROUND_WINDOW_SECONDS = 60
-
 
 def normalize_mode(config) -> str:
     """The decision mode of a saved stage config.
@@ -44,27 +39,34 @@ def required_approvals(mode: str, total: int) -> int:
     raise ValueError("حالت رأی‌گیری مرحلهٔ تأیید نامعتبر است؛ فقط هر یک، همه یا اکثریت مجاز است.")
 
 
-def current_round(tasks: list[dict]) -> list[dict]:
+def current_round(tasks: list[dict], deciding_assigned_on) -> list[dict]:
     """The tasks created at the most recent activation of the stage.
 
-    `tasks` are the stage's Open and Completed rows, each with an `assigned_on`
-    datetime. The round is the newest cluster of `assigned_on` values.
+    `tasks` are the stage's Open and Completed rows, each with `assigned_on`
+    and `completed_on`. `deciding_assigned_on` is the deciding task's
+    `assigned_on`, i.e. the current activation time. Every task of an earlier
+    round was settled before the stage was activated again, so the boundary is
+    the latest `completed_on` among the stage's Completed tasks that finished
+    before the current activation; the current round is the tasks assigned
+    after that boundary (all tasks when there is no boundary).
     """
-    if not tasks:
-        return []
-    stamps = [t["assigned_on"] for t in tasks if t.get("assigned_on") is not None]
-    if not stamps:
+    if deciding_assigned_on is None:
         return list(tasks)
-    newest = max(stamps)
-    from datetime import timedelta
+    boundary = None
+    for task in tasks:
+        completed_on = task.get("completed_on")
+        if (task.get("status") == "Completed" and completed_on is not None
+                and completed_on < deciding_assigned_on):
+            if boundary is None or completed_on > boundary:
+                boundary = completed_on
+    if boundary is None:
+        return list(tasks)
+    return [t for t in tasks if t.get("assigned_on") is not None and t["assigned_on"] > boundary]
 
-    floor = newest - timedelta(seconds=_ROUND_WINDOW_SECONDS)
-    return [t for t in tasks if t.get("assigned_on") is not None and t["assigned_on"] >= floor]
 
-
-def decision_counts(tasks: list[dict]) -> tuple[int, int]:
+def decision_counts(tasks: list[dict], deciding_assigned_on) -> tuple[int, int]:
     """`(total, approved)` for the stage's current round."""
-    round_tasks = current_round(tasks)
+    round_tasks = current_round(tasks, deciding_assigned_on)
     total = len(round_tasks)
     approved = sum(1 for t in round_tasks if t.get("status") == "Completed" and t.get("action") == "Approve")
     return total, approved

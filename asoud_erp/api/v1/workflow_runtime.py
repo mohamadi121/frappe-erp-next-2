@@ -1688,14 +1688,15 @@ def complete_workflow_task(
         # The instance row is locked for update above, so no other completion of
         # this stage can interleave between the count and the stage activation.
         # Only the current round (the most recent activation) counts: a Return
-        # route can re-activate this stage with a fresh set of tasks.
+        # route can re-activate this stage with a fresh set of tasks. The
+        # deciding task's assigned_on is the current activation time.
         round_tasks = frappe.get_all(
             "ASOUD Workflow Task",
             filters={"workflow_instance": instance.name, "workflow_stage": stage.name,
                      "status": ["in", ("Open", "Completed")]},
-            fields=["status", "action", "assigned_on"],
+            fields=["status", "action", "assigned_on", "completed_on"],
         )
-        total, approved = decision_counts([t.as_dict() for t in round_tasks])
+        total, approved = decision_counts([t.as_dict() for t in round_tasks], doc.assigned_on)
         try:
             if not stage_reached_quorum(mode, total, approved):
                 # The other approvers keep their Open tasks: the stage advances
