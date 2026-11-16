@@ -217,3 +217,26 @@ class TestAutomaticActionAudit(APITestCase):
         self.assertEqual(frappe.db.count('ASOUD Workflow Instance', {
             'reference_doctype': first['doctype'], 'reference_name': first['name']}), 1)
         self.assertEqual(frappe.db.count('ASOUD Workflow Request'), before)
+
+    def test_cancelling_a_request_cancels_its_queued_automatic_actions(self):
+        from asoud_erp.api.v1.workflow_request import cancel_request
+
+        definition, stages = make_definition(self.company, approvals=0, fields=[])
+        result = create(self.company, definition=definition)
+        instance = frappe.get_doc('ASOUD Workflow Instance', result['workflow_instance'])
+        # A queued automatic action waiting for the background worker.
+        queued = frappe.get_doc({'doctype': 'ASOUD Action Execution',
+            'workflow_instance': instance.name, 'workflow_stage': list(stages.values())[0].name,
+            'status': 'Pending', 'action_type': 'Send Notification',
+            'config_json': '{}', 'routes_json': '{}'}).insert(ignore_permissions=True)
+        # A receipt already running is owned by a worker; cancellation must leave it.
+        running = frappe.get_doc({'doctype': 'ASOUD Action Execution',
+            'workflow_instance': instance.name, 'workflow_stage': list(stages.values())[0].name,
+            'status': 'Running', 'action_type': 'Send Notification',
+            'config_json': '{}', 'routes_json': '{}'}).insert(ignore_permissions=True)
+        frappe.set_user(EMPLOYEE_USER)
+        cancel_request(result['name'], 'لغو آزمایشی')
+        frappe.set_user('Administrator')
+        self.assertEqual(frappe.db.get_value('ASOUD Action Execution', queued.name, 'status'), 'Cancelled')
+        self.assertEqual(frappe.db.get_value('ASOUD Action Execution', running.name, 'status'), 'Running')
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', instance.name, 'status'), 'Cancelled')

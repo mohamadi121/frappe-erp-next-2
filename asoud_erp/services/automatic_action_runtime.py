@@ -530,6 +530,20 @@ def schedule(instance, stage, config, trigger="start"):
     _audit(receipt, instance, "Waiting for background worker")
 
 
+def cancel(instance):
+    """Cancel queued automatic actions for a withdrawn instance.
+
+    Only queued receipts (Pending / Retry Pending) are cleared. A receipt that is
+    already Running is owned by a worker holding the row lock; the worker's own
+    instance-status check in ``run`` cancels it on its next read. Clearing the queue
+    stops a cancelled request from still triggering a background action.
+    """
+    queued = {"workflow_instance": instance.name, "status": ["in", ["Pending", "Retry Pending"]]}
+    count = frappe.db.count(RECEIPT, queued)
+    frappe.db.set_value(RECEIPT, queued, "status", "Cancelled", update_modified=False)
+    return count
+
+
 def run(execution):
     receipt = frappe.get_doc(RECEIPT, execution, for_update=True)
     if receipt.status not in {"Pending", "Retry Pending"}:

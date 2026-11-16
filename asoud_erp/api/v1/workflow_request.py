@@ -730,6 +730,10 @@ def cancel_request(name: str, reason: str = ""):
         instance = waiting
     frappe.db.set_value("ASOUD Workflow Task", {"workflow_instance": instance.name, "status": "Open"},
                         "status", "Cancelled", update_modified=False)
+    # A withdrawn request must not still fire a queued automatic action in the background.
+    from asoud_erp.services.automatic_action_runtime import cancel as cancel_queued_actions
+
+    cancel_queued_actions(instance)
     instance.status = "Cancelled"
     instance.completed_on = now_datetime()
     instance.save(ignore_permissions=True)

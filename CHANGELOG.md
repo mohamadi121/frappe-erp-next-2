@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Request cancellation: `cancel_request` now also cancels the instance's queued automatic actions (`ASOUD Action Execution` in `Pending` / `Retry Pending`) via a new `automatic_action_runtime.cancel`, so a withdrawn request no longer fires a background action. A receipt already `Running` is left to the worker's own instance-status check. No schema migration or new DocType.
+
 - Workflow route selection: the Persian-to-English route-action translation in `workflow_runtime._next_stage` now applies to every source stage type (User Task, System Action, Approval, ...) instead of only Approval. A route labelled «ادامه» on a multi-route human or system stage now matches the `Complete` action, so the workflow no longer stalls with "no next stage". No schema migration or new DocType.
 
 - Condition date values: a date string whose year falls in the plausible Jalali band (1300–1500) is now converted to Gregorian with the shared Jalali engine instead of being read as a Gregorian year by `date.fromisoformat`. This stops a custom form field storing a Jalali date such as `1403-08-20` from being compared as the year 1403 AD. Native Gregorian dates (year outside the band) are unchanged. No schema migration or new DocType.
