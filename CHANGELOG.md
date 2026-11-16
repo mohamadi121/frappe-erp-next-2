@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Automatic-action error route: a failed automatic action may now route to an `End` stage (terminating the process as failed) in addition to a `User Task` (for correction), instead of raising "Invalid automatic action route". The runtime `_finish` is the execution-time authority; the designer save in `api/v1/automatic_actions.py` still restricts error routes to a human task and needs the matching relaxation to let designers save such a route. No schema migration or new DocType.
+
 - Automatic-action Update Fields on `ASOUD Form Entry`: form data lives in the `values_json` column, so a plain `doc.update` silently dropped every mapped field. The automatic action now merges the mapped values into `values_json` and re-validates them against the form's published schema (the same `form_schema.validate_values` the submission path uses). Unknown fields are rejected. No schema migration or new DocType.
 
 - Automatic-action final failure: when an automatic action fails with no Error route, the requester (`instance.started_by`) is now notified in-app alongside System Managers, with a Persian message explaining the request stopped and to contact the administrator. Previously only System Managers were told, leaving the owner of a stuck request unaware. No schema migration or new DocType.

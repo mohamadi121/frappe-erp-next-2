@@ -260,6 +260,21 @@ class TestAutomaticActionAudit(APITestCase):
         self.assertTrue(frappe.db.exists('Notification Log', {
             'for_user': instance.started_by, 'document_name': instance.name}))
 
+    def test_error_route_to_an_end_stage_terminates_the_instance(self):
+        from asoud_erp.services.automatic_action_runtime import _finish
+
+        definition, stage = self.graph()
+        end = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'End'})
+        instance = frappe.get_doc({'doctype': 'ASOUD Workflow Instance',
+            'workflow_definition': definition, 'subject': 'آزمون مسیر خطا', 'status': 'Running',
+            'current_stage': stage, 'started_by': EMPLOYEE_USER}).insert(ignore_permissions=True)
+        receipt = frappe._dict(name=uuid4().hex, workflow_stage=stage, trigger_id='start',
+            routes_json=json.dumps({'Error': end}), config_json='{}')
+        _finish(receipt, instance, False)
+        instance.reload()
+        self.assertEqual(instance.current_stage, end)
+        self.assertIn(instance.status, {'Completed', 'Rejected', 'Cancelled', 'Failed'})
+
     def test_update_fields_on_a_form_entry_writes_values_json(self):
         from asoud_erp.services.automatic_action_runtime import _update
 

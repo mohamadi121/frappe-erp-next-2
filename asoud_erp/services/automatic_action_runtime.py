@@ -459,8 +459,10 @@ def _finish(receipt, instance, success):
     target = routes.get("Success" if success else "Error")
     if target:
         stage = frappe.get_doc("ASOUD Workflow Stage", target)
+        # An error may route to a human task for correction or to an End stage to
+        # terminate the process as failed; it must not silently continue elsewhere.
         if stage.workflow_definition != instance.workflow_definition or (
-            not success and stage.stage_type != "User Task"
+            not success and stage.stage_type not in {"User Task", "End"}
         ):
             raise ValueError("Invalid automatic action route")
         _activate_stage(instance, stage, automatic_trigger=receipt.trigger_id)
