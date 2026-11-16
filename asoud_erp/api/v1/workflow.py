@@ -8,7 +8,7 @@ from frappe.utils import cint, now_datetime
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.jalali import current_jalali_year
-from asoud_erp.services.modules import normalize_module_key
+from asoud_erp.services.modules import MODULE_DOCTYPES, normalize_module_key
 from asoud_erp.services.request_access import require_company
 from asoud_erp.services.workflow_contract import (
     ALLOWED_WORKFLOW_STATUSES,
@@ -23,17 +23,6 @@ from asoud_erp.services.workflow_stage_policy import (
 from asoud_erp.services.workflow_user_action_policy import condition_fields as action_condition_fields
 
 ALLOWED_STATUSES = ALLOWED_WORKFLOW_STATUSES
-# Canonical module keys (see services/modules.py). Legacy workflow keys
-# (Accounting/Sales/Inventory/Support) are still accepted and normalized.
-MODULE_DOCTYPES = {
-    "Finance": ("Payment Request", "Expense Claim", "Journal Entry"),
-    "Purchase": ("Material Request", "Purchase Order"),
-    "Selling": ("Quotation", "Sales Order"),
-    "Stock": ("Stock Entry",),
-    "HR": ("Leave Application", "Job Applicant"),
-    "Admin": ("Issue", "ASOUD Workflow Request"),
-    "IT": ("Asset",),
-}
 STAGE_TITLES = {
     "User Task": "بررسی یا ویرایش سند",
     "Approval": "تأیید یا رد",

@@ -41,6 +41,28 @@ LEGACY_MODULE_KEYS = {
     "Support": "Admin",
 }
 
+# The standard ERPNext/HRMS documents a workflow may target, per module. This
+# is the single vocabulary of "module key -> target documents" shared by the
+# workflow designer and the app. ``ASOUD Workflow Request`` (a request type) is
+# always an additional target regardless of module.
+MODULE_DOCTYPES = {
+    "Finance": ("Payment Request", "Expense Claim", "Journal Entry"),
+    "Purchase": ("Material Request", "Purchase Order"),
+    "Selling": ("Quotation", "Sales Order"),
+    "Stock": ("Stock Entry",),
+    "HR": (
+        "Leave Application",
+        "Job Applicant",
+        "Employee Advance",
+        "Asset Movement",
+        "Shift Request",
+        "Salary Slip",
+        "Attendance",
+    ),
+    "Admin": ("Issue", "ASOUD Workflow Request"),
+    "IT": ("Asset",),
+}
+
 
 def normalize_module_key(key):
     """Return the canonical key for ``key`` (canonical or legacy), else ``None``."""

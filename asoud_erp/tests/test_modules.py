@@ -4,6 +4,7 @@ import pytest
 
 from asoud_erp.services.modules import (
     LEGACY_MODULE_KEYS,
+    MODULE_DOCTYPES,
     MODULE_KEYS,
     normalize_module_key,
 )
@@ -60,3 +61,24 @@ def test_canonical_module_key_is_unchanged_on_read() -> None:
         }
     )
     assert result["module_key"] == "Selling"
+
+
+# --- PA-050: the HR module targets the standard payroll/attendance documents ---
+
+def test_hr_module_targets_the_standard_payroll_and_attendance_documents() -> None:
+    hr = MODULE_DOCTYPES["HR"]
+    for doctype in (
+        "Leave Application",
+        "Job Applicant",
+        "Employee Advance",
+        "Asset Movement",
+        "Shift Request",
+        "Salary Slip",
+        "Attendance",
+    ):
+        assert doctype in hr
+
+
+def test_every_module_targets_at_least_one_document() -> None:
+    for key, doctypes in MODULE_DOCTYPES.items():
+        assert doctypes, f"module {key} has no target documents"

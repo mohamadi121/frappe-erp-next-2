@@ -26,6 +26,25 @@ keys and normalize them before storing: `Accounting`→`Finance`, `Sales`→`Sel
 stored legacy key to its canonical key, so workflows saved before the unification
 still load. A migration patch rewrites stored legacy keys on `bench migrate`.
 
+### Target documents per module
+
+`MODULE_DOCTYPES` (in `services/modules.py`) is the single vocabulary of
+"module key → target documents" for the workflow designer. `ASOUD Workflow
+Request` is always an additional target (a request type) regardless of module.
+
+| Module | Target documents |
+|---|---|
+| `Finance` | Payment Request, Expense Claim, Journal Entry |
+| `Purchase` | Material Request, Purchase Order |
+| `Selling` | Quotation, Sales Order |
+| `Stock` | Stock Entry |
+| `HR` | Leave Application, Job Applicant, Employee Advance, Asset Movement, Shift Request, Salary Slip, Attendance |
+| `Admin` | Issue, ASOUD Workflow Request |
+| `IT` | Asset |
+
+`workflow_form_options` returns these modules and, for each, the target documents
+that are installed on the site (`available: true/false`).
+
 ## `catalog(company, search='', module_key='', start=0, page_length=20, include_user=0)`
 
 Read-only. Returns `{items: [{name, workflow_title, process_description,
