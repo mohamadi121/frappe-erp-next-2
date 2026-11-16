@@ -161,6 +161,20 @@ class TestWorkflowCardActions(APITestCase):
         with self.assertRaises(frappe.PermissionError):
             delete('ASOUD Workflow Definition', name)
 
+    def test_update_request_type_info_requires_company_scope(self):
+        # PA-041: an Accounts Manager of another company must not edit the
+        # presentation metadata of a foreign definition. The DocType has no
+        # User Permission on Company, so without an explicit company guard the
+        # global write role alone lets the cross-office edit through.
+        name = workflow.create_workflow_draft(workflow_title='دفتر دیگر', company=self.foreign_company,
+            module_key='HR', target_doctype='ASOUD Workflow Request')['data']['name']
+        original_title = frappe.db.get_value('ASOUD Workflow Definition', name, 'workflow_title')
+        frappe.set_user(MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            workflow.update_request_type_info(name, workflow_title='ویرایش بین‌دفتری')
+        # The title was not changed.
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', name, 'workflow_title'), original_title)
+
     def test_update_stage_positions_requires_company_scope_and_write(self):
         # PA-014: a manager of another company must not move the canvas of a
         # foreign definition; the response must not leak the foreign design.

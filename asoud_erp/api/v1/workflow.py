@@ -1122,6 +1122,8 @@ def update_request_type_info(
 ) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
     doc = frappe.get_doc("ASOUD Workflow Definition", name)
+    require_company(doc.company)
+    doc.check_permission("write")
     # Also used by the start-node metadata editor. Never change its reference
     # DocType, company, graph or start permissions when editing presentation.
     if module_key is not None and module_key not in MODULE_DOCTYPES:
