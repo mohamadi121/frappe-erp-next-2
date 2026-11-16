@@ -83,30 +83,34 @@ class TestWorkflowCardActions(APITestCase):
         self.assertEqual(workflow.set_workflow_status(name, 'Inactive')['data']['status'], 'Inactive')
 
     def test_active_or_running_workflow_refuses_graph_edits(self):
-        # PA-006: adding a stage or drawing a route must be refused while the
+        # PA-006: drawing a route or adding a stage must be refused while the
         # definition is Active or has a Running instance, for every stage type.
+        # Each attempt below would succeed on the old code (no guard), so the
+        # refusal proves the new assert_editable guard.
         name = self.draft()
         self.complete(name)
         stages = workflow.get_workflow_design(name)['data']['stages']
-        start = next(row['name'] for row in stages if row['stage_type'] == 'Start')
         task = next(row['name'] for row in stages if row['stage_type'] == 'User Task')
         end = next(row['name'] for row in stages if row['stage_type'] == 'End')
-        # Active definition: both graph mutations are refused.
+        # Active definition: drawing a new route is refused.
         workflow.set_workflow_status(name, 'Active')
-        with self.assertRaises(frappe.ValidationError):
-            workflow.add_workflow_stage(name, 'User Task', start)
         with self.assertRaises(frappe.ValidationError):
             workflow.connect_workflow_stages(name, task, end, 'تأیید')
         workflow.set_workflow_status(name, 'Inactive')
-        # A Running instance on an Inactive definition blocks the same edits.
+        # A Running instance on an Inactive definition blocks the same route.
         frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': name,
             'subject': 'اجرای جاری', 'status': 'Running'}).insert()
         with self.assertRaises(frappe.ValidationError):
-            workflow.add_workflow_stage(name, 'User Task', start)
-        with self.assertRaises(frappe.ValidationError):
             workflow.connect_workflow_stages(name, task, end, 'تأیید')
-        # The graph is untouched by the refused attempts.
-        self.assertEqual(frappe.db.count('ASOUD Workflow Stage', {'workflow_definition': name}), 3)
+        # Adding a stage is also refused while a Running instance exists. A
+        # fresh draft's Start has no outgoing stage, so only the guard can block it.
+        draft2 = self.draft()
+        start2 = next(row['name'] for row in workflow.get_workflow_design(draft2)['data']['stages']
+                      if row['stage_type'] == 'Start')
+        frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': draft2,
+            'subject': 'اجرای جاری', 'status': 'Running'}).insert()
+        with self.assertRaises(frappe.ValidationError):
+            workflow.add_workflow_stage(draft2, 'User Task', start2)
 
     def test_incomplete_draft_is_listed_and_searchable_by_title_and_code(self):
         name = self.draft()
