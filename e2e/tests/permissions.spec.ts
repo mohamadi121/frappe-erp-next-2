@@ -57,19 +57,19 @@ test.describe('cross-user and cross-company permissions', () => {
     // 3. Outsider employee attempts to read the request
     const requestRead = await outsider.get(METHOD.getRequest, { name: created.name });
     expect(requestRead.status, 'outsider reading request must be 403').toBe(403);
-    expect(errorText(requestRead)).toMatch(/Not permitted to view this request|PermissionError/i);
+    expect(errorText(requestRead)).toMatch(/مشاهدهٔ این درخواست برای شما مجاز نیست|PermissionError/i);
 
     // 4. Outsider employee attempts to read the workflow instance
     const instanceRead = await outsider.get(METHOD.getInstance, {
       instance: created.workflow_instance,
     });
     expect(instanceRead.status, 'outsider reading workflow instance must be 403').toBe(403);
-    expect(errorText(instanceRead)).toMatch(/Not permitted to (access this request workflow|view this workflow instance)|PermissionError/i);
+    expect(errorText(instanceRead)).toMatch(/مشاهدهٔ این نمونهٔ گردش‌کار برای شما مجاز نیست|PermissionError/i);
 
     // 5. Outsider employee attempts to download the private attachment
     const attachmentRead = await outsider.get(METHOD.getAttachment, { name: attachment.name });
     expect(attachmentRead.status, 'outsider reading attachment must be 403').toBe(403);
-    expect(errorText(attachmentRead)).toMatch(/Not permitted to view this request|PermissionError/i);
+    expect(errorText(attachmentRead)).toMatch(/مشاهدهٔ این درخواست برای شما مجاز نیست|PermissionError/i);
   });
 
   test('the direct manager can read the request, its instance and its attachments', async ({

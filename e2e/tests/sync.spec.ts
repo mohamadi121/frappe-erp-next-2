@@ -122,7 +122,7 @@ test.describe('sync.execute_mutation request keys', () => {
     const admin = await api.login('admin');
     const result = await run(admin, key('inner-error'), DRAFT, draftPayload('x'));
     expect(result.status).toBe(417);
-    expect(errorText(result)).toContain('Workflow title must contain at least 3 characters');
+    expect(errorText(result)).toContain('عنوان گردش‌کار باید دست‌کم ۳ نویسه باشد');
     expect(result.envelope.error?.code).not.toBe('REQUEST_KEY_CONFLICT');
 
     // The failed attempt rolled back with its key, so a corrected call under the

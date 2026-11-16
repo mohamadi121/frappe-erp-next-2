@@ -65,7 +65,7 @@ def _assert_instance_access(instance) -> None:
         return
     if {"System Manager", "Accounts Manager"}.intersection(frappe.get_roles()):
         return
-    frappe.throw(_("Not permitted to view this workflow instance"), frappe.PermissionError)
+    frappe.throw(_("مشاهدهٔ این نمونهٔ گردش‌کار برای شما مجاز نیست."), frappe.PermissionError)
 
 
 TASK_PAGE = INSTANCE_PAGE = 200
@@ -227,7 +227,7 @@ def _users_for_stage(stage, instance) -> list[str]:
         users = _scoped_role_users(values, instance)
     result = list(dict.fromkeys(user for user in users if user not in {"Guest", "Administrator"}))
     if not result:
-        frappe.throw(_("No active ERPNext user is available for the selected assignment target"))
+        frappe.throw(_("برای مقصد ارجاع انتخاب‌شده کاربر فعالی در دسترس نیست."))
     return result
 
 
@@ -536,7 +536,7 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
         _run_system_action(instance, stage, config, source_task=source_task)
         return
     if stage.stage_type not in {"User Task", "Approval"}:
-        frappe.throw(_("Automatic execution of this workflow stage is not available yet"))
+        frappe.throw(_("اجرای خودکار این مرحلهٔ گردش‌کار هنوز در دسترس نیست."))
     instance.save(ignore_permissions=True)
     previous_rows = list(reversed(_completed_task_rows(instance)))
     initial_values = {}
@@ -746,7 +746,7 @@ def _run_system_action(instance, stage, config: dict, source_task=None) -> None:
         _activate_stage(instance, target, source_task=source_task)
         return
     if outcome == "Success":
-        frappe.throw(_("Workflow has no next stage"))
+        frappe.throw(_("گردش‌کار مرحلهٔ بعدی ندارد."))
     instance.status = "Failed"
     instance.completed_on = now_datetime()
     instance.save(ignore_permissions=True)
@@ -826,16 +826,16 @@ def start_workflow_instance(
         subject = submitted_entry.subject
     if requester_only and not submitted_entry and not manual_start:
         if reference_doctype != "ASOUD Workflow Request" or not reference_name:
-            frappe.throw("Employees must start workflows through their own request", frappe.PermissionError)
+            frappe.throw(_("کارمندان باید گردش‌کار را از طریق درخواست خودشان شروع کنند."), frappe.PermissionError)
     if workflow.status != "Active" or workflow.readiness_status != "Ready":
-        frappe.throw(_("Only an active workflow can be started"))
+        frappe.throw(_("فقط گردش‌کار فعال قابل شروع است."))
     if len((subject or "").strip()) < 3:
-        frappe.throw(_("Workflow subject must contain at least 3 characters"))
+        frappe.throw(_("عنوان باید ۳ تا ۱۴۰ نویسه باشد."))
     if reference_name:
         if not submitted_entry and reference_doctype != workflow.target_doctype:
-            frappe.throw(_("Reference DocType does not match the workflow"))
+            frappe.throw(_("نوع سند مرجع با گردش‌کار هم‌خوانی ندارد."))
         if not frappe.db.exists(reference_doctype, reference_name):
-            frappe.throw(_("Referenced document does not exist"))
+            frappe.throw(_("سند مرجع وجود ندارد."))
         if reference_doctype == "ASOUD Workflow Request":
             from asoud_erp.services.request_access import request_permission
 
@@ -850,11 +850,11 @@ def start_workflow_instance(
         else:
             readable = frappe.has_permission(reference_doctype, "read", reference_name)
         if not readable:
-            frappe.throw(_("Not permitted to use the referenced document"), frappe.PermissionError)
+            frappe.throw(_("استفاده از سند مرجع برای شما مجاز نیست."), frappe.PermissionError)
 
     workflow = frappe.get_doc("ASOUD Workflow Definition", definition, for_update=True)
     if workflow.status != "Active" or workflow.readiness_status != "Ready":
-        frappe.throw(_("Only an active workflow can be started"))
+        frappe.throw(_("فقط گردش‌کار فعال قابل شروع است."))
 
     if request_id:
         activity_rows = frappe.db.sql("""
@@ -886,7 +886,7 @@ def start_workflow_instance(
         if requester_only and request.owner != frappe.session.user:
             frappe.throw(_("شروع گردش کار فقط برای درخواست خودتان مجاز است."), frappe.PermissionError)
         if request.workflow_definition != definition:
-            frappe.throw("Request workflow does not match")
+            frappe.throw(_("گردش‌کار درخواست هم‌خوانی ندارد."))
 
     if configured_start:
         lookup = {
@@ -923,7 +923,7 @@ def start_workflow_instance(
         "name",
     )
     if not start:
-        frappe.throw(_("Workflow start stage does not exist"))
+        frappe.throw(_("مرحلهٔ شروع گردش‌کار وجود ندارد."))
     instance = frappe.get_doc(
         {
             "doctype": "ASOUD Workflow Instance",
@@ -948,7 +948,7 @@ def start_workflow_instance(
             'reference_doctype': reference_doctype, 'reference_name': reference_name}).insert(ignore_permissions=True)
     stage = _next_stage(instance, start)
     if not stage:
-        frappe.throw(_("Workflow has no executable stage"))
+        frappe.throw(_("گردش‌کار مرحلهٔ قابل‌اجرا ندارد."))
     instance.current_stage = start
     _activate_stage(instance, stage)
     return success({"name": instance.name, "status": instance.status})
@@ -1035,7 +1035,7 @@ def list_my_workflow_tasks(status: str = "Open", start=0, paged=False) -> dict:
     """
     _require_signed_in()
     if status not in {"Open", "Completed", "Rejected", "Cancelled"}:
-        frappe.throw(_("Invalid task status"))
+        frappe.throw(_("وضعیت وظیفه نامعتبر است."))
     from asoud_erp.services.directive_access import instance_clause
     where = ("assigned_to=%(user)s AND status=%(status)s AND (COALESCE(workflow_instance,'')='' OR "
         "workflow_instance IN (SELECT name FROM `tabASOUD Workflow Instance` WHERE " + instance_clause() + "))")
@@ -1064,7 +1064,7 @@ def list_my_workflow_instances(status: str | None = None, start=0, paged=False) 
     _require_signed_in()
     allowed = {"Running", "Completed", "Rejected", "Cancelled", "Failed"}
     if status and status not in allowed:
-        frappe.throw(_("Invalid workflow instance status"))
+        frappe.throw(_("وضعیت نمونهٔ گردش‌کار نامعتبر است."))
     from asoud_erp.services.directive_access import instance_clause
     where = "started_by=%(user)s AND " + ("status=%(status)s AND " if status else "") + instance_clause()
     params = {"user": frappe.session.user, "status": status}
@@ -1185,9 +1185,9 @@ def list_my_workflow_notifications(unread_only: int | str = 0) -> dict:
 def mark_workflow_notification_read(notification: str) -> dict:
     doc = frappe.get_doc("Notification Log", notification)
     if doc.for_user != frappe.session.user:
-        frappe.throw(_("This notification belongs to another user"), frappe.PermissionError)
+        frappe.throw(_("این اعلان متعلق به کاربر دیگری است."), frappe.PermissionError)
     if doc.document_type != "ASOUD Workflow Instance":
-        frappe.throw(_("Invalid workflow notification"))
+        frappe.throw(_("اعلان گردش‌کار نامعتبر است."))
     doc.read = 1
     doc.save(ignore_permissions=True)
     return success({"name": doc.name, "read": True})
@@ -1256,7 +1256,7 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
             user=frappe.session.user,
         ):
             frappe.throw(
-                _("You are not allowed to read the referenced document"),
+                _("خواندن سند مرجع برای شما مجاز نیست."),
                 frappe.PermissionError,
             )
         reference = frappe.get_doc(instance.reference_doctype, instance.reference_name)
@@ -1340,10 +1340,10 @@ def save_workflow_task_draft(task: str, response: str | dict, supplementary_valu
     reject_generic(doc)
     _assert_task_owner(doc)
     if doc.status != "Open":
-        frappe.throw(_("Only an open workflow task can be edited"))
+        frappe.throw(_("فقط وظیفهٔ گردش‌کاری که باز است قابل ویرایش است."))
     values = json.loads(response) if isinstance(response, str) else response
     if not isinstance(values, dict):
-        frappe.throw(_("Workflow draft must be an object"))
+        frappe.throw(_("پیش‌نویس گردش‌کار باید یک شیء باشد."))
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
     stage_config = json.loads(stage.config_json or "{}")
     binding = read_binding(stage_config)
@@ -1372,11 +1372,11 @@ def save_workflow_task_draft(task: str, response: str | dict, supplementary_valu
         _record_draft_saved(doc)
         return success({'task': doc.name, 'saved': True})
     if not stage_config.get("allow_draft", True):
-        frappe.throw(_("Drafts are disabled for this workflow stage"))
+        frappe.throw(_("پیش‌نویس برای این مرحلهٔ گردش‌کار غیرفعال است."))
     fields = stage_config.get("form_fields", [])
     allowed_keys = {field.get("key") for field in fields if isinstance(field, dict)}
     if set(values) - allowed_keys - {RESERVED_KEY}:
-        frappe.throw(_("Workflow draft contains unknown fields"))
+        frappe.throw(_("پیش‌نویس گردش‌کار فیلدهای ناشناخته دارد."))
     _validate_response_attachments(fields, values)
     doc.draft_json = json.dumps(values, ensure_ascii=False)
     doc.save(ignore_permissions=True)
@@ -1400,19 +1400,19 @@ def upload_workflow_attachment(task: str, filename: str, content_base64: str) ->
         if not stage_config.get('allow_add_attachments'):
             frappe.throw('افزودن پیوست جدید برای این اقدام مجاز نیست.')
     if doc.status != "Open":
-        frappe.throw(_("Only an open workflow task can receive attachments"))
+        frappe.throw(_("فقط وظیفهٔ گردش‌کاری که باز است می‌تواند پیوست دریافت کند."))
     if not isinstance(filename, str) or not isinstance(content_base64, str) or len(content_base64) > 14 * 1024 * 1024:
         frappe.throw('فایل معتبر نیست یا حجم آن بیش از حد مجاز است.')
     safe_name = Path(filename or "").name
     extensions = ALLOWED_ATTACHMENT_EXTENSIONS
     if Path(safe_name).suffix.lower() not in extensions:
-        frappe.throw(_("Unsupported workflow attachment type"))
+        frappe.throw(_("نوع پیوست گردش‌کار پشتیبانی نمی‌شود."))
     try:
         content = base64.b64decode(content_base64, validate=True)
     except (ValueError, binascii.Error):
-        frappe.throw(_("Invalid attachment data"))
+        frappe.throw(_("دادهٔ پیوست نامعتبر است."))
     if not content or len(content) > MAX_ATTACHMENT_BYTES:
-        frappe.throw(_("Workflow attachment must be between 1 byte and 10 MB"))
+        frappe.throw(_("حجم پیوست باید بین ۱ بایت و ۱۰ مگابایت باشد."))
     from asoud_erp.services.workflow_attachment_content import content_matches_extension
 
     if not content_matches_extension(content, Path(safe_name).suffix):
@@ -1440,7 +1440,7 @@ def _validate_response_attachments(fields, values):
             continue
         files = frappe.get_all("File", filters={"file_url": value}, pluck="name")
         if not any(frappe.has_permission("File", "read", name) for name in files):
-            frappe.throw("Not permitted to use this attachment", frappe.PermissionError)
+            frappe.throw(_("استفاده از این پیوست برای شما مجاز نیست."), frappe.PermissionError)
 
 
 def _supplementary_schema(binding):
@@ -1508,12 +1508,12 @@ def complete_workflow_task(
         if action != 'Complete':
             frappe.throw('برای این اقدام فقط ثبت نتیجه و تکمیل مجاز است؛ رد درخواست اصلی از این بخش انجام نمی‌شود.')
     if action not in {"Complete", "Approve", "Reject", "Return"}:
-        frappe.throw(_("Invalid workflow task action"))
+        frappe.throw(_("عمل وظیفهٔ گردش‌کار نامعتبر است."))
     frappe.db.sql("select name from `tabASOUD Workflow Task` where name = %s for update", task)
     doc = frappe.get_doc("ASOUD Workflow Task", task)
     _assert_task_owner(doc)
     if doc.status != "Open":
-        frappe.throw(_("Workflow task has already been completed"))
+        frappe.throw(_("این وظیفه از پیش انجام شده است."))
     stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
     config = json.loads(stage.config_json or "{}")
     if versioned_action:
@@ -1524,18 +1524,18 @@ def complete_workflow_task(
         else {"Complete", "Reject", "Return"}
     )
     if action not in allowed_actions:
-        frappe.throw(_("Action is not valid for this workflow stage"))
+        frappe.throw(_("این عمل برای این مرحلهٔ گردش‌کار مجاز نیست."))
     instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
     if stage.stage_type == "Approval" and instance.started_by == frappe.session.user:
         frappe.throw(_("تأیید درخواست خودتان مجاز نیست."), frappe.PermissionError)
     if not versioned_action and config.get("comment_required") and not (comment or "").strip():
-        frappe.throw(_("A decision comment is required"))
+        frappe.throw(_("ثبت نظر برای تصمیم‌گیری الزامی است."))
     if action in {"Reject", "Return"} and not (comment or "").strip():
         frappe.throw(_("ثبت دلیل رد یا بازگشت الزامی است."))
     if action == "Reject" and not config.get("allow_reject", False):
-        frappe.throw(_("Reject is not allowed for this stage"))
+        frappe.throw(_("رد برای این مرحله مجاز نیست."))
     if action == "Return" and not config.get("allow_return", False):
-        frappe.throw(_("Return is not allowed for this stage"))
+        frappe.throw(_("بازگشت برای این مرحله مجاز نیست."))
     normalized_response = {}
     if action in {"Complete", "Approve"}:
         raw_response = response if response is not None else json.loads(doc.draft_json or "{}")
@@ -1681,7 +1681,7 @@ def complete_workflow_task(
             )
         next_stage = _next_stage(instance, stage.name, action)
         if not next_stage:
-            frappe.throw(_("Workflow has no next stage"))
+            frappe.throw(_("گردش‌کار مرحلهٔ بعدی ندارد."))
         _activate_stage(instance, next_stage, source_task=doc)
     return success({"task": doc.name, "instance_status": instance.status})
 
