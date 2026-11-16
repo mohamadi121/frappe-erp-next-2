@@ -100,6 +100,24 @@ def routing_configs(names, *, current=False):
     return result
 
 
+def conditional_gate(definition):
+    """True when a Condition stage sits immediately after the single Start.
+
+    Read-only structural check (no locks, no binding validation) used to refuse
+    saving a Conditional start route on a live workflow that has no gate yet.
+    """
+    stages = frappe.get_all('ASOUD Workflow Stage', filters={'workflow_definition': definition},
+        fields=['name', 'stage_type'], limit_page_length=201)
+    starts = [row for row in stages if row.stage_type == 'Start']
+    if len(starts) != 1:
+        return False
+    edges = frappe.get_all('ASOUD Workflow Transition', filters={'workflow_definition': definition,
+        'from_stage': starts[0].name}, fields=['to_stage'], limit_page_length=2)
+    if len(edges) != 1:
+        return False
+    return any(row.name == edges[0].to_stage and row.stage_type == 'Condition' for row in stages)
+
+
 def entry_condition(definition, *, stages=None, edges=None, available=None):
     from asoud_erp.services.workflow_condition import normalize_group
 

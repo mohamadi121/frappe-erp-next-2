@@ -124,6 +124,24 @@ class TestWorkflowStartSettings(APITestCase):
             configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
                 'allow_manager_restart': True, 'initiator_roles': ['System Manager'], 'source_route': 'Available'})
 
+    def test_active_workflow_cannot_switch_to_conditional_without_gate(self):
+        # PA-020: an already-Active workflow must not be switched to a Conditional
+        # start route without a Condition gate immediately after Start, or every
+        # submission would fail at runtime. make_definition is Active/Ready with
+        # Start -> User Task (no Condition), so the save must be refused.
+        definition, _ = make_definition(self.company, approvals=0, fields=[])
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', definition, 'status'), 'Active')
+        saved = forms.save_form(self.company, {'kind': 'Request', 'title': 'فرم آزمون مشروط', 'sections': [
+            {'id': 'main', 'title': 'اطلاعات', 'fields': [{'key': 'note', 'label': 'توضیح', 'type': 'Text'}]}]},
+            client_id=uuid4().hex)['data']
+        forms.transition(saved['name'], 'publish', saved['draft_version'])
+        form = forms.get_form(saved['name'])['data']
+        source = {'form': form['name'], 'revision': form['revision']}
+        with self.assertRaises(frappe.ValidationError) as ctx:
+            configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
+                'source_route': 'Conditional'})
+        self.assertIn('شرط و مسیر', str(ctx.exception))
+
     def test_other_company_and_non_manager_cannot_change_start(self):
         definition, _ = make_definition(self.second, approvals=0, fields=[])
         frappe.set_user(MANAGER_USER)
