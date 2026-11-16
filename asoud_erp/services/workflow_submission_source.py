@@ -126,9 +126,11 @@ def route(form, revision, submitted=None):
     """Called under the native Form row lock, before any submit writes."""
     if not frappe.get_meta(DEFINITION).has_field('source_form'):
         return None
+    # Read without FOR UPDATE: route() is a read-only routing decision.
+    # Design changes are serialized by bind(); instance creation by start_workflow_instance.
     rows = frappe.db.sql('select name, company, status, readiness_status, source_revision '
         'from `tabASOUD Workflow Definition` where source_form=%s and status!=%s '
-        'order by name limit 201 for update', (form.name, 'Archived'), as_dict=True)
+        'order by name limit 201', (form.name, 'Archived'), as_dict=True)
     if not rows:
         if frappe.db.exists(DEFINITION, {'source_form': form.name, 'status': 'Archived'}):
             frappe.throw('گردش‌کار متصل بایگانی شده است؛ مدیر باید اتصال این فرم را اصلاح کند.')
@@ -138,7 +140,8 @@ def route(form, revision, submitted=None):
     from asoud_erp.services.workflow_condition import evaluate_group
     from asoud_erp.services.workflow_submission_policy import choose_route
 
-    configs = routing_configs([row.name for row in rows], current=True)
+    # Plain read: no FOR UPDATE on stage rows during a submission.
+    configs = routing_configs([row.name for row in rows], current=False)
     starts = [stage.name for config in configs.values() for stage in config['stages'] if stage.stage_type == 'Start']
     outgoing = frappe.get_all('ASOUD Workflow Transition', filters={'from_stage': ['in', starts or ['']]},
         fields=['workflow_definition', 'to_stage'], limit_page_length=40201)
