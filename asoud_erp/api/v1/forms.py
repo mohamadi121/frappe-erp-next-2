@@ -687,10 +687,11 @@ def _submit_form(name, revision_name, subject, values, request_key):
                 # A form file field maps to a request Attachment field. The file the
                 # user uploaded is re-sent through the request's standard attachment
                 # path so the request owns a copy; the value references it by ref.
-                names = value if isinstance(value, list) else [value]
+                names = [name for name in (value if isinstance(value, list) else [value]) if name]
+                if len(names) > 1:
+                    # A request Attachment field holds one file; never drop the rest silently.
+                    fail('فیلد پیوست درخواست فقط یک فایل می‌پذیرد؛ برای این فیلد یک فایل بارگذاری کنید.')
                 for name in names:
-                    if not name:
-                        continue
                     file = frappe.get_doc('File', name)
                     file.check_permission('read')
                     ref = frappe.generate_hash(length=16)
