@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Docs: `docs/api/workflow-submission-source.md` no longer contradicts `forms.md` on the confidential-field policy. It now states that an assigned task user (a participant of the instance) sees sensitive values and attachment URLs in the read-only snapshot, matching the code (`workflow_request._detail`) and its tests. No code change.
+
 - Workflow draft title: `create_workflow_draft` now names the auto-created Start stage `شروع فرایند` (Persian) instead of the English `Start`, matching the other stage titles. No new DocType, migration, or permission change.
 
 - Workflow deletion audit: `delete_workflow` now writes an `ASOUD Security Audit` row (`workflow.definition.deleted`, actor, target, company, workflow code/title) inside the same savepoint as the deletion, so a failed audit rolls the deletion back. No new DocType, migration, or permission change.
