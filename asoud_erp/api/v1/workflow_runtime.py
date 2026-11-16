@@ -1690,8 +1690,10 @@ def complete_workflow_task(
             filters={"workflow_instance": instance.name, "workflow_stage": stage.name,
                      "status": ["in", ("Open", "Completed")]},
             fields=["status", "action", "assigned_on", "completed_on"],
+            # Bounded by the assignee cap per round (check_assignee_cap).
+            limit_page_length=0,
         )
-        total, approved = decision_counts([t.as_dict() for t in round_tasks], doc.assigned_on)
+        total, approved = decision_counts([dict(t) for t in round_tasks], doc.assigned_on)
         try:
             if not stage_reached_quorum(mode, total, approved):
                 # The other approvers keep their Open tasks: the stage advances
