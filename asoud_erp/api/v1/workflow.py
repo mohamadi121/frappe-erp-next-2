@@ -1195,7 +1195,7 @@ def delete_workflow(name=None) -> dict:
         receipt = security_audit.build_row(
             actor=frappe.session.user, action='workflow.definition.deleted',
             target_type='ASOUD Workflow Definition', target=name,
-            company=doc.company or '',
+            company=doc.company or '', occurred_on=now_datetime(),
             details={'workflow_code': doc.workflow_code, 'workflow_title': doc.workflow_title})
         frappe.get_doc(receipt).insert(ignore_permissions=True)
     except frappe.LinkExistsError:
