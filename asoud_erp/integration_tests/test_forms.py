@@ -374,6 +374,42 @@ class TestForms(APITestCase):
             {"id": "option_0_0_1", "label": "فوری"},
         ])
 
+    def test_form_file_field_maps_to_request_attachment(self):
+        from asoud_erp.integration_tests.fixtures import EMPLOYEE_USER
+        from asoud_erp.integration_tests.request_fixtures import make_definition
+        from asoud_erp.integration_tests.request_helpers import valid_pdf_bytes
+
+        # A request type whose form has an Attachment field (`proof` in the default form).
+        definition, _stages = make_definition(self.company, approvals=0)
+        schema = {'kind': 'Request', 'title': 'فرم پیوست', 'workflow': definition,
+                  'sections': [{'id': 'main', 'title': 'اصلی', 'fields': [
+                      {'key': 'note', 'label': 'توضیح', 'type': 'LongText', 'workflow_key': 'reason'},
+                      {'key': 'doc', 'label': 'مدرک', 'type': 'File', 'workflow_key': 'proof'}]}]}
+        saved = forms.save_form(company=self.company, schema=schema, client_id='pa049-' + 'f' * 20)['data']
+        published = forms.transition(name=saved['name'], action='publish', expected_version=1)['data']
+
+        # A private File owned by the submitting user, as the form's upload path creates it.
+        frappe.set_user(EMPLOYEE_USER)
+        pdf = valid_pdf_bytes()
+        file = frappe.get_doc({'doctype': 'File', 'file_name': 'madrak.pdf', 'content': pdf,
+                               'is_private': 1}).insert(ignore_permissions=True)
+        entry = forms.submit_form(name=saved['name'], revision_name=published['active_revision'],
+                                  subject='ثبت پیوست', values={'note': 'شرح', 'doc': file.name},
+                                  request_key='pa049-' + 'k' * 16)['data']
+        frappe.set_user('Administrator')
+
+        request = frappe.get_doc('ASOUD Workflow Request', entry['reference_name'])
+        values = json.loads(frappe.db.get_value('ASOUD Workflow Request', request.name, 'values_json'))
+        # The form's file was transferred to the request as a private attachment.
+        self.assertTrue(values['proof'].startswith('/private/files/'))
+        attached = frappe.get_all('File', filters={'attached_to_doctype': 'ASOUD Workflow Request',
+                                                   'attached_to_name': request.name, 'is_private': 1},
+                                  fields=['name', 'file_name'])
+        self.assertEqual(len(attached), 1)
+        self.assertEqual(attached[0]['file_name'], 'madrak.pdf')
+        self.assertEqual(frappe.get_doc('File', attached[0]['name']).get_content(), pdf)
+        self.assertNotEqual(attached[0]['name'], file.name)
+
 
 
 class TestCalendarCompanyScope(APITestCase):

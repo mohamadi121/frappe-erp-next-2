@@ -99,7 +99,7 @@ class TestStageForms(APITestCase):
         self.assertEqual(titled['title'], 'کپی اختصاصی')
         self.assertNotEqual(titled['name'], copied['name'])
 
-    def test_copy_form_requires_active_revision_and_stage_kind(self):
+    def test_copy_form_requires_active_revision(self):
         # A draft (no active revision) cannot be copied.
         draft = forms.save_form(company=self.company, client_id='stg-draft-' + 'd' * 16,
                                 schema={'kind': 'Stage', 'title': 'پیش‌نویس مرحله',
@@ -108,14 +108,40 @@ class TestStageForms(APITestCase):
         with self.assertRaisesRegex(frappe.ValidationError, 'هنوز منتشر نشده است'):
             forms.copy_form(company=self.company, name=draft['name'])
 
-        # A published non-stage form cannot be copied.
+    def test_copy_form_works_for_request_and_document_kinds(self):
+        # A published Request form can be copied into a new Request form of the same kind.
         request = forms.save_form(company=self.company, client_id='stg-req-' + 'r' * 17,
-                                  schema={'kind': 'Request', 'title': 'درخواست غیرمرحله',
+                                  schema={'kind': 'Request', 'title': 'درخواست قابل کپی',
                                           'sections': [{'id': 'main', 'title': 'اصلی',
                                                         'fields': [{'key': 'amount', 'label': 'مبلغ', 'type': 'Money'}]}]})['data']
         forms.transition(name=request['name'], action='publish', expected_version=1)
-        with self.assertRaisesRegex(frappe.ValidationError, 'فقط فرم مرحله گردش کار قابل کپی است'):
-            forms.copy_form(company=self.company, name=request['name'])
+        copied = forms.copy_form(company=self.company, name=request['name'])['data']
+        self.assertNotEqual(copied['name'], request['name'])
+        self.assertEqual(copied['kind'], 'Request')
+        self.assertEqual(copied['company'], self.company)
+        self.assertEqual(copied['schema']['kind'], 'Request')
+        self.assertTrue(copied['active_revision'])
+        # The source is never changed by a copy: it keeps its own revision and gains none.
+        source_revisions = frappe.get_all('ASOUD Form Revision', filters={'form': request['name']}, pluck='name')
+        self.assertEqual(len(source_revisions), 1)
+        self.assertNotEqual(copied['active_revision'], request['active_revision'])
+
+        # A published Document form can be copied into a new Document form of the same kind.
+        document = forms.save_form(company=self.company, client_id='stg-doc-' + 'd' * 17,
+                                   schema={'kind': 'Document', 'title': 'سند قابل کپی', 'target': 'Journal Entry',
+                                           'sections': [{'id': 'main', 'title': 'اصلی',
+                                                         'fields': [{'key': 'posting_date', 'label': 'تاریخ ثبت',
+                                                                     'type': 'Date', 'native_key': 'posting_date'},
+                                                                    {'key': 'accounts', 'label': 'ردیف‌ها', 'type': 'Table',
+                                                                     'native_key': 'accounts', 'columns': [
+                                                                         {'key': 'debit', 'label': 'مبلغ',
+                                                                          'type': 'Money',
+                                                                          'native_key': 'debit_in_account_currency'}]}]}]})['data']
+        forms.transition(name=document['name'], action='publish', expected_version=1)
+        doc_copied = forms.copy_form(company=self.company, name=document['name'])['data']
+        self.assertEqual(doc_copied['kind'], 'Document')
+        self.assertEqual(doc_copied['schema']['kind'], 'Document')
+        self.assertTrue(doc_copied['active_revision'])
 
     def test_copy_form_is_designer_only_and_company_scoped(self):
 

@@ -108,10 +108,13 @@ fake offline metadata/success fallback for this editor.
    **Completed With Errors**, not successful delivery. SMTP failures/retries are owned by
    native Email Queue. An outgoing account is required. SMS/push, role-based
    recipients and department recipient expansion are not implemented here.
-6. **Calculate Value** supports sum, average and bounded arithmetic formulas
-   over mapped numeric operands. The AST allowlist has no calls, attributes,
-   indexing, power operator, imports or code execution. Nonfinite/oversized
-   results and division by zero fail. There is no implicit currency conversion.
+6. **Calculate Value** supports `sum`, `average`, `min`, `max`, `count` and
+   bounded arithmetic formulas over mapped numeric operands. `min`/`max` are
+   scalar over the mapped inputs; `average` and `count` reuse the form builder's
+   single-column table aggregation (the form engine has no scalar form of those
+   two). The AST allowlist has no calls, attributes, indexing, power operator,
+   imports or code execution. Nonfinite/oversized results and division by zero
+   fail. There is no implicit currency conversion.
 7. **Link Record** performs an exact equality lookup on an allowlisted field,
    restricted to the company. No match explicitly errors or skips; multiple
    matches always error, including matches hidden from the execution user.

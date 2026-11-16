@@ -377,12 +377,23 @@ def perform(receipt, instance, config, company):
 
             operands = _mapping(op['inputs'], context)
             # Reuse the form builder's Decimal evaluator, not a second float engine.
-            formula = ({'expression': op['formula']} if op['method'] == 'formula' else
-                {'op': 'add' if op['method'] == 'sum' else 'average', 'inputs': list(operands)})
+            method = op['method']
+            if method == 'formula':
+                formula, values = {'expression': op['formula']}, operands
+            elif method in {'min', 'max'}:
+                # The form engine has a scalar min/max over the mapped inputs.
+                formula, values = {'op': method, 'inputs': list(operands)}, operands
+            elif method in {'average', 'count'}:
+                # The form engine has no scalar average/count; route through its
+                # single-column table aggregation so the Decimal math stays in one place.
+                formula = {'op': method, 'table': 'rows', 'columns': ['value']}
+                values = {**operands, 'rows': [{'value': value} for value in operands.values()]}
+            else:  # sum
+                formula, values = {'op': 'add', 'inputs': list(operands)}, operands
             _update(
                 doc,
                 {
-                    op["field"]: calculate(formula, operands, raw_decimal=True)
+                    op["field"]: calculate(formula, values, raw_decimal=True)
                 },
                 company,
             )
