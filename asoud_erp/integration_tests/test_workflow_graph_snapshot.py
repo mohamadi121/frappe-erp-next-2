@@ -2,7 +2,7 @@
 
 When the designer edits a stage's config or deletes a stage/route after an
 instance has started, that instance must keep executing against the graph it
-frozen at start, not the live rows. These tests start a request (which auto-
+froze at start, not the live rows. These tests start a request (which auto-
 submits the form task and parks the instance at the Approval stage), then mutate
 the live design and prove the open task still resolves from the snapshot.
 """
