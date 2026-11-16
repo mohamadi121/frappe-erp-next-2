@@ -258,9 +258,12 @@ def _next_stage(instance, current_stage: str, action: str | None = None):
         for transition in transitions:
             condition = json.loads(transition.condition_json or "{}")
             route_action = str(condition.get("action") or transition.transition_label or "")
-            if source_type == 'Approval':
-                route_action = {'تأیید': 'Approve', 'رد': 'Reject',
-                    'بازگشت برای اصلاح': 'Return'}.get(route_action, route_action)
+            # A route may be labelled in Persian (e.g. «ادامه» for a User Task or
+            # System Action) while the runtime action is the English canonical name.
+            # Translate for every source type, not only Approval, or a multi-route
+            # human/system stage would never match and the workflow would stall.
+            route_action = {'تأیید': 'Approve', 'رد': 'Reject', 'بازگشت برای اصلاح': 'Return',
+                'ادامه': 'Complete'}.get(route_action, route_action)
             if route_action.casefold() == action.casefold():
                 selected = transition
                 break
