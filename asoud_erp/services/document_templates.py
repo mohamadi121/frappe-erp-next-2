@@ -29,14 +29,46 @@ MODULES: dict[str, dict[str, Any]] = {
         "description": "تأمین کالا و خدمات",
         "types": [
             {"key": "Material Request", "label": "درخواست خرید کالا", "enabled": True},
-            {"key": "Purchase Order", "label": "سفارش خرید", "enabled": False},
+            {"key": "Purchase Order", "label": "سفارش خرید", "enabled": True},
         ],
     },
-    "Selling": {"label": "فروش", "description": "مدیریت فروش و مشتریان", "types": []},
-    "Stock": {"label": "انبار", "description": "مدیریت موجودی کالا", "types": []},
-    "HR": {"label": "منابع انسانی", "description": "کارکنان و حقوق", "types": []},
-    "Admin": {"label": "خدمات اداری", "description": "خدمات رفاهی و اداری", "types": []},
-    "IT": {"label": "IT و تجهیزات", "description": "تجهیزات و زیرساخت", "types": []},
+    "Selling": {
+        "label": "فروش",
+        "description": "مدیریت فروش و مشتریان",
+        "types": [
+            {"key": "Sales Order", "label": "سفارش فروش", "enabled": True},
+        ],
+    },
+    "Stock": {
+        "label": "انبار",
+        "description": "مدیریت موجودی کالا",
+        "types": [
+            {"key": "Stock Entry", "label": "سند انبار", "enabled": True},
+        ],
+    },
+    "HR": {
+        "label": "منابع انسانی",
+        "description": "کارکنان و حقوق",
+        "types": [
+            {"key": "Salary Slip", "label": "حقوق و دستمزد", "enabled": False},
+            {"key": "Attendance", "label": "تردد", "enabled": False},
+            {"key": "Employee Advance", "label": "مساعدهٔ کارمند", "enabled": False},
+        ],
+    },
+    "Admin": {
+        "label": "خدمات اداری",
+        "description": "خدمات رفاهی و اداری",
+        "types": [
+            {"key": "Issue", "label": "تیکت پشتیبانی", "enabled": True},
+        ],
+    },
+    "IT": {
+        "label": "IT و تجهیزات",
+        "description": "تجهیزات و زیرساخت",
+        "types": [
+            {"key": "Asset Movement", "label": "جابه‌جایی دارایی", "enabled": False},
+        ],
+    },
 }
 
 # Target fields per document type. `type` is also the value type the source must
@@ -58,9 +90,29 @@ TARGET_FIELDS: dict[str, list[dict[str, Any]]] = {
         {"key": "items", "label": "اقلام", "type": "Item Table", "required": True},
         {"key": "set_warehouse", "label": "انبار مقصد", "type": "Warehouse", "required": False},
     ],
+    "Sales Order": [
+        {"key": "customer", "label": "مشتری", "type": "Customer", "required": True},
+        {"key": "transaction_date", "label": "تاریخ سفارش", "type": "Date", "required": True},
+        {"key": "items", "label": "اقلام", "type": "Item Table", "required": True},
+    ],
+    "Purchase Order": [
+        {"key": "supplier", "label": "تأمین‌کننده", "type": "Supplier", "required": True},
+        {"key": "transaction_date", "label": "تاریخ سفارش", "type": "Date", "required": True},
+        {"key": "items", "label": "اقلام", "type": "Item Table", "required": True},
+    ],
+    "Stock Entry": [
+        {"key": "purpose", "label": "نوع عملیات", "type": "Select", "required": True,
+         "options": ["Material Receipt", "Material Issue", "Material Transfer"]},
+        {"key": "posting_date", "label": "تاریخ سند", "type": "Date", "required": True},
+        {"key": "items", "label": "اقلام", "type": "Item Table", "required": True},
+        {"key": "warehouse", "label": "انبار", "type": "Warehouse", "required": False},
+    ],
+    "Issue": [
+        {"key": "subject", "label": "موضوع", "type": "Text", "required": True},
+    ],
 }
 
-LINK_TARGETS = {"Account", "Cost Center", "Project", "Warehouse"}
+LINK_TARGETS = {"Account", "Cost Center", "Project", "Warehouse", "Customer", "Supplier"}
 
 # Request values every workflow request has, besides its custom form fields.
 REQUEST_BASE_FIELDS = {
@@ -287,7 +339,80 @@ def build_document(document_type_key: str, values: dict[str, Any], company: str)
                 for row in rows
             ],
         }
+    if document_type_key == "Sales Order":
+        return {
+            "doctype": "Sales Order",
+            "company": company,
+            "customer": values["customer"],
+            "transaction_date": str(values["transaction_date"]),
+            "items": [_order_item(row) for row in _require_items(values["items"])],
+        }
+    if document_type_key == "Purchase Order":
+        return {
+            "doctype": "Purchase Order",
+            "company": company,
+            "supplier": values["supplier"],
+            "transaction_date": str(values["transaction_date"]),
+            "items": [_order_item(row) for row in _require_items(values["items"])],
+        }
+    if document_type_key == "Stock Entry":
+        purpose = str(values["purpose"])
+        if purpose not in STOCK_ENTRY_PURPOSES:
+            raise ValueError("Invalid stock entry purpose")
+        rows = _require_items(values["items"])
+        warehouse = values.get("warehouse") or None
+        return {
+            "doctype": "Stock Entry",
+            "company": company,
+            "stock_entry_type": purpose,
+            "purpose": purpose,
+            "posting_date": str(values["posting_date"]),
+            "items": [_stock_entry_item(row, purpose, warehouse) for row in rows],
+        }
+    if document_type_key == "Issue":
+        return {
+            "doctype": "Issue",
+            "company": company,
+            "subject": str(values["subject"])[:140],
+        }
     raise ValueError("Unsupported document type")
+
+
+STOCK_ENTRY_PURPOSES = ("Material Receipt", "Material Issue", "Material Transfer")
+
+
+def _require_items(rows: Any) -> list[dict]:
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("Value for اقلام is missing")
+    return rows
+
+
+def _order_item(row: dict) -> dict:
+    return {
+        "item_code": row["item_code"],
+        "qty": row["qty"],
+        "uom": row.get("uom") or row.get("stock_uom"),
+        **{key: row[key] for key in ("stock_uom", "conversion_factor", "rate") if row.get(key)},
+        "description": row.get("description") or None,
+    }
+
+
+def _stock_entry_item(row: dict, purpose: str, warehouse: str | None) -> dict:
+    item = {
+        "item_code": row["item_code"],
+        "qty": row["qty"],
+        "uom": row.get("uom") or row.get("stock_uom"),
+        **{key: row[key] for key in ("stock_uom", "conversion_factor") if row.get(key)},
+        "description": row.get("description") or None,
+    }
+    if purpose == "Material Receipt":
+        item["t_warehouse"] = warehouse
+    elif purpose == "Material Issue":
+        item["s_warehouse"] = warehouse
+    else:
+        item["s_warehouse"] = warehouse
+        item["t_warehouse"] = warehouse
+    return item
 
 
 # Ready-made starting points shown in the «الگوهای آماده» tab. Accounts are

@@ -1,8 +1,10 @@
 import pytest
 
 from asoud_erp.services.document_templates import (
+    MODULES,
     PRESETS,
     build_document,
+    document_type,
     normalize_template,
     render_placeholders,
     resolve_values,
@@ -131,3 +133,75 @@ def test_presets_are_valid_once_their_accounts_are_chosen():
         else:
             mapping["items"] = {"source": "request", "value": "items"}
         normalize_template({**preset, "mapping": mapping}, None)
+
+
+# --- PA-069: the previously-empty modules now carry standard documents ----------
+
+def test_every_module_has_at_least_one_document_type():
+    for key, module in MODULES.items():
+        assert module["types"], f"module {key} has no document types"
+
+
+def test_new_standard_documents_are_registered_in_their_module():
+    assert document_type("Sales Order")["module"] == "Selling"
+    assert document_type("Purchase Order")["module"] == "Purchase"
+    assert document_type("Stock Entry")["module"] == "Stock"
+    assert document_type("Issue")["module"] == "Admin"
+
+
+def test_unverifiable_documents_are_coming_soon():
+    for key in ("Salary Slip", "Attendance", "Employee Advance", "Asset Movement"):
+        assert document_type(key)["enabled"] is False
+
+
+def test_sales_order_template_is_normalized():
+    result = normalize_template(
+        {"title": "سفارش فروش", "module": "Selling", "document_type": "Sales Order",
+         "mapping": {"customer": {"source": "fixed", "value": "Cust - T"},
+                     "transaction_date": {"source": "system", "value": "today"},
+                     "items": {"source": "request", "value": "items"}}},
+        {"items": "Item Table"},
+    )
+    assert result["document_type"] == "Sales Order"
+
+
+def test_sales_order_builds_a_native_document_dict():
+    doc = build_document("Sales Order",
+        {"customer": "Cust - T", "transaction_date": "2026-09-25",
+         "items": [{"item_code": "LAP", "qty": 2, "uom": "Nos"}]}, "Taban")
+    assert doc["doctype"] == "Sales Order" and doc["customer"] == "Cust - T"
+    assert doc["items"][0]["item_code"] == "LAP" and doc["items"][0]["qty"] == 2
+
+
+def test_purchase_order_builds_a_native_document_dict():
+    doc = build_document("Purchase Order",
+        {"supplier": "Supp - T", "transaction_date": "2026-09-25",
+         "items": [{"item_code": "LAP", "qty": 1, "uom": "Nos"}]}, "Taban")
+    assert doc["doctype"] == "Purchase Order" and doc["supplier"] == "Supp - T"
+
+
+def test_stock_entry_builds_items_with_purpose_warehouses():
+    doc = build_document("Stock Entry",
+        {"purpose": "Material Receipt", "posting_date": "2026-09-25", "warehouse": "Stores - T",
+         "items": [{"item_code": "LAP", "qty": 3, "uom": "Nos"}]}, "Taban")
+    assert doc["stock_entry_type"] == "Material Receipt"
+    assert doc["items"][0]["t_warehouse"] == "Stores - T"
+    assert "s_warehouse" not in doc["items"][0]
+
+
+def test_stock_entry_rejects_an_unknown_purpose():
+    with pytest.raises(ValueError, match="purpose"):
+        build_document("Stock Entry",
+            {"purpose": "Bogus", "posting_date": "2026-09-25",
+             "items": [{"item_code": "LAP", "qty": 1, "uom": "Nos"}]}, "Taban")
+
+
+def test_issue_builds_a_native_document_dict():
+    doc = build_document("Issue", {"subject": "خرابی سیستم"}, "Taban")
+    assert doc["doctype"] == "Issue" and doc["subject"] == "خرابی سیستم"
+
+
+def test_coming_soon_document_is_rejected_on_save():
+    with pytest.raises(ValueError, match="not available"):
+        normalize_template({"title": "حقوق", "module": "HR", "document_type": "Salary Slip",
+                            "mapping": {}}, None)
