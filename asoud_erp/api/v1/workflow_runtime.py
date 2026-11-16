@@ -1683,21 +1683,58 @@ def complete_workflow_task(
     return success({"task": doc.name, "instance_status": instance.status})
 
 
+def next_keyset_cursor(names, page_size: int):
+    """Return the keyset cursor for the next page of due tasks, or None to stop.
+
+    `names` is one page of task names ordered by name. A full page means more
+    rows may exist, so the cursor is the last name read; a short page (or an
+    empty one) ends the run. The cursor advances by name, so a task whose
+    status changes while it is processed is neither re-read nor skipped.
+    """
+    names = list(names)
+    if len(names) < page_size:
+        return None
+    return names[-1]
+
+
+def _deadline_task_names(filters):
+    """Yield due task names in bounded keyset pages, ordered by name.
+
+    One scheduler run must never load every open task into memory. Each page
+    reads at most ``DEADLINE_BATCH`` names; the keyset cursor (last name read)
+    advances forward, so the set of tasks processed is identical to an
+    unbounded read while no single query pulls more than one page.
+    """
+    from asoud_erp.services.workflow_history_limits import DEADLINE_BATCH
+
+    cursor = None
+    while True:
+        page_filters = dict(filters)
+        if cursor is not None:
+            page_filters["name"] = [">", cursor]
+        page = frappe.get_all(
+            "ASOUD Workflow Task",
+            filters=page_filters,
+            pluck="name",
+            order_by="name asc",
+            limit_page_length=DEADLINE_BATCH,
+        )
+        for name in page:
+            yield name
+        cursor = next_keyset_cursor(page, DEADLINE_BATCH)
+        if cursor is None:
+            return
+
+
 def process_workflow_deadlines() -> None:
     """Send one reminder/escalation per open task; invoked by the hourly scheduler."""
     current = now_datetime()
-    reminders = frappe.get_all(
-        "ASOUD Workflow Task",
-        filters={
-            "status": "Open",
-            "reminder_on": ["<=", current],
-            "due_on": [">", current],
-            "reminder_sent_on": ["is", "not set"],
-        },
-        pluck="name",
-        limit_page_length=0,
-    )
-    for name in reminders:
+    for name in _deadline_task_names({
+        "status": "Open",
+        "reminder_on": ["<=", current],
+        "due_on": [">", current],
+        "reminder_sent_on": ["is", "not set"],
+    }):
         frappe.db.savepoint("asoud_deadline_reminder")
         try:
             task = frappe.get_doc("ASOUD Workflow Task", name)
@@ -1718,17 +1755,11 @@ def process_workflow_deadlines() -> None:
             frappe.db.rollback(save_point="asoud_deadline_reminder")
             frappe.log_error(title=f"Workflow deadline reminder failed for task {name}")
 
-    overdue = frappe.get_all(
-        "ASOUD Workflow Task",
-        filters={
-            "status": "Open",
-            "due_on": ["<=", current],
-            "escalated_on": ["is", "not set"],
-        },
-        pluck="name",
-        limit_page_length=0,
-    )
-    for name in overdue:
+    for name in _deadline_task_names({
+        "status": "Open",
+        "due_on": ["<=", current],
+        "escalated_on": ["is", "not set"],
+    }):
         frappe.db.savepoint("asoud_deadline_overdue")
         try:
             task = frappe.get_doc("ASOUD Workflow Task", name)
