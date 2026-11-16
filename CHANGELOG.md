@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Workflow status guard: `set_workflow_status` now refuses to set a definition to `Inactive` or `Archived` while it has a `Running` instance (Persian ValidationError), so a workflow cannot be switched off mid-execution. Historical (non-running) rows never block the change. No new DocType, migration, or permission change.
+
 - Workflow canvas scope: `update_stage_positions` now enforces company scope (`require_company`) and native definition write permission before persisting coordinates, so a manager of another company can no longer move the canvas of a foreign definition. No new DocType, migration, or permission change.
 
 - Workflow designer guard: `add_workflow_stage` and `connect_workflow_stages` now call the central `assert_editable` guard, so a stage cannot be added and a route cannot be drawn while the definition is Active or has a Running instance, for every stage type (previously only Condition sources were guarded). No new DocType, migration, or permission change.

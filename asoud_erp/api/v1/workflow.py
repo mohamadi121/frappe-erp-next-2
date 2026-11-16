@@ -1158,6 +1158,9 @@ def set_workflow_status(name: str, status: str) -> dict:
     doc = frappe.get_doc("ASOUD Workflow Definition", name, for_update=True)
     require_company(doc.company)
     doc.check_permission('write')
+    if status in ("Inactive", "Archived") and frappe.db.exists(
+            "ASOUD Workflow Instance", {"workflow_definition": name, "status": "Running"}):
+        frappe.throw('این گردش‌کار اجراهای در جریان دارد؛ ابتدا اجراهای جاری را به پایان برسانید و سپس آن را غیرفعال کنید.')
     doc.status = status
     doc.archived_on = now_datetime() if status == "Archived" else None
     doc.save()
