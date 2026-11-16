@@ -13,9 +13,12 @@ No fixed start reason is stored by the designer: the initiator supplies it at ru
 
 Only existing workflow managers with company scope and native write permission
 may save. Existing start identity, positions and unrelated config are preserved.
-Running instances block changes. Identical settings are a no-op, so metadata-only
-saves remain possible during execution. Source metadata moves explicitly from
-legacy User Task configs to Start; form contents/task settings and history are preserved.
+Running instances block structural changes (trigger type, bound form, routing
+mode) until they finish; identical settings are a no-op and metadata-only
+changes (initiator roles, manager-restart flag) remain possible during execution,
+updating only those keys without rebinding the source. Source metadata moves
+explicitly from legacy User Task configs to Start; form contents/task settings
+and history are preserved.
 Existing source binding validation/locks are reused; saving the binding itself
 creates no form or instance. The existing picker may materialize a built-in form
 definition/revision through `open_builtin`, never a business entry or execution.

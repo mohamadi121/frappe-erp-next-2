@@ -115,6 +115,17 @@ class TestFormExecutionRuntime(APITestCase):
             dispatch(frappe.get_doc('ASOUD Workflow Request', request['name']))
             self.assertEqual(frappe.db.get_value('ASOUD Workflow Request', request['name'], 'native_name'), name)
 
+    def test_first_submission_does_not_dispatch_native_document(self):
+        # PA-027: native issuance belongs to the instance-completion hook, not the
+        # first submission. At submit time the instance is still Running, so the
+        # dispatch must not be invoked (it would only run useless queries/logs).
+        with patch.dict(EXECUTORS, {'test_only': NativeExecutor()}, clear=True), \
+                patch('asoud_erp.services.request_templates.lifecycle.dispatch_native_document') as dispatch:
+            request = self.submit()
+            self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance',
+                request['workflow_instance'], 'status'), 'Running')
+            dispatch.assert_not_called()
+
     def test_failure_rolls_back_only_native_write_and_retry_creates_document(self):
         executor = NativeExecutor()
         executor.fail = True

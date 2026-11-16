@@ -35,7 +35,7 @@ Client and backend deploy together; no database migration. Test execution is
 explicitly excluded by the user's standing instruction, not reported as passed.
 
 Existing User Task stage identities and legacy configs stay valid. New edits opt
-into `action_contract_version: 1`; the Persian name is اقدام کاربر. Existing
+into `action_contract_version: 1`; the default stage title is بررسی یا ویرایش سند. Existing
 `save_stage_settings` manager/write/company checks remain authoritative.
 
 Config: `result_mode` (Simple/Form), `result_form` ({form, revision}, published
@@ -112,4 +112,4 @@ history or native workflow link is copied. Original and other-company records
 remain untouched. Pending v1 action copies validate the config's structure;
 published-form/subject bindings must be explicitly reviewed before activation.
 
-Candidate resolution queries (Role and Unit bases) filter candidates by enabled system users and company/department scope directly in the database query before enforcing the 200 cap, ensuring large global role counts do not block task completion. Overdue escalation (`escalate`) notifies all configured escalation roles (avoiding duplicate notifications) and sorts escalation candidates deterministically. Background deadline processing (`process_workflow_deadlines`) isolates each task in a database savepoint with error logging (`frappe.log_error`), preventing a failure in one task from interrupting execution of others.
+Candidate resolution queries (Role and Unit bases) filter candidates by enabled system users and company/department scope directly in the database query. The assignee cap (default 1000, site config `asoud_workflow_max_assignees`) applies to the final company/form/reference-authorised list, so a common role with more than 200 holders no longer blocks activation; above the cap activation fails with «تعداد مسئولان مجاز این اقدام بیش از حد مجاز است؛ نقش یا واحد را محدودتر کنید.» Overdue escalation (`escalate`) notifies all configured escalation roles (avoiding duplicate notifications) and sorts escalation candidates deterministically. Background deadline processing (`process_workflow_deadlines`) isolates each task in a database savepoint with error logging (`frappe.log_error`), preventing a failure in one task from interrupting execution of others. It walks due tasks in bounded keyset pages (500 per page, ordered by name) rather than one unbounded read, so a single run never loads the whole task table into memory while processing the same set of tasks.

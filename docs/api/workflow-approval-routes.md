@@ -40,3 +40,12 @@ existing runtime resolves the stored transition, or the documented empty-target
 fallback. Returning reactivates a node within the same instance/request; no new
 request is created by destination selection. Existing correction/version history
 and permissions are unchanged. No schema migration is required.
+
+## Approval assignees and the initiator
+
+Nobody approves their own request. When an Approval stage resolves to the initiator
+only, the stage's `escalation_roles` users (without the initiator) receive the task.
+When no independent approver exists, entering the stage fails with the Persian error
+«برای این مرحلهٔ تأیید، تأییدکننده‌ای غیر از درخواست‌دهنده پیدا نشد؛ تأییدکننده یا نقش تصاعد مستقل تعریف کنید.»
+and the whole transition (start or completion of the previous task) is rolled back;
+no Open task is created.

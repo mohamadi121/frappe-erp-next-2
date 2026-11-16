@@ -10,6 +10,7 @@ from asoud_erp.integration_tests.fixtures import APPROVER_USER, EMPLOYEE_USER, A
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.tenancy import EMPLOYEE_B_USER, setup_tenancy
 from asoud_erp.services import workflow_user_action
+from asoud_erp.services.workflow_history_limits import DEADLINE_BATCH
 
 
 class TestWorkflowUserActions(APITestCase):
@@ -304,6 +305,68 @@ class TestWorkflowUserActions(APITestCase):
         self.assertIsNone(frappe.db.get_value('ASOUD Workflow Task', failed, 'escalated_on'))
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Task', failed, 'draft_json'), before[failed])
         self.assertIsNotNone(frappe.db.get_value('ASOUD Workflow Task', succeeded, 'escalated_on'))
+
+    def test_process_workflow_deadlines_pages_due_tasks_in_bounded_keyset(self):
+        # A real instance so the reminder path (instance lookup + notification)
+        # succeeds. The real task from `start` has no deadline configured
+        # (due_on/reminder_on are None), so it never matches the deadline filters.
+        definition, stage = self.make_action()
+        instance, _ = self.start(definition)
+        # A table of due tasks larger than one page, so the job must walk several
+        # keyset pages.
+        total = DEADLINE_BATCH + 7
+        names = [f'WFT-DEADLINE-{i:05d}' for i in range(total)]
+        for name in names:
+            frappe.get_doc({
+                'doctype': 'ASOUD Workflow Task',
+                'workflow_instance': instance, 'workflow_stage': stage,
+                'task_title': 'تسک آزمایشی', 'assigned_to': EMPLOYEE_USER,
+                'status': 'Open', 'due_on': add_to_date(now_datetime(), hours=1),
+                'reminder_on': add_to_date(now_datetime(), hours=-1),
+            }).insert(ignore_permissions=True, set_name=name)
+        try:
+            pages = []
+            original_get_all = workflow_runtime.frappe.get_all
+
+            def bounded_get_all(doctype, filters=None, pluck=None, order_by=None,
+                                limit_page_length=20, **kwargs):
+                if doctype == 'ASOUD Workflow Task':
+                    # The regression: the job must read at most one page per query,
+                    # never the whole table (limit_page_length=0).
+                    self.assertEqual(limit_page_length, DEADLINE_BATCH)
+                    self.assertEqual(order_by, 'name asc')
+                    # Only the reminder loop (due_on > now) has due tasks; the
+                    # overdue loop (due_on <= now) reads none, so it pages nothing.
+                    if (filters or {}).get('due_on', [None, None])[0] != '>':
+                        return []
+                    cursor = (filters or {}).get('name')
+                    start = 0
+                    if cursor:
+                        self.assertEqual(cursor[0], '>')
+                        start = names.index(cursor[1]) + 1
+                    page = names[start:start + limit_page_length]
+                    pages.append(page)
+                    return page
+                return original_get_all(doctype, filters=filters, pluck=pluck,
+                                        order_by=order_by, limit_page_length=limit_page_length, **kwargs)
+
+            frappe.set_user('Administrator')
+            try:
+                workflow_runtime.frappe.get_all = bounded_get_all
+                workflow_runtime.process_workflow_deadlines()
+            finally:
+                workflow_runtime.frappe.get_all = original_get_all
+            # Two queries: one full page, then the short tail.
+            self.assertEqual(len(pages), 2)
+            self.assertEqual(len(pages[0]), DEADLINE_BATCH)
+            self.assertEqual(len(pages[1]), 7)
+            # Every due task was visited exactly once and its reminder was sent.
+            for name in names:
+                self.assertIsNotNone(frappe.db.get_value('ASOUD Workflow Task', name, 'reminder_sent_on'))
+        finally:
+            for name in names:
+                frappe.db.set_value('ASOUD Workflow Task', name, 'reminder_sent_on', None)
+            frappe.db.sql('delete from `tabASOUD Workflow Task` where name like %s', ('WFT-DEADLINE-%',))
 
     def test_accounts_user_without_employee_record_is_returned(self):
         acct_user = _user(f'acct_{uuid4().hex[:6]}@example.com', ['Accounts User'])

@@ -62,9 +62,9 @@ def _definition(name):
     definition = frappe.get_doc("ASOUD Workflow Definition", name)
     if (definition.status != "Active" or definition.readiness_status != "Ready"
             or definition.target_doctype != REQUEST_DOCTYPE):
-        frappe.throw(_("The selected workflow is not ready"))
+        frappe.throw(_("گردش‌کار انتخاب‌شده هنوز آمادهٔ استفاده نیست."))
     if not definition.allow_user_submission:
-        frappe.throw(_("Users cannot submit this request type"), frappe.PermissionError)
+        frappe.throw(_("کاربران نمی‌توانند این نوع درخواست را ثبت کنند."), frappe.PermissionError)
     return definition
 
 
@@ -93,7 +93,7 @@ def form_stage_name(definition_name):
 def _form_stage(definition):
     stage = _form_stage_or_none(definition.name)
     if not stage:
-        frappe.throw("Generic requests require a user-task form immediately after Start")
+        frappe.throw(_("درخواست‌های عمومی به یک فرم وظیفهٔ کاربر بلافاصله پس از شروع نیاز دارند."))
     return stage
 
 
@@ -277,7 +277,7 @@ def _header(spec, values: dict, subject: str, priority, required_by, project, de
 
 def _check_subject(subject: str) -> None:
     if not 3 <= len(subject) <= 140:
-        frappe.throw(_("Request subject must contain at least 3 characters"))
+        frappe.throw(_("عنوان درخواست باید بین ۳ تا ۱۴۰ نویسه باشد."))
 
 
 def _store_new_files(doc, uploads, existing_entries, removed_names):
@@ -482,7 +482,7 @@ def _readable_request(name):
     if readable is None:
         readable = doc.has_permission('read')
     if not readable:
-        frappe.throw(_("Not permitted to view this request"), frappe.PermissionError)
+        frappe.throw(_("مشاهدهٔ این درخواست برای شما مجاز نیست."), frappe.PermissionError)
     return doc
 
 
@@ -585,9 +585,9 @@ def create_request(company: str, workflow_definition: str | None = None, subject
     # `request_id` follows `subject` to keep the original positional order of this endpoint.
     require_company(company)
     if not isinstance(request_id, str) or not 8 <= len(request_id) <= 100:
-        frappe.throw("Invalid request ID")
-    raw_values = _parse_json(values, "Invalid request values")
-    raw_attachments = _parse_json(attachments, "Invalid request attachment", "ATTACHMENT_INVALID")
+        frappe.throw(_("شناسهٔ درخواست نامعتبر است."))
+    raw_values = _parse_json(values, "مقادیر درخواست نامعتبر است.")
+    raw_attachments = _parse_json(attachments, "پیوست درخواست نامعتبر است.", "ATTACHMENT_INVALID")
     payload = dict(company=company, workflow=workflow_definition, subject=subject, values=raw_values,
                    attachments=raw_attachments, priority=priority, required_by=required_by,
                    project=project, department=department)
@@ -608,23 +608,23 @@ def create_request(company: str, workflow_definition: str | None = None, subject
         if not workflow_definition:
             templates.throw_error("TEMPLATE_NOT_AVAILABLE")
     elif not workflow_definition:
-        frappe.throw(_("A request type is required"))
+        frappe.throw(_("یک نوع درخواست لازم است."))
     definition = _definition(workflow_definition)
     if not _may_submit(definition.name, frappe.get_roles()):
-        frappe.throw(_("You are not allowed to submit this request type"), frappe.PermissionError)
+        frappe.throw(_("ثبت این نوع درخواست برای شما مجاز نیست."), frappe.PermissionError)
     if definition.company and definition.company != company:
-        frappe.throw(_("Workflow company does not match request company"))
+        frappe.throw(_("شرکت گردش‌کار با شرکت درخواست هم‌خوانی ندارد."))
     spec = _spec_for(definition)
     employee = _employee_of(company, frappe.session.user)
     if spec and not (employee and spec.available_for(company, frappe.session.user)):
         templates.throw_error("EMPLOYEE_NOT_FOUND")
     if not spec:
         if priority not in HEADER_PRIORITIES:
-            frappe.throw(_("Invalid request priority"))
+            frappe.throw(_("اولویت درخواست نامعتبر است."))
         if required_by and getdate(required_by) < getdate(nowdate()):
-            frappe.throw(_("Required-by date cannot be in the past"))
+            frappe.throw(_("تاریخ مهلت نمی‌تواند در گذشته باشد."))
     if not isinstance(raw_values, dict):
-        frappe.throw(_("Invalid request values"))
+        frappe.throw(_("مقادیر درخواست نامعتبر است."))
     fields = _fields(definition)
     limits = files.limits_from(spec.attachments if spec else None)
     try:
@@ -651,7 +651,7 @@ def create_request(company: str, workflow_definition: str | None = None, subject
         for doctype, value in (("Project", header["project"]), ("Department", header["department"])):
             if value and (not frappe.has_permission(doctype, "read", value)
                           or frappe.db.get_value(doctype, value, "company") != company):
-                frappe.throw("Invalid or inaccessible request context", frappe.PermissionError)
+                frappe.throw(_("زمینهٔ درخواست نامعتبر یا در دسترس نیست."), frappe.PermissionError)
     _check_subject(header["subject"])
     # Anyone who may submit creates their own request; access is decided by roles and company above.
     doc = frappe.get_doc({
@@ -693,14 +693,14 @@ def create_request(company: str, workflow_definition: str | None = None, subject
 def _own_running_request(name, not_editable_code: bool = False):
     doc = frappe.get_doc(REQUEST_DOCTYPE, name, for_update=True)
     if doc.owner != frappe.session.user:
-        frappe.throw(_("Only the requester can change this request"), frappe.PermissionError)
+        frappe.throw(_("فقط درخواست‌کننده می‌تواند این درخواست را تغییر دهد."), frappe.PermissionError)
     require_company(doc.company)
     instance = (frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
                 if doc.workflow_instance else None)
     if not instance or instance.status != "Running":
         if not_editable_code:
             templates.throw_error("REQUEST_NOT_EDITABLE")
-        frappe.throw(_("Only a request in progress can be changed"))
+        frappe.throw(_("فقط درخواستی که در جریان است قابل تغییر است."))
     return doc, instance
 
 
@@ -730,6 +730,10 @@ def cancel_request(name: str, reason: str = ""):
         instance = waiting
     frappe.db.set_value("ASOUD Workflow Task", {"workflow_instance": instance.name, "status": "Open"},
                         "status", "Cancelled", update_modified=False)
+    # A withdrawn request must not still fire a queued automatic action in the background.
+    from asoud_erp.services.automatic_action_runtime import cancel as cancel_queued_actions
+
+    cancel_queued_actions(instance)
     instance.status = "Cancelled"
     instance.completed_on = now_datetime()
     instance.save(ignore_permissions=True)
@@ -772,14 +776,14 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
     elif _has_acted(instance.name, form_stage.name):
         templates.throw_error("REQUEST_NOT_EDITABLE")
     spec = _spec_for(definition)
-    raw = _parse_json(values, "Invalid request values")
+    raw = _parse_json(values, "مقادیر درخواست نامعتبر است.")
     if not isinstance(raw, dict):
-        frappe.throw(_("Invalid request values"))
+        frappe.throw(_("مقادیر درخواست نامعتبر است."))
     fields = json.loads(form_stage.config_json or "{}").get("form_fields", [])
     previous = effective_values(doc.name)
     stored = json.loads(doc.attachments_json or "[]")
     by_name = {item["name"]: item for item in stored}
-    remove = set(str(item) for item in _json_list(remove_attachments, "Invalid attachment list", "ATTACHMENT_INVALID"))
+    remove = set(str(item) for item in _json_list(remove_attachments, "فهرست پیوست‌ها نامعتبر است.", "ATTACHMENT_INVALID"))
     for file_name in remove - set(by_name):
         # Already removed by an earlier attempt is fine; any other File is not this request's.
         if frappe.db.exists("File", file_name):
@@ -789,7 +793,7 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
     limits = files.limits_from(spec.attachments if spec else None)
     try:
         uploads = files.parse_uploads(
-            _json_list(attachments, "Invalid request attachment", "ATTACHMENT_INVALID"), **{**limits, "max_files": 10 ** 6},
+            _json_list(attachments, "پیوست درخواست نامعتبر است.", "ATTACHMENT_INVALID"), **{**limits, "max_files": 10 ** 6},
             existing_bytes=sum(int(item.get("size") or 0) for item in kept))
         total_after = len(kept) + len(uploads)
         if total_after > limits["max_files"]:
@@ -915,14 +919,14 @@ def list_my_requests(company: str | None = None, template_key: str | None = None
     """
     require_company(company)
     if status_group not in ("all", *GROUP_NAMES):
-        frappe.throw(_("Invalid status group"))
+        frappe.throw(_("گروه وضعیت نامعتبر است."))
     if priority and priority not in PRIORITY_LABELS:
-        frappe.throw(_("Invalid request priority"))
+        frappe.throw(_("اولویت درخواست نامعتبر است."))
     try:
         start = max(0, int(limit_start))
         length = max(1, min(int(limit_page_length), LIST_MAX_PAGE_LENGTH))
     except (TypeError, ValueError):
-        frappe.throw(_("Invalid page"))
+        frappe.throw(_("شمارهٔ صفحه نامعتبر است."))
     filters = [["owner", "=", frappe.session.user]]
     if company:
         filters.append(["company", "=", company])
@@ -987,7 +991,7 @@ def list_request_comments(name: str, limit_start: int = 0, limit_page_length: in
         start = max(0, int(limit_start))
         length = max(1, min(int(limit_page_length), LIST_MAX_PAGE_LENGTH))
     except (TypeError, ValueError):
-        frappe.throw(_("Invalid page"))
+        frappe.throw(_("شمارهٔ صفحه نامعتبر است."))
     comments, total = request_comments.list_comments(doc, start, length)
     return success(comments, meta={"total": total, "limit_start": start, "limit_page_length": length})
 
@@ -1005,17 +1009,17 @@ def add_request_comment(name: str, content: str = ""):
 def get_attachment(name, thumbnail: int | str = 0):
     file = frappe.get_doc("File", name)
     if file.attached_to_doctype != REQUEST_DOCTYPE or not file.is_private:
-        frappe.throw("Invalid request attachment", frappe.PermissionError)
+        frappe.throw("پیوست درخواست نامعتبر است.", frappe.PermissionError)
     request = _readable_request(file.attached_to_name)
     if file.attached_to_field == certificate_access.FIELD and not certificate_permission(request):
         frappe.throw(_(certificate_access.DENIED), frappe.PermissionError)
     if not str(file.file_url).startswith("/private/files/"):
-        frappe.throw("Remote attachments are unsupported")
+        frappe.throw(_("پیوست‌های از راه دور پشتیبانی نمی‌شوند."))
     content = file.get_content()
     if isinstance(content, str):
         content = content.encode()
     if len(content) > MAX_ATTACHMENT_BYTES:
-        frappe.throw("File exceeds download limit")
+        frappe.throw(_("فایل از حد مجاز دانلود بزرگ‌تر است."))
     if str(thumbnail).lower() in {"1", "true"}:
         content = files.thumbnail(content, file.file_name or "")
     return success({"filename": file.file_name, "content_type": files.content_type(file.file_name or ""),

@@ -141,9 +141,9 @@ def save(definition: str, stage: str, config: str | dict, routes: str | dict):
             target.workflow_definition != definition
             or target.name == stage
             or target.stage_type == "Start"
-            or (outcome == "Error" and target.stage_type != "User Task")
+            or (outcome == "Error" and target.stage_type not in {"User Task", "End"})
         ):
-            frappe.throw("Invalid route: errors may only route to a human task")
+            frappe.throw("مسیر خطا فقط به یک وظیفهٔ انسانی یا مرحلهٔ پایان می‌تواند برسد.")
     try:
         validate_config(definition, stage, raw)
     except ValueError as error:

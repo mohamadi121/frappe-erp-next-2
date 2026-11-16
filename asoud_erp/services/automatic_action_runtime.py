@@ -126,6 +126,10 @@ def _update(doc, values, company):
         normalized = normalize_form_response(fields, merged)
         validate_link_values(fields, normalized, company)
         doc.values_json = _json(normalized)
+    elif doc.doctype == "ASOUD Form Entry":
+        # A submitted form entry is immutable by design (form_schema.guard_storage);
+        # refuse clearly instead of silently dropping the mapped fields.
+        frappe.throw("ثبت فرم پس از ارسال تغییرناپذیر است؛ «به‌روزرسانی فیلدها» را روی درخواست یا سند مرتبط تعریف کنید.")
     else:
         doc.update(values)
     doc.save()
@@ -449,8 +453,10 @@ def _finish(receipt, instance, success):
     target = routes.get("Success" if success else "Error")
     if target:
         stage = frappe.get_doc("ASOUD Workflow Stage", target)
+        # An error may route to a human task for correction or to an End stage to
+        # terminate the process as failed; it must not silently continue elsewhere.
         if stage.workflow_definition != instance.workflow_definition or (
-            not success and stage.stage_type != "User Task"
+            not success and stage.stage_type not in {"User Task", "End"}
         ):
             raise ValueError("Invalid automatic action route")
         _activate_stage(instance, stage, automatic_trigger=receipt.trigger_id)
@@ -474,10 +480,17 @@ def _final_failure(receipt, instance):
     if instance.status == "Failed":
         from asoud_erp.api.v1.workflow_runtime import _notify_user, _users_for_roles
 
-        for user in _users_for_roles(["System Manager"]):
+        # The requester must learn their request stopped, not only System Managers.
+        recipients = [instance.started_by] + _users_for_roles(["System Manager"])
+        for user in dict.fromkeys(recipients):
             frappe.db.savepoint("automatic_failure_notice")
             try:
-                _notify_user(user, "Automatic action failed", instance, message=f"Execution: {receipt.name}")
+                _notify_user(
+                    user,
+                    "اقدام خودکار درخواست شما با خطا مواجه شد",
+                    instance,
+                    message="اقدام خودکار این درخواست با خطا مواجه شد و فرایند متوقف شد؛ برای پیگیری با مدیر سامانه تماس بگیرید.",
+                )
             except Exception:
                 frappe.db.rollback(save_point="automatic_failure_notice")
 
@@ -528,6 +541,20 @@ def schedule(instance, stage, config, trigger="start"):
         return
     receipt.save(ignore_permissions=True)
     _audit(receipt, instance, "Waiting for background worker")
+
+
+def cancel(instance):
+    """Cancel queued automatic actions for a withdrawn instance.
+
+    Only queued receipts (Pending / Retry Pending) are cleared. A receipt that is
+    already Running is owned by a worker holding the row lock; the worker's own
+    instance-status check in ``run`` cancels it on its next read. Clearing the queue
+    stops a cancelled request from still triggering a background action.
+    """
+    queued = {"workflow_instance": instance.name, "status": ["in", ["Pending", "Retry Pending"]]}
+    count = frappe.db.count(RECEIPT, queued)
+    frappe.db.set_value(RECEIPT, queued, "status", "Cancelled", update_modified=False)
+    return count
 
 
 def run(execution):

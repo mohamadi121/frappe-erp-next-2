@@ -31,7 +31,7 @@ MODULE_DOCTYPES = {
     "HR": ("Leave Application", "Job Applicant"),
 }
 STAGE_TITLES = {
-    "User Task": "اقدام کاربر",
+    "User Task": "بررسی یا ویرایش سند",
     "Approval": "تأیید یا رد",
     "Condition": "شرط و مسیر",
     "System Action": "اقدام خودکار",
@@ -88,7 +88,7 @@ def list_workflows(
 ) -> dict:
     require_roles(("System Manager", "Accounts Manager", "Accounts User", "HR Manager"))
     if status and status not in ALLOWED_STATUSES:
-        frappe.throw(_("Invalid workflow status"))
+        frappe.throw(_("وضعیت گردش‌کار نامعتبر است."))
     allowed_order = {
         "modified desc": "modified desc",
         "modified asc": "modified asc",
@@ -223,19 +223,19 @@ def _create_workflow_draft(
     require_roles(("System Manager", "Accounts Manager"))
     title = (workflow_title or "").strip()
     if len(title) < 3:
-        frappe.throw(_("Workflow title must contain at least 3 characters"))
+        frappe.throw(_("عنوان گردش‌کار باید دست‌کم ۳ نویسه باشد."))
     if module_key not in MODULE_DOCTYPES:
-        frappe.throw(_("Invalid workflow module"))
+        frappe.throw(_("ماژول گردش‌کار نامعتبر است."))
     if target_doctype != "ASOUD Workflow Request" and target_doctype not in MODULE_DOCTYPES[module_key]:
-        frappe.throw(_("The selected DocType does not belong to this module"))
+        frappe.throw(_("نوع سند انتخاب‌شده متعلق به این ماژول نیست."))
     if not frappe.db.exists("DocType", target_doctype):
-        frappe.throw(_("The selected DocType is not installed"))
+        frappe.throw(_("نوع سند انتخاب‌شده در سیستم نصب نیست."))
     if company:
         if not frappe.db.exists("Company", company):
-            frappe.throw(_("The selected company does not exist"))
+            frappe.throw(_("شرکت انتخاب‌شده وجود ندارد."))
         require_company(company)
     if creation_mode not in {"Custom", "Template"}:
-        frappe.throw(_("Invalid workflow creation mode"))
+        frappe.throw(_("حالت ایجاد گردش‌کار نامعتبر است."))
 
     code = make_autoname(f"WF-{current_jalali_year()}-.###")
     doc = frappe.get_doc(
@@ -250,7 +250,7 @@ def _create_workflow_draft(
             "target_doctype": target_doctype,
             "status": "Inactive",
             "readiness_status": "Pending",
-            "pending_reason": _("Workflow stages and transitions are not complete"),
+            "pending_reason": _("مراحل و مسیرهای گردش‌کار کامل نیستند."),
             "missing_requirements_json": '["Workflow stages", "Transitions", "Frappe Workflow"]',
             "icon_key": icon_key,
             "color_hex": color_hex,
@@ -263,7 +263,7 @@ def _create_workflow_draft(
             "workflow_definition": doc.name,
             "stage_key": f"start-{frappe.generate_hash(length=10)}",
             "stage_type": "Start",
-            "stage_title": _("Start"),
+            "stage_title": "شروع فرایند",
             "sequence_no": 0,
             "configuration_status": "Pending",
             "config_json": json.dumps(
@@ -311,21 +311,21 @@ def save_start_settings(
         return success(_stage_dict(save(definition, settings).as_dict()))
     frappe.db.sql('select name from `tabASOUD Workflow Definition` where name=%s for update', (definition,))
     if trigger_type not in {"Manual", "Document Event", "System", "API"}:
-        frappe.throw(_("Invalid start trigger"))
+        frappe.throw(_("راه‌انداز شروع گردش‌کار نامعتبر است."))
     if subject_source not in {"Referenced Document", "ASOUD Record", "General Subject"}:
-        frappe.throw(_("Invalid workflow subject source"))
+        frappe.throw(_("منبع عنوان گردش‌کار نامعتبر است."))
     if pass_mode not in {"Direct", "Conditional"}:
-        frappe.throw(_("Invalid start pass mode"))
+        frappe.throw(_("حالت عبور شروع نامعتبر است."))
     values = json.loads(initiator_roles) if isinstance(initiator_roles, str) else initiator_roles
     roles = list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
     missing_roles = [role for role in roles if not frappe.db.exists("Role", role)]
     if missing_roles:
-        frappe.throw(_("One or more initiator roles do not exist"))
+        frappe.throw(_("یکی یا چند نقش آغازگر وجود ندارد."))
     stage_name = frappe.db.get_value(
         "ASOUD Workflow Stage", {"workflow_definition": definition, "stage_type": "Start"}, "name"
     )
     if not stage_name:
-        frappe.throw(_("Workflow start stage does not exist"))
+        frappe.throw(_("مرحلهٔ شروع گردش‌کار وجود ندارد."))
     stage = frappe.get_doc("ASOUD Workflow Stage", stage_name)
     if json.loads(stage.config_json or '{}').get('start_settings_version') == 1:
         frappe.throw('تنظیمات این شروع با فرم جدید مدیریت می‌شود؛ نسخهٔ برنامه را به‌روزرسانی کنید.')
@@ -346,20 +346,23 @@ def save_start_settings(
 @frappe.whitelist(methods=["POST"])
 def add_workflow_stage(definition: str, stage_type: str, after_stage: str) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     if stage_type not in STAGE_TITLES:
-        frappe.throw(_("Invalid workflow stage type"))
+        frappe.throw(_("نوع مرحلهٔ گردش‌کار نامعتبر است."))
     frappe.db.sql(
         "select name from `tabASOUD Workflow Definition` where name = %s for update",
         (definition,),
     )
     previous = frappe.get_doc("ASOUD Workflow Stage", after_stage)
     if previous.workflow_definition != definition:
-        frappe.throw(_("The selected previous stage belongs to another workflow"))
+        frappe.throw(_("مرحلهٔ قبلی انتخاب‌شده متعلق به گردش‌کار دیگری است."))
     if previous.stage_type == "End":
-        frappe.throw(_("A stage cannot be added after the end stage"))
+        frappe.throw(_("نمی‌توان مرحله‌ای پس از مرحلهٔ پایان افزود."))
     existing_next = frappe.db.exists("ASOUD Workflow Transition", {"from_stage": previous.name})
     if existing_next:
-        frappe.throw(_("Linear designer already has a stage after the selected stage"))
+        frappe.throw(_("طراح خطی از پیش مرحله‌ای پس از مرحلهٔ انتخاب‌شده دارد."))
     sequence = int(previous.sequence_no or 0) + 1
     stage = frappe.get_doc(
         {
@@ -398,7 +401,7 @@ def add_workflow_stage(definition: str, stage_type: str, after_stage: str) -> di
 def _assert_stage_in_definition(stage_name: str, definition: str):
     stage = frappe.get_doc("ASOUD Workflow Stage", stage_name)
     if stage.workflow_definition != definition:
-        frappe.throw(_("Stage does not belong to the selected workflow"))
+        frappe.throw(_("این مرحله متعلق به گردش‌کار انتخاب‌شده نیست."))
     return stage
 
 
@@ -416,24 +419,27 @@ def _touch_workflow(definition: str) -> None:
 def update_stage_positions(definition: str, positions: str | dict) -> dict:
     """Persist designer coordinates without changing workflow semantics."""
     require_roles(("System Manager", "Accounts Manager"))
+    owner = frappe.get_doc("ASOUD Workflow Definition", definition)
+    require_company(owner.company)
+    owner.check_permission("write")
     values = json.loads(positions) if isinstance(positions, str) else positions
     if not isinstance(values, dict) or len(values) > 250:
-        frappe.throw(_("Invalid stage positions"))
+        frappe.throw(_("موقعیت‌های مراحل نامعتبر است."))
     frappe.db.sql(
         "select name from `tabASOUD Workflow Definition` where name = %s for update",
         (definition,),
     )
     for stage_name, point in values.items():
         if not isinstance(point, dict):
-            frappe.throw(_("Invalid stage position"))
+            frappe.throw(_("موقعیت مرحله نامعتبر است."))
         stage = _assert_stage_in_definition(stage_name, definition)
         try:
             x = float(point.get("x", 0))
             y = float(point.get("y", 0))
         except (TypeError, ValueError):
-            frappe.throw(_("Invalid stage position"))
+            frappe.throw(_("موقعیت مرحله نامعتبر است."))
         if not (-10000 <= x <= 10000 and -10000 <= y <= 10000):
-            frappe.throw(_("Stage position is outside the allowed canvas"))
+            frappe.throw(_("موقعیت مرحله خارج از بوم مجاز است."))
         stage.db_set({"position_x": x, "position_y": y}, update_modified=False)
     return success(_design_payload(definition))
 
@@ -448,18 +454,18 @@ def connect_workflow_stages(
 ) -> dict:
     """Create a named route; backward routes are deliberately supported."""
     require_roles(("System Manager", "Accounts Manager"))
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     action = (action or "").strip()
     if not action or len(action) > 140 or from_stage == to_stage:
-        frappe.throw(_("Invalid workflow transition"))
+        frappe.throw(_("مسیر (ترنزیشن) گردش‌کار نامعتبر است."))
     frappe.db.sql(
         "select name from `tabASOUD Workflow Definition` where name = %s for update",
         (definition,),
     )
     source = _assert_stage_in_definition(from_stage, definition)
     if source.stage_type == 'Condition':
-        from asoud_erp.services.workflow_condition_binding import assert_editable
-
-        assert_editable(definition)
         raw = json.loads(condition) if isinstance(condition, str) else condition
         if not isinstance(raw, dict) or type(raw.get('result')) is not bool:
             frappe.throw('خروجی شرط باید برقرار یا برقرار نیست باشد.')
@@ -489,7 +495,7 @@ def connect_workflow_stages(
         return success(_design_payload(definition))
     _assert_stage_in_definition(to_stage, definition)
     if source.stage_type == "End":
-        frappe.throw(_("The end stage cannot have an outgoing route"))
+        frappe.throw(_("مرحلهٔ پایان نمی‌تواند مسیر خروجی داشته باشد."))
     if frappe.db.exists(
         "ASOUD Workflow Transition",
         {
@@ -498,10 +504,10 @@ def connect_workflow_stages(
             "transition_label": action,
         },
     ):
-        frappe.throw(_("This action already has a route from the selected stage"))
+        frappe.throw(_("این عمل از مرحلهٔ انتخاب‌شده از پیش مسیری دارد."))
     raw_condition = json.loads(condition) if isinstance(condition, str) else (condition or {})
     if not isinstance(raw_condition, dict):
-        frappe.throw(_("Transition condition must be an object"))
+        frappe.throw(_("شرط مسیر باید یک شیء باشد."))
     canonical_actions = {
         "تأیید": "Approve",
         "رد": "Reject",
@@ -540,14 +546,14 @@ def insert_workflow_stage(
 
         editable(definition, lock=True)
     if stage_type not in STAGE_TITLES:
-        frappe.throw(_("Invalid workflow stage type"))
+        frappe.throw(_("نوع مرحلهٔ گردش‌کار نامعتبر است."))
     frappe.db.sql(
         "select name from `tabASOUD Workflow Definition` where name = %s for update",
         (definition,),
     )
     edge = frappe.get_doc("ASOUD Workflow Transition", transition)
     if edge.workflow_definition != definition:
-        frappe.throw(_("Transition does not belong to the selected workflow"))
+        frappe.throw(_("مسیر انتخاب‌شده متعلق به گردش‌کار انتخاب‌شده نیست."))
     source = _assert_stage_in_definition(edge.from_stage, definition)
     destination = _assert_stage_in_definition(edge.to_stage, definition)
     sequence = max(int(source.sequence_no or 0) + 1, 1)
@@ -588,7 +594,7 @@ def insert_workflow_stage(
             "workflow_definition": definition,
             "from_stage": stage.name,
             "to_stage": destination.name,
-            "transition_label": _("Continue"),
+            "transition_label": _("ادامه"),
             "condition_json": "{}",
             "sequence_no": 1,
         }
@@ -618,7 +624,7 @@ def workflow_condition_fields(definition: str, stage: str | None = None,
         require_company(company)
     target_doctype = frappe.db.get_value("ASOUD Workflow Definition", definition, "target_doctype")
     if not target_doctype or not frappe.db.exists("DocType", target_doctype):
-        frappe.throw(_("Workflow target DocType does not exist"))
+        frappe.throw(_("نوع سند هدف گردش‌کار وجود ندارد."))
     allowed_types = {"Data", "Select", "Link", "Int", "Float", "Currency", "Check", "Date", "Datetime"}
     fields = [
         {"fieldname": field.fieldname, "label": field.label or field.fieldname, "fieldtype": field.fieldtype, "source": "Document"}
@@ -629,7 +635,7 @@ def workflow_condition_fields(definition: str, stage: str | None = None,
     if stage:
         condition = frappe.get_doc("ASOUD Workflow Stage", stage)
         if condition.workflow_definition != definition or condition.stage_type != "Condition":
-            frappe.throw(_("Selected stage is not a condition in this workflow"))
+            frappe.throw(_("مرحلهٔ انتخاب‌شده در این گردش‌کار یک شرط نیست."))
         stage_filters["sequence_no"] = ["<", condition.sequence_no]
     stage_rows = frappe.get_all(
         "ASOUD Workflow Stage",
@@ -736,7 +742,7 @@ def add_condition_branch(
 ) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
     if stage_type not in STAGE_TITLES:
-        frappe.throw(_("Invalid workflow stage type"))
+        frappe.throw(_("نوع مرحلهٔ گردش‌کار نامعتبر است."))
     truthy = result is True or str(result).lower() in {"1", "true"}
     frappe.db.sql(
         "select name from `tabASOUD Workflow Definition` where name = %s for update",
@@ -744,7 +750,7 @@ def add_condition_branch(
     )
     condition = frappe.get_doc("ASOUD Workflow Stage", condition_stage)
     if condition.workflow_definition != definition or condition.stage_type != "Condition":
-        frappe.throw(_("Selected stage is not a condition in this workflow"))
+        frappe.throw(_("مرحلهٔ انتخاب‌شده در این گردش‌کار یک شرط نیست."))
     if json.loads(condition.config_json or '{}').get('condition_version') == 2:
         from asoud_erp.services.workflow_condition_binding import assert_editable
 
@@ -756,7 +762,7 @@ def add_condition_branch(
         limit_page_length=0,
     )
     if any(json.loads(row.condition_json or "{}").get("result") is truthy for row in transitions):
-        frappe.throw(_("This condition result already has a branch"))
+        frappe.throw(_("این نتیجهٔ شرط از پیش شاخه‌ای دارد."))
     sequence = int(condition.sequence_no or 0) + 1
     stage = frappe.get_doc({
         "doctype": "ASOUD Workflow Stage",
@@ -775,7 +781,7 @@ def add_condition_branch(
         "workflow_definition": definition,
         "from_stage": condition.name,
         "to_stage": stage.name,
-        "transition_label": _("Yes") if truthy else _("No"),
+        "transition_label": _("بله") if truthy else _("خیر"),
         "condition_json": json.dumps({"result": truthy}),
         "sequence_no": 1 if truthy else 2,
     }).insert()
@@ -841,9 +847,9 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
     frappe.db.sql('select name from `tabASOUD Workflow Definition` where name=%s for update', (definition,))
     doc = frappe.get_doc("ASOUD Workflow Stage", stage)
     if doc.workflow_definition != definition:
-        frappe.throw(_("Stage does not belong to the selected workflow"))
+        frappe.throw(_("این مرحله متعلق به گردش‌کار انتخاب‌شده نیست."))
     if doc.stage_type == "Start":
-        frappe.throw(_("Use the start settings endpoint for the start stage"))
+        frappe.throw(_("برای مرحلهٔ شروع از اندپوینت تنظیمات شروع استفاده کنید."))
     _assert_form_is_editable(definition, doc)
     if doc.stage_type in {'Wait', 'End'}:
         from asoud_erp.services.workflow_condition_binding import assert_editable
@@ -856,7 +862,7 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
             frappe.throw('قالب تنظیمات پایان عملیات معتبر نیست.')
         raise
     if not isinstance(raw, dict):
-        frappe.throw('تنظیمات پایان عملیات معتبر نیست.' if doc.stage_type == 'End' else _("Stage configuration must be an object"))
+        frappe.throw(_("تنظیمات پایان عملیات معتبر نیست.") if doc.stage_type == 'End' else _("تنظیمات مرحله باید یک شیء باشد."))
     supplementary = None
     if "supplementary_form" in raw:
         if doc.stage_type != "Approval":
@@ -904,13 +910,13 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
         validate_target(definition, normalized)
     roles = normalized.get(role_field, []) if role_field else normalized.get("target_roles", [])
     if roles and any(not frappe.db.exists("Role", role) for role in roles):
-        frappe.throw(_("One or more selected roles do not exist"))
+        frappe.throw(_("یکی یا چند نقش انتخاب‌شده وجود ندارد."))
     if doc.stage_type in ROLE_BASED_TYPES:
         prefix = "assignee" if doc.stage_type == "User Task" else "approver"
         departments = normalized.get(f"{prefix}_departments", [])
         employees = normalized.get(f"{prefix}_employees", [])
         if departments and any(not frappe.db.exists("Department", value) for value in departments):
-            frappe.throw(_("One or more selected departments do not exist"))
+            frappe.throw(_("یکی یا چند واحد سازمانی انتخاب‌شده وجود ندارد."))
         if employees:
             active_employees = frappe.get_all(
                 "Employee",
@@ -918,14 +924,14 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
                 fields=["name", "user_id"],
             )
             if {row.name for row in active_employees} != set(employees):
-                frappe.throw(_("One or more selected employees do not exist or are inactive"))
+                frappe.throw(_("یکی یا چند کارمند انتخاب‌شده وجود ندارد یا غیرفعال است."))
             if any(not row.user_id for row in active_employees):
-                frappe.throw(_("Selected employees must have an ERPNext user account for inbox assignment"))
+                frappe.throw(_("کارمندان انتخاب‌شده برای ارجاع به کارتابل باید حساب کاربری فعال داشته باشند."))
             company = frappe.db.get_value("ASOUD Workflow Definition", definition, "company")
             if company and frappe.db.count(
                 "Employee", {"name": ["in", employees], "company": ["!=", company]}
             ):
-                frappe.throw(_("Selected employees must belong to the workflow company"))
+                frappe.throw(_("کارمندان انتخاب‌شده باید متعلق به شرکت گردش‌کار باشند."))
     if doc.stage_type == "Condition":
         if normalized.get('condition_version') == 2:
             from asoud_erp.services.workflow_condition_binding import (
@@ -945,7 +951,7 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
             field = meta.get_field(normalized["source_field"])
             allowed_types = {"Data", "Select", "Link", "Int", "Float", "Currency", "Check", "Date", "Datetime"}
             if not field or field.fieldtype not in allowed_types or field.hidden:
-                frappe.throw(_("The selected condition field is not allowed"))
+                frappe.throw(_("فیلد شرط انتخاب‌شده مجاز نیست."))
         else:
             configs = frappe.get_all(
                 "ASOUD Workflow Stage",
@@ -968,7 +974,7 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
 
             form_keys.update(item['fieldname'] for item in condition_fields(definition))
             if normalized["source_field"] not in form_keys:
-                frappe.throw(_("The selected form field does not exist in this workflow"))
+                frappe.throw(_("فیلد فرم انتخاب‌شده در این گردش‌کار وجود ندارد."))
 
     if doc.stage_type == "System Action" and normalized.get("schema_version") == 2:
         from asoud_erp.services.automatic_action_metadata import validate_config
@@ -981,7 +987,7 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
             "ASOUD Document Template", normalized["document_template"], ["company", "status"], as_dict=True
         )
         if not template or template.status != "Active" or (company and template.company != company):
-            frappe.throw(_("The selected document template is not active for this company"))
+            frappe.throw(_("قالب سند انتخاب‌شده برای این شرکت فعال نیست."))
 
     doc.stage_title = normalized.pop("title")
     doc.config_json = json.dumps(normalized, ensure_ascii=False)
@@ -1028,10 +1034,10 @@ def save_stage_routes(definition: str, stage: str, routes: str | dict) -> dict:
     source = _assert_stage_in_definition(stage, definition)
     allowed = ROUTE_ACTIONS.get(source.stage_type)
     if not allowed:
-        frappe.throw(_("This stage has no decision routes"))
+        frappe.throw(_("این مرحله مسیر تصمیمی ندارد."))
     raw = json.loads(routes) if isinstance(routes, str) else routes
     if not isinstance(raw, dict) or set(raw) - set(allowed):
-        frappe.throw(_("Invalid workflow routes"))
+        frappe.throw(_("مسیرهای گردش‌کار نامعتبر است."))
     existing = frappe.get_all(
         "ASOUD Workflow Transition",
         filters={"workflow_definition": definition, "from_stage": stage},
@@ -1055,7 +1061,7 @@ def save_stage_routes(definition: str, stage: str, routes: str | dict) -> dict:
                 frappe.throw('مرحلهٔ مقصد حذف شده یا وجود ندارد؛ مقصد را دوباره انتخاب کنید.')
             destination = _assert_stage_in_definition(target, definition)
             if target == stage or destination.stage_type == "Start":
-                frappe.throw(_("Invalid workflow transition"))
+                frappe.throw(_("مسیر (ترنزیشن) گردش‌کار نامعتبر است."))
             if action == "Return" and destination.stage_type in {"End", "Wait"}:
                 frappe.throw(_("مسیر بازگشت برای اصلاح باید به یک ایستگاه قابل‌اجرای قبلی برود."))
             if (source.stage_type == 'Approval' and action == 'Approve'
@@ -1070,8 +1076,8 @@ def save_stage_routes(definition: str, stage: str, routes: str | dict) -> dict:
                 frappe.throw('مقصد اصلاح باید یک مرحلهٔ انسانی قبلی باشد.')
             if (source.stage_type == "System Action" and action == "Error"
                     and json.loads(source.config_json or "{}").get("schema_version") == 2
-                    and destination.stage_type != "User Task"):
-                frappe.throw(_("Automatic action error routes must target a human task"))
+                    and destination.stage_type not in {"User Task", "End"}):
+                frappe.throw(_("مسیر خطا فقط به یک وظیفهٔ انسانی یا مرحلهٔ پایان می‌تواند برسد."))
     for action, target in raw.items():
         target = str(target or '').strip()
         for row in existing:
@@ -1116,15 +1122,17 @@ def update_request_type_info(
 ) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
     doc = frappe.get_doc("ASOUD Workflow Definition", name)
+    require_company(doc.company)
+    doc.check_permission("write")
     # Also used by the start-node metadata editor. Never change its reference
     # DocType, company, graph or start permissions when editing presentation.
     if module_key is not None and module_key not in MODULE_DOCTYPES:
-        frappe.throw(_("Invalid workflow module"))
+        frappe.throw(_("ماژول گردش‌کار نامعتبر است."))
     title = (workflow_title or "").strip()
     if len(title) < 3:
-        frappe.throw(_("Workflow title must contain at least 3 characters"))
+        frappe.throw(_("عنوان گردش‌کار باید دست‌کم ۳ نویسه باشد."))
     if request_category and request_category not in REQUEST_CATEGORIES:
-        frappe.throw(_("Invalid request category"))
+        frappe.throw(_("دستهٔ درخواست نامعتبر است."))
     doc.workflow_title = title
     doc.process_description = (process_description or "").strip()
     if module_key is not None:
@@ -1177,6 +1185,16 @@ def delete_workflow(name=None) -> dict:
     frappe.db.savepoint('delete_workflow_api')
     try:
         frappe.delete_doc("ASOUD Workflow Definition", name)
+        # A durable audit receipt shares the deletion savepoint: if it cannot be
+        # written, the whole deletion rolls back (AGENTS.md section 11).
+        from asoud_erp.services import security_audit
+
+        receipt = security_audit.build_row(
+            actor=frappe.session.user, action='workflow.definition.deleted',
+            target_type='ASOUD Workflow Definition', target=name,
+            company=doc.company or '', occurred_on=now_datetime(),
+            details={'workflow_code': doc.workflow_code, 'workflow_title': doc.workflow_title})
+        frappe.get_doc(receipt).insert(ignore_permissions=True)
     except frappe.LinkExistsError:
         frappe.db.rollback(save_point='delete_workflow_api')
         frappe.clear_messages()

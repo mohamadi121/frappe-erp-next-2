@@ -55,8 +55,11 @@ class TestWorkflowStartSettings(APITestCase):
         activity = frappe.get_doc('ASOUD Workflow Activity', {'workflow_instance': instance.name, 'action': 'Workflow Started'})
         self.assertEqual(activity.comment, 'بررسی اطلاعات')
         self.assertEqual(activity.actor, self.initiator)
-        with self.assertRaises(frappe.ValidationError):
-            configure(definition, {'trigger_type': 'Manual', 'initiator_roles': ['System Manager'], 'allow_manager_restart': True})
+        # PA-026: the manager-restart flag is metadata, so it may change while an
+        # instance runs (only the trigger, form and route stay locked).
+        configure(definition, {'trigger_type': 'Manual', 'initiator_roles': ['System Manager'], 'allow_manager_restart': True})
+        start = frappe.get_doc('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'Start'})
+        self.assertTrue(json.loads(start.config_json)['allow_manager_restart'])
         self.assertEqual(configure(definition, {'trigger_type': 'Manual',
             'initiator_roles': ['System Manager']})['name'], saved['name'])
 
@@ -94,6 +97,53 @@ class TestWorkflowStartSettings(APITestCase):
         self.assertFalse(workflow_runtime.get_workflow_instance(first)['data']['can_restart'])
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', first, 'status'), 'Completed')
         self.assertEqual(frappe.db.count('ASOUD Workflow Activity', {'workflow_instance': second, 'action': 'Workflow Started'}), 1)
+
+    def test_metadata_only_start_change_allowed_while_instance_running(self):
+        # PA-026: adding an initiator role (metadata) must not be blocked by a
+        # Running instance; only structural changes (trigger/source/route) are.
+        definition, stages = make_definition(self.company, approvals=0, fields=[])
+        task = next(stage for stage in stages.values() if stage.stage_type == 'User Task')
+        saved = forms.save_form(self.company, {'kind': 'Request', 'title': 'فرم آزمون شروع', 'sections': [
+            {'id': 'main', 'title': 'اطلاعات', 'fields': [{'key': 'note', 'label': 'توضیح', 'type': 'Text'}]}]},
+            client_id=uuid4().hex)['data']
+        forms.transition(saved['name'], 'publish', saved['draft_version'])
+        form = forms.get_form(saved['name'])['data']
+        source = {'form': form['name'], 'revision': form['revision']}
+        workflow.save_stage_settings(definition, task.name, {**json.loads(task.config_json), 'submission_source': source})
+        configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
+            'allow_manager_restart': True})
+        frappe.set_user(self.initiator)
+        entry = forms.submit_form(form['name'], form['revision'], 'درخواست اصلی', {'note': 'اطلاعات'}, uuid4().hex)['data']
+        instance = entry['workflow_instance']
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', instance, 'status'), 'Running')
+        # Metadata-only change (add an initiator role) succeeds while Running.
+        frappe.set_user('Administrator')
+        updated = configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
+            'allow_manager_restart': True, 'initiator_roles': ['System Manager']})
+        stored = json.loads(frappe.db.get_value('ASOUD Workflow Stage', updated['name'], 'config_json'))
+        self.assertEqual(stored['initiator_roles'], ['System Manager'])
+        # Structural change (routing mode) is still blocked while Running.
+        with self.assertRaises(frappe.ValidationError):
+            configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
+                'allow_manager_restart': True, 'initiator_roles': ['System Manager'], 'source_route': 'Available'})
+
+    def test_active_workflow_cannot_switch_to_conditional_without_gate(self):
+        # PA-020: an already-Active workflow must not be switched to a Conditional
+        # start route without a Condition gate immediately after Start, or every
+        # submission would fail at runtime. make_definition is Active/Ready with
+        # Start -> User Task (no Condition), so the save must be refused.
+        definition, _ = make_definition(self.company, approvals=0, fields=[])
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', definition, 'status'), 'Active')
+        saved = forms.save_form(self.company, {'kind': 'Request', 'title': 'فرم آزمون مشروط', 'sections': [
+            {'id': 'main', 'title': 'اطلاعات', 'fields': [{'key': 'note', 'label': 'توضیح', 'type': 'Text'}]}]},
+            client_id=uuid4().hex)['data']
+        forms.transition(saved['name'], 'publish', saved['draft_version'])
+        form = forms.get_form(saved['name'])['data']
+        source = {'form': form['name'], 'revision': form['revision']}
+        with self.assertRaises(frappe.ValidationError) as ctx:
+            configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
+                'source_route': 'Conditional'})
+        self.assertIn('شرط و مسیر', str(ctx.exception))
 
     def test_other_company_and_non_manager_cannot_change_start(self):
         definition, _ = make_definition(self.second, approvals=0, fields=[])

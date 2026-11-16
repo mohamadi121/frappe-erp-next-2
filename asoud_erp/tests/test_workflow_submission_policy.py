@@ -24,6 +24,22 @@ def test_shared_form_never_chooses_random_ambiguous_match_or_default():
     assert choose_route([candidate('available', 'Available')], legacy_default=True) is None
 
 
+def test_available_only_form_saves_as_ordinary_record():
+    # PA-004: Available bindings never auto-route (contract: they do not compete
+    # with the default). With no conditional match and no default, the form is
+    # saved as an ordinary record instead of blocking every submission.
+    assert choose_route([candidate('available', 'Available')]) is None
+    assert choose_route([candidate('a', 'Available'), candidate('b', 'Available')]) is None
+
+
+def test_available_does_not_mask_a_real_routing_gap():
+    # A non-matching Conditional is a deliberate routing intent; an Available
+    # binding must not silently swallow that misconfiguration.
+    with pytest.raises(ValueError, match='هیچ مسیر مشروطی منطبق نیست'):
+        choose_route([candidate('available', 'Available'),
+                      candidate('conditional', 'Conditional', matched=False)])
+
+
 def test_shared_form_unready_default_is_not_silently_bypassed():
     pending = candidate('pending')
     pending['status'] = 'Inactive'

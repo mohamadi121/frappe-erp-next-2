@@ -100,6 +100,24 @@ def routing_configs(names, *, current=False):
     return result
 
 
+def conditional_gate(definition):
+    """True when a Condition stage sits immediately after the single Start.
+
+    Read-only structural check (no locks, no binding validation) used to refuse
+    saving a Conditional start route on a live workflow that has no gate yet.
+    """
+    stages = frappe.get_all('ASOUD Workflow Stage', filters={'workflow_definition': definition},
+        fields=['name', 'stage_type'], limit_page_length=201)
+    starts = [row for row in stages if row.stage_type == 'Start']
+    if len(starts) != 1:
+        return False
+    edges = frappe.get_all('ASOUD Workflow Transition', filters={'workflow_definition': definition,
+        'from_stage': starts[0].name}, fields=['to_stage'], limit_page_length=2)
+    if len(edges) != 1:
+        return False
+    return any(row.name == edges[0].to_stage and row.stage_type == 'Condition' for row in stages)
+
+
 def entry_condition(definition, *, stages=None, edges=None, available=None):
     from asoud_erp.services.workflow_condition import normalize_group
 
@@ -126,9 +144,11 @@ def route(form, revision, submitted=None):
     """Called under the native Form row lock, before any submit writes."""
     if not frappe.get_meta(DEFINITION).has_field('source_form'):
         return None
+    # Read without FOR UPDATE: route() is a read-only routing decision.
+    # Design changes are serialized by bind(); instance creation by start_workflow_instance.
     rows = frappe.db.sql('select name, company, status, readiness_status, source_revision '
         'from `tabASOUD Workflow Definition` where source_form=%s and status!=%s '
-        'order by name limit 201 for update', (form.name, 'Archived'), as_dict=True)
+        'order by name limit 201', (form.name, 'Archived'), as_dict=True)
     if not rows:
         if frappe.db.exists(DEFINITION, {'source_form': form.name, 'status': 'Archived'}):
             frappe.throw('گردش‌کار متصل بایگانی شده است؛ مدیر باید اتصال این فرم را اصلاح کند.')
@@ -138,7 +158,8 @@ def route(form, revision, submitted=None):
     from asoud_erp.services.workflow_condition import evaluate_group
     from asoud_erp.services.workflow_submission_policy import choose_route
 
-    configs = routing_configs([row.name for row in rows], current=True)
+    # Plain read: no FOR UPDATE on stage rows during a submission.
+    configs = routing_configs([row.name for row in rows], current=False)
     starts = [stage.name for config in configs.values() for stage in config['stages'] if stage.stage_type == 'Start']
     outgoing = frappe.get_all('ASOUD Workflow Transition', filters={'from_stage': ['in', starts or ['']]},
         fields=['workflow_definition', 'to_stage'], limit_page_length=40201)
