@@ -346,6 +346,9 @@ def save_start_settings(
 @frappe.whitelist(methods=["POST"])
 def add_workflow_stage(definition: str, stage_type: str, after_stage: str) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     if stage_type not in STAGE_TITLES:
         frappe.throw(_("Invalid workflow stage type"))
     frappe.db.sql(
@@ -448,6 +451,9 @@ def connect_workflow_stages(
 ) -> dict:
     """Create a named route; backward routes are deliberately supported."""
     require_roles(("System Manager", "Accounts Manager"))
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     action = (action or "").strip()
     if not action or len(action) > 140 or from_stage == to_stage:
         frappe.throw(_("Invalid workflow transition"))
@@ -457,9 +463,6 @@ def connect_workflow_stages(
     )
     source = _assert_stage_in_definition(from_stage, definition)
     if source.stage_type == 'Condition':
-        from asoud_erp.services.workflow_condition_binding import assert_editable
-
-        assert_editable(definition)
         raw = json.loads(condition) if isinstance(condition, str) else condition
         if not isinstance(raw, dict) or type(raw.get('result')) is not bool:
             frappe.throw('خروجی شرط باید برقرار یا برقرار نیست باشد.')

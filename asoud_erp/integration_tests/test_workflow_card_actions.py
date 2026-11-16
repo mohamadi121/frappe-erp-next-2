@@ -65,6 +65,32 @@ class TestWorkflowCardActions(APITestCase):
         self.assertTrue(any(row['name'] == name for row in
             workflow.list_workflows(company=self.company, status='Inactive')['data']))
 
+    def test_active_or_running_workflow_refuses_graph_edits(self):
+        # PA-006: adding a stage or drawing a route must be refused while the
+        # definition is Active or has a Running instance, for every stage type.
+        name = self.draft()
+        self.complete(name)
+        stages = workflow.get_workflow_design(name)['data']['stages']
+        start = next(row['name'] for row in stages if row['stage_type'] == 'Start')
+        task = next(row['name'] for row in stages if row['stage_type'] == 'User Task')
+        end = next(row['name'] for row in stages if row['stage_type'] == 'End')
+        # Active definition: both graph mutations are refused.
+        workflow.set_workflow_status(name, 'Active')
+        with self.assertRaises(frappe.ValidationError):
+            workflow.add_workflow_stage(name, 'User Task', start)
+        with self.assertRaises(frappe.ValidationError):
+            workflow.connect_workflow_stages(name, task, end, 'تأیید')
+        workflow.set_workflow_status(name, 'Inactive')
+        # A Running instance on an Inactive definition blocks the same edits.
+        frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': name,
+            'subject': 'اجرای جاری', 'status': 'Running'}).insert()
+        with self.assertRaises(frappe.ValidationError):
+            workflow.add_workflow_stage(name, 'User Task', start)
+        with self.assertRaises(frappe.ValidationError):
+            workflow.connect_workflow_stages(name, task, end, 'تأیید')
+        # The graph is untouched by the refused attempts.
+        self.assertEqual(frappe.db.count('ASOUD Workflow Stage', {'workflow_definition': name}), 3)
+
     def test_incomplete_draft_is_listed_and_searchable_by_title_and_code(self):
         name = self.draft()
         doc = frappe.get_doc('ASOUD Workflow Definition', name)
