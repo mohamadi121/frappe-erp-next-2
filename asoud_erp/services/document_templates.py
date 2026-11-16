@@ -340,20 +340,26 @@ def build_document(document_type_key: str, values: dict[str, Any], company: str)
             ],
         }
     if document_type_key == "Sales Order":
+        # ERPNext requires a delivery date; the draft defaults it to the order date.
+        ordered = str(values["transaction_date"])
         return {
             "doctype": "Sales Order",
             "company": company,
             "customer": values["customer"],
-            "transaction_date": str(values["transaction_date"]),
-            "items": [_order_item(row) for row in _require_items(values["items"])],
+            "transaction_date": ordered,
+            "delivery_date": ordered,
+            "items": [{**_order_item(row), "delivery_date": ordered} for row in _require_items(values["items"])],
         }
     if document_type_key == "Purchase Order":
+        # ERPNext requires a required-by date; the draft defaults it to the order date.
+        ordered = str(values["transaction_date"])
         return {
             "doctype": "Purchase Order",
             "company": company,
             "supplier": values["supplier"],
-            "transaction_date": str(values["transaction_date"]),
-            "items": [_order_item(row) for row in _require_items(values["items"])],
+            "transaction_date": ordered,
+            "schedule_date": ordered,
+            "items": [{**_order_item(row), "schedule_date": ordered} for row in _require_items(values["items"])],
         }
     if document_type_key == "Stock Entry":
         purpose = str(values["purpose"])
@@ -367,6 +373,8 @@ def build_document(document_type_key: str, values: dict[str, Any], company: str)
             "stock_entry_type": purpose,
             "purpose": purpose,
             "posting_date": str(values["posting_date"]),
+            # Keep the mapped date: without this ERPNext resets it to today.
+            "set_posting_time": 1,
             "items": [_stock_entry_item(row, purpose, warehouse) for row in rows],
         }
     if document_type_key == "Issue":

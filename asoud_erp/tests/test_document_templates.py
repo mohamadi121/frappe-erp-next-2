@@ -240,3 +240,16 @@ def test_automatic_action_documents_are_the_schemad_documents():
     for doctype in ("Material Request", "Journal Entry", "Sales Order",
                     "Purchase Order", "Stock Entry", "Issue"):
         assert doctype in TARGET_FIELDS
+
+
+def test_orders_and_stock_entries_carry_the_dates_erpnext_requires():
+    items = [{"item_code": "ITEM-1", "qty": 2}]
+    sales = build_document("Sales Order", {"customer": "C", "transaction_date": "2026-11-16", "items": items}, "Taban")
+    assert sales["delivery_date"] == "2026-11-16"
+    assert all(row["delivery_date"] == "2026-11-16" for row in sales["items"])
+    purchase = build_document("Purchase Order", {"supplier": "S", "transaction_date": "2026-11-16", "items": items}, "Taban")
+    assert purchase["schedule_date"] == "2026-11-16"
+    assert all(row["schedule_date"] == "2026-11-16" for row in purchase["items"])
+    entry = build_document("Stock Entry", {"purpose": "Material Receipt", "posting_date": "2026-11-16",
+                                           "items": items, "warehouse": "Stores - T"}, "Taban")
+    assert entry["set_posting_time"] == 1 and entry["posting_date"] == "2026-11-16"

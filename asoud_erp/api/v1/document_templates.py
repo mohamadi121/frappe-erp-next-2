@@ -201,6 +201,8 @@ def _prepare_for_insert(doc) -> None:
         doc.set_taxes()
         doc.calculate_taxes_and_totals()
     elif doc.doctype == "Stock Entry":
+        if not doc.get("posting_time"):
+            doc.posting_time = frappe.utils.nowtime()
         doc.set_stock_entry_type()
         doc.set_missing_values()
 
