@@ -127,6 +127,14 @@ def workflow_record_permission(doc, user=None, permission_type=None):
         from asoud_erp.services.workflow_submission_source import instance_permission
 
         return instance_permission(instance, user, permission_type)
+    if instance.reference_doctype and instance.reference_doctype not in (
+            "ASOUD Workflow Request", "ASOUD Form Entry"):
+        # A standard ERPNext reference document (e.g. Purchase Order): a task
+        # attachment on it is readable exactly when the user may read the document.
+        if not instance.reference_name:
+            return False
+        return bool(frappe.has_permission(instance.reference_doctype, "read",
+                                          instance.reference_name, user=user))
     if instance.reference_doctype != "ASOUD Workflow Request":
         return None
     return request_permission(frappe.get_doc("ASOUD Workflow Request", instance.reference_name),

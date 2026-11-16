@@ -1,4 +1,5 @@
 test_workflow_user_actions
+test_workflow_access
 test_workflow_start_settings
 test_selling_payments
 test_sales_orders

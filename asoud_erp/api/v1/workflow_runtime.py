@@ -56,12 +56,38 @@ def _assert_instance_access(instance) -> None:
         {"workflow_instance": instance.name, "assigned_to": frappe.session.user},
     ):
         return
+    # A user who already acted on this instance (completed or was assigned a task
+    # that later moved on) keeps read access to its history, even after a reassign.
+    if frappe.db.exists(
+        "ASOUD Workflow Activity",
+        {"workflow_instance": instance.name, "actor": frappe.session.user},
+    ):
+        return
     if {"System Manager", "Accounts Manager"}.intersection(frappe.get_roles()):
         return
     frappe.throw(_("Not permitted to view this workflow instance"), frappe.PermissionError)
 
 
 TASK_PAGE = INSTANCE_PAGE = 200
+
+
+def _workflow_history(instance_name, fields):
+    """The instance's activity history, bounded to the newest ``HISTORY_LIMIT`` rows.
+
+    Reads newest-first so the cap keeps the recent rows, then returns them in
+    chronological order (the timeline shows the oldest first). An unbounded read
+    would load every activity of a long-running process into memory.
+    """
+    from asoud_erp.services.workflow_history_limits import HISTORY_LIMIT
+
+    rows = frappe.get_all(
+        "ASOUD Workflow Activity",
+        filters={"workflow_instance": instance_name},
+        fields=fields,
+        order_by="created_on desc, name desc",
+        limit_page_length=HISTORY_LIMIT,
+    )
+    return list(reversed(rows))
 
 
 def _instance_summary(instance) -> dict:
@@ -95,7 +121,8 @@ def _instance_summary(instance) -> dict:
     }
 
 
-def _record_activity(doc, action: str, comment: str = "", *, reference_doctype=None, reference_name=None) -> None:
+def _record_activity(doc, action: str, comment: str = "", *, reference_doctype=None, reference_name=None,
+                     change_json=None) -> None:
     frappe.get_doc(
         {
             "doctype": "ASOUD Workflow Activity",
@@ -108,6 +135,7 @@ def _record_activity(doc, action: str, comment: str = "", *, reference_doctype=N
             "created_on": now_datetime(),
             "reference_doctype": reference_doctype,
             "reference_name": reference_name,
+            "change_json": change_json,
         }
     ).insert(ignore_permissions=True)
 
@@ -927,6 +955,16 @@ def _is_paged(paged) -> bool:
     return str(paged).lower() in ('1', 'true')
 
 
+def _require_signed_in() -> None:
+    """The cartable lists are per-user; a guest (no signed-in account) gets nothing.
+
+    The SQL already scopes rows to the session user, but the guard makes the
+    requirement explicit at the controller entry, per the layering rules.
+    """
+    if frappe.session.user in ("Guest", None, ""):
+        frappe.throw(_("برای مشاهدهٔ کارتابل باید وارد حساب شوید."), frappe.PermissionError)
+
+
 def _instance_summaries(names) -> list[dict]:
     """`_instance_summary` for many instances with four queries instead of three per row."""
     if not names:
@@ -992,6 +1030,7 @@ def list_my_workflow_tasks(status: str = "Open", start=0, paged=False) -> dict:
     LIMIT, so every page is full except the last and `next_cursor` is null exactly when
     no visible row follows.
     """
+    _require_signed_in()
     if status not in {"Open", "Completed", "Rejected", "Cancelled"}:
         frappe.throw(_("Invalid task status"))
     from asoud_erp.services.directive_access import instance_clause
@@ -1019,6 +1058,7 @@ def list_my_workflow_instances(status: str | None = None, start=0, paged=False) 
     `list_my_workflow_tasks`: access is filtered in SQL, `next_cursor` is null on the last
     visible page and `meta.total` counts all visible rows in paged mode.
     """
+    _require_signed_in()
     allowed = {"Running", "Completed", "Rejected", "Cancelled", "Failed"}
     if status and status not in allowed:
         frappe.throw(_("Invalid workflow instance status"))
@@ -1045,10 +1085,9 @@ def get_workflow_instance(instance: str) -> dict:
     from asoud_erp.services.directive_access import directive_for
     if directive_for(doc):
         return success({**_instance_summary(doc), "activities": []})
-    activities = frappe.get_all(
-        "ASOUD Workflow Activity",
-        filters={"workflow_instance": doc.name},
-        fields=[
+    activities = _workflow_history(
+        doc.name,
+        [
             "name",
             "workflow_task",
             "workflow_stage",
@@ -1060,8 +1099,6 @@ def get_workflow_instance(instance: str) -> dict:
             "reference_name",
             *(["change_json"] if frappe.db.has_column("ASOUD Workflow Activity", "change_json") else []),
         ],
-        order_by="created_on asc",
-        limit_page_length=0,
     )
     for activity in activities:
         activity.update(activity_change(activity.pop("change_json", None)))
@@ -1083,7 +1120,40 @@ def get_workflow_instance(instance: str) -> dict:
 
 
 @frappe.whitelist()
+def get_workflow_instance_summaries(names) -> dict:
+    """Batch summaries for the cartable (PA-032).
+
+    ``names`` is a list (or a JSON string of a list) of at most 100 instance names.
+    Each name is checked with the same per-instance access rule as
+    ``get_workflow_instance``; instances the caller cannot read (or that do not
+    exist) are omitted, so the response holds only the accessible summaries. This
+    replaces the client's per-instance ``get_workflow_instance`` loop.
+    """
+    from asoud_erp.services.workflow_instance_summaries import parse_instance_names
+
+    try:
+        wanted = parse_instance_names(names)
+    except ValueError as error:
+        frappe.throw(str(error))
+    if not wanted:
+        return success([])
+    accessible = []
+    for name in wanted:
+        try:
+            doc = frappe.get_doc("ASOUD Workflow Instance", name)
+        except frappe.DoesNotExistError:
+            continue
+        try:
+            _assert_instance_access(doc)
+        except frappe.PermissionError:
+            continue
+        accessible.append(name)
+    return success(_instance_summaries(accessible))
+
+
+@frappe.whitelist()
 def list_my_workflow_notifications(unread_only: int | str = 0) -> dict:
+    _require_signed_in()
     filters = {
         "for_user": frappe.session.user,
         "document_type": "ASOUD Workflow Instance",
@@ -1167,12 +1237,9 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
             frappe.throw('واگذاری مجدد برای این اقدام فعال نیست.', frappe.PermissionError)
         return success(reassignment_candidates(doc, config, candidate_query, candidate_start))
     original_access = config.get('action_contract_version') != 1 or config.get('allow_original_access', True)
-    history = frappe.get_all(
-        "ASOUD Workflow Activity",
-        filters={"workflow_instance": doc.workflow_instance},
-        fields=["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
-        order_by="created_on asc",
-        limit_page_length=0,
+    history = _workflow_history(
+        doc.workflow_instance,
+        ["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
     )
     document_context = {}
     from asoud_erp.services.workflow_submission_source import task_snapshot
@@ -1343,6 +1410,10 @@ def upload_workflow_attachment(task: str, filename: str, content_base64: str) ->
         frappe.throw(_("Invalid attachment data"))
     if not content or len(content) > MAX_ATTACHMENT_BYTES:
         frappe.throw(_("Workflow attachment must be between 1 byte and 10 MB"))
+    from asoud_erp.services.workflow_attachment_content import content_matches_extension
+
+    if not content_matches_extension(content, Path(safe_name).suffix):
+        frappe.throw("نوع واقعی فایل با پسوند آن یکسان نیست؛ فایل معتبر نیست.")
     file_doc = frappe.get_doc(
         {
             "doctype": "File",
@@ -1404,11 +1475,23 @@ def complete_workflow_task(
     response: str | dict | None = None,
     assignee: str | None = None,
     supplementary_values: str | dict | None = None,
+    request_id: str | None = None,
 ) -> dict:
     from asoud_erp.services.directive_access import reject_generic
+    from asoud_erp.services.workflow_task_completion import (
+        completion_change_json,
+        previous_completion,
+    )
+    _validate_request_id(request_id)
     original = frappe.get_doc("ASOUD Workflow Task", task)
     reject_generic(original)
     _assert_task_owner(original)
+    if original.status != "Open":
+        # A network retry re-sends the same request_id after the decision was
+        # already applied; return the stored result instead of a validation error.
+        replay = previous_completion(task, request_id)
+        if replay:
+            return success(replay)
     instance = frappe.get_doc('ASOUD Workflow Instance', original.workflow_instance, for_update=True)
     if instance.status != 'Running' or instance.current_stage != original.workflow_stage:
         frappe.throw('این وظیفه دیگر در مرحلهٔ جاری یک فرایند فعال نیست؛ وضعیت صفحه را تازه کنید.')
@@ -1523,7 +1606,7 @@ def complete_workflow_task(
     doc.response_json = json.dumps(normalized_response, ensure_ascii=False)
     doc.completed_on = now_datetime()
     doc.save(ignore_permissions=True)
-    _record_activity(doc, action, doc.comment)
+    _record_activity(doc, action, doc.comment, change_json=completion_change_json(request_id))
     action_labels = {
         "Complete": _("Workflow stage completed"),
         "Approve": _("Workflow request approved"),
