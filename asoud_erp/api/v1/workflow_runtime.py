@@ -26,7 +26,7 @@ from asoud_erp.services.stage_supplementary_form import (
 from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
 from asoud_erp.services.workflow_end import _end_outcomes
-from asoud_erp.services.workflow_history import merge_completed_responses, select_return_stage
+from asoud_erp.services.workflow_history import carried_draft, merge_completed_responses, select_return_stage
 from asoud_erp.services.workflow_response import normalize_form_response
 from asoud_erp.services.workflow_start_policy import start_change_data, validate_request_id
 
@@ -112,6 +112,25 @@ def _record_activity(doc, action: str, comment: str = "", *, reference_doctype=N
     ).insert(ignore_permissions=True)
 
 
+def _record_draft_saved(doc) -> None:
+    """One `Draft Saved` row per task: later saves refresh it instead of growing the timeline."""
+    existing = frappe.db.get_value(
+        "ASOUD Workflow Activity",
+        {"workflow_task": doc.name, "action": "Draft Saved"},
+        "name",
+        order_by="created_on asc, name asc",
+    )
+    if not existing:
+        _record_activity(doc, "Draft Saved", "پیش‌نویس اقدام ذخیره شد.")
+        return
+    frappe.db.set_value(
+        "ASOUD Workflow Activity",
+        existing,
+        {"created_on": now_datetime(), "actor": frappe.session.user},
+        update_modified=False,
+    )
+
+
 def _notify_user(
     user: str,
     subject: str,
@@ -177,16 +196,7 @@ def _users_for_stage(stage, instance) -> list[str]:
             limit_page_length=0,
         )
     else:
-        users = frappe.get_all(
-            "Has Role",
-            filters={"role": ["in", values], "parenttype": "User"},
-            pluck="parent",
-            limit_page_length=0,
-        )
-        disabled = set(
-            frappe.get_all("User", filters={"name": ["in", users], "enabled": 0}, pluck="name")
-        )
-        users = [user for user in users if user not in disabled]
+        users = _scoped_role_users(values, instance)
     result = list(dict.fromkeys(user for user in users if user not in {"Guest", "Administrator"}))
     if not result:
         frappe.throw(_("No active ERPNext user is available for the selected assignment target"))
@@ -202,7 +212,11 @@ def _initiator_employee(instance, fieldname: str):
     return frappe.db.get_value("Employee", filters, fieldname)
 
 
-def _users_for_roles(roles: list[str]) -> list[str]:
+def _users_for_roles(roles: list[str], company: str | None = None) -> list[str]:
+    """Enabled holders of the roles; with `company`, only users that company accepts.
+
+    The Has Role read only narrows the list; `company_access` stays the authority.
+    """
     if not roles:
         return []
     users = frappe.get_all(
@@ -214,13 +228,25 @@ def _users_for_roles(roles: list[str]) -> list[str]:
     disabled = set(
         frappe.get_all("User", filters={"name": ["in", users], "enabled": 0}, pluck="name")
     )
-    return list(
+    # Sorted: callers take "the first" user, and get_all order is `modified desc`.
+    result = sorted(
         dict.fromkeys(
             user
             for user in users
             if user not in disabled and user not in {"Guest", "Administrator"}
         )
     )
+    if company is None:
+        return result
+    from asoud_erp.services.request_access import company_access
+
+    return [user for user in result if company_access(company, user)]
+
+
+def _scoped_role_users(roles: list[str], instance) -> list[str]:
+    """Role holders of the workflow's own company; no company means nobody."""
+    company = workflow_company(instance.name)
+    return _users_for_roles(roles, company) if company else []
 
 
 def _task_deadlines(config: dict) -> tuple[object | None, object | None]:
@@ -338,6 +364,7 @@ def _completed_task_rows(instance, exclude_task: str | None = None) -> list[dict
                 "stage_type": stage.stage_type,
                 "has_form_fields": bool(config.get("form_fields") or config.get('result_schema')
                     or config.get('action_contract_version') == 1),
+                "has_supplementary_form": bool(read_binding(config)),
                 "form_fields": config.get("form_fields", []),
                 "action_schema": config.get('result_schema') if config.get('action_contract_version') == 1 else None,
             }
@@ -491,18 +518,23 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
         if isinstance(field, dict)
     }
     draft_values = {key: value for key, value in previous_values.items() if key in form_keys}
+    if config.get('action_contract_version') == 1:
+        # A returned user action reopens with the previous answer of this stage as its draft.
+        draft = carried_draft(list(reversed(previous_rows)), stage.name, config.get('result_schema'))
+    else:
+        draft = draft_values if config.get("form_fields") else {}
+    draft_json = json.dumps(draft, ensure_ascii=False)
     due_on, reminder_on = _task_deadlines(config)
     users = _users_for_stage(stage, instance)
-    owner_only = False
-    if stage.stage_type == "Approval" and instance.started_by in users:
-        others = [user for user in users if user != instance.started_by]
-        if not others:
-            others = [user for user in _users_for_roles(config.get("escalation_roles") or [])
-                      if user != instance.started_by]
-        if others:
-            users = others
-        else:
-            owner_only = True
+    if stage.stage_type == "Approval":
+        from asoud_erp.services.workflow_task_assignment import approval_assignees
+
+        try:
+            users = approval_assignees(
+                users, instance.started_by,
+                lambda: _scoped_role_users(config.get("escalation_roles") or [], instance))
+        except ValueError as error:
+            frappe.throw(str(error))
     for user in users:
         task = frappe.get_doc(
             {
@@ -517,9 +549,7 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
                 "assigned_on": now_datetime(),
                 "due_on": due_on,
                 "reminder_on": reminder_on,
-                "draft_json": json.dumps(draft_values, ensure_ascii=False)
-                if config.get("form_fields") and config.get('action_contract_version') != 1
-                else "{}",
+                "draft_json": draft_json,
             }
         ).insert(ignore_permissions=True)
         if config.get('action_contract_version') == 1:
@@ -531,8 +561,6 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
             instance,
             message=instance.subject,
         )
-    if owner_only:
-        _record_activity(task, "Note", _("تأییدکننده‌ای غیر از درخواست‌دهنده برای این مرحله تعریف نشده است."))
 
 
 def _action_context(instance) -> dict:
@@ -1271,7 +1299,7 @@ def save_workflow_task_draft(task: str, response: str | dict, supplementary_valu
         values = prepare(doc, stage_config, draft=True, values=values)
         doc.draft_json = json.dumps(values, ensure_ascii=False)
         doc.save(ignore_permissions=True)
-        _record_activity(doc, 'Draft Saved', 'پیش‌نویس اقدام ذخیره شد.')
+        _record_draft_saved(doc)
         return success({'task': doc.name, 'saved': True})
     if not stage_config.get("allow_draft", True):
         frappe.throw(_("Drafts are disabled for this workflow stage"))
@@ -1639,7 +1667,7 @@ def process_workflow_deadlines() -> None:
                 instance,
                 message=task.task_title,
             )
-            escalation_users = _users_for_roles(config.get("escalation_roles") or [])
+            escalation_users = _scoped_role_users(config.get("escalation_roles") or [], instance)
             for user in escalation_users:
                 _notify_user(
                     user,
