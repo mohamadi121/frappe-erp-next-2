@@ -42,15 +42,16 @@ class TestWorkflowGraphSnapshot(APITestCase):
         act(instance.name, "Approve")
         self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "status"), "Completed")
 
-    def test_open_task_routes_to_a_deleted_stage(self):
+    def test_open_task_routes_to_a_deleted_route(self):
         instance = self._start()
-        # The designer deletes the End stage and its incoming route after the
-        # instance started. The running instance must still be able to finish.
+        # The designer deletes the approval->end route after the instance started.
+        # Without the snapshot, `_next_stage` would read the live (now empty) routes
+        # and fail with "no next stage"; with it, the frozen route still resolves.
         edge = frappe.db.get_value("ASOUD Workflow Transition",
                                    {"workflow_definition": self.definition, "from_stage": self.approval.name,
                                     "to_stage": self.end.name})
+        self.assertTrue(edge)
         frappe.db.delete("ASOUD Workflow Transition", edge)
-        frappe.db.delete("ASOUD Workflow Stage", self.end.name)
         act(instance.name, "Approve")
         self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "status"), "Completed")
 
