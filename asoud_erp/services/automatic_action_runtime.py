@@ -381,7 +381,11 @@ def perform(receipt, instance, config, company):
             if op.get('table'):
                 # Aggregate one column of a Table field of the target record.
                 table = op['table']
-                rows = context['current'].get(table['table'])
+                # Read the rows from the same record the save-time check validated.
+                target = op.get('target', {'source': 'current'})
+                record_values = (context['current'] if target['source'] == 'current'
+                                 else context['stages'].get(target.get('stage'), {}))
+                rows = record_values.get(table['table'])
                 if not isinstance(rows, list):
                     raise ValueError('فیلد جدول روی سند مقصد خالی یا موجود نیست.')
                 formula = {'op': method, 'table': table['table'], 'columns': [table['column']]}
