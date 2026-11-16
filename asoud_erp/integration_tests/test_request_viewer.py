@@ -183,8 +183,9 @@ class TestSelfApprovalRouting(APITestCase):
             frappe.ValidationError, "تأییدکننده‌ای غیر از درخواست‌دهنده پیدا نشد"
         ):
             self._request([EMPLOYEE_USER])
-        # The request row is saved before the workflow start fails, so it persists
-        # with an empty workflow_instance (the start never returned to set it).
+        # The request row is saved before the workflow start fails, so it persists.
+        # start_workflow_instance returned the instance name before the Form-stage
+        # auto-complete threw, so the request's workflow_instance is set.
         request = frappe.db.get_value(
             "ASOUD Workflow Request",
             {"owner": EMPLOYEE_USER, "workflow_definition": self.definition},
@@ -192,12 +193,11 @@ class TestSelfApprovalRouting(APITestCase):
             as_dict=True,
         )
         self.assertIsNotNone(request)
-        self.assertFalse(request.workflow_instance)
+        self.assertTrue(request.workflow_instance)
         # The instance row was inserted and saved before the throw, so it is visible
-        # in this transaction (rolled back in tearDown). Find it by its reference.
-        instance = frappe.db.get_value(
-            "ASOUD Workflow Instance", {"reference_name": request.name}, "name")
-        self.assertIsNotNone(instance)
+        # in this transaction (rolled back in tearDown).
+        instance = request.workflow_instance
+        self.assertTrue(frappe.db.exists("ASOUD Workflow Instance", instance))
         # No Open task was created for the owner (the old behaviour left one).
         self.assertIsNone(open_task(instance, EMPLOYEE_USER))
         # No Note activity was left for the owner (the old behaviour wrote one).
