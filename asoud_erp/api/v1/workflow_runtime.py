@@ -95,7 +95,8 @@ def _instance_summary(instance) -> dict:
     }
 
 
-def _record_activity(doc, action: str, comment: str = "", *, reference_doctype=None, reference_name=None) -> None:
+def _record_activity(doc, action: str, comment: str = "", *, reference_doctype=None, reference_name=None,
+                     change_json=None) -> None:
     frappe.get_doc(
         {
             "doctype": "ASOUD Workflow Activity",
@@ -108,6 +109,7 @@ def _record_activity(doc, action: str, comment: str = "", *, reference_doctype=N
             "created_on": now_datetime(),
             "reference_doctype": reference_doctype,
             "reference_name": reference_name,
+            "change_json": change_json,
         }
     ).insert(ignore_permissions=True)
 
@@ -1376,11 +1378,23 @@ def complete_workflow_task(
     response: str | dict | None = None,
     assignee: str | None = None,
     supplementary_values: str | dict | None = None,
+    request_id: str | None = None,
 ) -> dict:
     from asoud_erp.services.directive_access import reject_generic
+    from asoud_erp.services.workflow_task_completion import (
+        completion_change_json,
+        previous_completion,
+    )
+    _validate_request_id(request_id)
     original = frappe.get_doc("ASOUD Workflow Task", task)
     reject_generic(original)
     _assert_task_owner(original)
+    if original.status != "Open":
+        # A network retry re-sends the same request_id after the decision was
+        # already applied; return the stored result instead of a validation error.
+        replay = previous_completion(task, request_id)
+        if replay:
+            return success(replay)
     instance = frappe.get_doc('ASOUD Workflow Instance', original.workflow_instance, for_update=True)
     if instance.status != 'Running' or instance.current_stage != original.workflow_stage:
         frappe.throw('این وظیفه دیگر در مرحلهٔ جاری یک فرایند فعال نیست؛ وضعیت صفحه را تازه کنید.')
@@ -1495,7 +1509,7 @@ def complete_workflow_task(
     doc.response_json = json.dumps(normalized_response, ensure_ascii=False)
     doc.completed_on = now_datetime()
     doc.save(ignore_permissions=True)
-    _record_activity(doc, action, doc.comment)
+    _record_activity(doc, action, doc.comment, change_json=completion_change_json(request_id))
     action_labels = {
         "Complete": _("Workflow stage completed"),
         "Approve": _("Workflow request approved"),

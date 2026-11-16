@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Workflow task completion is now idempotent over a network retry: `complete_workflow_task` accepts an optional `request_id` (validated like the start endpoint's). The id is stored on the completion activity's `change_json`; if the client re-sends the same `request_id` after the decision was already applied, the server returns the stored result instead of throwing "task already completed". A different or missing `request_id` on a completed task is still rejected. No new DocType, migration, or permission change.
 - Fix Document form submission idempotency: `forms._submit_form` renamed inner mapping loop variable to `native_key` to avoid shadowing outer sha256 request idempotency hash `key`, resolving UniqueValidationError on repeated or multiple Document form submissions. Add regression tests for multi-submission unique keys and replay idempotency. No new DocType, migration, or permission change.
 
 - Fix shared form submission routing for Document forms: `forms.submit_form` now correctly passes the values dictionary (`source_values(entry)[1]`) instead of the tuple `(schema, result)` to `route()`, resolving AttributeError / HTTP 500 on conditional document form routing. Add integration test coverage for conditional document routing and missing default workflow error handling. No new DocType, migration, or permission change.
