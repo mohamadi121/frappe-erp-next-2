@@ -712,9 +712,15 @@ def _submit_form(name, revision_name, subject, values, request_key):
         from asoud_erp.api.v1.workflow_request import refresh_search_text
 
         refresh_search_text(reference_name)
-    # Native document issuance happens only when the workflow instance completes
-    # (the ASOUD Workflow Instance on_update hook dispatches it). It must not run
-    # here at first submission, when the instance is still Running.
+    # Native issuance normally happens in the ASOUD Workflow Instance on_update
+    # hook when the instance completes. A workflow with no approval stage completes
+    # inside start(), before this entry's values were saved, so that hook could not
+    # issue the document; issue it here, and only in that case (PA-027).
+    if (reference_type == 'ASOUD Workflow Request' and schema.get('execution') and instance_name
+            and frappe.db.get_value('ASOUD Workflow Instance', instance_name, 'status') == 'Completed'):
+        from asoud_erp.services.request_templates.lifecycle import dispatch_native_document
+
+        dispatch_native_document(reference_name)
     return success({'name': entry.name, 'reference_name': reference_name, 'reference_doctype': reference_type,
         'workflow_instance': instance_name})
 

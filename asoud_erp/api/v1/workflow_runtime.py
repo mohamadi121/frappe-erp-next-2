@@ -1417,16 +1417,22 @@ def upload_workflow_attachment(task: str, filename: str, content_base64: str) ->
 
     if not content_matches_extension(content, Path(safe_name).suffix):
         frappe.throw("نوع واقعی فایل با پسوند آن یکسان نیست؛ فایل معتبر نیست.")
-    file_doc = frappe.get_doc(
-        {
-            "doctype": "File",
-            "file_name": safe_name,
-            "content": content,
-            "attached_to_doctype": "ASOUD Workflow Task",
-            "attached_to_name": doc.name,
-            "is_private": 1,
-        }
-    ).insert(ignore_permissions=True)
+    try:
+        file_doc = frappe.get_doc(
+            {
+                "doctype": "File",
+                "file_name": safe_name,
+                "content": content,
+                "attached_to_doctype": "ASOUD Workflow Task",
+                "attached_to_name": doc.name,
+                "is_private": 1,
+            }
+        ).insert(ignore_permissions=True)
+    except Exception as error:
+        # Frappe parses a PDF on save; a damaged one raises a raw pypdf error.
+        if type(error).__module__.startswith("pypdf"):
+            frappe.throw("فایل پی‌دی‌اف آسیب‌دیده است و خوانده نمی‌شود؛ فایل سالم را دوباره بارگذاری کنید.")
+        raise
     return success({"file_url": file_doc.file_url, "file_name": file_doc.file_name, 'name': file_doc.name})
 
 
