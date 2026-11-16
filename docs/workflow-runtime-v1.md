@@ -134,6 +134,20 @@ permission error. `upload_workflow_attachment` verifies the file's actual bytes
 (magic numbers) against its extension before storing it. A user who already acted on
 an instance keeps read access to its detail and history after a task was reassigned
 away from them.
+
+### Batch instance summaries and standard-document attachments
+
+`get_workflow_instance_summaries(names)` returns the summary of up to 100 instances
+in one call (the cartable's "missing summaries" batch). `names` is a list or a JSON
+string of a list; each name is checked with the same per-instance access rule as
+`get_workflow_instance`, and instances the caller cannot read (or that do not exist)
+are **omitted** from the response. More than 100 names is refused with a Persian
+error. This replaces the client's per-instance `get_workflow_instance` loop.
+
+A task attachment on a workflow that references a standard ERPNext document (e.g.
+Purchase Order) is readable by anyone with native read permission on that document
+(`workflow_record_permission` delegates to `frappe.has_permission` on the reference),
+instead of always being denied.
 # Request types
 
 A request type is an `ASOUD Workflow Definition` on `ASOUD Workflow Request`. Its
