@@ -153,6 +153,34 @@ class TestAutomaticActionAudit(APITestCase):
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Stage', stage,
             ['config_json', 'stage_title'], as_dict=True), before)
 
+    def test_error_route_to_an_end_stage_is_accepted_at_save(self):
+        # A failed automatic action may terminate the process at an End stage, so the
+        # designer save must accept an Error route to End (not only a human task).
+        definition, stage = self.graph()
+        end = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'End'})
+        config = {'schema_version': 2, 'title': 'اعلان خطا', 'action_type': 'Send Notification',
+            'operation': {'recipients': ['initiator'], 'channels': ['in_app'], 'message': 'درخواست متوقف شد'}}
+        automatic_actions.save(definition, stage, config, {'Success': end, 'Error': end})
+        self.assertTrue(frappe.db.exists('ASOUD Workflow Transition', {
+            'workflow_definition': definition, 'from_stage': stage, 'to_stage': end,
+            'condition_json': json.dumps({'action': 'Error'})}))
+
+    def test_error_route_to_a_non_human_non_end_stage_is_rejected_at_save(self):
+        # An Error route may only go to a human task or End; a Condition stage is refused.
+        definition = workflow.create_workflow_draft(company=self.company, module_key='HR',
+            target_doctype='ASOUD Workflow Request', workflow_title='آزمون مسیر خطا')['data']['name']
+        start = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'Start'})
+        workflow.add_workflow_stage(definition, 'System Action', start)
+        stage = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'System Action'})
+        workflow.add_workflow_stage(definition, 'Condition', stage)
+        condition = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'Condition'})
+        workflow.add_workflow_stage(definition, 'End', condition)
+        end = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'End'})
+        config = {'schema_version': 2, 'title': 'اعلان خطا', 'action_type': 'Send Notification',
+            'operation': {'recipients': ['initiator'], 'channels': ['in_app'], 'message': 'درخواست متوقف شد'}}
+        with self.assertRaises(frappe.ValidationError):
+            automatic_actions.save(definition, stage, config, {'Success': end, 'Error': condition})
+
     def graph(self):
         definition = workflow.create_workflow_draft(company=self.company, module_key='HR',
             target_doctype='ASOUD Workflow Request', workflow_title='آزمون اقدام خودکار')['data']['name']
@@ -217,3 +245,80 @@ class TestAutomaticActionAudit(APITestCase):
         self.assertEqual(frappe.db.count('ASOUD Workflow Instance', {
             'reference_doctype': first['doctype'], 'reference_name': first['name']}), 1)
         self.assertEqual(frappe.db.count('ASOUD Workflow Request'), before)
+
+    def test_cancelling_a_request_cancels_its_queued_automatic_actions(self):
+        from asoud_erp.api.v1.workflow_request import cancel_request
+
+        # approvals=1 keeps the instance Running (waiting at the approval) so the
+        # requester can still cancel it.
+        definition, stages = make_definition(self.company, approvals=1, fields=[])
+        result = create(self.company, definition=definition)
+        instance = frappe.get_doc('ASOUD Workflow Instance', result['workflow_instance'])
+        self.assertEqual(instance.status, 'Running')
+        # A queued automatic action waiting for the background worker.
+        queued = frappe.get_doc({'doctype': 'ASOUD Action Execution',
+            'workflow_instance': instance.name, 'workflow_stage': list(stages.values())[0].name,
+            'status': 'Pending', 'action_type': 'Send Notification',
+            'config_json': '{}', 'routes_json': '{}'}).insert(ignore_permissions=True)
+        # A receipt already running is owned by a worker; cancellation must leave it.
+        running = frappe.get_doc({'doctype': 'ASOUD Action Execution',
+            'workflow_instance': instance.name, 'workflow_stage': list(stages.values())[0].name,
+            'status': 'Running', 'action_type': 'Send Notification',
+            'config_json': '{}', 'routes_json': '{}'}).insert(ignore_permissions=True)
+        frappe.set_user(EMPLOYEE_USER)
+        cancel_request(result['name'], 'لغو آزمایشی')
+        frappe.set_user('Administrator')
+        self.assertEqual(frappe.db.get_value('ASOUD Action Execution', queued.name, 'status'), 'Cancelled')
+        self.assertEqual(frappe.db.get_value('ASOUD Action Execution', running.name, 'status'), 'Running')
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', instance.name, 'status'), 'Cancelled')
+
+    def test_final_failure_notifies_the_requester(self):
+        from asoud_erp.services.automatic_action_runtime import _final_failure
+
+        definition, stages = make_definition(self.company, approvals=0, fields=[])
+        result = create(self.company, definition=definition)
+        instance = frappe.get_doc('ASOUD Workflow Instance', result['workflow_instance'])
+        # A failed receipt with no Error route: the instance is marked Failed and the
+        # requester must be told, not only System Managers.
+        receipt = frappe.get_doc({'doctype': 'ASOUD Action Execution',
+            'workflow_instance': instance.name, 'workflow_stage': list(stages.values())[0].name,
+            'status': 'Failed', 'action_type': 'Send Notification', 'attempts': 1,
+            'service_user': EMPLOYEE_USER, 'config_json': '{}',
+            'routes_json': '{}'}).insert(ignore_permissions=True)
+        _final_failure(receipt, instance)
+        instance.reload()
+        self.assertEqual(instance.status, 'Failed')
+        self.assertTrue(frappe.db.exists('Notification Log', {
+            'for_user': instance.started_by, 'document_name': instance.name}))
+
+    def test_error_route_to_an_end_stage_terminates_the_instance(self):
+        from asoud_erp.services.automatic_action_runtime import _finish
+
+        definition, stage = self.graph()
+        end = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'End'})
+        instance = frappe.get_doc({'doctype': 'ASOUD Workflow Instance',
+            'workflow_definition': definition, 'subject': 'آزمون مسیر خطا', 'status': 'Running',
+            'current_stage': stage, 'started_by': EMPLOYEE_USER}).insert(ignore_permissions=True)
+        receipt = frappe._dict(name=uuid4().hex, workflow_stage=stage, trigger_id='start',
+            routes_json=json.dumps({'Error': end}), config_json='{}')
+        _finish(receipt, instance, False)
+        instance.reload()
+        self.assertEqual(instance.current_stage, end)
+        self.assertIn(instance.status, {'Completed', 'Rejected', 'Cancelled', 'Failed'})
+
+    def test_update_fields_on_a_form_entry_writes_values_json(self):
+        from asoud_erp.services.automatic_action_runtime import _update
+
+        saved = forms.save_form(self.company, {'kind': 'Request', 'title': 'فرم به‌روزرسانی خودکار',
+            'sections': [{'id': 'main', 'title': 'اطلاعات', 'fields': [
+                {'key': 'amount', 'label': 'عدد', 'type': 'Number'},
+                {'key': 'note', 'label': 'توضیح', 'type': 'Text'}]}]}, client_id=uuid4().hex)['data']
+        forms.transition(saved['name'], 'publish', saved['draft_version'])
+        published = forms.get_form(saved['name'])['data']
+        entry = forms.submit_form(published['name'], published['revision'], 'ثبت به‌روزرسانی',
+            {'amount': 1, 'note': 'ابتدایی'}, uuid4().hex)['data']
+        doc = frappe.get_doc('ASOUD Form Entry', entry['name'])
+        _update(doc, {'amount': 9, 'note': 'به‌روزرسانی‌شده'}, self.company)
+        values = json.loads(frappe.db.get_value('ASOUD Form Entry', entry['name'], 'values_json'))
+        # Number fields are stored as their normalized string form by the schema validator.
+        self.assertEqual((values['amount'], values['note']), ('9', 'به‌روزرسانی‌شده'))

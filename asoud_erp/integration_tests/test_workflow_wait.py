@@ -82,6 +82,9 @@ class TestWorkflowWait(APITestCase):
                 instance.reload()
                 self.assertEqual(instance.status, 'Completed')
             else:
+                # A past date under the Error policy on a wait that cannot recover (a Date
+                # wait has no source date to correct) fails the instance with a business
+                # reason, not a technical error.
                 self.assertEqual(instance.status, 'Failed')
                 self.assertIn('گذشته', json.loads(instance.wait_snapshot_json)['error'])
 
@@ -96,6 +99,28 @@ class TestWorkflowWait(APITestCase):
         self.assertEqual(instance.status, 'Cancelled')
         self.assertEqual(json.loads(instance.wait_snapshot_json)['state'], 'Cancelled')
         self.assertFalse(frappe.db.exists('ASOUD Workflow Activity', {'workflow_instance': instance.name, 'action': 'Wait Completed'}))
+
+    def test_past_form_date_parks_and_recovers_when_the_date_is_corrected(self):
+        # A past source date under the Error policy parks the wait (recoverable), and a
+        # corrected future date resumes it, instead of burning the instance to Failed.
+        config = {'wait_version': 1, 'title': 'انتظار تاریخ فرم', 'wait_type': 'FormDate',
+            'date_source': {'source_kind': 'Original', 'source_stage': '', 'source_field': 'scheduled', 'field_type': 'Date'},
+            'offset_direction': 'Same', 'clock': '09:00', 'date_change_policy': 'Recalculate',
+            'past_policy': 'Error'}
+        _, _, result, instance = self.enter(config, {'scheduled': '2001-01-01'})
+        instance.reload()
+        self.assertEqual(instance.status, 'Running')
+        self.assertEqual(json.loads(instance.wait_snapshot_json)['state'], 'Past')
+        # Correct the source date to a future day; the parked wait resumes.
+        source = frappe.get_doc('ASOUD Workflow Request', result['name'])
+        source.values_json = json.dumps({'scheduled': (datetime.now(timezone.utc).date() + timedelta(days=10)).isoformat()})
+        source.save()
+        waits.run(instance.name)
+        instance.reload()
+        self.assertEqual(instance.status, 'Running')
+        self.assertEqual(json.loads(instance.wait_snapshot_json)['state'], 'Waiting')
+        self.resume_due(instance)
+        self.assertEqual(instance.status, 'Completed')
 
     def test_form_date_changes_are_recalculated_or_kept_and_invalid_values_fail(self):
         initial = (datetime.now(timezone.utc).date() + timedelta(days=10)).isoformat()

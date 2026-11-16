@@ -69,8 +69,20 @@ def world(monkeypatch):
     site = fake.Site()
     frappe, utils = fake.install(site)
     runtime = types.ModuleType("asoud_erp.api.v1.workflow_runtime")
+    # cancel_request cancels queued automatic actions; stub the runtime the same way the
+    # fake site cannot import it (its module-level frappe.utils import is not available here).
+    actions = types.ModuleType("asoud_erp.services.automatic_action_runtime")
+
+    def _cancel_queued(instance):
+        queued = {"workflow_instance": instance.name, "status": ["in", ["Pending", "Retry Pending"]]}
+        count = frappe.db.count("ASOUD Action Execution", queued)
+        frappe.db.set_value("ASOUD Action Execution", queued, "status", "Cancelled", update_modified=False)
+        return count
+
+    actions.cancel = _cancel_queued
     for name, module in {"frappe": frappe, "frappe.utils": utils,
-                         "asoud_erp.api.v1.workflow_runtime": runtime}.items():
+                         "asoud_erp.api.v1.workflow_runtime": runtime,
+                         "asoud_erp.services.automatic_action_runtime": actions}.items():
         monkeypatch.setitem(sys.modules, name, module)
     restore = fake.isolate(RELOADED)
     site.add("User", "sara@example.com")
