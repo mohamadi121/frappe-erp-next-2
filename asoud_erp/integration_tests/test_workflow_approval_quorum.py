@@ -47,8 +47,8 @@ class TestApprovalQuorum(APITestCase):
         return frappe.db.count("ASOUD Workflow Task", {
             "workflow_instance": instance, "status": "Open"})
 
-    def _instance(self, request):
-        return frappe.get_doc("ASOUD Workflow Instance", request["workflow_instance"])
+    def _instance(self, name):
+        return frappe.get_doc("ASOUD Workflow Instance", name)
 
     def test_majority_advances_when_more_than_half_approve(self):
         request = self._request("Majority")
