@@ -149,37 +149,53 @@ def failed(instance, snapshot, error):
     audit(instance, snapshot, 'Wait Failed', str(error))
 
 
-def _notify_past(instance):
+def _notify_wait(instance, subject, message):
     from asoud_erp.api.v1.workflow_runtime import _notify_user
 
     frappe.db.savepoint('wait_past_notice')
     try:
-        _notify_user(instance.started_by, 'زمان انتظار گذشته است', instance,
-                     message='زمان تعیین‌شدهٔ انتظار در گذشته است؛ برای ادامهٔ فرایند تاریخ مبدأ را اصلاح کنید.')
+        _notify_user(instance.started_by, subject, instance, message=message)
     except Exception:
         frappe.db.rollback(save_point='wait_past_notice')
 
 
 def _mark_past(instance, snapshot):
-    """A past due date under the Error policy parks the wait; it does not burn the instance.
-
-    This is a business policy (the date is in the past), not a technical failure, so the
-    instance stays ``Running`` and recoverable: the owner can correct the source date (a
-    Recalculate wait keeps its past due, so the dispatcher re-checks it and resumes once the
-    date is in the future) or cancel the request.
+    """A past due date under the Error policy on a Recalculate wait parks the wait; it does
+    not burn the instance. The instance stays ``Running`` and recoverable: the owner can
+    correct the source date and the dispatcher re-checks it (a Recalculate wait keeps its
+    past due) and resumes once the date is in the future.
     """
     snapshot.update(state='Past',
                     error='زمان تعیین‌شدهٔ انتظار گذشته است؛ برای ادامهٔ فرایند تاریخ را اصلاح کنید.',
                     actual_utc=utc_now().isoformat())
     instance.wait_snapshot_json = json.dumps(snapshot, default=str, ensure_ascii=False)
     # A Recalculate wait keeps its (past) due so the dispatcher re-checks it after a date
-    # correction; any other wait is parked and not polled.
-    recalculate = snapshot.get('config', {}).get('date_change_policy') == 'Recalculate'
-    instance.wait_due_utc = (datetime.fromisoformat(snapshot['due_utc']).replace(tzinfo=None)
-                             if recalculate else None)
+    # correction; it is the only kind of wait that can recover from a past date.
+    instance.wait_due_utc = datetime.fromisoformat(snapshot['due_utc']).replace(tzinfo=None)
     instance.save(ignore_permissions=True)
     audit(instance, snapshot, 'Wait Past Date', 'زمان انتظار در گذشته است؛ برای ادامه، تاریخ مبدأ را اصلاح کنید.')
-    _notify_past(instance)
+    _notify_wait(instance, 'زمان انتظار گذشته است',
+                 'زمان تعیین‌شدهٔ انتظار در گذشته است؛ برای ادامهٔ فرایند تاریخ مبدأ را اصلاح کنید.')
+
+
+def _fail_past(instance, snapshot):
+    """A past due date under the Error policy on a wait that cannot recover (no Recalculate)
+    fails the instance with a business reason — not a technical error — and notifies the
+    requester, instead of leaving it Running forever with nothing to wake it.
+    """
+    reason = 'زمان تعیین‌شدهٔ انتظار در گذشته است و امکان اصلاح خودکار آن وجود ندارد؛ فرایند متوقف شد.'
+    failed(instance, snapshot, reason)
+    _notify_wait(instance, 'زمان انتظار گذشته است',
+                 'زمان تعیین‌شدهٔ انتظار در گذشته است و امکان اصلاح خودکار آن وجود ندارد؛ فرایند متوقف شد.')
+
+
+def _handle_past(instance, snapshot):
+    """Route a past due date under the Error policy: park a Recalculate wait (recoverable),
+    otherwise fail the instance with a business reason."""
+    if snapshot.get('config', {}).get('date_change_policy') == 'Recalculate':
+        _mark_past(instance, snapshot)
+    else:
+        _fail_past(instance, snapshot)
 
 
 def schedule(instance, stage, config):
@@ -197,7 +213,7 @@ def schedule(instance, stage, config):
             due_utc=due.isoformat(), scheduled_utc=due.isoformat(),
             target=destination(instance.workflow_definition, stage.name).name)
         if due < utc_now() and config['past_policy'] == 'Error':
-            _mark_past(instance, snapshot)
+            _handle_past(instance, snapshot)
             return
         persist(instance, snapshot)
         audit(instance, snapshot, 'Wait Scheduled', 'انتظار ثبت شد؛ ادامهٔ فرایند به‌صورت خودکار در سرور انجام می‌شود.')

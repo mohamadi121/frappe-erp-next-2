@@ -82,11 +82,10 @@ class TestWorkflowWait(APITestCase):
                 instance.reload()
                 self.assertEqual(instance.status, 'Completed')
             else:
-                # A past date under the Error policy parks the wait (recoverable), it does
-                # not burn the instance to a terminal Failed state.
-                instance.reload()
-                self.assertEqual(instance.status, 'Running')
-                self.assertEqual(json.loads(instance.wait_snapshot_json)['state'], 'Past')
+                # A past date under the Error policy on a wait that cannot recover (a Date
+                # wait has no source date to correct) fails the instance with a business
+                # reason, not a technical error.
+                self.assertEqual(instance.status, 'Failed')
                 self.assertIn('گذشته', json.loads(instance.wait_snapshot_json)['error'])
 
     def test_cancelled_request_never_resumes(self):

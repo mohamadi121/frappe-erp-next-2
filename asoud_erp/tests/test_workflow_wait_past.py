@@ -1,9 +1,11 @@
-"""Recoverable past-date handling in `workflow_wait._mark_past`.
+"""Past-date handling in `workflow_wait` under the Error policy.
 
-A past due date under the Error policy is a business condition (the date is in the
-past), not a technical failure. The old code called ``failed`` and burned the instance
-to a terminal ``Failed`` state. Now the wait is parked: the instance stays ``Running``
-and recoverable (the owner can correct the source date or cancel the request).
+A past due date is a business condition (the date is in the past), not a technical
+failure. It is only recoverable when the wait recalculates from a source date
+(``date_change_policy == 'Recalculate'``), because the dispatcher re-checks it after the
+source date is corrected. Any other wait has nothing that would wake it, so parking it
+would leave the instance ``Running`` forever; such a wait instead fails with a business
+reason and the requester is notified.
 """
 
 import importlib
@@ -45,34 +47,67 @@ def _instance(site, started_by="owner@example.com"):
                                        current_stage="WAIT-1", started_by=started_by))
 
 
-def _snapshot(**overrides):
-    base = {"state": "Waiting", "stage": "WAIT-1",
-            "due_utc": "2001-01-01T09:00:00+00:00",
-            "config": {"wait_type": "Date", "past_policy": "Error"}}
-    base.update(overrides)
-    return base
+def _snapshot(config):
+    return {"state": "Waiting", "stage": "WAIT-1",
+            "due_utc": "2001-01-01T09:00:00+00:00", "config": config}
 
 
-def test_mark_past_parks_the_instance_without_burning_it(waits):
+def _recalculate():
+    return {"wait_type": "FormDate", "past_policy": "Error", "date_change_policy": "Recalculate"}
+
+
+def _notified(site):
+    return {row["for_user"] for row in site.table("Notification Log").values()}
+
+
+def test_handle_past_parks_a_recalculate_wait(waits):
     module, site = waits
     instance = _instance(site)
-    module._mark_past(instance, _snapshot())
+    module._handle_past(instance, _snapshot(_recalculate()))
     # The instance is NOT terminal: it stays Running and recoverable.
     assert instance.status == "Running"
     assert instance.completed_on is None
     assert json.loads(instance.wait_snapshot_json)["state"] == "Past"
-    # A non-Recalculate parked wait is not polled by the dispatcher.
-    assert instance.wait_due_utc is None
+    # A Recalculate parked wait keeps its (past) due so the dispatcher re-checks it.
+    assert instance.wait_due_utc is not None
+
+
+def test_handle_past_fails_a_non_recalculate_wait(waits):
+    module, site = waits
+    instance = _instance(site)
+    # A Date wait has no source date to correct, so it cannot recover.
+    module._handle_past(instance, _snapshot({"wait_type": "Date", "past_policy": "Error"}))
+    assert instance.status == "Failed"
+    assert instance.completed_on is not None
+    snapshot = json.loads(instance.wait_snapshot_json)
+    assert snapshot["state"] == "Failed"
+    # A business reason, not a technical error: it names the past date and the stop.
+    assert "گذشته" in snapshot["error"]
+    assert "متوقف" in snapshot["error"]
+
+
+def test_handle_past_fails_a_keep_formdate_wait(waits):
+    module, site = waits
+    instance = _instance(site)
+    # A FormDate wait that keeps its date also cannot recover from a past date.
+    module._handle_past(instance, _snapshot(
+        {"wait_type": "FormDate", "past_policy": "Error", "date_change_policy": "Keep"}))
+    assert instance.status == "Failed"
+    assert json.loads(instance.wait_snapshot_json)["state"] == "Failed"
+
+
+def test_fail_past_notifies_the_owner_with_a_business_reason(waits):
+    module, site = waits
+    instance = _instance(site)
+    module._fail_past(instance, _snapshot({"wait_type": "Date", "past_policy": "Error"}))
+    assert instance.status == "Failed"
+    assert "owner@example.com" in _notified(site)
 
 
 def test_mark_past_keeps_due_for_a_recalculate_wait(waits):
     module, site = waits
     instance = _instance(site)
-    snapshot = _snapshot(config={"wait_type": "FormDate", "past_policy": "Error",
-                                 "date_change_policy": "Recalculate"})
-    module._mark_past(instance, snapshot)
-    # A Recalculate parked wait keeps its (past) due so the dispatcher re-checks it
-    # after the source date is corrected.
+    module._mark_past(instance, _snapshot(_recalculate()))
     assert instance.status == "Running"
     assert instance.wait_due_utc is not None
 
@@ -80,8 +115,7 @@ def test_mark_past_keeps_due_for_a_recalculate_wait(waits):
 def test_mark_past_audits_and_notifies_the_owner(waits):
     module, site = waits
     instance = _instance(site)
-    module._mark_past(instance, _snapshot())
+    module._mark_past(instance, _snapshot(_recalculate()))
     actions = [row["action"] for row in site.table("ASOUD Workflow Activity").values()]
     assert "Wait Past Date" in actions
-    notified = {row["for_user"] for row in site.table("Notification Log").values()}
-    assert "owner@example.com" in notified
+    assert "owner@example.com" in _notified(site)

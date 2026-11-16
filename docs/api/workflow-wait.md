@@ -53,12 +53,19 @@ Cancellation/termination or a changed current stage makes an old wait inert.
 Source errors and invalid destinations fail with an audit activity, never False
 or a silent immediate continuation. History stores planned and actual times.
 
-A past due date under the `Error` policy parks the wait in a non-terminal `Past`
-snapshot state (the instance stays `Running` and recoverable) instead of failing
-it: the owner is notified in-app and can correct the source date (a `Recalculate`
-wait keeps its past due, so the scheduler re-checks it and resumes once the date
-is in the future) or cancel the request. A missing or invalid source date is a
-technical error and still fails the instance.
+A past due date under the `Error` policy is a business condition, not a technical
+failure, and is handled by recoverability:
+
+- A `Recalculate` wait (the only kind that can recover) parks in a non-terminal
+  `Past` snapshot state: the instance stays `Running`, the owner is notified in-app,
+  and the wait keeps its past due so the scheduler re-checks it and resumes once the
+  source date is corrected to the future.
+- Any other wait (Duration, Date, or a `Keep` FormDate) has nothing that would wake it,
+  so parking it would leave the instance `Running` forever. It instead fails the
+  instance with a Persian business reason (the date is in the past and cannot be
+  corrected automatically) and notifies the requester.
+
+A missing or invalid source date is a technical error and still fails the instance.
 
 Legacy Duration/Date/Event configs are preserved and remain non-executable until
 explicitly saved as v1. Event is not reinterpreted as a form date. No legacy
