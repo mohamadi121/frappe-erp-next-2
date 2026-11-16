@@ -13,9 +13,15 @@ def finish(instance, stage, *, previous_stage, source_task=None):
         return  # Retrying a committed end cannot overwrite it or repeat hooks.
     if stage.stage_type != 'End' or stage.workflow_definition != locked.workflow_definition:
         frappe.throw('مرحلهٔ پایان متعلق به این گردش کار نیست.')
-    if not frappe.db.exists('ASOUD Workflow Transition', {'workflow_definition': locked.workflow_definition,
-            'from_stage': previous_stage, 'to_stage': stage.name}):
+    from asoud_erp.services.workflow_graph_snapshot import has_transition
+
+    # The incoming route is a frozen-route check: a running instance keeps the route
+    # it started with, so it is read from the snapshot (live rows for old instances).
+    if not has_transition(locked, previous_stage, to_stage=stage.name):
         frappe.throw('مسیر ورودی معتبر برای پایان عملیات پیدا نشد.')
+    # The outgoing-route guard is a design-structure invariant (an End is terminal),
+    # not a frozen route: it reads the live graph so a designer error is caught even
+    # if it postdates the instance's snapshot.
     if frappe.db.exists('ASOUD Workflow Transition', {'workflow_definition': locked.workflow_definition,
             'from_stage': stage.name}):
         frappe.throw('مرحلهٔ پایان نمی‌تواند مسیر خروجی داشته باشد.')
