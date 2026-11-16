@@ -28,6 +28,11 @@ planned under #47. Success returns `{name: string, deleted: true}` in the standa
 Failures retain the original graph/status and edit history. Unrelated documents
 are never force-deleted.
 
+A successful deletion writes one `ASOUD Security Audit` row
+(`action: workflow.definition.deleted`, actor, target, company and the workflow
+code/title in `details`) inside the same savepoint as the deletion, so a failed
+audit rolls the deletion back.
+
 The client confirms deletion, does not optimistically mutate cards, and reloads the
 current search/status/sort after success. Network failures do not imply success or
 change local status. Both actions require an online session and are not queued.

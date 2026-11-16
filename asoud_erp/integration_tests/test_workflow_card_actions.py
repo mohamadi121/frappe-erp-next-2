@@ -227,6 +227,22 @@ class TestWorkflowCardActions(APITestCase):
         with self.assertRaises(frappe.ValidationError):
             workflow.delete_workflow(name2)
 
+    def test_delete_workflow_writes_security_audit(self):
+        # PA-042: deleting a workflow must leave an ASOUD Security Audit row in
+        # the same savepoint, recording the actor, target and company.
+        name = self.draft()
+        code = frappe.db.get_value('ASOUD Workflow Definition', name, 'workflow_code')
+        workflow.delete_workflow(name)
+        self.assertFalse(frappe.db.exists('ASOUD Workflow Definition', name))
+        audit = frappe.get_all('ASOUD Security Audit',
+            filters={'action': 'workflow.definition.deleted', 'target': name},
+            fields=['actor', 'company', 'target_type', 'details'], limit=1)
+        self.assertTrue(audit, 'deletion must write a security audit row')
+        self.assertEqual(audit[0]['actor'], 'Administrator')
+        self.assertEqual(audit[0]['company'], self.company)
+        self.assertEqual(audit[0]['target_type'], 'ASOUD Workflow Definition')
+        self.assertIn(code, audit[0]['details'])
+
     def test_edited_unused_workflow_deletion_clears_versions(self):
         name = self.draft()
         self.complete(name)
