@@ -716,8 +716,11 @@ def _submit_form(name, revision_name, subject, values, request_key):
     # hook when the instance completes. A workflow with no approval stage completes
     # inside start(), before this entry's values were saved, so that hook could not
     # issue the document; issue it here, and only in that case (PA-027).
-    if (reference_type == 'ASOUD Workflow Request' and schema.get('execution') and instance_name
-            and frappe.db.get_value('ASOUD Workflow Instance', instance_name, 'status') == 'Completed'):
+    # The request may have started its own instance (create_request), so read it there.
+    request_instance = instance_name or (reference_type == 'ASOUD Workflow Request' and frappe.db.get_value(
+        'ASOUD Workflow Request', reference_name, 'workflow_instance'))
+    if (reference_type == 'ASOUD Workflow Request' and schema.get('execution') and request_instance
+            and frappe.db.get_value('ASOUD Workflow Instance', request_instance, 'status') == 'Completed'):
         from asoud_erp.services.request_templates.lifecycle import dispatch_native_document
 
         dispatch_native_document(reference_name)
