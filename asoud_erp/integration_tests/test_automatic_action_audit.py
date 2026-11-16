@@ -84,6 +84,56 @@ class TestAutomaticActionAudit(APITestCase):
             values = json.loads(frappe.db.get_value(result['doctype'], result['name'], 'values_json'))
             self.assertEqual(values['amount'], expected, method)
 
+    def table_execution(self):
+        """A request whose form has a Table field with a numeric and a text column."""
+        self.service()
+        fields = [
+            {'key': 'total', 'label': 'مجموع', 'type': 'Number'},
+            {'key': 'lines', 'label': 'اقلام', 'type': 'Table',
+             'columns': [{'key': 'amount', 'label': 'مبلغ', 'type': 'Number'},
+                         {'key': 'note', 'label': 'توضیح', 'type': 'Short Text'}]},
+        ]
+        definition, stages = make_definition(self.company, fields=fields)
+        request = create(self.company, definition=definition,
+            values={'total': 0, 'lines': [{'amount': 10, 'note': 'اول'}, {'amount': 20, 'note': 'دوم'}]})
+        stage = frappe.get_doc({'doctype': 'ASOUD Workflow Stage', 'workflow_definition': definition,
+            'stage_key': uuid4().hex, 'stage_type': 'System Action', 'stage_title': 'خودکار',
+            'sequence_no': 10, 'config_json': '{}'}).insert().name
+        instance = frappe.get_doc('ASOUD Workflow Instance', request['workflow_instance'])
+        receipt = frappe._dict(name=uuid4().hex, workflow_stage=stage)
+        return definition, stage, instance, receipt
+
+    def test_calculate_aggregates_a_table_column(self):
+        definition, stage, instance, receipt = self.table_execution()
+        # The action aggregates one column of the request's Table field; the form
+        # engine's Decimal table aggregation does the math.
+        cases = {'sum': 30.0, 'average': 15.0, 'min': 10.0, 'max': 20.0, 'count': 2.0}
+        for method, expected in cases.items():
+            config = validate_config(definition, stage, {'schema_version': 2, 'action_type': 'Calculate Value',
+                'operation': {'target': {'source': 'current'}, 'field': 'total', 'method': method,
+                    'inputs': {}, 'table': {'table': 'lines', 'column': 'amount'}},
+                'execution': {'extra_attempts': 0, 'retry_seconds': 60, 'timeout_seconds': 120}})
+            with identity(self.company):
+                result = perform(receipt, instance, config, self.company)
+            values = json.loads(frappe.db.get_value(result['doctype'], result['name'], 'values_json'))
+            self.assertEqual(values['total'], expected, method)
+
+    def test_calculate_table_aggregation_rejects_a_non_numeric_column(self):
+        definition, stage, _, _ = self.table_execution()
+        with self.assertRaisesRegex(ValueError, 'باید عددی باشد'):
+            validate_config(definition, stage, {'schema_version': 2, 'action_type': 'Calculate Value',
+                'operation': {'target': {'source': 'current'}, 'field': 'total', 'method': 'sum',
+                    'inputs': {}, 'table': {'table': 'lines', 'column': 'note'}},
+                'execution': {'extra_attempts': 0, 'retry_seconds': 60, 'timeout_seconds': 120}})
+
+    def test_calculate_table_aggregation_rejects_an_unknown_table_field(self):
+        definition, stage, _, _ = self.table_execution()
+        with self.assertRaisesRegex(ValueError, 'فیلد جدول'):
+            validate_config(definition, stage, {'schema_version': 2, 'action_type': 'Calculate Value',
+                'operation': {'target': {'source': 'current'}, 'field': 'total', 'method': 'sum',
+                    'inputs': {}, 'table': {'table': 'nope', 'column': 'amount'}},
+                'execution': {'extra_attempts': 0, 'retry_seconds': 60, 'timeout_seconds': 120}})
+
     def test_update_fields_writes_only_allowed_values(self):
         result, _, _, _ = self.run_action('Update Fields', {'target': {'source': 'current'},
             'mapping': {'reason': {'source': 'constant', 'value': 'شرح اصلاح‌شده'},

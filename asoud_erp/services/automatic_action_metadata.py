@@ -13,6 +13,7 @@ from asoud_erp.services.automatic_action_policy import (
     VARIABLE,
     normalize_action,
     number,
+    validate_table_aggregation,
 )
 from asoud_erp.services.document_templates import TARGET_FIELDS
 
@@ -354,6 +355,13 @@ def validate_config(definition, stage, raw):
             if not field:
                 raise ValueError("Calculation destination must be an editable numeric field")
             validate_mapping(op["inputs"], [{"key": k, "type": field["type"]} for k in op["inputs"]], sources)
+            if op.get("table"):
+                all_fields = (
+                    sources["current"]
+                    if op["target"]["source"] == "current"
+                    else next(s["fields"] for s in sources["stages"] if s["id"] == op["target"]["stage"])
+                )
+                validate_table_aggregation(op["table"], op["method"], all_fields)
     elif kind == "Change Status":
         from frappe.model.workflow import get_workflow
 
