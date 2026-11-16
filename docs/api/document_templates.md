@@ -35,6 +35,12 @@ warehouse is used. Sales Order and Purchase Order are priced by ERPNext's own
 controller (`set_missing_values` + `set_taxes`), so the template only supplies the
 party, date and item lines.
 
+The automatic-action engine's **Create Document** action supports exactly the
+documents with a `TARGET_FIELDS` schema above (the `DOCUMENTS` allowlist in
+`services/automatic_action_metadata.py` is derived from `TARGET_FIELDS`). A
+workflow whose target DocType is one of these is no longer blocked from
+automatic execution.
+
 ## Value sources
 
 Each target field maps to `{"source": ..., "value": ...}`:

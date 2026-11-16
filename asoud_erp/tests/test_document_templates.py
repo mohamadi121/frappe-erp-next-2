@@ -205,3 +205,38 @@ def test_coming_soon_document_is_rejected_on_save():
     with pytest.raises(ValueError, match="not available"):
         normalize_template({"title": "حقوق", "module": "HR", "document_type": "Salary Slip",
                             "mapping": {}}, None)
+
+
+# --- PA-048: the automatic-action engine supports the commercial documents -----
+# The engine's DOCUMENTS allowlist is derived from TARGET_FIELDS (the single
+# source of truth), so a document is supported exactly when it has a schema and
+# a build_document branch.
+
+@pytest.mark.parametrize(
+    "doctype, values",
+    [
+        ("Sales Order", {"customer": "C", "transaction_date": "2026-09-25",
+                         "items": [{"item_code": "LAP", "qty": 1, "uom": "Nos"}]}),
+        ("Purchase Order", {"supplier": "S", "transaction_date": "2026-09-25",
+                            "items": [{"item_code": "LAP", "qty": 1, "uom": "Nos"}]}),
+        ("Stock Entry", {"purpose": "Material Receipt", "posting_date": "2026-09-25",
+                         "items": [{"item_code": "LAP", "qty": 1, "uom": "Nos"}]}),
+        ("Issue", {"subject": "خرابی"}),
+    ],
+)
+def test_automatic_action_documents_have_a_schema_and_builder(doctype, values):
+    from asoud_erp.services.document_templates import TARGET_FIELDS
+
+    assert doctype in TARGET_FIELDS
+    assert build_document(doctype, values, "Taban")["doctype"] == doctype
+
+
+def test_automatic_action_documents_are_the_schemad_documents():
+    # The engine allowlist (automatic_action_metadata.DOCUMENTS) is
+    # `tuple(TARGET_FIELDS)`; assert the commercial documents are all present so
+    # a workflow targeting any of them is no longer blocked.
+    from asoud_erp.services.document_templates import TARGET_FIELDS
+
+    for doctype in ("Material Request", "Journal Entry", "Sales Order",
+                    "Purchase Order", "Stock Entry", "Issue"):
+        assert doctype in TARGET_FIELDS

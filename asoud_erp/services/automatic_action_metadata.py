@@ -16,7 +16,11 @@ from asoud_erp.services.automatic_action_policy import (
 )
 from asoud_erp.services.document_templates import TARGET_FIELDS
 
-DOCUMENTS = ("Material Request", "Journal Entry")
+# Commercial documents an automatic action may create or update. A document is
+# supported exactly when it has a TARGET_FIELDS schema and a build_document
+# branch (services/document_templates.py), so the allowlist is derived from
+# that single source of truth rather than kept in a second hardcoded tuple.
+DOCUMENTS = tuple(TARGET_FIELDS)
 RECORDS = (*DOCUMENTS, "ASOUD Workflow Request")
 EDITABLE_TYPES = {"Data", "Small Text", "SmallText", "Text", "Date", "Int", "Float", "Currency", "Percent"}
 FORBIDDEN = {
