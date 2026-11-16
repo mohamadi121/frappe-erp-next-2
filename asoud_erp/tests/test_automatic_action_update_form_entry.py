@@ -40,7 +40,8 @@ def aar(monkeypatch):
             setattr(utils, name, lambda *args, **kwargs: None)
     monkeypatch.setitem(sys.modules, "frappe", frappe)
     monkeypatch.setitem(sys.modules, "frappe.utils", utils)
-    restore = fake.isolate(["asoud_erp.services.automatic_action_runtime"])
+    restore = fake.isolate(["asoud_erp.services.automatic_action_runtime",
+                           "asoud_erp.services.form_schema"])
     module = importlib.import_module("asoud_erp.services.automatic_action_runtime")
     yield module, site
     restore()
