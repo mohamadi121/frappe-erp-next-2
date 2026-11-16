@@ -95,6 +95,35 @@ class TestWorkflowStartSettings(APITestCase):
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', first, 'status'), 'Completed')
         self.assertEqual(frappe.db.count('ASOUD Workflow Activity', {'workflow_instance': second, 'action': 'Workflow Started'}), 1)
 
+    def test_metadata_only_start_change_allowed_while_instance_running(self):
+        # PA-026: adding an initiator role (metadata) must not be blocked by a
+        # Running instance; only structural changes (trigger/source/route) are.
+        definition, stages = make_definition(self.company, approvals=0, fields=[])
+        task = next(stage for stage in stages.values() if stage.stage_type == 'User Task')
+        saved = forms.save_form(self.company, {'kind': 'Request', 'title': 'فرم آزمون شروع', 'sections': [
+            {'id': 'main', 'title': 'اطلاعات', 'fields': [{'key': 'note', 'label': 'توضیح', 'type': 'Text'}]}]},
+            client_id=uuid4().hex)['data']
+        forms.transition(saved['name'], 'publish', saved['draft_version'])
+        form = forms.get_form(saved['name'])['data']
+        source = {'form': form['name'], 'revision': form['revision']}
+        workflow.save_stage_settings(definition, task.name, {**json.loads(task.config_json), 'submission_source': source})
+        configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
+            'allow_manager_restart': True})
+        frappe.set_user(self.initiator)
+        entry = forms.submit_form(form['name'], form['revision'], 'درخواست اصلی', {'note': 'اطلاعات'}, uuid4().hex)['data']
+        instance = entry['workflow_instance']
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', instance, 'status'), 'Running')
+        # Metadata-only change (add an initiator role) succeeds while Running.
+        frappe.set_user('Administrator')
+        updated = configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
+            'allow_manager_restart': True, 'initiator_roles': ['System Manager']})
+        stored = json.loads(frappe.db.get_value('ASOUD Workflow Stage', updated['name'], 'config_json'))
+        self.assertEqual(stored['initiator_roles'], ['System Manager'])
+        # Structural change (routing mode) is still blocked while Running.
+        with self.assertRaises(frappe.ValidationError):
+            configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
+                'allow_manager_restart': True, 'initiator_roles': ['System Manager'], 'source_route': 'Available'})
+
     def test_other_company_and_non_manager_cannot_change_start(self):
         definition, _ = make_definition(self.second, approvals=0, fields=[])
         frappe.set_user(MANAGER_USER)
