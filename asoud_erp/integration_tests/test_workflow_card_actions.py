@@ -144,6 +144,18 @@ class TestWorkflowCardActions(APITestCase):
         with self.assertRaises(frappe.PermissionError):
             delete('ASOUD Workflow Definition', name)
 
+    def test_update_stage_positions_requires_company_scope_and_write(self):
+        # PA-014: a manager of another company must not move the canvas of a
+        # foreign definition; the response must not leak the foreign design.
+        name = workflow.create_workflow_draft(workflow_title='دفتر دیگر', company=self.foreign_company,
+            module_key='HR', target_doctype='ASOUD Workflow Request')['data']['name']
+        stage = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': name, 'stage_type': 'Start'}, 'name')
+        frappe.set_user(MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            workflow.update_stage_positions(name, {stage: {'x': 10, 'y': 20}})
+        # The coordinates were not written (still the default 0, not 10).
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Stage', stage, 'position_x'), 0)
+
     def test_json_dependency_blocks_but_edit_history_alone_does_not(self):
         name, other = self.draft(), self.draft()
         stage = frappe.get_doc('ASOUD Workflow Stage', {'workflow_definition': other})

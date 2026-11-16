@@ -419,6 +419,9 @@ def _touch_workflow(definition: str) -> None:
 def update_stage_positions(definition: str, positions: str | dict) -> dict:
     """Persist designer coordinates without changing workflow semantics."""
     require_roles(("System Manager", "Accounts Manager"))
+    owner = frappe.get_doc("ASOUD Workflow Definition", definition)
+    require_company(owner.company)
+    owner.check_permission("write")
     values = json.loads(positions) if isinstance(positions, str) else positions
     if not isinstance(values, dict) or len(values) > 250:
         frappe.throw(_("Invalid stage positions"))

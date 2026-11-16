@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Workflow canvas scope: `update_stage_positions` now enforces company scope (`require_company`) and native definition write permission before persisting coordinates, so a manager of another company can no longer move the canvas of a foreign definition. No new DocType, migration, or permission change.
+
 - Workflow designer guard: `add_workflow_stage` and `connect_workflow_stages` now call the central `assert_editable` guard, so a stage cannot be added and a route cannot be drawn while the definition is Active or has a Running instance, for every stage type (previously only Condition sources were guarded). No new DocType, migration, or permission change.
 
 - Fix Document form submission idempotency: `forms._submit_form` renamed inner mapping loop variable to `native_key` to avoid shadowing outer sha256 request idempotency hash `key`, resolving UniqueValidationError on repeated or multiple Document form submissions. Add regression tests for multi-submission unique keys and replay idempotency. No new DocType, migration, or permission change.
