@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Wait past-date policy: a past due date under the `Error` policy now parks the wait in a new non-terminal `Past` state instead of burning the instance to a terminal `Failed` state. The instance stays `Running` and recoverable: the owner can correct the source date (a `Recalculate` wait keeps its past due, so the dispatcher re-checks it and resumes once the date is in the future) or cancel the request. The owner is notified in-app. A missing/invalid source date (a technical error) still fails the instance as before. No schema migration or new DocType.
+
 - Automatic-action error route: a failed automatic action may now route to an `End` stage (terminating the process as failed) in addition to a `User Task` (for correction), instead of raising "Invalid automatic action route". The runtime `_finish` is the execution-time authority; the designer save in `api/v1/automatic_actions.py` still restricts error routes to a human task and needs the matching relaxation to let designers save such a route. No schema migration or new DocType.
 
 - Automatic-action Update Fields on `ASOUD Form Entry`: form data lives in the `values_json` column, so a plain `doc.update` silently dropped every mapped field. The automatic action now merges the mapped values into `values_json` and re-validates them against the form's published schema (the same `form_schema.validate_values` the submission path uses). Unknown fields are rejected. No schema migration or new DocType.
