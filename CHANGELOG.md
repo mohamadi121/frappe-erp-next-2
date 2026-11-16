@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Workflow draft title: `create_workflow_draft` now names the auto-created Start stage `شروع فرایند` (Persian) instead of the English `Start`, matching the other stage titles. No new DocType, migration, or permission change.
+
 - Workflow deletion audit: `delete_workflow` now writes an `ASOUD Security Audit` row (`workflow.definition.deleted`, actor, target, company, workflow code/title) inside the same savepoint as the deletion, so a failed audit rolls the deletion back. No new DocType, migration, or permission change.
 
 - Workflow metadata scope: `update_request_type_info` now enforces company scope (`require_company`) and native definition write permission before saving presentation metadata. The integration test proves the cross-office edit (the DocType has no User Permission on Company, so the global write role alone previously let a foreign manager edit the definition). No new DocType, migration, or permission change.

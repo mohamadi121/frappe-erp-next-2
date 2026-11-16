@@ -120,6 +120,14 @@ class TestWorkflowCardActions(APITestCase):
         self.assertTrue(any(row['name'] == name for row in
             workflow.list_workflows(company=self.company, search=doc.workflow_code)['data']))
 
+    def test_new_draft_start_stage_has_persian_title(self):
+        # PA-056: the auto-created Start stage must carry the approved Persian
+        # title, not the English "Start".
+        name = self.draft()
+        start = next(row for row in workflow.get_workflow_design(name)['data']['stages']
+                     if row['stage_type'] == 'Start')
+        self.assertEqual(start['stage_title'], 'شروع فرایند')
+
     def test_details_summary_is_fresh_read_only_for_all_three_states(self):
         name = self.draft()
         pending = workflow.get_workflow_design(name)['data']['details_summary']

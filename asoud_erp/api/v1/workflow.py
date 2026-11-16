@@ -263,7 +263,7 @@ def _create_workflow_draft(
             "workflow_definition": doc.name,
             "stage_key": f"start-{frappe.generate_hash(length=10)}",
             "stage_type": "Start",
-            "stage_title": _("Start"),
+            "stage_title": "شروع فرایند",
             "sequence_no": 0,
             "configuration_status": "Pending",
             "config_json": json.dumps(
