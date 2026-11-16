@@ -361,6 +361,13 @@ Document forms create an ERPNext draft with native permissions and controllers; 
 native permission on the target document type are refused by ERPNext. Request forms use the
 selected active ASOUD workflow. Neither path auto-submits a native document.
 
+A request form bound to a workflow maps its fields to request fields with `workflow_key`. A
+`File`, `Image` or `Signature` field maps to a request `Attachment` field: at submission the
+file the user uploaded is transferred to the request through the standard attachment path (the
+request owns a private copy) and the request field references it. A form file field cannot map
+to a non-`Attachment` request field, and a `Table` column of type `File`/`Image`/`Signature`
+cannot be mapped to a workflow (it is rejected with a Persian error).
+
 ## Execution after approval — contract
 
 ## E1 Schema keys (form level and field level, additive, schema_version stays 2)
