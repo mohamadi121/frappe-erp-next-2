@@ -221,9 +221,12 @@ class TestAutomaticActionAudit(APITestCase):
     def test_cancelling_a_request_cancels_its_queued_automatic_actions(self):
         from asoud_erp.api.v1.workflow_request import cancel_request
 
-        definition, stages = make_definition(self.company, approvals=0, fields=[])
+        # approvals=1 keeps the instance Running (waiting at the approval) so the
+        # requester can still cancel it.
+        definition, stages = make_definition(self.company, approvals=1, fields=[])
         result = create(self.company, definition=definition)
         instance = frappe.get_doc('ASOUD Workflow Instance', result['workflow_instance'])
+        self.assertEqual(instance.status, 'Running')
         # A queued automatic action waiting for the background worker.
         queued = frappe.get_doc({'doctype': 'ASOUD Action Execution',
             'workflow_instance': instance.name, 'workflow_stage': list(stages.values())[0].name,
@@ -289,4 +292,5 @@ class TestAutomaticActionAudit(APITestCase):
         doc = frappe.get_doc('ASOUD Form Entry', entry['name'])
         _update(doc, {'amount': 9, 'note': 'به‌روزرسانی‌شده'}, self.company)
         values = json.loads(frappe.db.get_value('ASOUD Form Entry', entry['name'], 'values_json'))
-        self.assertEqual((values['amount'], values['note']), (9, 'به‌روزرسانی‌شده'))
+        # Number fields are stored as their normalized string form by the schema validator.
+        self.assertEqual((values['amount'], values['note']), ('9', 'به‌روزرسانی‌شده'))
