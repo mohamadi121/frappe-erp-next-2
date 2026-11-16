@@ -37,6 +37,9 @@ MANAGER_ROLES = ("System Manager", "Accounts Manager", "Purchase Manager")
 MODULE_ROLES = {
     "Finance": ("System Manager", "Accounts Manager"),
     "Purchase": ("System Manager", "Purchase Manager"),
+    "Selling": ("System Manager", "Sales Manager"),
+    "Stock": ("System Manager", "Stock Manager", "Item Manager"),
+    "Admin": ("System Manager",),
 }
 _LINK_RULES = {
     # DocType: (extra filters, has company)
@@ -44,6 +47,8 @@ _LINK_RULES = {
     "Cost Center": ({"is_group": 0, "disabled": 0}, True),
     "Project": ({"status": ["!=", "Cancelled"]}, True),
     "Warehouse": ({"is_group": 0, "disabled": 0}, True),
+    "Customer": ({"disabled": 0}, False),
+    "Supplier": ({"disabled": 0}, False),
 }
 
 
@@ -136,7 +141,8 @@ def document_template_link_options(company: str, target_type: str, txt: str = ""
     if txt:
         or_filters = {"name": ["like", f"%{txt}%"]}
     title_field = {"Account": "account_name", "Cost Center": "cost_center_name",
-                   "Project": "project_name", "Warehouse": "warehouse_name"}[target_type]
+                   "Project": "project_name", "Warehouse": "warehouse_name",
+                   "Customer": "customer_name", "Supplier": "supplier_name"}[target_type]
     rows = frappe.get_list(
         target_type,
         filters=filters,
@@ -180,6 +186,23 @@ def get_document_template(name: str) -> dict:
     doc = frappe.get_doc(DOCTYPE, name)
     require_company(doc.company)
     return success(_serialize(doc))
+
+
+def _prepare_for_insert(doc) -> None:
+    """Fill the values ERPNext's controller derives for the commercial documents.
+
+    The template path builds a minimal dict (party, date, items) and inserts it
+    directly; Sales Order / Purchase Order / Stock Entry need the controller to
+    price the lines and set the stock-entry type, exactly as the in-repo
+    ``selling``/``buying``/``stock`` creation functions do.
+    """
+    if doc.doctype in {"Sales Order", "Purchase Order"}:
+        doc.set_missing_values()
+        doc.set_taxes()
+        doc.calculate_taxes_and_totals()
+    elif doc.doctype == "Stock Entry":
+        doc.set_stock_entry_type()
+        doc.set_missing_values()
 
 
 def _validate_links(mapping: dict, document_type: str, company: str) -> None:
@@ -266,7 +289,10 @@ def create_document(template_name: str, context: dict, company: str, *, transfer
         values["user_remark"] = render_placeholders(remark, context)
     if template.document_type == "Material Request" and not values.get("set_warehouse"):
         values["set_warehouse"] = frappe.db.get_single_value("Stock Settings", "default_warehouse")
+    if template.document_type == "Stock Entry" and not values.get("warehouse"):
+        values["warehouse"] = frappe.db.get_single_value("Stock Settings", "default_warehouse")
     doc = frappe.get_doc(build_document(template.document_type, values, company))
+    _prepare_for_insert(doc)
     conf = getattr(frappe, "conf", None) or {}
     if not conf.get("asoud_workflow_service_user"):
         doc.flags.ignore_permissions = True

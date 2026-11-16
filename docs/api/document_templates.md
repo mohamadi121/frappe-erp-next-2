@@ -8,8 +8,10 @@ Template`. Pure validation and value resolution live in
 `services/document_templates.py`.
 
 Roles: System Manager, Accounts Manager and Purchase Manager may read templates;
-Finance templates are saved by System/Accounts Managers, Purchase templates by
-System/Purchase Managers. Every call is scoped to a company the user can access.
+each module's templates are saved by the roles in `MODULE_ROLES` (Finance →
+System/Accounts, Purchase → System/Purchase, Selling → System/Sales Manager,
+Stock → System/Stock/Item Manager, Admin → System Manager). Every call is scoped
+to a company the user can access.
 
 ## Supported documents
 
@@ -17,13 +19,27 @@ System/Purchase Managers. Every call is scoped to a company the user can access.
 | --- | --- | --- | --- |
 | Finance | `Journal Entry` | Journal Entry (voucher type Journal Entry) | **posting_date**, **title**, **amount**, **debit_account**, **credit_account**, cost_center, project, user_remark |
 | Purchase | `Material Request` | Material Request (type Purchase) | **transaction_date**, **schedule_date**, **items**, set_warehouse |
+| Purchase | `Purchase Order` | Purchase Order | **supplier**, **transaction_date**, **items** |
+| Selling | `Sales Order` | Sales Order | **customer**, **transaction_date**, **items** |
+| Stock | `Stock Entry` | Stock Entry | **purpose** (Material Receipt / Material Issue / Material Transfer), **posting_date**, **items**, warehouse |
+| Admin | `Issue` | Issue | **subject** |
 
-Other types listed by `document_template_options` have `enabled: false` and are
-rejected on save. A Journal Entry has one debit and one credit row of the same
-amount; both rows carry the optional cost center and project. Material Request
-items come from a request **Item Table** field (item, qty, UOM as validated
-against ERPNext when the request was submitted); without a mapped warehouse the
-Stock Settings default warehouse is used.
+Types listed by `document_template_options` with `enabled: false` (Receipt,
+Payment, Salary Slip, Attendance, Employee Advance, Asset Movement) are shown as
+"coming soon" and rejected on save. A Journal Entry has one debit and one credit
+row of the same amount; both rows carry the optional cost center and project.
+Material Request / Purchase Order / Sales Order / Stock Entry items come from a
+request **Item Table** field (item, qty, UOM as validated against ERPNext when
+the request was submitted); without a mapped warehouse the Stock Settings default
+warehouse is used. Sales Order and Purchase Order are priced by ERPNext's own
+controller (`set_missing_values` + `set_taxes`), so the template only supplies the
+party, date and item lines.
+
+The automatic-action engine's **Create Document** action supports exactly the
+documents with a `TARGET_FIELDS` schema above (the `DOCUMENTS` allowlist in
+`services/automatic_action_metadata.py` is derived from `TARGET_FIELDS`). A
+workflow whose target DocType is one of these is no longer blocked from
+automatic execution.
 
 ## Value sources
 

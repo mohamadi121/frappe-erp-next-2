@@ -141,4 +141,10 @@ def serialize_workflow(row: dict) -> dict:
         result.pop("missing_requirements_json") or "[]"
     )
     result["is_locked"] = result["readiness_status"] != "Ready"
+    # Legacy module keys (Accounting/Sales/Inventory/Support) still load: the
+    # app always sees the canonical key.
+    from asoud_erp.services.modules import normalize_module_key
+
+    if result.get("module_key"):
+        result["module_key"] = normalize_module_key(result["module_key"]) or result["module_key"]
     return result

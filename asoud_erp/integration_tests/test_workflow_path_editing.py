@@ -1,4 +1,6 @@
 """Native path edits preserve shared nodes, history and cancellation semantics."""
+from uuid import uuid4
+
 import frappe
 
 from asoud_erp.api.v1 import workflow, workflow_paths
@@ -84,3 +86,19 @@ class TestWorkflowPathEditing(APITestCase):
             workflow_paths.preview_path_removal(name, edge)
         with self.assertRaises(frappe.ValidationError):
             workflow.insert_workflow_stage(name, edge, 'Approval', draft_edit=1)
+
+    # --- PA-050: the HR module targets the standard payroll/attendance documents ---
+
+    def test_hr_workflow_draft_accepts_a_standard_payroll_doctype(self):
+        created = workflow.create_workflow_draft(
+            company=self.company, workflow_title='گردش‌کار مساعده ' + uuid4().hex[:8],
+            module_key='HR', target_doctype='Employee Advance')['data']
+        self.assertEqual(created['module_key'], 'HR')
+        self.assertEqual(created['target_doctype'], 'Employee Advance')
+        self.assertTrue(frappe.db.exists('ASOUD Workflow Definition', created['name']))
+
+    def test_hr_workflow_draft_rejects_a_doctype_outside_the_module(self):
+        with self.assertRaises(frappe.ValidationError):
+            workflow.create_workflow_draft(
+                company=self.company, workflow_title='گردش‌کار نامعتبر ' + uuid4().hex[:8],
+                module_key='HR', target_doctype='Sales Order')

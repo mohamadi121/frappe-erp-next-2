@@ -364,7 +364,12 @@ def perform(receipt, instance, config, company):
                         raise ValueError("Automatic journal entries require accounts in the company currency")
         if op["doctype"] == "Material Request":
             validate_link_values([{"key": "items", "type": "Item Table"}], values, company)
+        if op["doctype"] == "Stock Entry" and not values.get("warehouse"):
+            values["warehouse"] = frappe.db.get_single_value("Stock Settings", "default_warehouse")
         doc = frappe.get_doc(build_document(op["doctype"], values, company))
+        from asoud_erp.api.v1.document_templates import _prepare_for_insert
+
+        _prepare_for_insert(doc)
         doc.insert()
         if op["initial_state"] == "Submitted":
             doc.submit()

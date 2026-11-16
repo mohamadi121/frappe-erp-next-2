@@ -11,10 +11,13 @@ from asoud_erp.api.v1 import document_templates, workflow, workflow_request, wor
 from asoud_erp.integration_tests.fixtures import (
     ACCOUNTANT_USER,
     APPROVER_USER,
+    CUSTOMER,
     EMPLOYEE_USER,
     ITEM,
+    SUPPLIER,
     APITestCase,
     abbr,
+    warehouse,
 )
 from asoud_erp.integration_tests.service_identity import patch_service_conf
 
@@ -543,6 +546,56 @@ class TestDocumentTemplates(APITestCase):
                          [(ITEM, 3, f"Stores - {abbr()}")])
         with self.assertRaises(ValueError):
             document_templates.create_document(saved["name"], {**context, "request": {"items": []}}, self.company)
+
+    # --- PA-069: the new standard documents create native records ----------------
+
+    def _item_context(self):
+        return {"request": {"items": [{"item_code": ITEM, "qty": 2, "uom": "Nos", "stock_uom": "Nos",
+                                       "conversion_factor": 1}]},
+                "user": {}, "organization": {"company": self.company}, "system": {"today": self.future(0)}}
+
+    def test_sales_order_template_creates_a_native_sales_order(self):
+        saved = document_templates.save_document_template(
+            self.company,
+            {"title": "سفارش فروش " + self.token, "module": "Selling", "document_type": "Sales Order",
+             "mapping": {"customer": {"source": "fixed", "value": CUSTOMER},
+                         "transaction_date": {"source": "system", "value": "today"},
+                         "items": {"source": "request", "value": "items"}}},
+            source_workflow=self.definition.name)["data"]
+        doc = document_templates.create_document(saved["name"], self._item_context(), self.company)
+        self.assertEqual(doc.doctype, "Sales Order")
+        self.assertEqual(doc.customer, CUSTOMER)
+        self.assertEqual(doc.docstatus, 0)
+        self.assertEqual([(row.item_code, row.qty) for row in doc.items], [(ITEM, 2)])
+
+    def test_purchase_order_template_creates_a_native_purchase_order(self):
+        saved = document_templates.save_document_template(
+            self.company,
+            {"title": "سفارش خرید " + self.token, "module": "Purchase", "document_type": "Purchase Order",
+             "mapping": {"supplier": {"source": "fixed", "value": SUPPLIER},
+                         "transaction_date": {"source": "system", "value": "today"},
+                         "items": {"source": "request", "value": "items"}}},
+            source_workflow=self.definition.name)["data"]
+        doc = document_templates.create_document(saved["name"], self._item_context(), self.company)
+        self.assertEqual(doc.doctype, "Purchase Order")
+        self.assertEqual(doc.supplier, SUPPLIER)
+        self.assertEqual(doc.docstatus, 0)
+        self.assertEqual([(row.item_code, row.qty) for row in doc.items], [(ITEM, 2)])
+
+    def test_stock_entry_template_creates_a_native_stock_entry(self):
+        saved = document_templates.save_document_template(
+            self.company,
+            {"title": "سند انبار " + self.token, "module": "Stock", "document_type": "Stock Entry",
+             "mapping": {"purpose": {"source": "fixed", "value": "Material Receipt"},
+                         "posting_date": {"source": "system", "value": "today"},
+                         "items": {"source": "request", "value": "items"},
+                         "warehouse": {"source": "fixed", "value": warehouse()}}},
+            source_workflow=self.definition.name)["data"]
+        doc = document_templates.create_document(saved["name"], self._item_context(), self.company)
+        self.assertEqual(doc.doctype, "Stock Entry")
+        self.assertEqual(doc.purpose, "Material Receipt")
+        self.assertEqual([(row.item_code, row.qty, row.t_warehouse) for row in doc.items],
+                         [(ITEM, 2, warehouse())])
 
     def test_request_and_instance_expose_status_and_created_document(self):
         template = self._template()

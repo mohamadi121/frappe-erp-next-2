@@ -5,7 +5,15 @@ from uuid import uuid4
 import frappe
 
 from asoud_erp.api.v1 import automatic_actions, forms, workflow
-from asoud_erp.integration_tests.fixtures import ACCOUNTANT_USER, EMPLOYEE_USER, ITEM, APITestCase
+from asoud_erp.integration_tests.fixtures import (
+    ACCOUNTANT_USER,
+    CUSTOMER,
+    EMPLOYEE_USER,
+    ITEM,
+    SUPPLIER,
+    APITestCase,
+    warehouse,
+)
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.request_helpers import create
 from asoud_erp.services.automatic_action_metadata import identity, validate_config
@@ -123,6 +131,42 @@ class TestAutomaticActionAudit(APITestCase):
         self.assertEqual(native.docstatus, 0)
         self.assertEqual(native.items[0].item_code, ITEM)
         self.assertEqual(native.items[0].qty, 2)
+
+    # --- PA-048: the engine supports the commercial documents --------------------
+
+    def test_create_document_supports_a_native_sales_order(self):
+        result, _, _, _ = self.run_action('Create Document', {'doctype': 'Sales Order', 'initial_state': 'Draft',
+            'link_original': True, 'mapping': {'customer': {'source': 'constant', 'value': CUSTOMER},
+                'transaction_date': {'source': 'system', 'value': 'today'},
+                'items': {'source': 'current', 'value': 'items'}}})
+        native = frappe.get_doc('Sales Order', result['name'])
+        self.assertEqual(native.docstatus, 0)
+        self.assertEqual(native.customer, CUSTOMER)
+        self.assertEqual(native.items[0].item_code, ITEM)
+        self.assertEqual(native.items[0].qty, 2)
+
+    def test_create_document_supports_a_native_purchase_order(self):
+        result, _, _, _ = self.run_action('Create Document', {'doctype': 'Purchase Order', 'initial_state': 'Draft',
+            'link_original': True, 'mapping': {'supplier': {'source': 'constant', 'value': SUPPLIER},
+                'transaction_date': {'source': 'system', 'value': 'today'},
+                'items': {'source': 'current', 'value': 'items'}}})
+        native = frappe.get_doc('Purchase Order', result['name'])
+        self.assertEqual(native.docstatus, 0)
+        self.assertEqual(native.supplier, SUPPLIER)
+        self.assertEqual(native.items[0].item_code, ITEM)
+        self.assertEqual(native.items[0].qty, 2)
+
+    def test_create_document_supports_a_native_stock_entry(self):
+        result, _, _, _ = self.run_action('Create Document', {'doctype': 'Stock Entry', 'initial_state': 'Draft',
+            'link_original': True, 'mapping': {'purpose': {'source': 'constant', 'value': 'Material Receipt'},
+                'posting_date': {'source': 'system', 'value': 'today'},
+                'items': {'source': 'current', 'value': 'items'},
+                'warehouse': {'source': 'constant', 'value': warehouse()}}})
+        native = frappe.get_doc('Stock Entry', result['name'])
+        self.assertEqual(native.docstatus, 0)
+        self.assertEqual(native.purpose, 'Material Receipt')
+        self.assertEqual(native.items[0].item_code, ITEM)
+        self.assertEqual(native.items[0].t_warehouse, warehouse())
 
     def test_change_status_refuses_to_set_an_arbitrary_string(self):
         definition, stage, _, _, _ = self.execution()
