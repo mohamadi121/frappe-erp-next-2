@@ -31,7 +31,7 @@ MODULE_DOCTYPES = {
     "HR": ("Leave Application", "Job Applicant"),
 }
 STAGE_TITLES = {
-    "User Task": "اقدام کاربر",
+    "User Task": "بررسی یا ویرایش سند",
     "Approval": "تأیید یا رد",
     "Condition": "شرط و مسیر",
     "System Action": "اقدام خودکار",

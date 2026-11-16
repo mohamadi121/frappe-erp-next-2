@@ -35,7 +35,7 @@ Client and backend deploy together; no database migration. Test execution is
 explicitly excluded by the user's standing instruction, not reported as passed.
 
 Existing User Task stage identities and legacy configs stay valid. New edits opt
-into `action_contract_version: 1`; the Persian name is اقدام کاربر. Existing
+into `action_contract_version: 1`; the default stage title is بررسی یا ویرایش سند. Existing
 `save_stage_settings` manager/write/company checks remain authoritative.
 
 Config: `result_mode` (Simple/Form), `result_form` ({form, revision}, published
