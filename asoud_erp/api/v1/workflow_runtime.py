@@ -1343,6 +1343,10 @@ def upload_workflow_attachment(task: str, filename: str, content_base64: str) ->
         frappe.throw(_("Invalid attachment data"))
     if not content or len(content) > MAX_ATTACHMENT_BYTES:
         frappe.throw(_("Workflow attachment must be between 1 byte and 10 MB"))
+    from asoud_erp.services.workflow_attachment_content import content_matches_extension
+
+    if not content_matches_extension(content, Path(safe_name).suffix):
+        frappe.throw("نوع واقعی فایل با پسوند آن یکسان نیست؛ فایل معتبر نیست.")
     file_doc = frappe.get_doc(
         {
             "doctype": "File",
