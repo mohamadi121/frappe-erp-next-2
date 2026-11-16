@@ -153,6 +153,34 @@ class TestAutomaticActionAudit(APITestCase):
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Stage', stage,
             ['config_json', 'stage_title'], as_dict=True), before)
 
+    def test_error_route_to_an_end_stage_is_accepted_at_save(self):
+        # A failed automatic action may terminate the process at an End stage, so the
+        # designer save must accept an Error route to End (not only a human task).
+        definition, stage = self.graph()
+        end = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'End'})
+        config = {'schema_version': 2, 'title': 'اعلان خطا', 'action_type': 'Send Notification',
+            'operation': {'recipients': ['initiator'], 'channels': ['in_app'], 'message': 'درخواست متوقف شد'}}
+        automatic_actions.save(definition, stage, config, {'Success': end, 'Error': end})
+        self.assertTrue(frappe.db.exists('ASOUD Workflow Transition', {
+            'workflow_definition': definition, 'from_stage': stage, 'to_stage': end,
+            'condition_json': json.dumps({'action': 'Error'})}))
+
+    def test_error_route_to_a_non_human_non_end_stage_is_rejected_at_save(self):
+        # An Error route may only go to a human task or End; a Condition stage is refused.
+        definition = workflow.create_workflow_draft(company=self.company, module_key='HR',
+            target_doctype='ASOUD Workflow Request', workflow_title='آزمون مسیر خطا')['data']['name']
+        start = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'Start'})
+        workflow.add_workflow_stage(definition, 'System Action', start)
+        stage = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'System Action'})
+        workflow.add_workflow_stage(definition, 'Condition', stage)
+        condition = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'Condition'})
+        workflow.add_workflow_stage(definition, 'End', condition)
+        end = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'End'})
+        config = {'schema_version': 2, 'title': 'اعلان خطا', 'action_type': 'Send Notification',
+            'operation': {'recipients': ['initiator'], 'channels': ['in_app'], 'message': 'درخواست متوقف شد'}}
+        with self.assertRaises(frappe.ValidationError):
+            automatic_actions.save(definition, stage, config, {'Success': end, 'Error': condition})
+
     def graph(self):
         definition = workflow.create_workflow_draft(company=self.company, module_key='HR',
             target_doctype='ASOUD Workflow Request', workflow_title='آزمون اقدام خودکار')['data']['name']

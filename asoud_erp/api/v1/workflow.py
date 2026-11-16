@@ -1070,8 +1070,8 @@ def save_stage_routes(definition: str, stage: str, routes: str | dict) -> dict:
                 frappe.throw('مقصد اصلاح باید یک مرحلهٔ انسانی قبلی باشد.')
             if (source.stage_type == "System Action" and action == "Error"
                     and json.loads(source.config_json or "{}").get("schema_version") == 2
-                    and destination.stage_type != "User Task"):
-                frappe.throw(_("Automatic action error routes must target a human task"))
+                    and destination.stage_type not in {"User Task", "End"}):
+                frappe.throw(_("مسیر خطا فقط به یک وظیفهٔ انسانی یا مرحلهٔ پایان می‌تواند برسد."))
     for action, target in raw.items():
         target = str(target or '').strip()
         for row in existing:
