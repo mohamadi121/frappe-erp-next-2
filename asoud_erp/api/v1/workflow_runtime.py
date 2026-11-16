@@ -26,6 +26,17 @@ from asoud_erp.services.stage_supplementary_form import (
 from asoud_erp.services.workflow_assignment import assignment_values
 from asoud_erp.services.workflow_condition import evaluate_condition, select_boolean_transition
 from asoud_erp.services.workflow_end import _end_outcomes
+from asoud_erp.services.workflow_graph_snapshot import (
+    capture as capture_graph,
+)
+from asoud_erp.services.workflow_graph_snapshot import (
+    ready as graph_ready,
+)
+from asoud_erp.services.workflow_graph_snapshot import (
+    require_stage,
+    stage_for,
+    transitions_for,
+)
 from asoud_erp.services.workflow_history import carried_draft, merge_completed_responses, select_return_stage
 from asoud_erp.services.workflow_response import normalize_form_response
 from asoud_erp.services.workflow_start_policy import start_change_data, validate_request_id
@@ -294,17 +305,9 @@ def _task_deadlines(config: dict) -> tuple[object | None, object | None]:
 
 
 def _next_stage(instance, current_stage: str, action: str | None = None):
-    source_type = frappe.db.get_value('ASOUD Workflow Stage', current_stage, 'stage_type')
-    transitions = frappe.get_all(
-        "ASOUD Workflow Transition",
-        filters={
-            "workflow_definition": instance.workflow_definition,
-            "from_stage": current_stage,
-        },
-        fields=["to_stage", "transition_label", "condition_json", "sequence_no"],
-        order_by="sequence_no asc",
-        limit_page_length=0,
-    )
+    source = stage_for(instance, current_stage)
+    source_type = source.stage_type if source else None
+    transitions = transitions_for(instance, current_stage)
     if not transitions:
         return None
     selected = None
@@ -330,9 +333,9 @@ def _next_stage(instance, current_stage: str, action: str | None = None):
             selected = default
     if not selected:
         return None
-    if not frappe.db.exists('ASOUD Workflow Stage', selected.to_stage):
+    destination = stage_for(instance, selected.to_stage)
+    if not destination:
         frappe.throw('مرحلهٔ مقصد حذف شده است؛ مدیر گردش کار باید مسیر را اصلاح کند.')
-    destination = frappe.get_doc('ASOUD Workflow Stage', selected.to_stage)
     if source_type == 'Approval' and (destination.workflow_definition != instance.workflow_definition
             or destination.name == current_stage or destination.stage_type == 'Start'):
         frappe.throw('مقصد مسیر معتبر نیست؛ تنظیمات گردش کار باید بازبینی شود.')
@@ -483,15 +486,7 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
                 result = evaluate_condition(
                     config.get("operator"), actual, config.get("compare_value")
                 )
-            rows = frappe.get_all(
-                "ASOUD Workflow Transition",
-                filters={
-                    "workflow_definition": instance.workflow_definition,
-                    "from_stage": stage.name,
-                },
-                fields=["to_stage", "condition_json"],
-                limit_page_length=0,
-            )
+            rows = transitions_for(instance, stage.name)
             destination = select_boolean_transition(
                 [
                     {
@@ -521,7 +516,7 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
         ).insert(ignore_permissions=True)
         _activate_stage(
             instance,
-            frappe.get_doc("ASOUD Workflow Stage", destination),
+            stage_for(instance, destination),
             source_task=source_task,
             automatic_trigger=automatic_trigger,
         )
@@ -689,17 +684,11 @@ def _execute_system_action(instance, stage, config: dict) -> tuple[str, str | No
 
 def _system_route(instance, stage_name: str, outcome: str):
     """The route for Success/Error; an unlabeled route counts as Success."""
-    rows = frappe.get_all(
-        "ASOUD Workflow Transition",
-        filters={"workflow_definition": instance.workflow_definition, "from_stage": stage_name},
-        fields=["to_stage", "transition_label", "condition_json"],
-        order_by="sequence_no asc",
-        limit_page_length=0,
-    )
+    rows = transitions_for(instance, stage_name)
     for row in rows:
         action = str(json.loads(row.condition_json or "{}").get("action") or "")
         if action.casefold() == outcome.casefold() or (outcome == "Success" and not action):
-            return frappe.get_doc("ASOUD Workflow Stage", row.to_stage)
+            return stage_for(instance, row.to_stage)
     return None
 
 
@@ -936,6 +925,11 @@ def start_workflow_instance(
             "started_on": now_datetime(),
         }
     ).insert(ignore_permissions=True)
+    # Freeze the stage graph now so later designer edits cannot change this run.
+    # Guarded on the column so a pre-migrate site still starts (and reads live rows).
+    if graph_ready():
+        instance.graph_snapshot_json = capture_graph(definition)
+        instance.save(ignore_permissions=True)
     if configured_start:
         reference_modified = (frappe.db.get_value(reference_doctype, reference_name, 'modified')
                               if reference_name else None)
@@ -1230,9 +1224,9 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
     followup = followup_of(doc.draft_json)
     if followup:
         return success(_followup_task(doc, followup, ACTIVITY_TYPE[followup["kind"]]))
-    stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
-    config = json.loads(stage.config_json or "{}")
     instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
+    stage = require_stage(instance, doc.workflow_stage)
+    config = json.loads(stage.config_json or "{}")
     if candidate_query is not None:
         from asoud_erp.services.workflow_user_action import reassignment_candidates
 
@@ -1344,7 +1338,7 @@ def save_workflow_task_draft(task: str, response: str | dict, supplementary_valu
     values = json.loads(response) if isinstance(response, str) else response
     if not isinstance(values, dict):
         frappe.throw(_("پیش‌نویس گردش‌کار باید یک شیء باشد."))
-    stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
+    stage = require_stage(frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance), doc.workflow_stage)
     stage_config = json.loads(stage.config_json or "{}")
     binding = read_binding(stage_config)
     if binding:
@@ -1389,7 +1383,8 @@ def upload_workflow_attachment(task: str, filename: str, content_base64: str) ->
     from asoud_erp.services.directive_access import reject_generic
     reject_generic(doc)
     _assert_task_owner(doc)
-    stage_config = json.loads(frappe.db.get_value('ASOUD Workflow Stage', doc.workflow_stage, 'config_json') or '{}')
+    stage_config = json.loads(require_stage(frappe.get_doc('ASOUD Workflow Instance', doc.workflow_instance),
+        doc.workflow_stage).config_json or '{}')
     if stage_config.get('action_contract_version') == 1:
         from asoud_erp.services.workflow_user_action import assert_writable
 
@@ -1504,7 +1499,7 @@ def complete_workflow_task(
     instance = frappe.get_doc('ASOUD Workflow Instance', original.workflow_instance, for_update=True)
     if instance.status != 'Running' or instance.current_stage != original.workflow_stage:
         frappe.throw('این وظیفه دیگر در مرحلهٔ جاری یک فرایند فعال نیست؛ وضعیت صفحه را تازه کنید.')
-    original_config = json.loads(frappe.db.get_value('ASOUD Workflow Stage', original.workflow_stage, 'config_json') or '{}')
+    original_config = json.loads(stage_for(instance, original.workflow_stage).config_json or '{}')
     versioned_action = original_config.get('action_contract_version') == 1
     if versioned_action:
         from asoud_erp.services.workflow_user_action import assert_writable, handle, prepare
@@ -1520,7 +1515,7 @@ def complete_workflow_task(
     _assert_task_owner(doc)
     if doc.status != "Open":
         frappe.throw(_("این وظیفه از پیش انجام شده است."))
-    stage = frappe.get_doc("ASOUD Workflow Stage", doc.workflow_stage)
+    stage = require_stage(instance, doc.workflow_stage)
     config = json.loads(stage.config_json or "{}")
     if versioned_action:
         assert_writable(doc, config)
@@ -1670,7 +1665,7 @@ def complete_workflow_task(
                 )
             except ValueError as error:
                 frappe.throw(_(str(error)))
-            _activate_stage(instance, frappe.get_doc("ASOUD Workflow Stage", previous_stage))
+            _activate_stage(instance, stage_for(instance, previous_stage))
         return success({"task": doc.name, "instance_status": instance.status})
     open_count = frappe.db.count(
         "ASOUD Workflow Task",
