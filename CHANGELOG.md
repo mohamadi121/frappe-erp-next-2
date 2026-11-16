@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Task attachments on a workflow that references a standard ERPNext document (e.g. Purchase Order) are now readable by anyone who has native read permission on that document, instead of always being denied. `workflow_record_permission` delegates to `frappe.has_permission(reference_doctype, 'read', reference_name)` for standard reference DocTypes (a missing `reference_name` is denied). No new DocType, migration, or permission change.
 - A user who already acted on a workflow instance (an `ASOUD Workflow Activity` row with their actor) keeps read access to its detail and history even after a task was reassigned away from them, instead of being locked out with a permission error. `_assert_instance_access` now also grants access on prior participation. No new DocType, migration, or permission change.
 - `upload_workflow_attachment` now verifies the file's actual bytes (magic numbers) against its extension before storing it, so a payload cannot be smuggled in behind a harmless name (e.g. a PNG saved as `.pdf`). A mismatch is refused with a Persian error. No new DocType, migration, or permission change.
 - The cartable list endpoints (`list_my_workflow_tasks`, `list_my_workflow_instances`, `list_my_workflow_notifications`) now reject a guest (no signed-in account) at the controller entry with a Persian permission error, instead of relying only on the SQL `for_user`/`assigned_to` filter. A signed-in user is unaffected. No new DocType, migration, or permission change.

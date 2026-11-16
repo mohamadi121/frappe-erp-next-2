@@ -7,17 +7,21 @@ view access all execute against real rows and real permissions.
 """
 
 import base64
+import json
 from uuid import uuid4
 
 import frappe
 
-from asoud_erp.api.v1 import workflow, workflow_runtime
+from asoud_erp.api.v1 import buying, workflow, workflow_runtime
 from asoud_erp.integration_tests.fixtures import (
     ACCOUNTANT_USER,
     APPROVER_USER,
     EMPLOYEE_USER,
+    ITEM,
+    SUPPLIER,
     APITestCase,
     _user,
+    warehouse,
 )
 from asoud_erp.integration_tests.request_fixtures import make_definition
 
@@ -140,3 +144,55 @@ class TestWorkflowAccess(APITestCase):
         frappe.set_user(ACCOUNTANT_USER)
         with self.assertRaises(frappe.PermissionError):
             workflow_runtime.get_workflow_instance(instance)
+
+    # ------------------------------------------------------------------ PA-046
+    def test_task_attachment_on_standard_document_follows_native_read(self):
+        # A submitted Purchase Order in the test company (Administrator bypasses roles).
+        frappe.set_user('Administrator')
+        order = buying.create_purchase_order(
+            self.company, SUPPLIER,
+            [{"item_code": ITEM, "qty": 5, "rate": 90, "warehouse": warehouse()}],
+            schedule_date=self.future(), submit=1)["data"]
+        po = order["name"]
+        # A workflow definition on the Purchase Order with a single user task.
+        token = uuid4().hex[:8]
+        definition = frappe.get_doc({
+            "doctype": "ASOUD Workflow Definition", "workflow_code": f"po-{token}",
+            "workflow_title": f"بررسی سفارش {token}", "company": self.company,
+            "module_key": "Purchase", "target_doctype": "Purchase Order",
+            "status": "Active", "readiness_status": "Ready", "creation_mode": "Custom",
+            "allow_user_submission": 1,
+        }).insert(ignore_permissions=True)
+        stages = []
+        for index, (kind, config) in enumerate([
+            ("Start", {"title": "شروع"}),
+            ("User Task", {"title": "بررسی سفارش", "activity_type": "Data Entry",
+                           "assignment_type": "Initiator", "allow_add_attachments": True}),
+            ("End", {"title": "پایان", "outcome": "Completed"}),
+        ]):
+            stages.append(frappe.get_doc({
+                "doctype": "ASOUD Workflow Stage", "workflow_definition": definition.name,
+                "stage_key": f"{kind.lower().replace(' ', '-')}-{index}-{token}",
+                "stage_title": config["title"], "stage_type": kind, "sequence_no": index + 1,
+                "config_json": json.dumps(config), "configuration_status": "Complete"}).insert(ignore_permissions=True))
+        for first, second in zip(stages, stages[1:]):
+            frappe.get_doc({"doctype": "ASOUD Workflow Transition", "workflow_definition": definition.name,
+                            "from_stage": first.name, "to_stage": second.name,
+                            "condition_json": "{}"}).insert(ignore_permissions=True)
+        # Start the workflow on the PO (Administrator can read it and start).
+        instance = workflow_runtime.start_workflow_instance(
+            definition.name, 'بررسی سفارش خرید', reference_doctype='Purchase Order',
+            reference_name=po, reason='آزمون')['data']['name']
+        task = frappe.db.get_value('ASOUD Workflow Task', {'workflow_instance': instance}, 'name')
+        # The task is assigned to the starter (Administrator); move it to a PO reader.
+        frappe.db.set_value('ASOUD Workflow Task', task, 'assigned_to', ACCOUNTANT_USER)
+        frappe.set_user(ACCOUNTANT_USER)
+        pdf = base64.b64encode(b'%PDF-1.7 body').decode()
+        file_name = workflow_runtime.upload_workflow_attachment(task, 'order.pdf', pdf)['data']['name']
+        file_doc = frappe.get_doc('File', file_name)
+        # A user with native read on the PO can download the task attachment.
+        frappe.set_user(ACCOUNTANT_USER)
+        self.assertTrue(frappe.has_permission('File', 'read', file_doc))
+        # A user without native read on the PO cannot.
+        frappe.set_user(EMPLOYEE_USER)
+        self.assertFalse(frappe.has_permission('File', 'read', file_doc))
