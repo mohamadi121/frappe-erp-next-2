@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Condition date values: a date string whose year falls in the plausible Jalali band (1300–1500) is now converted to Gregorian with the shared Jalali engine instead of being read as a Gregorian year by `date.fromisoformat`. This stops a custom form field storing a Jalali date such as `1403-08-20` from being compared as the year 1403 AD. Native Gregorian dates (year outside the band) are unchanged. No schema migration or new DocType.
+
 - Fix Document form submission idempotency: `forms._submit_form` renamed inner mapping loop variable to `native_key` to avoid shadowing outer sha256 request idempotency hash `key`, resolving UniqueValidationError on repeated or multiple Document form submissions. Add regression tests for multi-submission unique keys and replay idempotency. No new DocType, migration, or permission change.
 
 - Fix shared form submission routing for Document forms: `forms.submit_form` now correctly passes the values dictionary (`source_values(entry)[1]`) instead of the tuple `(schema, result)` to `route()`, resolving AttributeError / HTTP 500 on conditional document form routing. Add integration test coverage for conditional document routing and missing default workflow error handling. No new DocType, migration, or permission change.
