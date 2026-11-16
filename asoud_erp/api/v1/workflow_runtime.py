@@ -1092,6 +1092,38 @@ def get_workflow_instance(instance: str) -> dict:
 
 
 @frappe.whitelist()
+def get_workflow_instance_summaries(names) -> dict:
+    """Batch summaries for the cartable (PA-032).
+
+    ``names`` is a list (or a JSON string of a list) of at most 100 instance names.
+    Each name is checked with the same per-instance access rule as
+    ``get_workflow_instance``; instances the caller cannot read (or that do not
+    exist) are omitted, so the response holds only the accessible summaries. This
+    replaces the client's per-instance ``get_workflow_instance`` loop.
+    """
+    from asoud_erp.services.workflow_instance_summaries import parse_instance_names
+
+    try:
+        wanted = parse_instance_names(names)
+    except ValueError as error:
+        frappe.throw(str(error))
+    if not wanted:
+        return success([])
+    accessible = []
+    for name in wanted:
+        try:
+            doc = frappe.get_doc("ASOUD Workflow Instance", name)
+        except frappe.DoesNotExistError:
+            continue
+        try:
+            _assert_instance_access(doc)
+        except frappe.PermissionError:
+            continue
+        accessible.append(name)
+    return success(_instance_summaries(accessible))
+
+
+@frappe.whitelist()
 def list_my_workflow_notifications(unread_only: int | str = 0) -> dict:
     _require_signed_in()
     filters = {

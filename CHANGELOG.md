@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- New batch endpoint `get_workflow_instance_summaries(names)` for the cartable (PA-032): accepts a list (or JSON string) of at most 100 instance names, checks each with the same per-instance access rule as `get_workflow_instance`, and returns only the accessible summaries (inaccessible or unknown instances are omitted). This replaces the client's per-instance `get_workflow_instance` loop. No new DocType, migration, or permission change.
 - Task attachments on a workflow that references a standard ERPNext document (e.g. Purchase Order) are now readable by anyone who has native read permission on that document, instead of always being denied. `workflow_record_permission` delegates to `frappe.has_permission(reference_doctype, 'read', reference_name)` for standard reference DocTypes (a missing `reference_name` is denied). No new DocType, migration, or permission change.
 - A user who already acted on a workflow instance (an `ASOUD Workflow Activity` row with their actor) keeps read access to its detail and history even after a task was reassigned away from them, instead of being locked out with a permission error. `_assert_instance_access` now also grants access on prior participation. No new DocType, migration, or permission change.
 - `upload_workflow_attachment` now verifies the file's actual bytes (magic numbers) against its extension before storing it, so a payload cannot be smuggled in behind a harmless name (e.g. a PNG saved as `.pdf`). A mismatch is refused with a Persian error. No new DocType, migration, or permission change.

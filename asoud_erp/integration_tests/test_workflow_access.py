@@ -196,3 +196,24 @@ class TestWorkflowAccess(APITestCase):
         # A user without native read on the PO cannot.
         frappe.set_user(EMPLOYEE_USER)
         self.assertFalse(frappe.has_permission('File', 'read', file_doc))
+
+    # ------------------------------------------------------------------ PA-032
+    def test_instance_summaries_omit_inaccessible_instances(self):
+        definition, _ = self.make_action()
+        # Two instances: one started by EMPLOYEE_USER (they can read it), one started
+        # by APPROVER_USER (EMPLOYEE_USER has no task or activity on it).
+        mine, _ = self.start(definition, EMPLOYEE_USER)
+        theirs, _ = self.start(definition, APPROVER_USER)
+        frappe.set_user(EMPLOYEE_USER)
+        result = workflow_runtime.get_workflow_instance_summaries([mine, theirs])['data']
+        # Only the accessible instance is returned; the inaccessible one is omitted.
+        self.assertEqual([row['name'] for row in result], [mine])
+        # An unknown name is omitted, not an error.
+        result = workflow_runtime.get_workflow_instance_summaries([mine, 'WFI-DOES-NOT-EXIST'])['data']
+        self.assertEqual([row['name'] for row in result], [mine])
+        # A JSON string of names is accepted.
+        result = workflow_runtime.get_workflow_instance_summaries(json.dumps([mine]))['data']
+        self.assertEqual([row['name'] for row in result], [mine])
+        # More than 100 names is refused with a Persian error.
+        with self.assertRaises(frappe.ValidationError):
+            workflow_runtime.get_workflow_instance_summaries([f'WFI-{i}' for i in range(101)])
