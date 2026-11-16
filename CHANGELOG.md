@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A user who already acted on a workflow instance (an `ASOUD Workflow Activity` row with their actor) keeps read access to its detail and history even after a task was reassigned away from them, instead of being locked out with a permission error. `_assert_instance_access` now also grants access on prior participation. No new DocType, migration, or permission change.
 - `upload_workflow_attachment` now verifies the file's actual bytes (magic numbers) against its extension before storing it, so a payload cannot be smuggled in behind a harmless name (e.g. a PNG saved as `.pdf`). A mismatch is refused with a Persian error. No new DocType, migration, or permission change.
 - The cartable list endpoints (`list_my_workflow_tasks`, `list_my_workflow_instances`, `list_my_workflow_notifications`) now reject a guest (no signed-in account) at the controller entry with a Persian permission error, instead of relying only on the SQL `for_user`/`assigned_to` filter. A signed-in user is unaffected. No new DocType, migration, or permission change.
 - Workflow history reads are now bounded: `get_workflow_task` and `get_workflow_instance` read at most the newest 200 `ASOUD Workflow Activity` rows (newest-first, returned oldest-first for the timeline) instead of every row of a long-running process, so a long history no longer loads unbounded rows into memory. No new DocType, migration, or permission change.

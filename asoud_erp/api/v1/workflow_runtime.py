@@ -56,6 +56,13 @@ def _assert_instance_access(instance) -> None:
         {"workflow_instance": instance.name, "assigned_to": frappe.session.user},
     ):
         return
+    # A user who already acted on this instance (completed or was assigned a task
+    # that later moved on) keeps read access to its history, even after a reassign.
+    if frappe.db.exists(
+        "ASOUD Workflow Activity",
+        {"workflow_instance": instance.name, "actor": frappe.session.user},
+    ):
+        return
     if {"System Manager", "Accounts Manager"}.intersection(frappe.get_roles()):
         return
     frappe.throw(_("Not permitted to view this workflow instance"), frappe.PermissionError)
