@@ -61,6 +61,21 @@ class TestAutomaticActionAudit(APITestCase):
         values = json.loads(frappe.db.get_value(result['doctype'], result['name'], 'values_json'))
         self.assertEqual(values['amount'], 0.3)
 
+    def test_calculate_supports_min_max_average_and_count(self):
+        def fixed(value):
+            return {'source': 'constant', 'value': value}
+        # min/max are scalar over the mapped inputs; average and count route through
+        # the form engine's single-column table aggregation (it has no scalar form).
+        cases = {
+            'min': 1.0, 'max': 9.0, 'average': 5.0, 'count': 2.0,
+        }
+        for method, expected in cases.items():
+            result, _, _, _ = self.run_action('Calculate Value', {'target': {'source': 'current'},
+                'field': 'amount', 'method': method,
+                'inputs': {'a': fixed(1), 'b': fixed(9)}})
+            values = json.loads(frappe.db.get_value(result['doctype'], result['name'], 'values_json'))
+            self.assertEqual(values['amount'], expected, method)
+
     def test_update_fields_writes_only_allowed_values(self):
         result, _, _, _ = self.run_action('Update Fields', {'target': {'source': 'current'},
             'mapping': {'reason': {'source': 'constant', 'value': 'شرح اصلاح‌شده'},

@@ -229,7 +229,7 @@ def normalize_action(raw):
         result["field"] = identifier(payload.get("field"))
         result["inputs"] = mappings(payload.get("inputs"))
         method = payload.get("method")
-        if method not in {"sum", "average", "formula"}:
+        if method not in {"sum", "average", "min", "max", "count", "formula"}:
             raise ValueError("Invalid calculation method")
         result["method"] = method
         if method == "formula":
