@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Automatic-action final failure: when an automatic action fails with no Error route, the requester (`instance.started_by`) is now notified in-app alongside System Managers, with a Persian message explaining the request stopped and to contact the administrator. Previously only System Managers were told, leaving the owner of a stuck request unaware. No schema migration or new DocType.
+
 - Request cancellation: `cancel_request` now also cancels the instance's queued automatic actions (`ASOUD Action Execution` in `Pending` / `Retry Pending`) via a new `automatic_action_runtime.cancel`, so a withdrawn request no longer fires a background action. A receipt already `Running` is left to the worker's own instance-status check. No schema migration or new DocType.
 
 - Workflow route selection: the Persian-to-English route-action translation in `workflow_runtime._next_stage` now applies to every source stage type (User Task, System Action, Approval, ...) instead of only Approval. A route labelled «ادامه» on a multi-route human or system stage now matches the `Complete` action, so the workflow no longer stalls with "no next stage". No schema migration or new DocType.

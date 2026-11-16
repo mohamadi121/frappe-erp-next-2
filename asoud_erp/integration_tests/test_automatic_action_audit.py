@@ -240,3 +240,22 @@ class TestAutomaticActionAudit(APITestCase):
         self.assertEqual(frappe.db.get_value('ASOUD Action Execution', queued.name, 'status'), 'Cancelled')
         self.assertEqual(frappe.db.get_value('ASOUD Action Execution', running.name, 'status'), 'Running')
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', instance.name, 'status'), 'Cancelled')
+
+    def test_final_failure_notifies_the_requester(self):
+        from asoud_erp.services.automatic_action_runtime import _final_failure
+
+        definition, stages = make_definition(self.company, approvals=0, fields=[])
+        result = create(self.company, definition=definition)
+        instance = frappe.get_doc('ASOUD Workflow Instance', result['workflow_instance'])
+        # A failed receipt with no Error route: the instance is marked Failed and the
+        # requester must be told, not only System Managers.
+        receipt = frappe.get_doc({'doctype': 'ASOUD Action Execution',
+            'workflow_instance': instance.name, 'workflow_stage': list(stages.values())[0].name,
+            'status': 'Failed', 'action_type': 'Send Notification', 'attempts': 1,
+            'service_user': EMPLOYEE_USER, 'config_json': '{}',
+            'routes_json': '{}'}).insert(ignore_permissions=True)
+        _final_failure(receipt, instance)
+        instance.reload()
+        self.assertEqual(instance.status, 'Failed')
+        self.assertTrue(frappe.db.exists('Notification Log', {
+            'for_user': instance.started_by, 'document_name': instance.name}))

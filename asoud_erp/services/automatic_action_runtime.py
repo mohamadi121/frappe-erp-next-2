@@ -474,10 +474,17 @@ def _final_failure(receipt, instance):
     if instance.status == "Failed":
         from asoud_erp.api.v1.workflow_runtime import _notify_user, _users_for_roles
 
-        for user in _users_for_roles(["System Manager"]):
+        # The requester must learn their request stopped, not only System Managers.
+        recipients = [instance.started_by] + _users_for_roles(["System Manager"])
+        for user in dict.fromkeys(recipients):
             frappe.db.savepoint("automatic_failure_notice")
             try:
-                _notify_user(user, "Automatic action failed", instance, message=f"Execution: {receipt.name}")
+                _notify_user(
+                    user,
+                    "اقدام خودکار درخواست شما با خطا مواجه شد",
+                    instance,
+                    message="اقدام خودکار این درخواست با خطا مواجه شد و فرایند متوقف شد؛ برای پیگیری با مدیر سامانه تماس بگیرید.",
+                )
             except Exception:
                 frappe.db.rollback(save_point="automatic_failure_notice")
 
