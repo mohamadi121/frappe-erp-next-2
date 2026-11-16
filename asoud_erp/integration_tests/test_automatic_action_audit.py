@@ -5,7 +5,15 @@ from uuid import uuid4
 import frappe
 
 from asoud_erp.api.v1 import automatic_actions, forms, workflow
-from asoud_erp.integration_tests.fixtures import ACCOUNTANT_USER, EMPLOYEE_USER, ITEM, APITestCase
+from asoud_erp.integration_tests.fixtures import (
+    ACCOUNTANT_USER,
+    CUSTOMER,
+    EMPLOYEE_USER,
+    ITEM,
+    SUPPLIER,
+    APITestCase,
+    warehouse,
+)
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.request_helpers import create
 from asoud_erp.services.automatic_action_metadata import identity, validate_config
@@ -61,6 +69,71 @@ class TestAutomaticActionAudit(APITestCase):
         values = json.loads(frappe.db.get_value(result['doctype'], result['name'], 'values_json'))
         self.assertEqual(values['amount'], 0.3)
 
+    def test_calculate_supports_min_max_average_and_count(self):
+        def fixed(value):
+            return {'source': 'constant', 'value': value}
+        # min/max are scalar over the mapped inputs; average and count route through
+        # the form engine's single-column table aggregation (it has no scalar form).
+        cases = {
+            'min': 1.0, 'max': 9.0, 'average': 5.0, 'count': 2.0,
+        }
+        for method, expected in cases.items():
+            result, _, _, _ = self.run_action('Calculate Value', {'target': {'source': 'current'},
+                'field': 'amount', 'method': method,
+                'inputs': {'a': fixed(1), 'b': fixed(9)}})
+            values = json.loads(frappe.db.get_value(result['doctype'], result['name'], 'values_json'))
+            self.assertEqual(values['amount'], expected, method)
+
+    def table_execution(self):
+        """A request whose form has a Table field with a numeric and a text column."""
+        self.service()
+        fields = [
+            {'key': 'total', 'label': 'مجموع', 'type': 'Number'},
+            {'key': 'lines', 'label': 'اقلام', 'type': 'Table',
+             'columns': [{'key': 'amount', 'label': 'مبلغ', 'type': 'Number'},
+                         {'key': 'note', 'label': 'توضیح', 'type': 'Short Text'}]},
+        ]
+        definition, stages = make_definition(self.company, fields=fields)
+        request = create(self.company, definition=definition,
+            values={'total': 0, 'lines': [{'amount': 10, 'note': 'اول'}, {'amount': 20, 'note': 'دوم'}]})
+        stage = frappe.get_doc({'doctype': 'ASOUD Workflow Stage', 'workflow_definition': definition,
+            'stage_key': uuid4().hex, 'stage_type': 'System Action', 'stage_title': 'خودکار',
+            'sequence_no': 10, 'config_json': '{}'}).insert().name
+        instance = frappe.get_doc('ASOUD Workflow Instance', request['workflow_instance'])
+        receipt = frappe._dict(name=uuid4().hex, workflow_stage=stage)
+        return definition, stage, instance, receipt
+
+    def test_calculate_aggregates_a_table_column(self):
+        definition, stage, instance, receipt = self.table_execution()
+        # The action aggregates one column of the request's Table field; the form
+        # engine's Decimal table aggregation does the math.
+        cases = {'sum': 30.0, 'average': 15.0, 'min': 10.0, 'max': 20.0, 'count': 2.0}
+        for method, expected in cases.items():
+            config = validate_config(definition, stage, {'schema_version': 2, 'action_type': 'Calculate Value',
+                'operation': {'target': {'source': 'current'}, 'field': 'total', 'method': method,
+                    'inputs': {}, 'table': {'table': 'lines', 'column': 'amount'}},
+                'execution': {'extra_attempts': 0, 'retry_seconds': 60, 'timeout_seconds': 120}})
+            with identity(self.company):
+                result = perform(receipt, instance, config, self.company)
+            values = json.loads(frappe.db.get_value(result['doctype'], result['name'], 'values_json'))
+            self.assertEqual(values['total'], expected, method)
+
+    def test_calculate_table_aggregation_rejects_a_non_numeric_column(self):
+        definition, stage, _, _ = self.table_execution()
+        with self.assertRaisesRegex(ValueError, 'باید عددی باشد'):
+            validate_config(definition, stage, {'schema_version': 2, 'action_type': 'Calculate Value',
+                'operation': {'target': {'source': 'current'}, 'field': 'total', 'method': 'sum',
+                    'inputs': {}, 'table': {'table': 'lines', 'column': 'note'}},
+                'execution': {'extra_attempts': 0, 'retry_seconds': 60, 'timeout_seconds': 120}})
+
+    def test_calculate_table_aggregation_rejects_an_unknown_table_field(self):
+        definition, stage, _, _ = self.table_execution()
+        with self.assertRaisesRegex(ValueError, 'فیلد جدول'):
+            validate_config(definition, stage, {'schema_version': 2, 'action_type': 'Calculate Value',
+                'operation': {'target': {'source': 'current'}, 'field': 'total', 'method': 'sum',
+                    'inputs': {}, 'table': {'table': 'nope', 'column': 'amount'}},
+                'execution': {'extra_attempts': 0, 'retry_seconds': 60, 'timeout_seconds': 120}})
+
     def test_update_fields_writes_only_allowed_values(self):
         result, _, _, _ = self.run_action('Update Fields', {'target': {'source': 'current'},
             'mapping': {'reason': {'source': 'constant', 'value': 'شرح اصلاح‌شده'},
@@ -108,6 +181,42 @@ class TestAutomaticActionAudit(APITestCase):
         self.assertEqual(native.docstatus, 0)
         self.assertEqual(native.items[0].item_code, ITEM)
         self.assertEqual(native.items[0].qty, 2)
+
+    # --- PA-048: the engine supports the commercial documents --------------------
+
+    def test_create_document_supports_a_native_sales_order(self):
+        result, _, _, _ = self.run_action('Create Document', {'doctype': 'Sales Order', 'initial_state': 'Draft',
+            'link_original': True, 'mapping': {'customer': {'source': 'constant', 'value': CUSTOMER},
+                'transaction_date': {'source': 'system', 'value': 'today'},
+                'items': {'source': 'current', 'value': 'items'}}})
+        native = frappe.get_doc('Sales Order', result['name'])
+        self.assertEqual(native.docstatus, 0)
+        self.assertEqual(native.customer, CUSTOMER)
+        self.assertEqual(native.items[0].item_code, ITEM)
+        self.assertEqual(native.items[0].qty, 2)
+
+    def test_create_document_supports_a_native_purchase_order(self):
+        result, _, _, _ = self.run_action('Create Document', {'doctype': 'Purchase Order', 'initial_state': 'Draft',
+            'link_original': True, 'mapping': {'supplier': {'source': 'constant', 'value': SUPPLIER},
+                'transaction_date': {'source': 'system', 'value': 'today'},
+                'items': {'source': 'current', 'value': 'items'}}})
+        native = frappe.get_doc('Purchase Order', result['name'])
+        self.assertEqual(native.docstatus, 0)
+        self.assertEqual(native.supplier, SUPPLIER)
+        self.assertEqual(native.items[0].item_code, ITEM)
+        self.assertEqual(native.items[0].qty, 2)
+
+    def test_create_document_supports_a_native_stock_entry(self):
+        result, _, _, _ = self.run_action('Create Document', {'doctype': 'Stock Entry', 'initial_state': 'Draft',
+            'link_original': True, 'mapping': {'purpose': {'source': 'constant', 'value': 'Material Receipt'},
+                'posting_date': {'source': 'system', 'value': 'today'},
+                'items': {'source': 'current', 'value': 'items'},
+                'warehouse': {'source': 'constant', 'value': warehouse()}}})
+        native = frappe.get_doc('Stock Entry', result['name'])
+        self.assertEqual(native.docstatus, 0)
+        self.assertEqual(native.purpose, 'Material Receipt')
+        self.assertEqual(native.items[0].item_code, ITEM)
+        self.assertEqual(native.items[0].t_warehouse, warehouse())
 
     def test_change_status_refuses_to_set_an_arbitrary_string(self):
         definition, stage, _, _, _ = self.execution()

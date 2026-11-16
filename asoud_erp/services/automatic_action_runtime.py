@@ -364,7 +364,12 @@ def perform(receipt, instance, config, company):
                         raise ValueError("Automatic journal entries require accounts in the company currency")
         if op["doctype"] == "Material Request":
             validate_link_values([{"key": "items", "type": "Item Table"}], values, company)
+        if op["doctype"] == "Stock Entry" and not values.get("warehouse"):
+            values["warehouse"] = frappe.db.get_single_value("Stock Settings", "default_warehouse")
         doc = frappe.get_doc(build_document(op["doctype"], values, company))
+        from asoud_erp.api.v1.document_templates import _prepare_for_insert
+
+        _prepare_for_insert(doc)
         doc.insert()
         if op["initial_state"] == "Submitted":
             doc.submit()
@@ -377,12 +382,35 @@ def perform(receipt, instance, config, company):
 
             operands = _mapping(op['inputs'], context)
             # Reuse the form builder's Decimal evaluator, not a second float engine.
-            formula = ({'expression': op['formula']} if op['method'] == 'formula' else
-                {'op': 'add' if op['method'] == 'sum' else 'average', 'inputs': list(operands)})
+            method = op['method']
+            if op.get('table'):
+                # Aggregate one column of a Table field of the target record.
+                table = op['table']
+                # Read the rows from the same record the save-time check validated.
+                target = op.get('target', {'source': 'current'})
+                record_values = (context['current'] if target['source'] == 'current'
+                                 else context['stages'].get(target.get('stage'), {}))
+                rows = record_values.get(table['table'])
+                if not isinstance(rows, list):
+                    raise ValueError('فیلد جدول روی سند مقصد خالی یا موجود نیست.')
+                formula = {'op': method, 'table': table['table'], 'columns': [table['column']]}
+                values = {table['table']: rows}
+            elif method == 'formula':
+                formula, values = {'expression': op['formula']}, operands
+            elif method in {'min', 'max'}:
+                # The form engine has a scalar min/max over the mapped inputs.
+                formula, values = {'op': method, 'inputs': list(operands)}, operands
+            elif method in {'average', 'count'}:
+                # The form engine has no scalar average/count; route through its
+                # single-column table aggregation so the Decimal math stays in one place.
+                formula = {'op': method, 'table': 'rows', 'columns': ['value']}
+                values = {**operands, 'rows': [{'value': value} for value in operands.values()]}
+            else:  # sum
+                formula, values = {'op': 'add', 'inputs': list(operands)}, operands
             _update(
                 doc,
                 {
-                    op["field"]: calculate(formula, operands, raw_decimal=True)
+                    op["field"]: calculate(formula, values, raw_decimal=True)
                 },
                 company,
             )

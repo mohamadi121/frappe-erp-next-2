@@ -33,7 +33,8 @@ def runtime(monkeypatch):
     monkeypatch.setitem(sys.modules, "frappe", frappe)
     monkeypatch.setitem(sys.modules, "frappe.utils", utils)
     restore = fake.isolate(["asoud_erp.api.v1.workflow_runtime",
-                           "asoud_erp.services.request_link_values"])
+                           "asoud_erp.services.request_link_values",
+                           "asoud_erp.services.workflow_graph_snapshot"])
     module = importlib.import_module("asoud_erp.api.v1.workflow_runtime")
     yield module, site
     restore()

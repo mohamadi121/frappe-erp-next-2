@@ -17,6 +17,7 @@ test_workflow_card_actions
 test_workflow_submission_source
 test_workflow_start_phase3
 test_workflow_return_route
+test_workflow_graph_snapshot
 test_automatic_action_audit
 test_workflow_path_editing
 test_workflow_wait
@@ -71,3 +72,4 @@ test_workflow_condition_dryrun
 test_workflow_check
 test_stage_supplementary_form
 test_workflow_return_phase4
+test_workflow_approval_quorum

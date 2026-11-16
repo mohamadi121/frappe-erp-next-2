@@ -73,6 +73,13 @@ class TestWorkflowAccess(APITestCase):
         self.assertEqual(frappe.db.count('ASOUD Workflow Activity', {
             'workflow_task': task, 'action': 'Complete'}), 1)
 
+    # ------------------------------------------------------------------ PA-054
+    def test_legacy_module_key_is_stored_canonical(self):
+        # request_fixtures still inserts the legacy key "Support" directly; the
+        # definition controller stores the canonical key before the Select check.
+        definition, _ = make_definition(self.company, approvals=0, fields=[])
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', definition, 'module_key'), 'Admin')
+
     # ------------------------------------------------------------------ PA-028
     def test_workflow_history_is_bounded_to_the_newest_rows(self):
         definition, _ = self.make_action()

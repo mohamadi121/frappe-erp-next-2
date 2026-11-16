@@ -1,8 +1,10 @@
 import pytest
 
 from asoud_erp.services.document_templates import (
+    MODULES,
     PRESETS,
     build_document,
+    document_type,
     normalize_template,
     render_placeholders,
     resolve_values,
@@ -131,3 +133,123 @@ def test_presets_are_valid_once_their_accounts_are_chosen():
         else:
             mapping["items"] = {"source": "request", "value": "items"}
         normalize_template({**preset, "mapping": mapping}, None)
+
+
+# --- PA-069: the previously-empty modules now carry standard documents ----------
+
+def test_every_module_has_at_least_one_document_type():
+    for key, module in MODULES.items():
+        assert module["types"], f"module {key} has no document types"
+
+
+def test_new_standard_documents_are_registered_in_their_module():
+    assert document_type("Sales Order")["module"] == "Selling"
+    assert document_type("Purchase Order")["module"] == "Purchase"
+    assert document_type("Stock Entry")["module"] == "Stock"
+    assert document_type("Issue")["module"] == "Admin"
+
+
+def test_unverifiable_documents_are_coming_soon():
+    for key in ("Salary Slip", "Attendance", "Employee Advance", "Asset Movement"):
+        assert document_type(key)["enabled"] is False
+
+
+def test_sales_order_template_is_normalized():
+    result = normalize_template(
+        {"title": "سفارش فروش", "module": "Selling", "document_type": "Sales Order",
+         "mapping": {"customer": {"source": "fixed", "value": "Cust - T"},
+                     "transaction_date": {"source": "system", "value": "today"},
+                     "items": {"source": "request", "value": "items"}}},
+        {"items": "Item Table"},
+    )
+    assert result["document_type"] == "Sales Order"
+
+
+def test_sales_order_builds_a_native_document_dict():
+    doc = build_document("Sales Order",
+        {"customer": "Cust - T", "transaction_date": "2026-09-25",
+         "items": [{"item_code": "LAP", "qty": 2, "uom": "Nos"}]}, "Taban")
+    assert doc["doctype"] == "Sales Order" and doc["customer"] == "Cust - T"
+    assert doc["items"][0]["item_code"] == "LAP" and doc["items"][0]["qty"] == 2
+
+
+def test_purchase_order_builds_a_native_document_dict():
+    doc = build_document("Purchase Order",
+        {"supplier": "Supp - T", "transaction_date": "2026-09-25",
+         "items": [{"item_code": "LAP", "qty": 1, "uom": "Nos"}]}, "Taban")
+    assert doc["doctype"] == "Purchase Order" and doc["supplier"] == "Supp - T"
+
+
+def test_stock_entry_builds_items_with_purpose_warehouses():
+    doc = build_document("Stock Entry",
+        {"purpose": "Material Receipt", "posting_date": "2026-09-25", "warehouse": "Stores - T",
+         "items": [{"item_code": "LAP", "qty": 3, "uom": "Nos"}]}, "Taban")
+    assert doc["stock_entry_type"] == "Material Receipt"
+    assert doc["items"][0]["t_warehouse"] == "Stores - T"
+    assert "s_warehouse" not in doc["items"][0]
+
+
+def test_stock_entry_rejects_an_unknown_purpose():
+    with pytest.raises(ValueError, match="purpose"):
+        build_document("Stock Entry",
+            {"purpose": "Bogus", "posting_date": "2026-09-25",
+             "items": [{"item_code": "LAP", "qty": 1, "uom": "Nos"}]}, "Taban")
+
+
+def test_issue_builds_a_native_document_dict():
+    doc = build_document("Issue", {"subject": "خرابی سیستم"}, "Taban")
+    assert doc["doctype"] == "Issue" and doc["subject"] == "خرابی سیستم"
+
+
+def test_coming_soon_document_is_rejected_on_save():
+    with pytest.raises(ValueError, match="not available"):
+        normalize_template({"title": "حقوق", "module": "HR", "document_type": "Salary Slip",
+                            "mapping": {}}, None)
+
+
+# --- PA-048: the automatic-action engine supports the commercial documents -----
+# The engine's DOCUMENTS allowlist is derived from TARGET_FIELDS (the single
+# source of truth), so a document is supported exactly when it has a schema and
+# a build_document branch.
+
+@pytest.mark.parametrize(
+    "doctype, values",
+    [
+        ("Sales Order", {"customer": "C", "transaction_date": "2026-09-25",
+                         "items": [{"item_code": "LAP", "qty": 1, "uom": "Nos"}]}),
+        ("Purchase Order", {"supplier": "S", "transaction_date": "2026-09-25",
+                            "items": [{"item_code": "LAP", "qty": 1, "uom": "Nos"}]}),
+        ("Stock Entry", {"purpose": "Material Receipt", "posting_date": "2026-09-25",
+                         "items": [{"item_code": "LAP", "qty": 1, "uom": "Nos"}]}),
+        ("Issue", {"subject": "خرابی"}),
+    ],
+)
+def test_automatic_action_documents_have_a_schema_and_builder(doctype, values):
+    from asoud_erp.services.document_templates import TARGET_FIELDS
+
+    assert doctype in TARGET_FIELDS
+    assert build_document(doctype, values, "Taban")["doctype"] == doctype
+
+
+def test_automatic_action_documents_are_the_schemad_documents():
+    # The engine allowlist (automatic_action_metadata.DOCUMENTS) is
+    # `tuple(TARGET_FIELDS)`; assert the commercial documents are all present so
+    # a workflow targeting any of them is no longer blocked.
+    from asoud_erp.services.document_templates import TARGET_FIELDS
+
+    for doctype in ("Material Request", "Journal Entry", "Sales Order",
+                    "Purchase Order", "Stock Entry", "Issue"):
+        assert doctype in TARGET_FIELDS
+
+
+def test_orders_and_stock_entries_carry_the_dates_erpnext_requires():
+    items = [{"item_code": "ITEM-1", "qty": 2}]
+    sales = build_document("Sales Order", {"customer": "C", "transaction_date": "2026-11-16", "items": items}, "Taban")
+    assert sales["delivery_date"] == "2026-11-16"
+    assert all(row["delivery_date"] == "2026-11-16" for row in sales["items"])
+    purchase = build_document("Purchase Order", {"supplier": "S", "transaction_date": "2026-11-16", "items": items}, "Taban")
+    assert purchase["schedule_date"] == "2026-11-16"
+    assert all(row["schedule_date"] == "2026-11-16" for row in purchase["items"])
+    entry = build_document("Stock Entry", {"purpose": "Material Receipt", "posting_date": "2026-11-16",
+                                           "items": items, "warehouse": "Stores - T"}, "Taban")
+    assert entry["set_posting_time"] == 1 and entry["posting_date"] == "2026-11-16"

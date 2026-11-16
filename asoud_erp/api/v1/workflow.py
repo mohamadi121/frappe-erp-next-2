@@ -8,6 +8,7 @@ from frappe.utils import cint, now_datetime
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.jalali import current_jalali_year
+from asoud_erp.services.modules import MODULE_DOCTYPES, normalize_module_key
 from asoud_erp.services.request_access import require_company
 from asoud_erp.services.workflow_contract import (
     ALLOWED_WORKFLOW_STATUSES,
@@ -22,14 +23,6 @@ from asoud_erp.services.workflow_stage_policy import (
 from asoud_erp.services.workflow_user_action_policy import condition_fields as action_condition_fields
 
 ALLOWED_STATUSES = ALLOWED_WORKFLOW_STATUSES
-MODULE_DOCTYPES = {
-    "Purchase": ("Material Request", "Purchase Order"),
-    "Accounting": ("Payment Request", "Expense Claim", "Journal Entry"),
-    "Sales": ("Quotation", "Sales Order"),
-    "Inventory": ("Stock Entry",),
-    "Support": ("Issue", "ASOUD Workflow Request"),
-    "HR": ("Leave Application", "Job Applicant"),
-}
 STAGE_TITLES = {
     "User Task": "بررسی یا ویرایش سند",
     "Approval": "تأیید یا رد",
@@ -224,6 +217,7 @@ def _create_workflow_draft(
     title = (workflow_title or "").strip()
     if len(title) < 3:
         frappe.throw(_("عنوان گردش‌کار باید دست‌کم ۳ نویسه باشد."))
+    module_key = normalize_module_key(module_key)
     if module_key not in MODULE_DOCTYPES:
         frappe.throw(_("ماژول گردش‌کار نامعتبر است."))
     if target_doctype != "ASOUD Workflow Request" and target_doctype not in MODULE_DOCTYPES[module_key]:
@@ -1126,8 +1120,10 @@ def update_request_type_info(
     doc.check_permission("write")
     # Also used by the start-node metadata editor. Never change its reference
     # DocType, company, graph or start permissions when editing presentation.
-    if module_key is not None and module_key not in MODULE_DOCTYPES:
-        frappe.throw(_("ماژول گردش‌کار نامعتبر است."))
+    if module_key is not None:
+        module_key = normalize_module_key(module_key)
+        if module_key not in MODULE_DOCTYPES:
+            frappe.throw(_("ماژول گردش‌کار نامعتبر است."))
     title = (workflow_title or "").strip()
     if len(title) < 3:
         frappe.throw(_("عنوان گردش‌کار باید دست‌کم ۳ نویسه باشد."))

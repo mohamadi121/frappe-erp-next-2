@@ -160,6 +160,39 @@ def calculate(method, values, formula=""):
     return visit(tree)
 
 
+def table_aggregation(raw):
+    """Shape of a Calculate Value aggregation over one column of a Table field.
+
+    The aggregation operation itself is the action's `method`; this only names
+    the Table field and the column to aggregate.
+    """
+    if not isinstance(raw, dict) or set(raw) - {"table", "column"}:
+        raise ValueError("ساختار تجمیع جدول نامعتبر است؛ فیلد جدول و ستون را انتخاب کنید.")
+    return {"table": identifier(raw.get("table")), "column": identifier(raw.get("column"))}
+
+
+def validate_table_aggregation(table, op, fields):
+    """Check a normalized table aggregation against the target record's fields.
+
+    `table` is the normalized `{"table", "column"}` shape, `op` the method
+    (sum/average/min/max/count) and `fields` the list of field descriptors
+    (key, type, and for a Table field a `columns` list) of the record the action
+    writes to. The table field must exist and be a Table; the column must exist
+    in it, and be numeric for the operations that need a number.
+    """
+    field = next((f for f in fields if f.get("key") == table["table"]), None)
+    if not field:
+        raise ValueError("فیلد جدول روی سند مقصد وجود ندارد؛ فیلد دیگری را انتخاب کنید.")
+    if field.get("type") != "Table":
+        raise ValueError("فیلد انتخاب‌شده برای تجمیع جدول از نوع جدول نیست.")
+    columns = field.get("columns") or []
+    column = next((c for c in columns if c.get("key") == table["column"]), None)
+    if not column:
+        raise ValueError("ستون انتخاب‌شده در جدول وجود ندارد.")
+    if op in {"sum", "average", "min", "max"} and column.get("type") not in NUMERIC:
+        raise ValueError("ستون انتخاب‌شده برای این محاسبه باید عددی باشد.")
+
+
 def normalize_action(raw):
     if not isinstance(raw, dict) or set(raw) - {
         "title",
@@ -186,7 +219,7 @@ def normalize_action(raw):
         "Update Fields": {"target", "mapping"},
         "Change Status": {"target", "transition"},
         "Send Notification": {"recipients", "channels", "message", "title"},
-        "Calculate Value": {"target", "field", "method", "inputs", "formula"},
+        "Calculate Value": {"target", "field", "method", "inputs", "formula", "table"},
         "Link Record": {"target", "doctype", "lookup_field", "lookup", "relationship", "missing", "multiple"},
     }[kind]
     if set(payload) - keys:
@@ -227,16 +260,27 @@ def normalize_action(raw):
             raise ValueError("Invalid message variable")
     elif kind == "Calculate Value":
         result["field"] = identifier(payload.get("field"))
-        result["inputs"] = mappings(payload.get("inputs"))
         method = payload.get("method")
-        if method not in {"sum", "average", "formula"}:
+        if method not in {"sum", "average", "min", "max", "count", "formula"}:
             raise ValueError("Invalid calculation method")
         result["method"] = method
-        if method == "formula":
-            validate_formula(payload.get("formula"), result["inputs"])
-            result["formula"] = payload["formula"]
-        elif payload.get("formula"):
-            raise ValueError("Hidden formula is not allowed")
+        if payload.get("table"):
+            # Table-column aggregation: no scalar inputs, no formula.
+            if method == "formula":
+                raise ValueError("تجمیع جدول با روش جمع، میانگین، کمینه، بیشینه یا شمارش انجام می‌شود، نه فرمول.")
+            if payload.get("inputs"):
+                raise ValueError("برای تجمیع جدول، ورودی‌های عددی جداگانه را خالی بگذارید.")
+            if payload.get("formula"):
+                raise ValueError("Hidden formula is not allowed")
+            result["inputs"] = {}
+            result["table"] = table_aggregation(payload["table"])
+        else:
+            result["inputs"] = mappings(payload.get("inputs"))
+            if method == "formula":
+                validate_formula(payload.get("formula"), result["inputs"])
+                result["formula"] = payload["formula"]
+            elif payload.get("formula"):
+                raise ValueError("Hidden formula is not allowed")
     elif kind == "Link Record":
         result["doctype"] = text(payload.get("doctype"), "Linked record type")
         result["lookup_field"] = identifier(payload.get("lookup_field"))

@@ -7,6 +7,11 @@ from frappe.model.document import Document
 
 class ASOUDWorkflowDefinition(Document):
     def validate(self) -> None:
+        # Runs before Frappe's Select check: a legacy module key from any insert
+        # path (fixtures, template seeding, old clients) is stored canonically.
+        from asoud_erp.services.modules import normalize_module_key
+
+        self.module_key = normalize_module_key(self.module_key) or self.module_key
         before = self.get_doc_before_save()
         changed_source = (before and (before.get('source_form'), before.get('source_revision')) !=
             (self.get('source_form'), self.get('source_revision'))) or (

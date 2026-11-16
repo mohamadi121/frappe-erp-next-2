@@ -49,11 +49,11 @@ first opened, exactly like the HR defaults; names are deterministic per company 
 (`asoud-builtin-stage:<company>:<key>`). `open_builtin(company, key)` materializes a
 `Stage` form with a published v1 and returns the normal `get_form` envelope.
 
-`copy_form(company, name, title=None)` (POST, designers only) copies a published `Stage`
-form into a new company-owned `Stage` form whose draft and published v1 are the source's
-active revision schema. The default title is `<source title> - نسخه اختصاصی`. The source
-form and its revisions are never changed. A form without an active revision, or a form
-that is not kind `Stage`, is rejected with a Persian error.
+`copy_form(company, name, title=None)` (POST, designers only) copies a published form of
+any kind (`Stage`, `Request` or `Document`) into a new company-owned form of the **same
+kind** whose draft and published v1 are the source's active revision schema. The default
+title is `<source title> - نسخه اختصاصی`. The source form and its revisions are never
+changed. A form without an active revision is rejected with a Persian error.
 
 The optional top-level schema key `usage` (a string of at most 40 characters, e.g.
 `approval`) is additive and does not change `schema_version`. `module` already exists
@@ -360,6 +360,13 @@ redirected to a draft or foreign revision.
 Document forms create an ERPNext draft with native permissions and controllers; employees without
 native permission on the target document type are refused by ERPNext. Request forms use the
 selected active ASOUD workflow. Neither path auto-submits a native document.
+
+A request form bound to a workflow maps its fields to request fields with `workflow_key`. A
+`File`, `Image` or `Signature` field maps to a request `Attachment` field: at submission the
+file the user uploaded is transferred to the request through the standard attachment path (the
+request owns a private copy) and the request field references it. A form file field cannot map
+to a non-`Attachment` request field, and a `Table` column of type `File`/`Image`/`Signature`
+cannot be mapped to a workflow (it is rejected with a Persian error).
 
 ## Execution after approval — contract
 

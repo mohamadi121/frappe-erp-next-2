@@ -54,7 +54,7 @@ def test_registered_specs_carry_the_fixture_fields_and_contract_metadata(fixture
     assert list(specs) == ["purchase", "supply", "leave"]
     meta = {
         "purchase": ("PR", "Purchase", "Purchase", "input"),
-        "supply": ("SP", "Purchase", "Inventory", "input"),
+        "supply": ("SP", "Purchase", "Stock", "input"),
         "leave": ("LV", "HR", "HR", "generated"),
     }
     for key, spec in specs.items():
