@@ -268,7 +268,9 @@ class TestWorkflowSubmissionSource(APITestCase):
                 {'account': equity, 'debit': 0, 'credit': 100}]}, uuid4().hex)['data']
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', res_default['workflow_instance'], 'workflow_definition'), default_def)
 
-    def test_only_available_workflow_without_default_raises_error(self):
+    def test_only_available_workflow_without_default_saves_ordinary_entry(self):
+        # PA-004: Available bindings never auto-route. With no conditional match
+        # and no default, the form is saved as an ordinary record (no instance).
         frappe.set_user('Administrator')
         avail_def, avail_stages = make_definition(self.company, approvals=0, fields=[])
         avail_stage = next(s for s in avail_stages.values() if s.stage_type == 'User Task')
@@ -282,10 +284,10 @@ class TestWorkflowSubmissionSource(APITestCase):
         before_entry = frappe.db.count('ASOUD Form Entry')
         before_instance = frappe.db.count('ASOUD Workflow Instance')
         frappe.set_user(EMPLOYEE_USER)
-        with self.assertRaises(frappe.ValidationError) as ctx:
-            forms.submit_form(self.source['name'], self.source['revision'], 'ثبت بدون پیش‌فرض', {'note': 'تست'}, uuid4().hex)
-        self.assertIn('هیچ مسیر مشروطی منطبق نیست', str(ctx.exception))
-        self.assertEqual(frappe.db.count('ASOUD Form Entry'), before_entry)
+        result = forms.submit_form(self.source['name'], self.source['revision'], 'ثبت بدون پیش‌فرض', {'note': 'تست'}, uuid4().hex)['data']
+        self.assertTrue(result['name'])
+        self.assertIsNone(result['workflow_instance'])
+        self.assertEqual(frappe.db.count('ASOUD Form Entry'), before_entry + 1)
         self.assertEqual(frappe.db.count('ASOUD Workflow Instance'), before_instance)
 
     def test_document_submission_idempotency_and_sha256_request_key(self):

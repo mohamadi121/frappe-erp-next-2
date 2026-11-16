@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Form submission no longer blocks when a form has only `Available` workflow bindings and no default: `choose_route` now returns `None` (the form is saved as an ordinary record, no workflow instance) instead of raising a routing error, matching the documented contract that Available designs do not compete with the default. A non-matching Conditional is still reported as a Persian routing error. No new DocType, migration or permission change.
 - Workflow form routing no longer takes `FOR UPDATE` locks on every bound definition and up to 40k stage rows on each form submission. `route()` reads the bound definitions and their stage configs without row locks; the correctness the locks protected (a concurrent design change racing a submission) is still enforced because design changes are serialized by `bind()` and instance creation by `start_workflow_instance`. No new DocType, migration or permission change.
 - Fix Document form submission idempotency: `forms._submit_form` renamed inner mapping loop variable to `native_key` to avoid shadowing outer sha256 request idempotency hash `key`, resolving UniqueValidationError on repeated or multiple Document form submissions. Add regression tests for multi-submission unique keys and replay idempotency. No new DocType, migration, or permission change.
 

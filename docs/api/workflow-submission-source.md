@@ -58,7 +58,11 @@ language, table or runtime. Exactly one matching ready/active conditional wins;
 multiple matches are a Persian conflict, never first-row selection. If none match,
 the unique default must be ready/active, or the existing legacy schema.workflow
 route is used unchanged. Inactive/Available designs do not compete with the default.
-The saved entry and existing instance stay the authority for retries.
+When no conditional route matches and no default is configured, Available bindings
+never auto-route: the form is saved as an ordinary record (no workflow instance)
+instead of blocking the submission. A non-matching Conditional is still a deliberate
+routing intent and is reported as a Persian routing error, never swallowed by an
+Available binding. The saved entry and existing instance stay the authority for retries.
 
 `create_workflow_draft` accepts optional `start_settings`; creation and Start save
 are atomic. `workflow_templates.create_from_template` accepts the same optional
