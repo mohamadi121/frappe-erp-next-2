@@ -65,6 +65,36 @@ class TestWorkflowCardActions(APITestCase):
         self.assertTrue(any(row['name'] == name for row in
             workflow.list_workflows(company=self.company, status='Inactive')['data']))
 
+    def test_active_or_running_workflow_refuses_graph_edits(self):
+        # PA-006: drawing a route or adding a stage must be refused while the
+        # definition is Active or has a Running instance, for every stage type.
+        # Each attempt below would succeed on the old code (no guard), so the
+        # refusal proves the new assert_editable guard.
+        name = self.draft()
+        self.complete(name)
+        stages = workflow.get_workflow_design(name)['data']['stages']
+        task = next(row['name'] for row in stages if row['stage_type'] == 'User Task')
+        end = next(row['name'] for row in stages if row['stage_type'] == 'End')
+        # Active definition: drawing a new route is refused.
+        workflow.set_workflow_status(name, 'Active')
+        with self.assertRaises(frappe.ValidationError):
+            workflow.connect_workflow_stages(name, task, end, 'تأیید')
+        workflow.set_workflow_status(name, 'Inactive')
+        # A Running instance on an Inactive definition blocks the same route.
+        frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': name,
+            'subject': 'اجرای جاری', 'status': 'Running'}).insert()
+        with self.assertRaises(frappe.ValidationError):
+            workflow.connect_workflow_stages(name, task, end, 'تأیید')
+        # Adding a stage is also refused while a Running instance exists. A
+        # fresh draft's Start has no outgoing stage, so only the guard can block it.
+        draft2 = self.draft()
+        start2 = next(row['name'] for row in workflow.get_workflow_design(draft2)['data']['stages']
+                      if row['stage_type'] == 'Start')
+        frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': draft2,
+            'subject': 'اجرای جاری', 'status': 'Running'}).insert()
+        with self.assertRaises(frappe.ValidationError):
+            workflow.add_workflow_stage(draft2, 'User Task', start2)
+
     def test_incomplete_draft_is_listed_and_searchable_by_title_and_code(self):
         name = self.draft()
         doc = frappe.get_doc('ASOUD Workflow Definition', name)
@@ -76,6 +106,14 @@ class TestWorkflowCardActions(APITestCase):
             workflow.list_workflows(company=self.company, search=doc.workflow_title)['data']))
         self.assertTrue(any(row['name'] == name for row in
             workflow.list_workflows(company=self.company, search=doc.workflow_code)['data']))
+
+    def test_new_draft_start_stage_has_persian_title(self):
+        # PA-056: the auto-created Start stage must carry the approved Persian
+        # title, not the English "Start".
+        name = self.draft()
+        start = next(row for row in workflow.get_workflow_design(name)['data']['stages']
+                     if row['stage_type'] == 'Start')
+        self.assertEqual(start['stage_title'], 'شروع فرایند')
 
     def test_details_summary_is_fresh_read_only_for_all_three_states(self):
         name = self.draft()
@@ -118,6 +156,32 @@ class TestWorkflowCardActions(APITestCase):
         with self.assertRaises(frappe.PermissionError):
             delete('ASOUD Workflow Definition', name)
 
+    def test_update_request_type_info_requires_company_scope(self):
+        # PA-041: an Accounts Manager of another company must not edit the
+        # presentation metadata of a foreign definition. The DocType has no
+        # User Permission on Company, so without an explicit company guard the
+        # global write role alone lets the cross-office edit through.
+        name = workflow.create_workflow_draft(workflow_title='دفتر دیگر', company=self.foreign_company,
+            module_key='HR', target_doctype='ASOUD Workflow Request')['data']['name']
+        original_title = frappe.db.get_value('ASOUD Workflow Definition', name, 'workflow_title')
+        frappe.set_user(MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            workflow.update_request_type_info(name, workflow_title='ویرایش بین‌دفتری')
+        # The title was not changed.
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', name, 'workflow_title'), original_title)
+
+    def test_update_stage_positions_requires_company_scope_and_write(self):
+        # PA-014: a manager of another company must not move the canvas of a
+        # foreign definition; the response must not leak the foreign design.
+        name = workflow.create_workflow_draft(workflow_title='دفتر دیگر', company=self.foreign_company,
+            module_key='HR', target_doctype='ASOUD Workflow Request')['data']['name']
+        stage = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': name, 'stage_type': 'Start'}, 'name')
+        frappe.set_user(MANAGER_USER)
+        with self.assertRaises(frappe.PermissionError):
+            workflow.update_stage_positions(name, {stage: {'x': 10, 'y': 20}})
+        # The coordinates were not written (still the default 0, not 10).
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Stage', stage, 'position_x'), 0)
+
     def test_json_dependency_blocks_but_edit_history_alone_does_not(self):
         name, other = self.draft(), self.draft()
         stage = frappe.get_doc('ASOUD Workflow Stage', {'workflow_definition': other})
@@ -157,6 +221,22 @@ class TestWorkflowCardActions(APITestCase):
             'subject': 'سابقهٔ اجرا', 'status': 'Running'}).insert()
         with self.assertRaises(frappe.ValidationError):
             workflow.delete_workflow(name2)
+
+    def test_delete_workflow_writes_security_audit(self):
+        # PA-042: deleting a workflow must leave an ASOUD Security Audit row in
+        # the same savepoint, recording the actor, target and company.
+        name = self.draft()
+        code = frappe.db.get_value('ASOUD Workflow Definition', name, 'workflow_code')
+        workflow.delete_workflow(name)
+        self.assertFalse(frappe.db.exists('ASOUD Workflow Definition', name))
+        audit = frappe.get_all('ASOUD Security Audit',
+            filters={'action': 'workflow.definition.deleted', 'target': name},
+            fields=['actor', 'company', 'target_type', 'details'], limit=1)
+        self.assertTrue(audit, 'deletion must write a security audit row')
+        self.assertEqual(audit[0]['actor'], 'Administrator')
+        self.assertEqual(audit[0]['company'], self.company)
+        self.assertEqual(audit[0]['target_type'], 'ASOUD Workflow Definition')
+        self.assertIn(code, audit[0]['details'])
 
     def test_edited_unused_workflow_deletion_clears_versions(self):
         name = self.draft()

@@ -263,7 +263,7 @@ def _create_workflow_draft(
             "workflow_definition": doc.name,
             "stage_key": f"start-{frappe.generate_hash(length=10)}",
             "stage_type": "Start",
-            "stage_title": _("Start"),
+            "stage_title": "شروع فرایند",
             "sequence_no": 0,
             "configuration_status": "Pending",
             "config_json": json.dumps(
@@ -346,6 +346,9 @@ def save_start_settings(
 @frappe.whitelist(methods=["POST"])
 def add_workflow_stage(definition: str, stage_type: str, after_stage: str) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     if stage_type not in STAGE_TITLES:
         frappe.throw(_("Invalid workflow stage type"))
     frappe.db.sql(
@@ -416,6 +419,9 @@ def _touch_workflow(definition: str) -> None:
 def update_stage_positions(definition: str, positions: str | dict) -> dict:
     """Persist designer coordinates without changing workflow semantics."""
     require_roles(("System Manager", "Accounts Manager"))
+    owner = frappe.get_doc("ASOUD Workflow Definition", definition)
+    require_company(owner.company)
+    owner.check_permission("write")
     values = json.loads(positions) if isinstance(positions, str) else positions
     if not isinstance(values, dict) or len(values) > 250:
         frappe.throw(_("Invalid stage positions"))
@@ -448,6 +454,9 @@ def connect_workflow_stages(
 ) -> dict:
     """Create a named route; backward routes are deliberately supported."""
     require_roles(("System Manager", "Accounts Manager"))
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     action = (action or "").strip()
     if not action or len(action) > 140 or from_stage == to_stage:
         frappe.throw(_("Invalid workflow transition"))
@@ -457,9 +466,6 @@ def connect_workflow_stages(
     )
     source = _assert_stage_in_definition(from_stage, definition)
     if source.stage_type == 'Condition':
-        from asoud_erp.services.workflow_condition_binding import assert_editable
-
-        assert_editable(definition)
         raw = json.loads(condition) if isinstance(condition, str) else condition
         if not isinstance(raw, dict) or type(raw.get('result')) is not bool:
             frappe.throw('خروجی شرط باید برقرار یا برقرار نیست باشد.')
@@ -1116,6 +1122,8 @@ def update_request_type_info(
 ) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
     doc = frappe.get_doc("ASOUD Workflow Definition", name)
+    require_company(doc.company)
+    doc.check_permission("write")
     # Also used by the start-node metadata editor. Never change its reference
     # DocType, company, graph or start permissions when editing presentation.
     if module_key is not None and module_key not in MODULE_DOCTYPES:
@@ -1177,6 +1185,16 @@ def delete_workflow(name=None) -> dict:
     frappe.db.savepoint('delete_workflow_api')
     try:
         frappe.delete_doc("ASOUD Workflow Definition", name)
+        # A durable audit receipt shares the deletion savepoint: if it cannot be
+        # written, the whole deletion rolls back (AGENTS.md section 11).
+        from asoud_erp.services import security_audit
+
+        receipt = security_audit.build_row(
+            actor=frappe.session.user, action='workflow.definition.deleted',
+            target_type='ASOUD Workflow Definition', target=name,
+            company=doc.company or '', occurred_on=now_datetime(),
+            details={'workflow_code': doc.workflow_code, 'workflow_title': doc.workflow_title})
+        frappe.get_doc(receipt).insert(ignore_permissions=True)
     except frappe.LinkExistsError:
         frappe.db.rollback(save_point='delete_workflow_api')
         frappe.clear_messages()
