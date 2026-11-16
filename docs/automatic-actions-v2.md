@@ -115,6 +115,17 @@ fake offline metadata/success fallback for this editor.
    two). The AST allowlist has no calls, attributes, indexing, power operator,
    imports or code execution. Nonfinite/oversized results and division by zero
    fail. There is no implicit currency conversion.
+
+   It can also aggregate one column of a `Table` field of the target record.
+   The operation then carries `table: {table, column}` (the Table field key and
+   the column key) and an empty `inputs`; the `method` is the aggregation
+   (`sum`, `average`, `min`, `max` or `count`). The table field must exist on
+   the target record and be a `Table`; the column must exist in it, and be
+   numeric for `sum`/`average`/`min`/`max` (`count` may use any column). The
+   math reuses the form builder's Decimal table aggregation, so the result is
+   the same as a form formula over that column. A `Table` aggregation and the
+   scalar `inputs` are mutually exclusive, and a `Table` aggregation cannot use
+   the `formula` method.
 7. **Link Record** performs an exact equality lookup on an allowlisted field,
    restricted to the company. No match explicitly errors or skips; multiple
    matches always error, including matches hidden from the execution user.

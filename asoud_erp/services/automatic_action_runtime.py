@@ -378,7 +378,15 @@ def perform(receipt, instance, config, company):
             operands = _mapping(op['inputs'], context)
             # Reuse the form builder's Decimal evaluator, not a second float engine.
             method = op['method']
-            if method == 'formula':
+            if op.get('table'):
+                # Aggregate one column of a Table field of the target record.
+                table = op['table']
+                rows = context['current'].get(table['table'])
+                if not isinstance(rows, list):
+                    raise ValueError('فیلد جدول روی سند مقصد خالی یا موجود نیست.')
+                formula = {'op': method, 'table': table['table'], 'columns': [table['column']]}
+                values = {table['table']: rows}
+            elif method == 'formula':
                 formula, values = {'expression': op['formula']}, operands
             elif method in {'min', 'max'}:
                 # The form engine has a scalar min/max over the mapped inputs.
