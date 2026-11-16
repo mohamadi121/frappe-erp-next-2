@@ -920,6 +920,16 @@ def _is_paged(paged) -> bool:
     return str(paged).lower() in ('1', 'true')
 
 
+def _require_signed_in() -> None:
+    """The cartable lists are per-user; a guest (no signed-in account) gets nothing.
+
+    The SQL already scopes rows to the session user, but the guard makes the
+    requirement explicit at the controller entry, per the layering rules.
+    """
+    if frappe.session.user in ("Guest", None, ""):
+        frappe.throw(_("برای مشاهدهٔ کارتابل باید وارد حساب شوید."), frappe.PermissionError)
+
+
 def _instance_summaries(names) -> list[dict]:
     """`_instance_summary` for many instances with four queries instead of three per row."""
     if not names:
@@ -985,6 +995,7 @@ def list_my_workflow_tasks(status: str = "Open", start=0, paged=False) -> dict:
     LIMIT, so every page is full except the last and `next_cursor` is null exactly when
     no visible row follows.
     """
+    _require_signed_in()
     if status not in {"Open", "Completed", "Rejected", "Cancelled"}:
         frappe.throw(_("Invalid task status"))
     from asoud_erp.services.directive_access import instance_clause
@@ -1012,6 +1023,7 @@ def list_my_workflow_instances(status: str | None = None, start=0, paged=False) 
     `list_my_workflow_tasks`: access is filtered in SQL, `next_cursor` is null on the last
     visible page and `meta.total` counts all visible rows in paged mode.
     """
+    _require_signed_in()
     allowed = {"Running", "Completed", "Rejected", "Cancelled", "Failed"}
     if status and status not in allowed:
         frappe.throw(_("Invalid workflow instance status"))
@@ -1074,6 +1086,7 @@ def get_workflow_instance(instance: str) -> dict:
 
 @frappe.whitelist()
 def list_my_workflow_notifications(unread_only: int | str = 0) -> dict:
+    _require_signed_in()
     filters = {
         "for_user": frappe.session.user,
         "document_type": "ASOUD Workflow Instance",
