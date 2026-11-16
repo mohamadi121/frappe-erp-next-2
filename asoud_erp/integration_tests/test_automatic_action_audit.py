@@ -259,3 +259,19 @@ class TestAutomaticActionAudit(APITestCase):
         self.assertEqual(instance.status, 'Failed')
         self.assertTrue(frappe.db.exists('Notification Log', {
             'for_user': instance.started_by, 'document_name': instance.name}))
+
+    def test_update_fields_on_a_form_entry_writes_values_json(self):
+        from asoud_erp.services.automatic_action_runtime import _update
+
+        saved = forms.save_form(self.company, {'kind': 'Request', 'title': 'فرم به‌روزرسانی خودکار',
+            'sections': [{'id': 'main', 'title': 'اطلاعات', 'fields': [
+                {'key': 'amount', 'label': 'عدد', 'type': 'Number'},
+                {'key': 'note', 'label': 'توضیح', 'type': 'Text'}]}]}, client_id=uuid4().hex)['data']
+        forms.transition(saved['name'], 'publish', saved['draft_version'])
+        published = forms.get_form(saved['name'])['data']
+        entry = forms.submit_form(published['name'], published['revision'], 'ثبت به‌روزرسانی',
+            {'amount': 1, 'note': 'ابتدایی'}, uuid4().hex)['data']
+        doc = frappe.get_doc('ASOUD Form Entry', entry['name'])
+        _update(doc, {'amount': 9, 'note': 'به‌روزرسانی‌شده'}, self.company)
+        values = json.loads(frappe.db.get_value('ASOUD Form Entry', entry['name'], 'values_json'))
+        self.assertEqual((values['amount'], values['note']), (9, 'به‌روزرسانی‌شده'))

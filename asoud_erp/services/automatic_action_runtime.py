@@ -126,6 +126,16 @@ def _update(doc, values, company):
         normalized = normalize_form_response(fields, merged)
         validate_link_values(fields, normalized, company)
         doc.values_json = _json(normalized)
+    elif doc.doctype == "ASOUD Form Entry":
+        # Form data lives in values_json, not in columns: a plain doc.update would
+        # silently drop every mapped field. Merge and re-validate against the form's
+        # published schema, the same validator the submission path uses.
+        from asoud_erp.services.form_schema import migrate_schema, validate_values
+
+        revision = frappe.get_doc("ASOUD Form Revision", doc.revision)
+        schema = migrate_schema(json.loads(revision.schema_json))
+        merged = {**json.loads(doc.values_json or "{}"), **values}
+        doc.values_json = _json(validate_values(schema, merged, company))
     else:
         doc.update(values)
     doc.save()

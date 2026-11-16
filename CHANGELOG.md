@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Automatic-action Update Fields on `ASOUD Form Entry`: form data lives in the `values_json` column, so a plain `doc.update` silently dropped every mapped field. The automatic action now merges the mapped values into `values_json` and re-validates them against the form's published schema (the same `form_schema.validate_values` the submission path uses). Unknown fields are rejected. No schema migration or new DocType.
+
 - Automatic-action final failure: when an automatic action fails with no Error route, the requester (`instance.started_by`) is now notified in-app alongside System Managers, with a Persian message explaining the request stopped and to contact the administrator. Previously only System Managers were told, leaving the owner of a stuck request unaware. No schema migration or new DocType.
 
 - Request cancellation: `cancel_request` now also cancels the instance's queued automatic actions (`ASOUD Action Execution` in `Pending` / `Retry Pending`) via a new `automatic_action_runtime.cancel`, so a withdrawn request no longer fires a background action. A receipt already `Running` is left to the worker's own instance-status check. No schema migration or new DocType.
