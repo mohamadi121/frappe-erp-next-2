@@ -64,6 +64,25 @@ def _assert_instance_access(instance) -> None:
 TASK_PAGE = INSTANCE_PAGE = 200
 
 
+def _workflow_history(instance_name, fields):
+    """The instance's activity history, bounded to the newest ``HISTORY_LIMIT`` rows.
+
+    Reads newest-first so the cap keeps the recent rows, then returns them in
+    chronological order (the timeline shows the oldest first). An unbounded read
+    would load every activity of a long-running process into memory.
+    """
+    from asoud_erp.services.workflow_history_limits import HISTORY_LIMIT
+
+    rows = frappe.get_all(
+        "ASOUD Workflow Activity",
+        filters={"workflow_instance": instance_name},
+        fields=fields,
+        order_by="created_on desc, name desc",
+        limit_page_length=HISTORY_LIMIT,
+    )
+    return list(reversed(rows))
+
+
 def _instance_summary(instance) -> dict:
     stage_title = ""
     if instance.current_stage:
@@ -1019,10 +1038,9 @@ def get_workflow_instance(instance: str) -> dict:
     from asoud_erp.services.directive_access import directive_for
     if directive_for(doc):
         return success({**_instance_summary(doc), "activities": []})
-    activities = frappe.get_all(
-        "ASOUD Workflow Activity",
-        filters={"workflow_instance": doc.name},
-        fields=[
+    activities = _workflow_history(
+        doc.name,
+        [
             "name",
             "workflow_task",
             "workflow_stage",
@@ -1034,8 +1052,6 @@ def get_workflow_instance(instance: str) -> dict:
             "reference_name",
             *(["change_json"] if frappe.db.has_column("ASOUD Workflow Activity", "change_json") else []),
         ],
-        order_by="created_on asc",
-        limit_page_length=0,
     )
     for activity in activities:
         activity.update(activity_change(activity.pop("change_json", None)))
@@ -1141,12 +1157,9 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
             frappe.throw('واگذاری مجدد برای این اقدام فعال نیست.', frappe.PermissionError)
         return success(reassignment_candidates(doc, config, candidate_query, candidate_start))
     original_access = config.get('action_contract_version') != 1 or config.get('allow_original_access', True)
-    history = frappe.get_all(
-        "ASOUD Workflow Activity",
-        filters={"workflow_instance": doc.workflow_instance},
-        fields=["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
-        order_by="created_on asc",
-        limit_page_length=0,
+    history = _workflow_history(
+        doc.workflow_instance,
+        ["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
     )
     document_context = {}
     from asoud_erp.services.workflow_submission_source import task_snapshot
