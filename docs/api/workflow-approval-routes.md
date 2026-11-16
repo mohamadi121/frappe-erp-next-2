@@ -41,6 +41,34 @@ fallback. Returning reactivates a node within the same instance/request; no new
 request is created by destination selection. Existing correction/version history
 and permissions are unchanged. No schema migration is required.
 
+## Approval decision mode (quorum)
+
+An Approval stage with several approvers decides by `approval_mode`, a key of the
+stage config saved through `save_stage_settings`:
+
+- `Any` — one Approve is enough; the other approvers' Open tasks are cancelled.
+- `All` — every assigned approver must Approve.
+- `Majority` — more than half of the assigned approvers must Approve
+  (2 of 3, 3 of 5, …).
+
+The default is the legacy behaviour: a missing or unrecognised value is treated
+as `All`, so configs written before this feature are unchanged. `Majority` is the
+new value; `Any` and `All` behave exactly as before.
+
+Counting is per activation round. A Return route can re-activate the same
+Approval stage with a fresh set of tasks; only the most recent round's tasks
+count toward the decision (the earlier round is already settled). A Reject or
+Return by any approver still cancels the whole stage, as before.
+
+When an Approve does not yet satisfy the mode, the stage stays `Running`, the
+other approvers keep their Open tasks, and a Persian activity is recorded
+(`تأیید ثبت شد؛ برای ادامهٔ مرحله N تأیید دیگر لازم است`, with `N` in Persian
+digits). The stage advances and the remaining Open tasks are cancelled only when
+the mode is met.
+
+`save_stage_settings` rejects any other value with the Persian error
+`حالت رأی‌گیری مرحلهٔ تأیید نامعتبر است؛ فقط هر یک، همه یا اکثریت مجاز است.`
+
 ## Approval assignees and the initiator
 
 Nobody approves their own request. When an Approval stage resolves to the initiator

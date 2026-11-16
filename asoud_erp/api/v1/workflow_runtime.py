@@ -1676,19 +1676,54 @@ def complete_workflow_task(
         "ASOUD Workflow Task",
         {"workflow_instance": instance.name, "workflow_stage": stage.name, "status": "Open"},
     )
-    if open_count == 0 or config.get("approval_mode") == "Any":
-        if config.get("approval_mode") == "Any":
-            frappe.db.set_value(
-                "ASOUD Workflow Task",
-                {"workflow_instance": instance.name, "workflow_stage": stage.name, "status": "Open"},
-                "status",
-                "Cancelled",
-                update_modified=False,
-            )
-        next_stage = _next_stage(instance, stage.name, action)
-        if not next_stage:
-            frappe.throw(_("گردش‌کار مرحلهٔ بعدی ندارد."))
-        _activate_stage(instance, next_stage, source_task=doc)
+    if stage.stage_type == "Approval":
+        from asoud_erp.services.workflow_approval_quorum import (
+            decision_counts,
+            normalize_mode,
+            required_approvals,
+            stage_reached_quorum,
+        )
+
+        mode = normalize_mode(config)
+        # The instance row is locked for update above, so no other completion of
+        # this stage can interleave between the count and the stage activation.
+        # Only the current round (the most recent activation) counts: a Return
+        # route can re-activate this stage with a fresh set of tasks. The
+        # deciding task's assigned_on is the current activation time.
+        round_tasks = frappe.get_all(
+            "ASOUD Workflow Task",
+            filters={"workflow_instance": instance.name, "workflow_stage": stage.name,
+                     "status": ["in", ("Open", "Completed")]},
+            fields=["status", "action", "assigned_on", "completed_on"],
+        )
+        total, approved = decision_counts([t.as_dict() for t in round_tasks], doc.assigned_on)
+        try:
+            if not stage_reached_quorum(mode, total, approved):
+                # The other approvers keep their Open tasks: the stage advances
+                # only when the decision mode is satisfied.
+                from asoud_erp.services.digits import to_persian_digits
+
+                needed = required_approvals(mode, total)
+                _record_activity(doc, "Approve",
+                    f"تأیید ثبت شد؛ برای ادامهٔ مرحله {to_persian_digits(needed - approved)} تأیید دیگر لازم است.")
+                return success({"task": doc.name, "instance_status": instance.status})
+        except ValueError as error:
+            frappe.throw(_(str(error)))
+        frappe.db.set_value(
+            "ASOUD Workflow Task",
+            {"workflow_instance": instance.name, "workflow_stage": stage.name, "status": "Open"},
+            "status",
+            "Cancelled",
+            update_modified=False,
+        )
+    elif open_count != 0:
+        # A User Task stage with several assignees advances only when every
+        # assignee has completed their task.
+        return success({"task": doc.name, "instance_status": instance.status})
+    next_stage = _next_stage(instance, stage.name, action)
+    if not next_stage:
+        frappe.throw(_("گردش‌کار مرحلهٔ بعدی ندارد."))
+    _activate_stage(instance, next_stage, source_task=doc)
     return success({"task": doc.name, "instance_status": instance.status})
 
 

@@ -352,8 +352,8 @@ def normalize_stage_config(stage_type: str, raw: dict[str, Any]) -> dict[str, An
     if stage_type == "Approval":
         assignment = _normalize_assignment(raw, "approver")
         mode = raw.get("approval_mode")
-        if mode not in {"Any", "All"}:
-            raise ValueError("Invalid approval mode")
+        if mode not in {"Any", "All", "Majority"}:
+            raise ValueError("حالت رأی‌گیری مرحلهٔ تأیید نامعتبر است؛ فقط هر یک، همه یا اکثریت مجاز است.")
         return {
             "title": title,
             **assignment,
