@@ -71,25 +71,34 @@ def request_level(doc, user=None):
     if not company_access(doc.company, user):
         return policy.NONE
     instance = doc.get("workflow_instance")
-    # The request's own form stage is the requester's submission (PA-055 P1), not a decision
-    # made as an assignee (P3). Completing it must not count as "acting", or the requester
-    # would read their own request as a masked previous assignee once ownership moves away.
+    # The requester's own submission (completing the request's form stage as the submitter)
+    # is not an assignee decision (PA-055 P1 vs P3). Only that submission is excluded: a
+    # decision on the same stage by another user still counts as acting. ``started_by`` is
+    # the stable "who submitted" marker (``doc.owner`` can move, e.g. in the doctype test).
     form_stage = _form_stage_of(doc)
+    started_by = frappe.db.get_value("ASOUD Workflow Instance", instance, "started_by") if instance else None
+
+    def is_submission(stage):
+        return policy.is_submission(user, started_by, stage, form_stage)
+
     task_rows = []
     if instance:
-        task_rows = [{"status": row.status, "acted": row.status == "Completed"
-                      and row.workflow_stage != form_stage}
+        task_rows = [{"status": row.status,
+                      "acted": row.status == "Completed" and not is_submission(row.workflow_stage)}
                      for row in frappe.get_all("ASOUD Workflow Task",
                                                filters={"workflow_instance": instance,
                                                         "assigned_to": user},
                                                fields=["status", "workflow_stage"], limit_page_length=0)]
-    # Acting = a decision activity the user made on a stage other than their own form
-    # submission (a mere Claim of a shared task is not one either).
-    activity_filter = {"workflow_instance": instance, "actor": user,
-                       "action": ["in", list(DECISION_ACTIONS)]}
-    if form_stage:
-        activity_filter["workflow_stage"] = ["!=", form_stage]
-    acted = bool(instance and frappe.db.exists("ASOUD Workflow Activity", activity_filter))
+    # Acting = a decision activity the user made, except their own form submission (a mere
+    # Claim of a shared task is not one either). Filtered in Python so a NULL stage (e.g. a
+    # Reassigned row) is not dropped by a SQL ``!=`` comparison.
+    acted = False
+    if instance:
+        activities = frappe.get_all("ASOUD Workflow Activity",
+            filters={"workflow_instance": instance, "actor": user,
+                     "action": ["in", list(DECISION_ACTIONS)]},
+            fields=["workflow_stage"], limit_page_length=0)
+        acted = any(not is_submission(row.workflow_stage) for row in activities)
     # company_access is already guaranteed above, so only the role matters here.
     privileged = bool({"System Manager", "HR Manager"}.intersection(frappe.get_roles(user)))
     return policy.classify(doc.owner == user, privileged, task_rows, acted)

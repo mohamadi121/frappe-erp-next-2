@@ -73,3 +73,37 @@ def test_owner_with_no_instance_is_full():
 
 def test_empty_task_rows_treated_as_none():
     assert policy.classify(False, False, None, False) == policy.NONE
+
+
+# --- The requester's own form submission is not "acting" (PA-055 P1 vs P3) ---
+
+def test_submitter_completing_the_form_stage_is_a_submission():
+    # The submitter completing the request's own form stage is the submission, not acting.
+    assert policy.is_submission("sara@example.com", "sara@example.com", "FORM", "FORM") is True
+
+
+def test_assignee_deciding_on_the_form_stage_is_not_a_submission():
+    # A different user deciding on the first stage after Start (the form stage) is acting,
+    # not the requester's submission: it must count as MASKED.
+    assert policy.is_submission("approver@example.com", "sara@example.com", "FORM", "FORM") is False
+
+
+def test_submitter_deciding_on_a_non_form_stage_is_not_a_submission():
+    # The submitter acting on a later stage (e.g. an approval) is acting, not a submission.
+    assert policy.is_submission("sara@example.com", "sara@example.com", "APPROVAL", "FORM") is False
+
+
+def test_no_form_stage_is_never_a_submission():
+    assert policy.is_submission("sara@example.com", "sara@example.com", "APPROVAL", None) is False
+
+
+def test_assignee_deciding_on_the_first_stage_after_start_is_masked():
+    # An assignee who decided on the first stage after Start (the form stage) is a previous
+    # assignee who acted -> MASKED, even though that stage is the request's form stage.
+    assert policy.classify(False, False, [], True) == policy.MASKED
+
+
+def test_requester_own_submission_is_none():
+    # The requester's own form submission is excluded from "acting": with no other task or
+    # activity they are NONE, not a masked previous assignee.
+    assert policy.classify(False, False, [], False) == policy.NONE

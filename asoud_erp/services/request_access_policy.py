@@ -21,6 +21,17 @@ MASKED = "MASKED"
 NONE = "NONE"
 
 
+def is_submission(user, started_by, stage, form_stage) -> bool:
+    """Whether a decision on ``stage`` is the requester's own form submission (PA-055 P1).
+
+    Only the submitter (``started_by``) completing the request's own form stage is a
+    submission, not an assignee decision. A decision on that same stage by any other user
+    still counts as acting (MASKED). ``started_by`` is the stable "who submitted" marker;
+    ``doc.owner`` can move, so it is not used here.
+    """
+    return bool(form_stage and user == started_by and stage == form_stage)
+
+
 def classify(is_owner, privileged_with_company, task_rows, acted_in_activity) -> str:
     """The access level of one user for one request.
 
