@@ -10,6 +10,8 @@ from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.workflow_runtime import _next_stage, start_workflow_instance
 from asoud_erp.services import (
     certificate_access,
+    request_access,
+    request_access_policy,
     request_comments,
     request_execution,
     request_lookup,
@@ -20,7 +22,7 @@ from asoud_erp.services import (
 from asoud_erp.services import request_attachments as files
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.form_execution.certificate_issue import number_of
-from asoud_erp.services.request_access import certificate_permission, request_permission, require_company
+from asoud_erp.services.request_access import certificate_permission, require_company
 from asoud_erp.services.request_link_values import validate_link_values
 from asoud_erp.services.request_status import (
     GROUP_NAMES,
@@ -407,12 +409,13 @@ def _detail(doc) -> dict:
     returned = running and status["status_key"] == "returned"
     can_edit = owner and running and (returned or not _has_acted(instance.name, form_stage))
     privileged = bool(MANAGER_ROLES & set(frappe.get_roles()))
-    participant = bool(doc.workflow_instance and frappe.db.exists(
-        "ASOUD Workflow Task", {"workflow_instance": doc.workflow_instance,
-                                "assigned_to": frappe.session.user}))
-    visible_values = request_serializer.mask_sensitive_values(
-        values, fields, owner or privileged or participant)
-    hidden = request_serializer.hidden_file_urls(values, fields, owner or privileged or participant)
+    # Approved policy (PA-055): only FULL viewers (owner, privileged manager, current
+    # assignee) see confidential values and files; a previous assignee who acted (MASKED)
+    # reads the request but with confidential values masked and files hidden.
+    level = request_access.request_level(doc)
+    can_view = level == request_access_policy.FULL
+    visible_values = request_serializer.mask_sensitive_values(values, fields, can_view)
+    hidden = request_serializer.hidden_file_urls(values, fields, can_view)
     entries = [entry for entry in entries if entry["file_url"] not in hidden]
     by_url = {entry["file_url"]: entry for entry in entries}
     return {
@@ -478,10 +481,23 @@ def _execution(doc, instance_status, privileged, end_outcome=None) -> dict:
 
 def _readable_request(name):
     doc = frappe.get_doc(REQUEST_DOCTYPE, name)
-    readable = request_permission(doc)
-    if readable is None:
-        readable = doc.has_permission('read')
-    if not readable:
+    conf = getattr(frappe, "conf", None) or {}
+    if frappe.session.user == conf.get("asoud_workflow_service_user"):
+        # The service user reads through ordinary DocType permissions, as before.
+        if not doc.has_permission("read"):
+            frappe.throw(_("مشاهدهٔ این درخواست برای شما مجاز نیست."), frappe.PermissionError)
+        return doc
+    level = request_access.request_level(doc)
+    if level not in (request_access_policy.FULL, request_access_policy.MASKED):
+        # A denied read is recorded (PA-055 P7) before the PermissionError rolls the
+        # request back; commit=True keeps the row. Only identifiers are stored, never
+        # confidential values.
+        from asoud_erp.services import security_audit
+
+        security_audit.record("request.read_denied", result="denied",
+                              target_type=REQUEST_DOCTYPE, target=name,
+                              company=doc.company,
+                              details={"endpoint": "get_request"}, commit=True)
         frappe.throw(_("مشاهدهٔ این درخواست برای شما مجاز نیست."), frappe.PermissionError)
     return doc
 
@@ -1013,6 +1029,22 @@ def get_attachment(name, thumbnail: int | str = 0):
     request = _readable_request(file.attached_to_name)
     if file.attached_to_field == certificate_access.FIELD and not certificate_permission(request):
         frappe.throw(_(certificate_access.DENIED), frappe.PermissionError)
+    # A previous assignee who acted (MASKED) may read the request but not download a
+    # confidential file (PA-055 P3): the file is confidential when it is one of the urls
+    # hidden from non-FULL viewers.
+    level = request_access.request_level(request)
+    if level != request_access_policy.FULL:
+        fields = confidential_fields(request.name, _fields_by_name(request.workflow_definition))
+        hidden = request_serializer.hidden_file_urls(effective_values(request.name), fields, False)
+        if str(file.file_url) in hidden:
+            from asoud_erp.services import security_audit
+
+            security_audit.record("request.attachment_denied", result="denied",
+                                  target_type="File", target=file.name,
+                                  company=request.company,
+                                  details={"endpoint": "get_attachment", "request": request.name},
+                                  commit=True)
+            frappe.throw(_("دانلود این پیوست برای شما مجاز نیست."), frappe.PermissionError)
     if not str(file.file_url).startswith("/private/files/"):
         frappe.throw(_("پیوست‌های از راه دور پشتیبانی نمی‌شوند."))
     content = file.get_content()
