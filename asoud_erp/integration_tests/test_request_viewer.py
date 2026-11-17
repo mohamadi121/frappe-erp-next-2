@@ -1,6 +1,7 @@
 """`get_request.viewer` is derived from the signed-in user's own open task."""
 
 import base64
+import json
 
 import frappe
 
@@ -121,9 +122,13 @@ class TestSensitiveValues(APITestCase):
             self.assertEqual(detail["values"]["secret"], "رمز-۱۲۳")
             self.assertEqual(len(detail["attachments"]), 1)
 
-    def test_past_task_holder_still_sees_the_values(self):
+    def test_past_task_holder_sees_masked_values(self):
+        # PA-055 P3: a previous assignee who acted (task Completed) reads the request,
+        # but confidential values are masked and the secret is absent from the whole detail.
         act(self.request["workflow_instance"], "Approve")
-        self.assertEqual(self._detail_as(APPROVER_USER)["values"]["secret"], "رمز-۱۲۳")
+        detail = self._detail_as(APPROVER_USER)
+        self.assertEqual(detail["values"]["secret"], "محرمانه")
+        self.assertNotIn("رمز-۱۲۳", json.dumps(detail, ensure_ascii=False, default=str))
 
     def test_a_user_without_a_task_gets_the_mask_and_no_file(self):
         detail = self._detail_as(ACCOUNTANT_USER)
