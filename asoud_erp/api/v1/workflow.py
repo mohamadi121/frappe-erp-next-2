@@ -304,6 +304,9 @@ def save_start_settings(
 
         return success(_stage_dict(save(definition, settings).as_dict()))
     frappe.db.sql('select name from `tabASOUD Workflow Definition` where name=%s for update', (definition,))
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     if trigger_type not in {"Manual", "Document Event", "System", "API"}:
         frappe.throw(_("راه‌انداز شروع گردش‌کار نامعتبر است."))
     if subject_source not in {"Referenced Document", "ASOUD Record", "General Subject"}:
@@ -340,15 +343,15 @@ def save_start_settings(
 @frappe.whitelist(methods=["POST"])
 def add_workflow_stage(definition: str, stage_type: str, after_stage: str) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
-    from asoud_erp.services.workflow_condition_binding import assert_editable
-
-    assert_editable(definition)
     if stage_type not in STAGE_TITLES:
         frappe.throw(_("نوع مرحلهٔ گردش‌کار نامعتبر است."))
     frappe.db.sql(
         "select name from `tabASOUD Workflow Definition` where name = %s for update",
         (definition,),
     )
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     previous = frappe.get_doc("ASOUD Workflow Stage", after_stage)
     if previous.workflow_definition != definition:
         frappe.throw(_("مرحلهٔ قبلی انتخاب‌شده متعلق به گردش‌کار دیگری است."))
@@ -448,9 +451,6 @@ def connect_workflow_stages(
 ) -> dict:
     """Create a named route; backward routes are deliberately supported."""
     require_roles(("System Manager", "Accounts Manager"))
-    from asoud_erp.services.workflow_condition_binding import assert_editable
-
-    assert_editable(definition)
     action = (action or "").strip()
     if not action or len(action) > 140 or from_stage == to_stage:
         frappe.throw(_("مسیر (ترنزیشن) گردش‌کار نامعتبر است."))
@@ -458,6 +458,9 @@ def connect_workflow_stages(
         "select name from `tabASOUD Workflow Definition` where name = %s for update",
         (definition,),
     )
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     source = _assert_stage_in_definition(from_stage, definition)
     if source.stage_type == 'Condition':
         raw = json.loads(condition) if isinstance(condition, str) else condition
@@ -545,6 +548,9 @@ def insert_workflow_stage(
         "select name from `tabASOUD Workflow Definition` where name = %s for update",
         (definition,),
     )
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     edge = frappe.get_doc("ASOUD Workflow Transition", transition)
     if edge.workflow_definition != definition:
         frappe.throw(_("مسیر انتخاب‌شده متعلق به گردش‌کار انتخاب‌شده نیست."))
@@ -742,13 +748,12 @@ def add_condition_branch(
         "select name from `tabASOUD Workflow Definition` where name = %s for update",
         (definition,),
     )
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     condition = frappe.get_doc("ASOUD Workflow Stage", condition_stage)
     if condition.workflow_definition != definition or condition.stage_type != "Condition":
         frappe.throw(_("مرحلهٔ انتخاب‌شده در این گردش‌کار یک شرط نیست."))
-    if json.loads(condition.config_json or '{}').get('condition_version') == 2:
-        from asoud_erp.services.workflow_condition_binding import assert_editable
-
-        assert_editable(definition)
     transitions = frappe.get_all(
         "ASOUD Workflow Transition",
         filters={"workflow_definition": definition, "from_stage": condition.name},
@@ -832,23 +837,18 @@ def _validate_supplementary_binding(definition: str, raw: dict) -> dict | None:
 @frappe.whitelist(methods=["POST"])
 def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict:
     require_roles(("System Manager", "Accounts Manager"))
-    # Authorize End design before the definition lock, then recheck editability
-    # under that lock. Saving design must never mutate a live End execution.
-    if frappe.db.get_value('ASOUD Workflow Stage', stage, 'stage_type') == 'End':
-        from asoud_erp.services.workflow_condition_binding import assert_editable
-
-        assert_editable(definition)
     frappe.db.sql('select name from `tabASOUD Workflow Definition` where name=%s for update', (definition,))
+    # Saving any stage design must never mutate a live execution: recheck
+    # editability under the definition lock (PA-015).
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     doc = frappe.get_doc("ASOUD Workflow Stage", stage)
     if doc.workflow_definition != definition:
         frappe.throw(_("این مرحله متعلق به گردش‌کار انتخاب‌شده نیست."))
     if doc.stage_type == "Start":
         frappe.throw(_("برای مرحلهٔ شروع از اندپوینت تنظیمات شروع استفاده کنید."))
     _assert_form_is_editable(definition, doc)
-    if doc.stage_type in {'Wait', 'End'}:
-        from asoud_erp.services.workflow_condition_binding import assert_editable
-
-        assert_editable(definition)
     try:
         raw = json.loads(config) if isinstance(config, str) else config
     except json.JSONDecodeError:
@@ -1025,6 +1025,11 @@ def save_stage_routes(definition: str, stage: str, routes: str | dict) -> dict:
         "select name from `tabASOUD Workflow Definition` where name = %s for update",
         (definition,),
     )
+    # Recheck editability under the lock: rerouting a live stage would change a
+    # running instance's path (PA-015).
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     source = _assert_stage_in_definition(stage, definition)
     allowed = ROUTE_ACTIONS.get(source.stage_type)
     if not allowed:
@@ -1199,6 +1204,21 @@ def delete_workflow(name=None) -> dict:
         frappe.db.rollback(save_point='delete_workflow_api')
         raise
     return success({"name": name, "deleted": True})
+
+
+def assert_design_valid(definition: str) -> None:
+    """Refuse to start an execution whose stored graph has an error-severity issue.
+
+    Activation already validates the design, but a design can be corrupted after
+    it is Active (a stage deleted at the DB level, a route left dangling). An
+    invalid design must never run, so the start path re-checks the saved graph
+    under the definition lock (PA-015). Saving Inactive drafts is unaffected.
+    """
+    from asoud_erp.services.workflow_check import validate_workflow as check
+
+    stages, transitions = _graph_rows(definition)
+    if not check(stages, transitions)['ok']:
+        frappe.throw('این گردش‌کار معتبر نیست و تا اصلاح طراحی قابل اجرا نیست.')
 
 
 def _graph_rows(definition: str):

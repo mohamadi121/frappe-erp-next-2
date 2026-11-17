@@ -69,6 +69,21 @@ the mode is met.
 `save_stage_settings` rejects any other value with the Persian error
 `حالت رأی‌گیری مرحلهٔ تأیید نامعتبر است؛ فقط هر یک، همه یا اکثریت مجاز است.`
 
+## Editability guard (PA-015)
+
+`save_stage_routes` rechecks editability **under the definition row lock** before
+touching any transition. It is refused with the existing Persian message
+(`برای حفظ اجراها، گردش کار را غیرفعال کنید و تا پایان اجراهای جاری منتظر بمانید؛
+یا یک کپی مستقل برای طراحی بسازید.`) when the workflow is `Active` **or** has a
+`Running` instance, and the database is left unchanged. This is what stops a
+designer from rerouting a stage out from under an in-flight instance (which
+previously let an old instance skip an approval). The same guard now applies to
+`save_stage_settings`, `connect_workflow_stages`, `insert_workflow_stage`,
+`add_workflow_stage`, `add_condition_branch`, `save_start_settings` (legacy path)
+and the `workflow_paths` removals — every graph/config mutation. Pure layout
+(`update_stage_positions`) and presentation text (`update_request_type_info`) are
+deliberately unguarded because they never affect execution.
+
 ## Approval assignees and the initiator
 
 Nobody approves their own request. When an Approval stage resolves to the initiator

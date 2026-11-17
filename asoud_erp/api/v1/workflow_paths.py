@@ -51,6 +51,9 @@ def remove_path(definition: str, transition: str, version: int):
     from asoud_erp.api.v1.workflow import _design_payload, _touch_workflow
 
     doc = editable(definition, lock=True)
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     if str(doc.version_no) != str(version):
         frappe.throw('نمودار تغییر کرده است؛ خلاصهٔ حذف را دوباره دریافت کنید.')
     result = plan(definition, transition)
@@ -73,6 +76,9 @@ def discard_inserted_stage(definition: str, stage: str, original: str | dict):
     from asoud_erp.api.v1.workflow import _design_payload, _touch_workflow
 
     editable(definition, lock=True)
+    from asoud_erp.services.workflow_condition_binding import assert_editable
+
+    assert_editable(definition)
     from time import time
 
     from frappe.utils.password import decrypt

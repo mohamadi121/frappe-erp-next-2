@@ -73,7 +73,9 @@ class TestWorkflowStartSettings(APITestCase):
         form = forms.get_form(saved['name'])['data']
         source = {'form': form['name'], 'revision': form['revision']}
         before = json.loads(task.config_json)
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         workflow.save_stage_settings(definition, task.name, {**before, 'submission_source': source})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         start_id = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'Start'}, 'name')
         configured = configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
             'allow_manager_restart': True})
@@ -109,7 +111,9 @@ class TestWorkflowStartSettings(APITestCase):
         forms.transition(saved['name'], 'publish', saved['draft_version'])
         form = forms.get_form(saved['name'])['data']
         source = {'form': form['name'], 'revision': form['revision']}
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         workflow.save_stage_settings(definition, task.name, {**json.loads(task.config_json), 'submission_source': source})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         configure(definition, {'trigger_type': 'Document Event', 'submission_source': source,
             'allow_manager_restart': True})
         frappe.set_user(self.initiator)

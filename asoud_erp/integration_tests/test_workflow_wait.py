@@ -29,7 +29,11 @@ class TestWorkflowWait(APITestCase):
         edge = frappe.db.get_value('ASOUD Workflow Transition', {'from_stage': task.name})
         from asoud_erp.api.v1.workflow import insert_workflow_stage
 
+        # Design edits require an Inactive workflow (PA-015); re-activate for the
+        # tests that start instances.
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         result = insert_workflow_stage(definition, edge, 'Wait')['data']
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         stage = next(row['name'] for row in result['stages'] if row['stage_type'] == 'Wait')
         value = config or {'wait_version': 1, 'title': 'انتظار آزمایشی', 'wait_type': 'Duration',
             'wait_value': 2, 'wait_unit': 'Minute', 'past_policy': 'Continue'}
@@ -231,8 +235,10 @@ class TestWorkflowWait(APITestCase):
         forms.transition(saved['name'], 'publish', saved['draft_version'])
         source = forms.get_form(saved['name'])['data']
         task = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'User Task'})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         workflow.save_stage_settings(definition, task, {'title': 'بررسی فرم', 'activity_type': 'Review',
             'assignment_type': 'Initiator', 'submission_source': {'form': source['name'], 'revision': source['revision']}})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         frappe.db.set_value('ASOUD Workflow Stage', stage, 'config_json', json.dumps({
             'wait_version': 1, 'wait_type': 'FormDate', 'date_source': {
                 'source_kind': 'Original', 'source_stage': '', 'source_field': 'when', 'field_type': 'DateTime'},

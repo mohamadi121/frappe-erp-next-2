@@ -39,7 +39,11 @@ class TestWorkflowSubmissionSource(APITestCase):
         self.config = {'title': 'بررسی ثبت اصلی', 'activity_type': 'Review',
             'assignment_type': 'Initiator', 'submission_source': {
                 'form': self.source['name'], 'revision': self.source['revision']}}
+        # Design edits require an Inactive workflow (PA-015); re-activate for the
+        # submission tests that start instances.
+        frappe.db.set_value('ASOUD Workflow Definition', self.definition, 'status', 'Inactive')
         workflow.save_stage_settings(self.definition, self.stage.name, self.config)
+        frappe.db.set_value('ASOUD Workflow Definition', self.definition, 'status', 'Active')
 
     def test_submit_routes_original_entry_once_and_completion_creates_no_request(self):
         frappe.set_user(EMPLOYEE_USER)
@@ -99,6 +103,7 @@ class TestWorkflowSubmissionSource(APITestCase):
         frappe.set_user('Administrator')
         definition, stages = make_definition(self.company, approvals=0, fields=[])
         stage = next(s for s in stages.values() if s.stage_type == 'User Task')
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         workflow.save_stage_settings(definition, stage.name, self.config)
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', definition, 'source_form'), self.source['name'])
         stored = json.loads(frappe.db.get_value('ASOUD Workflow Stage', stage.name, 'config_json'))
@@ -194,9 +199,11 @@ class TestWorkflowSubmissionSource(APITestCase):
         saved = forms.save_form(self.company, document, client_id=uuid4().hex)['data']
         forms.transition(saved['name'], 'publish', saved['draft_version'])
         source = forms.get_form(saved['name'])['data']
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         workflow.save_stage_settings(definition, stage.name, {'title': 'بررسی سند',
             'activity_type': 'Review', 'assignment_type': 'Initiator',
             'submission_source': {'form': source['name'], 'revision': source['revision']}})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         equity = frappe.get_all('Account', filters={'company': self.company, 'root_type': 'Equity',
             'is_group': 0}, pluck='name', limit_page_length=1)[0]
         before = frappe.db.count('Journal Entry')
@@ -237,9 +244,11 @@ class TestWorkflowSubmissionSource(APITestCase):
 
         default_def, default_stages = make_definition(self.company, approvals=0, fields=[])
         default_stage = next(s for s in default_stages.values() if s.stage_type == 'User Task')
+        frappe.db.set_value('ASOUD Workflow Definition', default_def, 'status', 'Inactive')
         workflow.save_stage_settings(default_def, default_stage.name, {'title': 'بررسی پیش‌فرض',
             'activity_type': 'Review', 'assignment_type': 'Initiator',
             'submission_source': source_ref, 'source_route': 'Default'})
+        frappe.db.set_value('ASOUD Workflow Definition', default_def, 'status', 'Active')
 
         cond_def = workflow.create_workflow_draft('مسیر مشروط سند', 'HR', 'ASOUD Workflow Request',
             company=self.company, start_settings={'trigger_type': 'Document Event', 'initiator_roles': [],
@@ -274,6 +283,7 @@ class TestWorkflowSubmissionSource(APITestCase):
         frappe.set_user('Administrator')
         avail_def, avail_stages = make_definition(self.company, approvals=0, fields=[])
         avail_stage = next(s for s in avail_stages.values() if s.stage_type == 'User Task')
+        frappe.db.set_value('ASOUD Workflow Definition', avail_def, 'status', 'Inactive')
         workflow.save_stage_settings(avail_def, avail_stage.name, {'title': 'بررسی موجود',
             'activity_type': 'Review', 'assignment_type': 'Initiator',
             'submission_source': {'form': self.source['name'], 'revision': self.source['revision']}, 'source_route': 'Available'})
@@ -308,9 +318,11 @@ class TestWorkflowSubmissionSource(APITestCase):
         saved = forms.save_form(self.company, document, client_id=uuid4().hex)['data']
         forms.transition(saved['name'], 'publish', saved['draft_version'])
         source = forms.get_form(saved['name'])['data']
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         workflow.save_stage_settings(definition, stage.name, {'title': 'بررسی سند یکتایی',
             'activity_type': 'Review', 'assignment_type': 'Initiator',
             'submission_source': {'form': source['name'], 'revision': source['revision']}})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
 
         equity = frappe.get_all('Account', filters={'company': self.company, 'root_type': 'Equity',
             'is_group': 0}, pluck='name', limit_page_length=1)[0]
