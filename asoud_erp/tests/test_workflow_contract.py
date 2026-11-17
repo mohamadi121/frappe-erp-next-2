@@ -28,12 +28,13 @@ def _stage(name, stage_type, title, config=None, status="Complete"):
             "config_json": json.dumps(config or {}, ensure_ascii=False)}
 
 
-def _edge(name, from_stage, to_stage, action=None, label="", seq=1, result=None):
-    condition = {}
-    if action:
-        condition["action"] = action
-    if result is not None:
-        condition["result"] = result
+def _edge(name, from_stage, to_stage, action=None, label="", seq=1, result=None, condition=None):
+    if condition is None:
+        condition = {}
+        if action:
+            condition["action"] = action
+        if result is not None:
+            condition["result"] = result
     return {"name": name, "from_stage": from_stage, "to_stage": to_stage,
             "transition_label": label, "condition_json": json.dumps(condition),
             "sequence_no": seq}
@@ -90,19 +91,60 @@ def test_structural_check_rejects_unreachable_stage():
     assert any("قابل دسترس" in issue for issue in structural_issues(stages, transitions))
 
 
-def test_structural_check_rejects_approval_without_approve_route():
+def test_structural_check_accepts_system_action_with_unlabeled_default_route():
+    # Real shape (SYS-LEAVE-D2 / SYS-SUPPLY-D2 / SYS-PURCHASE-D2): a System Action
+    # whose only exit is an unlabeled default route ("{}", label "Continue") to End.
+    # The runtime treats a single route as the stage's main route, so this is valid.
+    stages = [
+        _stage("S", "Start", "شروع", {"title": "شروع"}),
+        _stage("A", "System Action", "اقدام خودکار", {"title": "اقدام خودکار"}),
+        _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"}),
+    ]
+    transitions = [_edge("e1", "S", "A"), _edge("e2", "A", "E", label="Continue")]
+    assert structural_issues(stages, transitions) == []
+
+
+def test_structural_check_accepts_approval_to_condition_via_unlabeled_routes():
+    # Real shape (SYS-LEAVE-G): an Approval whose only exit is an unlabeled default
+    # route to a Condition, and that Condition's only exit is an unlabeled route to
+    # End. Both single routes are the runtime's main route, so this is valid.
+    stages = [
+        _stage("S", "Start", "شروع", {"title": "شروع"}),
+        _stage("A", "Approval", "تأیید یا رد", {"title": "تأیید یا رد"}),
+        _stage("C", "Condition", "شرط و مسیر", {"title": "شرط و مسیر"}),
+        _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"}),
+    ]
+    transitions = [_edge("e1", "S", "A"), _edge("e2", "A", "C", label="Continue"),
+                   _edge("e3", "C", "E", label="Continue")]
+    assert structural_issues(stages, transitions) == []
+
+
+def test_structural_check_rejects_stage_without_outgoing_route():
+    # A non-End stage with no exit: _next_stage returns None and the instance stalls.
     stages = [_stage("S", "Start", "شروع", {"title": "شروع"}),
               _stage("A", "Approval", "تأیید", {"title": "تأیید"}),
               _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"})]
-    # The approval only has a Reject route; the Approve route is missing.
-    transitions = [_edge("e1", "S", "A"), _edge("e2", "A", "E", action="Reject", label="رد")]
-    assert any("مسیر خروج" in issue for issue in structural_issues(stages, transitions))
+    transitions = [_edge("e1", "S", "A")]  # the approval has no exit
+    assert any("مسیر خروج ندارد" in issue for issue in structural_issues(stages, transitions))
 
 
-def test_structural_check_rejects_invalid_condition_routes():
+def test_structural_check_rejects_non_dict_route_condition():
+    # A route whose condition_json is not a dict: _next_stage does json.loads(...)
+    # then .get, so a non-dict would crash it.
     stages = [_stage("S", "Start", "شروع", {"title": "شروع"}),
-              _stage("C", "Condition", "شرط", {"title": "شرط"}),
+              _stage("U", "User Task", "ثبت", {"title": "ثبت"}),
               _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"})]
-    # A Condition needs exactly two routes (result True/False); one is missing.
-    transitions = [_edge("e1", "S", "C"), _edge("e2", "C", "E", result=True)]
-    assert any("مسیر خروج" in issue for issue in structural_issues(stages, transitions))
+    transitions = [_edge("e1", "S", "U"), _edge("e2", "U", "E", condition=[])]
+    assert any("شرط یکی از مسیرها" in issue for issue in structural_issues(stages, transitions))
+
+
+def test_structural_check_rejects_stage_with_no_path_to_end():
+    # A stage reachable from Start but with no path to an End: the instance can
+    # never complete once it reaches there.
+    stages = [_stage("S", "Start", "شروع", {"title": "شروع"}),
+              _stage("U", "User Task", "ثبت", {"title": "ثبت"}),
+              _stage("L", "User Task", "حلقه", {"title": "حلقه"}),
+              _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"})]
+    transitions = [_edge("e1", "S", "U"), _edge("e2", "U", "L", action="Complete"),
+                   _edge("e3", "L", "L", action="Return")]  # L loops to itself, no End
+    assert any("قابل دسترس" in issue for issue in structural_issues(stages, transitions))

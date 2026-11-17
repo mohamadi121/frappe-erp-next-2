@@ -105,17 +105,45 @@ def activation_requirements(stages, transitions):
     return list(dict.fromkeys(errors))
 
 
+def _condition_is_dict(value):
+    """Whether a route's ``condition_json`` parses to a dict, like the runtime.
+
+    ``workflow_runtime._next_stage`` does ``json.loads(condition_json or "{}")``
+    and then ``.get`` on the result, so a missing/empty condition is fine but a
+    non-dict (a JSON array, a bare string, or invalid JSON) would crash it.
+    """
+    try:
+        return isinstance(json.loads(value or '{}'), dict)
+    except (ValueError, TypeError):
+        return False
+
+
 def structural_issues(stages, transitions):
     """Structural breakage that can mis-route a running request.
 
-    Unlike ``activation_requirements`` this never inspects a stage's *config*
-    (``_validate_saved_stage``): the designer's Start trigger/initiator rules and
-    the other activation-only config rules must not block a definition that is
-    started through ``create_request`` (the system request types, whose Start has
-    no ``trigger_type``/``initiator_roles``). It only rejects shapes the runtime
-    cannot follow: a missing Start/End, a route to a stage outside the definition,
-    a stage unreachable from Start or with no path to an End, an Approval with no
-    Approve route, and an invalid route condition.
+    This mirrors what the runtime can actually follow (``workflow_runtime.
+    _next_stage``), not the designer's activation rules. It deliberately does
+    NOT call ``_validate_saved_stage`` (the designer's Start trigger/initiator
+    and other activation-only config rules) or ``_validate_saved_routes`` (the
+    activation-time route-shape rules): a definition started through
+    ``create_request`` (the system request types) has a Start with no
+    ``trigger_type``/``initiator_roles``, and a stage whose only exit is an
+    unlabeled default route (``condition_json "{}"``, label ``Continue``) is a
+    valid main route at runtime.
+
+    Each check maps to a runtime rule in ``_next_stage``:
+    - one Start + at least one End: the engine needs a start point and a
+      terminal; without them an instance cannot begin or finish.
+    - no route to a stage outside the definition: ``stage_for`` returns ``None``
+      for a deleted/external destination and the runtime throws
+      «مرحلهٔ مقصد حذف شده است».
+    - every stage reachable from Start and able to reach an End: an unreachable
+      stage is dead; a stage with no path to an End means the instance can never
+      complete once it reaches there.
+    - every non-End stage has at least one outgoing route: ``_next_stage``
+      returns ``None`` when a stage has no transitions, so the instance stalls.
+    - every route's ``condition_json`` parses to a dict: ``_next_stage`` does
+      ``json.loads(condition_json or "{}")`` and then ``.get`` on the result.
     """
     issues = []
     names = {row['name'] for row in stages}
@@ -129,12 +157,11 @@ def structural_issues(stages, transitions):
             issues.append('یکی از مسیرها به مرحله‌ای خارج از این گردش‌کار متصل است.')
             continue
         outgoing[edge['from_stage']].append(edge)
+        if not _condition_is_dict(edge.get('condition_json')):
+            issues.append('شرط یکی از مسیرها معتبر نیست.')
     for row in stages:
-        kind, name = row['stage_type'], row['name']
-        try:
-            _validate_saved_routes(kind, outgoing[name])
-        except (ValueError, TypeError, KeyError):
-            issues.append('مسیر خروج یکی از مراحل کامل و معتبر نیست.')
+        if row['stage_type'] != 'End' and not outgoing[row['name']]:
+            issues.append('مرحله‌ای مسیر خروج ندارد و اجرا در آن متوقف می‌شود.')
     if len(starts) == 1:
         reached, pending = set(), [starts[0]]
         while pending:

@@ -23,12 +23,18 @@ every start path (`create_request`, form submission, purchase requests). Saving 
 `Inactive` draft is unaffected — designers still save incomplete drafts step by step;
 the check runs only at start, and only for an `Active` workflow.
 
-The check is **structural only**: it rejects a missing Start/End, a route to a stage
-outside the definition, a stage unreachable from Start or with no path to an End, an
-Approval with no Approve route, and an invalid route condition. It deliberately does
-**not** apply the designer's Start trigger/initiator rules or other activation-only
-config rules, because the system request types (leave/purchase/supply) are started
-through `create_request` and their Start stage has no `trigger_type`/`initiator_roles`.
+The check mirrors what the runtime (`workflow_runtime._next_stage`) can actually
+follow, not the designer's activation rules. It rejects: a missing Start/End; a route
+to a stage outside the definition; a stage unreachable from Start or with no path to
+an End; a non-End stage with no outgoing route (the instance would stall); and a route
+whose `condition_json` does not parse to a dict. It deliberately does **not** apply
+the designer's activation rules — neither `_validate_saved_stage` (the Start
+trigger/initiator and other config rules) nor `_validate_saved_routes` (the
+route-shape rules). That matters for two real cases: the system request types
+(leave/purchase/supply) are started through `create_request` and their Start stage has
+no `trigger_type`/`initiator_roles`; and a user-edited workflow may give a stage a
+single unlabeled default route (e.g. a System Action or Approval whose only exit is an
+unlabeled `Continue` route), which the runtime treats as the stage's main route.
 
 Deletion uses whitelisted POST `workflow.delete_workflow(name)` (or existing POST `frappe.client.delete(doctype="ASOUD Workflow Definition",
 name=...)`). Native delete permission, company scope and manager
