@@ -28,6 +28,9 @@ class TestWorkflowDocumentAccess(APITestCase):
 
     def _definition_and_stage(self):
         definition, stages = make_definition(self.company, approvals=0, fields=[])
+        # Design edits are only allowed on an inactive workflow with no running instance
+        # (assert_editable); make_definition creates an Active one, so deactivate it first.
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         stage = next(item for item in stages.values() if item.stage_type == 'User Task')
         return definition, stage
 
@@ -84,6 +87,8 @@ class TestWorkflowDocumentAccess(APITestCase):
 
     def test_approval_stage_applies_the_same_rule(self):
         definition, stages = make_definition(self.company, approvals=1, fields=[])
+        # Design edits are only allowed on an inactive workflow with no running instance.
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         approval = next(item for item in stages.values() if item.stage_type == 'Approval')
         stored = {"title": "تأیید", "assignment_type": "Direct Manager", "approval_mode": "Any",
                   "document_access": "Limited Edit"}
