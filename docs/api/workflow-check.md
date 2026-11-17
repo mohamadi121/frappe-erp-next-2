@@ -68,8 +68,24 @@ Returns `success({...})`:
 
 A walk that exceeds 200 steps stops with an error (loop guard).
 
+## Snapshot backfill (PA-015)
+
+`asoud_erp/patches/v0_19/backfill_graph_snapshots.py` runs once on `bench migrate`
+for Running instances that predate the `graph_snapshot_json` field (empty snapshot).
+There is no stored design history, so a historical snapshot cannot be recovered. For
+each such instance the patch checks the **live** graph against what the instance
+already executed: `current_stage` exists and is reachable from the single Start, and
+every stage the instance's tasks/activities touched still exists. When consistent it
+freezes the live graph using the same builder `start_workflow_instance` uses, tagged
+with `snapshot_source: "backfill_live_graph"` (readers ignore the extra key). When
+inconsistent it leaves the instance untouched and writes one `Error Log` entry
+(`PA-015 snapshot backfill needs review`) listing the names. Idempotent: a re-run
+changes nothing.
+
 ## Tests
 
-- Pure: `asoud_erp/tests/test_workflow_check.py`, `asoud_erp/tests/test_workflow_simulation.py`.
-- Integration (real site, no mocks): `asoud_erp/integration_tests/test_workflow_check.py`
-  — registered in `.github/integration-modules.txt`.
+- Pure: `asoud_erp/tests/test_workflow_check.py`, `asoud_erp/tests/test_workflow_simulation.py`,
+  `asoud_erp/tests/test_workflow_graph_snapshot.py` (snapshot + backfill consistency).
+- Integration (real site, no mocks): `asoud_erp/integration_tests/test_workflow_check.py`,
+  `asoud_erp/integration_tests/test_workflow_design_guard.py` (guards, start-time validity,
+  backfill) — both registered in `.github/integration-modules.txt`.
