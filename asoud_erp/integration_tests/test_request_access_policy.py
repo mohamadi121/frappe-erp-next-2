@@ -14,7 +14,7 @@ from uuid import uuid4
 
 import frappe
 
-from asoud_erp.api.v1 import forms, workflow_request
+from asoud_erp.api.v1 import forms, workflow_request, workflow_runtime
 from asoud_erp.integration_tests.fixtures import (
     ACCOUNTANT_USER,
     APPROVER_USER,
@@ -331,3 +331,46 @@ class TestCancelledAndReassigned(ConfidentialRequestCase):
             self.detail_as(holder, request)
         self.assertFalse(self.raw_read(holder, request))
         self.assertEqual(self.raw_list(holder, request), [])
+
+    def _task_as(self, user, task):
+        frappe.set_user(user)
+        try:
+            return workflow_runtime.get_workflow_task(task)
+        finally:
+            frappe.set_user("Administrator")
+
+    def test_completed_previous_assignee_task_is_masked(self):
+        # Defect 1: a previous assignee whose task is Completed must not read unmasked
+        # request values through get_workflow_task (their task's assigned_to is still them).
+        request, _file = self.submit_confidential()
+        instance = self._instance_of(request)
+        approver_task = frappe.db.get_value("ASOUD Workflow Task",
+                                            {"workflow_instance": instance, "assigned_to": APPROVER_USER},
+                                            "name")
+        self.assertTrue(approver_task)
+        act(instance, "Approve")  # APPROVER_USER acts; their task is Completed
+        result = self._task_as(APPROVER_USER, approver_task)
+        self.assertTrue(result["ok"])
+        blob = json.dumps(result["data"], ensure_ascii=False, default=str)
+        self.assertNotIn(SECRET, blob)
+        # The request values are masked; the confidential file url is removed.
+        self.assertEqual(result["data"]["request_values"].get("reason"), MASK)
+        self.assertNotIn(SECRET, json.dumps(result["data"]["previous_data"], ensure_ascii=False, default=str))
+
+    def test_cancelled_task_holder_cannot_read_task_and_is_audited(self):
+        # Defect 1: a user whose shared-claim task was Cancelled (never acted) is NONE and
+        # must be denied get_workflow_task, with one task.read_denied audit row.
+        request, _file = self.submit_confidential()
+        instance = self._instance_of(request)
+        bystander = self._company_user("pa055-task-")
+        task = self._task(instance, bystander, "Cancelled", "Claimed Elsewhere")
+        before = frappe.db.count("ASOUD Security Audit", {"action": "task.read_denied"})
+        with self.assertRaises(frappe.PermissionError):
+            self._task_as(bystander, task)
+        rows = frappe.get_all("ASOUD Security Audit", filters={"action": "task.read_denied"},
+                              fields=["result", "target", "company", "details"])
+        self.assertEqual(len(rows), before + 1)
+        self.assertEqual(rows[-1].result, "denied")
+        self.assertEqual(rows[-1].target, task)
+        self.assertEqual(rows[-1].company, self.company)
+        self.assertNotIn(SECRET, rows[-1].details)

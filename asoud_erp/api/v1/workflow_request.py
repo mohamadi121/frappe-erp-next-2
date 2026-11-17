@@ -125,6 +125,57 @@ def request_fields(request_name):
     return confidential_fields(request_name, _fields_by_name(definition)) if definition else []
 
 
+def mask_request_values(request_name, values):
+    """``values`` masked for the signed-in user, exactly as ``_detail`` does (PA-055).
+
+    FULL viewers get the values unchanged; MASKED viewers get confidential values replaced
+    by «محرمانه» and confidential file urls removed. Used by the runtime task/instance
+    endpoints so a previous assignee cannot read unmasked values through the task API.
+    """
+    doc = frappe.get_doc(REQUEST_DOCTYPE, request_name)
+    if request_access.request_level(doc) == request_access_policy.FULL:
+        return values
+    fields = request_fields(request_name)
+    masked = request_serializer.mask_sensitive_values(values, fields, False)
+    hidden = request_serializer.hidden_file_urls(values, fields, False)
+    if hidden:
+        masked = _strip_hidden_refs(masked, hidden)
+    return masked
+
+
+def _strip_hidden_refs(values, hidden):
+    """A copy of ``values`` with any string that is a hidden confidential file url removed."""
+    result = {}
+    for key, value in (values or {}).items():
+        if isinstance(value, str) and value in hidden:
+            continue
+        if isinstance(value, list):
+            result[key] = [_strip_hidden_refs(row, hidden) if isinstance(row, dict) else row
+                           for row in value]
+        else:
+            result[key] = value
+    return result
+
+
+def mask_previous_data(request_name, sections):
+    """``previous_data`` (completed task responses) masked for the signed-in user (PA-055).
+
+    The form task is completed with the full request values, so a MASKED viewer would
+    otherwise read the confidential value through a previous task's response.
+    """
+    doc = frappe.get_doc(REQUEST_DOCTYPE, request_name)
+    if request_access.request_level(doc) == request_access_policy.FULL:
+        return sections
+    masked = []
+    for section in sections or []:
+        by_key = {item.get("key"): item.get("value") for item in section.get("values", [])}
+        safe = mask_request_values(request_name, by_key)
+        masked.append({**section, "values": [
+            {"key": item.get("key"), "label": item.get("label"), "value": safe.get(item.get("key"))}
+            for item in section.get("values", [])]})
+    return masked
+
+
 def refresh_search_text(request_name):
     """Rebuilds `search_text` once the form entry (which can mark fields confidential) exists."""
     doc = frappe.get_doc(REQUEST_DOCTYPE, request_name)

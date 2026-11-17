@@ -153,29 +153,72 @@ def file_query(user=None):
 
 
 
-def workflow_record_permission(doc, user=None, permission_type=None):
+def _workflow_read_base(doc, user, permission_type):
+    """The shared task/instance/activity read rule (PA-055).
+
+    Returns ``(decision, request)`` where ``decision`` is the answer for non-request
+    instances (a bool, or None to delegate to native permissions) and ``request`` is the
+    request doc when the instance references one (else None).
+    """
     from asoud_erp.services.directive_access import workflow_permission
+
     result = workflow_permission(doc, user, permission_type)
     if result is not None:
-        return result
+        return result, None
     instance = doc if doc.doctype == "ASOUD Workflow Instance" else frappe.get_doc(
         "ASOUD Workflow Instance", doc.workflow_instance)
     if instance.reference_doctype == 'ASOUD Form Entry':
         from asoud_erp.services.workflow_submission_source import instance_permission
 
-        return instance_permission(instance, user, permission_type)
+        return instance_permission(instance, user, permission_type), None
     if instance.reference_doctype and instance.reference_doctype not in (
             "ASOUD Workflow Request", "ASOUD Form Entry"):
         # A standard ERPNext reference document (e.g. Purchase Order): a task
         # attachment on it is readable exactly when the user may read the document.
         if not instance.reference_name:
-            return False
+            return False, None
         return bool(frappe.has_permission(instance.reference_doctype, "read",
-                                          instance.reference_name, user=user))
+                                          instance.reference_name, user=user)), None
     if instance.reference_doctype != "ASOUD Workflow Request":
-        return None
-    return request_permission(frappe.get_doc("ASOUD Workflow Request", instance.reference_name),
-                              user=user, permission_type=permission_type)
+        return None, None
+    return None, frappe.get_doc("ASOUD Workflow Request", instance.reference_name)
+
+
+def workflow_read_allowed(doc, user=None, permission_type=None):
+    """Whether the masked whitelisted endpoints may show a task/instance/activity (PA-055).
+
+    For a request instance this is FULL or MASKED: a previous assignee who acted (MASKED)
+    reads their own task and the instance's history with confidential values masked. NONE is
+    denied. This is the gate for the whitelisted runtime endpoints, which mask the output; it
+    is deliberately looser than ``workflow_record_permission`` (the raw REST ``has_permission``
+    hook), which stays FULL-only so a MASKED viewer cannot read the form task's response_json
+    or the request's values_json through REST.
+    """
+    user = user or frappe.session.user
+    decision, request = _workflow_read_base(doc, user, permission_type)
+    if request is None:
+        return decision
+    conf = getattr(frappe, "conf", None) or {}
+    if user == conf.get("asoud_workflow_service_user"):
+        return None if company_access(request.company, user) else False
+    if permission_type not in (None, "read", "select"):
+        return False
+    return request_level(request, user) in (policy.FULL, policy.MASKED)
+
+
+def workflow_record_permission(doc, user=None, permission_type=None):
+    """Raw REST ``has_permission`` for a task/instance/activity (PA-055).
+
+    For a request instance this is FULL-only: a MASKED viewer must not read the form task's
+    response_json or the request's values_json through REST. A MASKED previous assignee reads
+    their own task and the instance's history through the masked whitelisted endpoints, which
+    use ``workflow_read_allowed`` (via ``_assert_generic_access``), not this hook.
+    """
+    user = user or frappe.session.user
+    decision, request = _workflow_read_base(doc, user, permission_type)
+    if request is None:
+        return decision
+    return request_permission(request, user=user, permission_type=permission_type)
 
 
 def instance_query(user=None):
