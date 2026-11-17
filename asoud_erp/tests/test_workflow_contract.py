@@ -82,13 +82,32 @@ def test_structural_check_rejects_route_outside_definition():
     assert any("خارج از این گردش‌کار" in issue for issue in structural_issues(stages, transitions))
 
 
-def test_structural_check_rejects_unreachable_stage():
+def test_structural_check_rejects_start_without_outgoing_route():
+    # The Start stage has no route: start_workflow_instance does _next_stage(start)
+    # and throws «گردش‌کار مرحلهٔ قابل‌اجرا ندارد.» when the Start has no route.
     stages = [_stage("S", "Start", "شروع", {"title": "شروع"}),
               _stage("U", "User Task", "ثبت", {"title": "ثبت"}),
-              _stage("X", "User Task", "متروک", {"title": "متروک"}),
               _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"})]
-    transitions = [_edge("e1", "S", "U"), _edge("e2", "U", "E", action="Complete")]
-    assert any("قابل دسترس" in issue for issue in structural_issues(stages, transitions))
+    transitions = [_edge("e1", "U", "E", action="Complete")]  # the Start has no route
+    assert any("شروع" in issue and "مسیر خروج" in issue for issue in structural_issues(stages, transitions))
+
+
+def test_structural_check_accepts_orphan_stage_reached_only_via_return():
+    # The CI shape (test_workflow_return_route): make_definition(approvals=1) plus an
+    # orphan User Task with no incoming or outgoing transition, reached only through
+    # the runtime's Return mechanism (which walks completed tasks, not transitions).
+    # The runtime never validates that every stage is reachable from Start, so this
+    # is a valid design.
+    stages = [
+        _stage("S", "Start", "شروع", {"title": "شروع"}),
+        _stage("U", "User Task", "ثبت درخواست", {"title": "ثبت درخواست"}),
+        _stage("A", "Approval", "تأیید 1", {"title": "تأیید 1"}),
+        _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"}),
+        _stage("NEW", "User Task", "گزارش جدید", {"title": "گزارش جدید"}),  # orphan
+    ]
+    transitions = [_edge("e1", "S", "U"), _edge("e2", "U", "A"),
+                   _edge("e3", "A", "E", action="Approve")]
+    assert structural_issues(stages, transitions) == []
 
 
 def test_structural_check_accepts_system_action_with_unlabeled_default_route():
@@ -137,8 +156,8 @@ def test_structural_check_accepts_system_action_error_route_to_dead_end():
 
 def test_structural_check_accepts_stage_reached_only_via_error_route():
     # A stage reached only via an Error/Return route, with no path to an End, is a
-    # valid park: the instance can start and reach it. Reachability from Start
-    # (following every route kind) is the only reachability rule.
+    # valid park: the instance can start and reach it. The runtime parks there
+    # waiting for an action rather than advancing.
     stages = [
         _stage("S", "Start", "شروع", {"title": "شروع"}),
         _stage("U", "User Task", "ثبت", {"title": "ثبت"}),

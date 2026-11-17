@@ -122,29 +122,29 @@ def structural_issues(stages, transitions):
     """Structural breakage that can mis-route a running request.
 
     This mirrors what the runtime can actually follow (``workflow_runtime.
-    _next_stage``), not the designer's activation rules. It deliberately does
-    NOT call ``_validate_saved_stage`` (the designer's Start trigger/initiator
-    and other activation-only config rules) or ``_validate_saved_routes`` (the
-    activation-time route-shape rules): a definition started through
-    ``create_request`` (the system request types) has a Start with no
-    ``trigger_type``/``initiator_roles``, and a stage whose only exit is an
-    unlabeled default route (``condition_json "{}"``, label ``Continue``) is a
-    valid main route at runtime.
+    _next_stage`` and ``start_workflow_instance``), not the designer's
+    activation rules. It deliberately does NOT call ``_validate_saved_stage``
+    (the designer's Start trigger/initiator and other activation-only config
+    rules) or ``_validate_saved_routes`` (the activation-time route-shape
+    rules).
 
-    Each check maps to a runtime rule in ``_next_stage``:
+    The runtime only ever navigates from the *current* stage (its outgoing
+    routes) or back to a previously-completed stage (Return, which walks the
+    instance's completed tasks, not the transitions). It never validates that
+    every stage is reachable from Start, so this check does not either: a stage
+    with no incoming transition (e.g. a User Task that is only a Return target)
+    is a valid design, and a stage whose only exit is an unlabeled default route
+    (``condition_json "{}"``, label ``Continue``) is a valid main route.
+
+    Each check maps to a runtime rule:
     - one Start + at least one End: the engine needs a start point and a
       terminal; without them an instance cannot begin or finish.
+    - the Start stage has an outgoing route: ``start_workflow_instance`` does
+      ``_next_stage(instance, start)`` and throws «گردش‌کار مرحلهٔ قابل‌اجرا
+      ندارد.» when the Start has no route.
     - no route to a stage outside the definition: ``stage_for`` returns ``None``
       for a deleted/external destination and the runtime throws
       «مرحلهٔ مقصد حذف شده است».
-    - every stage reachable from Start (following every route kind the runtime
-      follows — Approve/Reject/Return/Complete/Success/Error and the unlabeled
-      default): an unreachable stage is dead. This is the only reachability rule;
-      a stage does NOT have to reach an End or have an outgoing route, because the
-      runtime parks at a stage (a User Task/Approval reached via an Error or
-      Return route) waiting for an action rather than advancing. A dead-end that
-      makes the End unreachable is still caught, because the End then stops being
-      reachable from Start.
     - every route's ``condition_json`` parses to a dict: ``_next_stage`` does
       ``json.loads(condition_json or "{}")`` and then ``.get`` on the result.
     """
@@ -162,16 +162,8 @@ def structural_issues(stages, transitions):
         outgoing[edge['from_stage']].append(edge)
         if not _condition_is_dict(edge.get('condition_json')):
             issues.append('شرط یکی از مسیرها معتبر نیست.')
-    if len(starts) == 1:
-        reached, pending = set(), [starts[0]]
-        while pending:
-            node = pending.pop()
-            if node in reached:
-                continue
-            reached.add(node)
-            pending.extend(e['to_stage'] for e in outgoing[node])
-        if reached != names:
-            issues.append(DISCONNECTED_PATHS)
+    if len(starts) == 1 and not outgoing[starts[0]]:
+        issues.append('مرحلهٔ شروع مسیر خروج ندارد و اجرا نمی‌تواند آغاز شود.')
     return list(dict.fromkeys(issues))
 
 
