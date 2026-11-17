@@ -119,13 +119,35 @@ def test_structural_check_accepts_approval_to_condition_via_unlabeled_routes():
     assert structural_issues(stages, transitions) == []
 
 
-def test_structural_check_rejects_stage_without_outgoing_route():
-    # A non-End stage with no exit: _next_stage returns None and the instance stalls.
-    stages = [_stage("S", "Start", "شروع", {"title": "شروع"}),
-              _stage("A", "Approval", "تأیید", {"title": "تأیید"}),
-              _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"})]
-    transitions = [_edge("e1", "S", "A")]  # the approval has no exit
-    assert any("مسیر خروج ندارد" in issue for issue in structural_issues(stages, transitions))
+def test_structural_check_accepts_system_action_error_route_to_dead_end():
+    # The CI shape (test_document_templates): a System Action with a Success route
+    # to End and an Error route to a User Task that has no outgoing route. The
+    # runtime parks at that User Task (Running, open task) waiting for a human
+    # action, so it is a valid execution — not a structural breakage.
+    stages = [
+        _stage("S", "Start", "شروع", {"title": "شروع"}),
+        _stage("SA", "System Action", "ثبت سند", {"title": "ثبت سند"}),
+        _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"}),
+        _stage("ERR", "User Task", "بررسی خطا", {"title": "بررسی خطا"}),
+    ]
+    transitions = [_edge("e1", "S", "SA"), _edge("e2", "SA", "E", action="Success"),
+                   _edge("e3", "SA", "ERR", action="Error")]
+    assert structural_issues(stages, transitions) == []
+
+
+def test_structural_check_accepts_stage_reached_only_via_error_route():
+    # A stage reached only via an Error/Return route, with no path to an End, is a
+    # valid park: the instance can start and reach it. Reachability from Start
+    # (following every route kind) is the only reachability rule.
+    stages = [
+        _stage("S", "Start", "شروع", {"title": "شروع"}),
+        _stage("U", "User Task", "ثبت", {"title": "ثبت"}),
+        _stage("L", "User Task", "حلقه", {"title": "حلقه"}),
+        _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"}),
+    ]
+    transitions = [_edge("e1", "S", "U"), _edge("e2", "U", "E", action="Complete"),
+                   _edge("e3", "U", "L", action="Return")]  # L is reachable, no path to End
+    assert structural_issues(stages, transitions) == []
 
 
 def test_structural_check_rejects_non_dict_route_condition():
@@ -136,15 +158,3 @@ def test_structural_check_rejects_non_dict_route_condition():
               _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"})]
     transitions = [_edge("e1", "S", "U"), _edge("e2", "U", "E", condition=[])]
     assert any("شرط یکی از مسیرها" in issue for issue in structural_issues(stages, transitions))
-
-
-def test_structural_check_rejects_stage_with_no_path_to_end():
-    # A stage reachable from Start but with no path to an End: the instance can
-    # never complete once it reaches there.
-    stages = [_stage("S", "Start", "شروع", {"title": "شروع"}),
-              _stage("U", "User Task", "ثبت", {"title": "ثبت"}),
-              _stage("L", "User Task", "حلقه", {"title": "حلقه"}),
-              _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"})]
-    transitions = [_edge("e1", "S", "U"), _edge("e2", "U", "L", action="Complete"),
-                   _edge("e3", "L", "L", action="Return")]  # L loops to itself, no End
-    assert any("قابل دسترس" in issue for issue in structural_issues(stages, transitions))
