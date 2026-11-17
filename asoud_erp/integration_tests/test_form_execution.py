@@ -184,8 +184,11 @@ class TestFormExecutionRuntime(APITestCase):
         with patch.dict(EXECUTORS, {'test_only': NativeExecutor(), 'other': other}, clear=True):
             # Build a definition with a bound execution form but no running
             # instance: the design is edited while Inactive (PA-015), so the
-            # execution_key validation is what is under test, not the guard.
-            definition, stages = make_definition(self.company, approvals=1, fields=[])
+            # execution_key validation is what is under test, not the guard. The
+            # definition needs the `amount` request field the form maps to
+            # (workflow_key), or workflow_mapping rejects the publish.
+            definition, stages = make_definition(self.company, approvals=1, fields=[
+                {'key': 'amount', 'label': 'مبلغ', 'type': 'Currency', 'required': True}])
             schema = {'kind': 'Request', 'title': 'درخواست اجرا', 'workflow': definition,
                       'execution': {'kind': 'test_only'}, 'sections': [{
                           'id': 'main', 'title': 'اصلی', 'fields': [

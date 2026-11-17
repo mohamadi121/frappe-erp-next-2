@@ -137,11 +137,14 @@ def structural_issues(stages, transitions):
     - no route to a stage outside the definition: ``stage_for`` returns ``None``
       for a deleted/external destination and the runtime throws
       «مرحلهٔ مقصد حذف شده است».
-    - every stage reachable from Start and able to reach an End: an unreachable
-      stage is dead; a stage with no path to an End means the instance can never
-      complete once it reaches there.
-    - every non-End stage has at least one outgoing route: ``_next_stage``
-      returns ``None`` when a stage has no transitions, so the instance stalls.
+    - every stage reachable from Start (following every route kind the runtime
+      follows — Approve/Reject/Return/Complete/Success/Error and the unlabeled
+      default): an unreachable stage is dead. This is the only reachability rule;
+      a stage does NOT have to reach an End or have an outgoing route, because the
+      runtime parks at a stage (a User Task/Approval reached via an Error or
+      Return route) waiting for an action rather than advancing. A dead-end that
+      makes the End unreachable is still caught, because the End then stops being
+      reachable from Start.
     - every route's ``condition_json`` parses to a dict: ``_next_stage`` does
       ``json.loads(condition_json or "{}")`` and then ``.get`` on the result.
     """
@@ -159,9 +162,6 @@ def structural_issues(stages, transitions):
         outgoing[edge['from_stage']].append(edge)
         if not _condition_is_dict(edge.get('condition_json')):
             issues.append('شرط یکی از مسیرها معتبر نیست.')
-    for row in stages:
-        if row['stage_type'] != 'End' and not outgoing[row['name']]:
-            issues.append('مرحله‌ای مسیر خروج ندارد و اجرا در آن متوقف می‌شود.')
     if len(starts) == 1:
         reached, pending = set(), [starts[0]]
         while pending:
@@ -170,13 +170,7 @@ def structural_issues(stages, transitions):
                 continue
             reached.add(node)
             pending.extend(e['to_stage'] for e in outgoing[node])
-        can_finish = set(ends)
-        while True:
-            expanded = can_finish | {e['from_stage'] for e in transitions if e['to_stage'] in can_finish}
-            if expanded == can_finish:
-                break
-            can_finish = expanded
-        if reached != names or can_finish != names:
+        if reached != names:
             issues.append(DISCONNECTED_PATHS)
     return list(dict.fromkeys(issues))
 

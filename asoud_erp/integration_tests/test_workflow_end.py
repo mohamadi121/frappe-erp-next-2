@@ -240,7 +240,11 @@ class TestWorkflowEnd(APITestCase):
         edge = frappe.db.get_value('ASOUD Workflow Transition', {'from_stage': task.name})
         from asoud_erp.api.v1.workflow import insert_workflow_stage
 
+        # Design edits require an Inactive workflow (PA-015); re-activate for the
+        # instance start below.
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         result = insert_workflow_stage(definition, edge, 'Wait')['data']
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         stage = next(row['name'] for row in result['stages'] if row['stage_type'] == 'Wait')
         value = {'wait_version': 1, 'title': 'انتظار خطادار', 'wait_type': 'Date',
             'wait_value': '2001-01-01T09:00:00', 'past_policy': 'Error'}
