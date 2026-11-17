@@ -127,3 +127,61 @@ def test_require_stage_throws_when_missing(snap):
     instance = _instance(site, module.capture("def-1"))
     with pytest.raises(frappe.ValidationError):
         module.require_stage(instance, "ghost")
+
+
+def _stages():
+    return [
+        {"name": "s-start", "stage_type": "Start"},
+        {"name": "s-task", "stage_type": "User Task"},
+        {"name": "s-end", "stage_type": "End"},
+    ]
+
+
+def _transitions():
+    return [
+        {"from_stage": "s-start", "to_stage": "s-task"},
+        {"from_stage": "s-task", "to_stage": "s-end"},
+    ]
+
+
+def test_backfill_consistent_when_graph_matches_execution(snap):
+    module, _, _ = snap
+    assert module.backfill_consistent("s-task", _stages(), _transitions(), {"s-task"}) is True
+    # A stage the instance already passed is also consistent.
+    assert module.backfill_consistent("s-end", _stages(), _transitions(), {"s-task", "s-end"}) is True
+
+
+def test_backfill_inconsistent_when_current_stage_orphan(snap):
+    module, _, _ = snap
+    assert module.backfill_consistent("ghost", _stages(), _transitions(), set()) is False
+    assert module.backfill_consistent(None, _stages(), _transitions(), set()) is False
+
+
+def test_backfill_inconsistent_when_task_stage_missing(snap):
+    module, _, _ = snap
+    # The instance acted on a stage that no longer exists in the live graph.
+    assert module.backfill_consistent("s-task", _stages(), _transitions(), {"ghost"}) is False
+
+
+def test_backfill_inconsistent_when_current_stage_unreachable(snap):
+    module, _, _ = snap
+    # s-end exists but the route into it was deleted, so it is no longer reachable.
+    transitions = [{"from_stage": "s-start", "to_stage": "s-task"}]
+    assert module.backfill_consistent("s-end", _stages(), transitions, set()) is False
+
+
+def test_backfill_inconsistent_without_single_start(snap):
+    module, _, _ = snap
+    stages = _stages() + [{"name": "s-start2", "stage_type": "Start"}]
+    assert module.backfill_consistent("s-task", stages, _transitions(), set()) is False
+
+
+def test_backfill_snapshot_uses_capture_and_marks_source(snap):
+    module, site, _ = snap
+    _graph(site)
+    data = json.loads(module.backfill_snapshot("def-1"))
+    assert data["snapshot_source"] == "backfill_live_graph"
+    assert [row["name"] for row in data["stages"]] == ["s-start", "s-task", "s-end"]
+    assert [row["name"] for row in data["transitions"]] == ["t1", "t2"]
+    # A reader must still parse the backfilled snapshot (unknown key ignored).
+    assert module.load(_instance(site, module.backfill_snapshot("def-1"))) is not None

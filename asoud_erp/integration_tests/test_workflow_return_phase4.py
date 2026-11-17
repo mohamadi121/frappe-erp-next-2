@@ -152,6 +152,7 @@ class TestResultFormRefusesStageKind(APITestCase):
 
     def test_result_form_binding_refuses_a_stage_form(self):
         definition, stages = make_definition(self.company, approvals=0, fields=[])
+        frappe.db.set_value("ASOUD Workflow Definition", definition, "status", "Inactive")
         stage = next(item for item in stages.values() if item.stage_type == "User Task")
         form, revision = self._stage_form()
         with self.assertRaises(frappe.ValidationError):

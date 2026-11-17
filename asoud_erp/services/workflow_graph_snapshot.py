@@ -113,3 +113,48 @@ def has_transition(instance, from_stage, to_stage=None) -> bool:
     return bool(frappe.db.exists(TRANSITION, filters))
 
 
+def backfill_consistent(current_stage, stages, transitions, task_stages) -> bool:
+    """Whether a live graph is consistent with what an old instance already ran.
+
+    Used by the snapshot backfill patch: there is no stored design history, so a
+    historical snapshot cannot be recovered. The live graph may be frozen as the
+    instance's snapshot only when it still matches the execution: ``current_stage``
+    exists in the graph, every stage the instance's tasks/activities touched exists,
+    and ``current_stage`` is reachable from the single Start along live transitions.
+    ``stages``/``transitions`` are the live rows; ``task_stages`` is the set of stage
+    names the instance's tasks/activities reference.
+    """
+    names = {row["name"] for row in stages}
+    if not current_stage or current_stage not in names:
+        return False
+    if any(stage not in names for stage in task_stages):
+        return False
+    starts = [row["name"] for row in stages if row["stage_type"] == "Start"]
+    if len(starts) != 1:
+        return False
+    outgoing = {name: [] for name in names}
+    for edge in transitions:
+        if edge["from_stage"] in names and edge["to_stage"] in names:
+            outgoing[edge["from_stage"]].append(edge["to_stage"])
+    reached, pending = set(), [starts[0]]
+    while pending:
+        node = pending.pop()
+        if node in reached:
+            continue
+        reached.add(node)
+        pending.extend(outgoing[node])
+    return current_stage in reached
+
+
+def backfill_snapshot(definition) -> str:
+    """The snapshot JSON for a backfilled instance, tagged with its source.
+
+    Uses the same builder as ``start_workflow_instance`` (``capture``) and adds a
+    ``snapshot_source`` marker so readers can tell a backfilled snapshot from a
+    frozen one. Readers ignore unknown keys, so the marker is additive.
+    """
+    data = json.loads(capture(definition))
+    data["snapshot_source"] = "backfill_live_graph"
+    return json.dumps(data, ensure_ascii=False)
+
+

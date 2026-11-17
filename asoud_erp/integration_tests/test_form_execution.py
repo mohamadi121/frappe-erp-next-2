@@ -182,19 +182,29 @@ class TestFormExecutionRuntime(APITestCase):
         other = ExampleExecutor()
         other.PARAMETERS = {'purpose': {'label': 'دلیل', 'types': ['LongText'], 'required': False}}
         with patch.dict(EXECUTORS, {'test_only': NativeExecutor(), 'other': other}, clear=True):
-            request = self.submit()
-            frappe.set_user('Administrator')
+            # Build a definition with a bound execution form but no running
+            # instance: the design is edited while Inactive (PA-015), so the
+            # execution_key validation is what is under test, not the guard.
+            definition, stages = make_definition(self.company, approvals=1, fields=[])
+            schema = {'kind': 'Request', 'title': 'درخواست اجرا', 'workflow': definition,
+                      'execution': {'kind': 'test_only'}, 'sections': [{
+                          'id': 'main', 'title': 'اصلی', 'fields': [
+                              {'key': 'asked', 'label': 'مبلغ', 'type': 'Money',
+                               'workflow_key': 'amount', 'execution_key': 'amount'}]}]}
+            saved = forms.save_form(self.company, schema, client_id=frappe.generate_hash(length=24))['data']
+            forms.transition(saved['name'], 'publish', saved['draft_version'])
+            frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
             stage = frappe.db.get_value('ASOUD Workflow Stage', {
-                'workflow_definition': request['workflow_definition'], 'stage_type': 'Approval'},
+                'workflow_definition': definition, 'stage_type': 'Approval'},
                 ['name', 'config_json'], as_dict=True)
             config = json.loads(stage.config_json)
             config['form_fields'] = [{'key': 'note', 'label': 'دلیل مصوب', 'type': 'Long Text',
                                       'execution_key': 'purpose'}]
             with self.assertRaisesRegex(frappe.ValidationError, 'پارامتر'):
-                workflow.save_stage_settings(request['workflow_definition'], stage.name, config)
+                workflow.save_stage_settings(definition, stage.name, config)
             config['form_fields'] = [{'key': 'approved', 'label': 'مبلغ مصوب', 'type': 'Currency',
                                       'execution_key': 'amount'}]
-            workflow.save_stage_settings(request['workflow_definition'], stage.name, config)
+            workflow.save_stage_settings(definition, stage.name, config)
             stored = json.loads(frappe.db.get_value('ASOUD Workflow Stage', stage.name, 'config_json'))
             self.assertEqual(stored['form_fields'][0]['execution_key'], 'amount')
 

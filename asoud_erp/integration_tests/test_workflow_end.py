@@ -80,7 +80,9 @@ class TestWorkflowEnd(APITestCase):
 
         definition, stages = make_definition(self.company)
         approval, end = stages['Approval2'], stages['End3']
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         save_stage_routes(definition, approval.name, {'Approve': end.name, 'Reject': end.name})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         request = create(self.company, definition=definition)
         act(request['workflow_instance'], 'Reject', comment='علت رد آزمایشی')
         row = frappe.db.get_value('ASOUD Workflow Activity', {'workflow_instance': request['workflow_instance'],
@@ -157,7 +159,9 @@ class TestWorkflowEnd(APITestCase):
         definition, stages = make_definition(self.company, approvals=0, fields=[
             {'key': 'amount', 'label': 'عدد آزمایش', 'type': 'Number'}])
         edge = frappe.db.get_value('ASOUD Workflow Transition', {'from_stage': stages['User Task1'].name})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         design = insert_workflow_stage(definition, edge, 'Condition')['data']
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         condition = next(row['name'] for row in design['stages'] if row['stage_type'] == 'Condition')
         frappe.db.set_value('ASOUD Workflow Stage', condition, {'configuration_status': 'Complete',
             'config_json': json.dumps({'source_kind': 'Form', 'source_field': 'amount', 'operator': 'Greater Than', 'compare_value': '0'})})
@@ -196,7 +200,9 @@ class TestWorkflowEnd(APITestCase):
 
         definition, stages = make_definition(self.company)
         edge = frappe.db.get_value('ASOUD Workflow Transition', {'from_stage': stages['Approval2'].name})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         design = insert_workflow_stage(definition, edge, 'System Action')['data']
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         automatic = next(row['name'] for row in design['stages'] if row['stage_type'] == 'System Action')
         frappe.db.set_value('ASOUD Workflow Stage', automatic, {'configuration_status': 'Complete',
             'config_json': json.dumps({'action_type': 'Send Notification', 'notify_initiator': True,
