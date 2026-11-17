@@ -46,8 +46,15 @@ DECISION_ACTIONS = ("Approve", "Reject", "Return", "Complete", "Follow Up", "Blo
 
 
 def request_level(doc, user=None):
-    """The approved access level (FULL/MASKED/NONE) of ``user`` for this request (PA-055)."""
+    """The approved access level (FULL/MASKED/NONE) of ``user`` for this request (PA-055).
+
+    The office boundary is enforced here, not only in ``request_permission``: a user without
+    company access to the request's company is NONE, even if they are the owner or hold an
+    Open task (the service-user path in ``request_permission`` is unchanged).
+    """
     user = user or frappe.session.user
+    if not company_access(doc.company, user):
+        return policy.NONE
     instance = doc.get("workflow_instance")
     task_rows = []
     if instance:
@@ -59,8 +66,8 @@ def request_level(doc, user=None):
     # Acting = a decision activity the user made (a mere Claim of a shared task is not one).
     acted = bool(instance and frappe.db.exists("ASOUD Workflow Activity", {
         "workflow_instance": instance, "actor": user, "action": ["in", list(DECISION_ACTIONS)]}))
-    privileged = bool(company_access(doc.company, user)
-                      and {"System Manager", "HR Manager"}.intersection(frappe.get_roles(user)))
+    # company_access is already guaranteed above, so only the role matters here.
+    privileged = bool({"System Manager", "HR Manager"}.intersection(frappe.get_roles(user)))
     return policy.classify(doc.owner == user, privileged, task_rows, acted)
 
 
