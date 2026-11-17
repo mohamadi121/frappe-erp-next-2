@@ -51,6 +51,7 @@ test_form_execution_shift_request
 test_form_execution_exit
 test_form_execution_training
 test_confidential_fields
+test_request_access_policy
 test_request_void
 test_form_execution_certificate
 test_form_execution_receipt

@@ -128,12 +128,35 @@ falls back to `Employee.date_of_joining`. Dates are returned as ISO (`YYYY-MM-DD
 Employee data produces no default value. A field using `contract_start` must label the fallback
 explicitly, for example `شروع دوره همکاری (در نبود قرارداد: تاریخ شروع به کار)`.
 
-Every field and table column may include the optional boolean key `sensitive`. For
-request details and workflow-task previews, a sensitive value is returned only to the
-request owner, System Manager or HR Manager, and users who have or previously had a task
-on that workflow instance. Other permitted viewers receive `محرمانه` instead of the
-stored value. Stored request and task responses remain unchanged. Omitting the key means
-`false`, so this addition keeps `schema_version` at 2 and preserves old forms.
+Every field and table column may include the optional boolean key `sensitive`. A sensitive
+value is returned only to a **FULL** viewer (see the approved policy below); every other
+permitted viewer receives `محرمانه` instead of the stored value. Stored request and task
+responses remain unchanged. Omitting the key means `false`, so this addition keeps
+`schema_version` at 2 and preserves old forms.
+
+### Approved confidential-data policy (PA-055)
+
+Access to a request is one of three levels, decided by `services/request_access_policy.py`:
+
+- **FULL** — the request owner (P1); the current assignee, i.e. a task still `Open` for the
+  user, including an unclaimed shared-claim task while it is Open (P2); and System Manager /
+  HR Manager with company access to the request's office (P6). A FULL viewer reads the request
+  and its confidential values and files.
+- **MASKED** — a previous assignee who **acted** (their task `Completed`, or they are the actor
+  of a decision activity on the instance) (P3). A MASKED viewer reads the request and their own
+  action history, but confidential values are `محرمانه` and confidential files are hidden and
+  denied.
+- **NONE** — everyone else, including a user whose shared-claim task was `Cancelled` without
+  them acting (P4) and a holder reassigned away who never acted (P5). Reassignment rewrites
+  `task.assigned_to` in place, so a reassigned-away holder is a previous assignee: MASKED only
+  if they acted, else NONE. Claiming a shared task alone is not a decision.
+
+The raw document read (`/api/resource/ASOUD Workflow Request/<n>`, `frappe.get_doc`, and the
+list with `fields=values_json`) is granted **only at FULL**, so a MASKED viewer cannot read the
+unmasked `values_json` through REST; they read through the masked whitelisted APIs
+(`get_request`, `get_workflow_instance`). Confidential files are downloadable only at FULL.
+Denied reads and file downloads are recorded in `ASOUD Security Audit` (`result="denied"`)
+without any confidential content (P7). No cross-office access without valid company access (P6).
 
 ### Confidential fields in every output
 
@@ -141,12 +164,15 @@ A field is confidential when it has `sensitive: true` in the form schema (field 
 column), in the mapped workflow field, or in a workflow step form. A form field that maps to a
 workflow field through `workflow_key` makes that workflow field confidential too, so the flag
 set in the form designer is enough. Confidential values (and files that only they point to) are
-visible to the request owner, System Manager, HR Manager, and users who have or had a task on the
-instance. Nobody else receives them from any output:
+visible only to FULL viewers (owner, current assignee, System Manager / HR Manager with company
+access). MASKED viewers receive `محرمانه` and no confidential files. Nobody else receives them
+from any output:
 
 | output | rule |
 |---|---|
-| `get_request` values, attachments, `attachment_count`, `item_count` | `محرمانه`, files omitted |
+| `get_request` values, attachments, `attachment_count`, `item_count` | FULL: real values and files; MASKED: `محرمانه`, confidential files omitted; NONE: the request is not readable |
+| raw REST read and list (`fields=values_json`) | FULL only; MASKED and NONE are denied (403) and the denial is audited |
+| `get_attachment` (request file download) | FULL only for confidential files; MASKED is denied and audited |
 | `search_text` and the `search` filter | confidential values are never indexed |
 | `update_request` `Resubmitted` activity (`before`/`after`) | `محرمانه` for everyone |
 | `get_workflow_task` | only the task assignee reads it (a participant) |
