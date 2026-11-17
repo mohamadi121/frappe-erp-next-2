@@ -1,6 +1,7 @@
 import frappe
 
 from asoud_erp.services import certificate_access
+from asoud_erp.services import request_access_policy as policy
 
 
 def company_access(company, user=None):
@@ -38,6 +39,31 @@ def require_company(company):
         frappe.throw("شما به اطلاعات این شرکت دسترسی ندارید.", frappe.PermissionError)
 
 
+#: Activity actions that are a decision the user made on a task. Claiming a shared task,
+#: being assigned, saving a draft, escalation and system actions are not decisions (PA-055 P5).
+DECISION_ACTIONS = ("Approve", "Reject", "Return", "Complete", "Follow Up", "Blocked",
+                    "Reassigned", "Resubmitted")
+
+
+def request_level(doc, user=None):
+    """The approved access level (FULL/MASKED/NONE) of ``user`` for this request (PA-055)."""
+    user = user or frappe.session.user
+    instance = doc.get("workflow_instance")
+    task_rows = []
+    if instance:
+        task_rows = [{"status": row.status, "acted": row.status == "Completed"}
+                     for row in frappe.get_all("ASOUD Workflow Task",
+                                               filters={"workflow_instance": instance,
+                                                        "assigned_to": user},
+                                               fields=["status"], limit_page_length=0)]
+    # Acting = a decision activity the user made (a mere Claim of a shared task is not one).
+    acted = bool(instance and frappe.db.exists("ASOUD Workflow Activity", {
+        "workflow_instance": instance, "actor": user, "action": ["in", list(DECISION_ACTIONS)]}))
+    privileged = bool(company_access(doc.company, user)
+                      and {"System Manager", "HR Manager"}.intersection(frappe.get_roles(user)))
+    return policy.classify(doc.owner == user, privileged, task_rows, acted)
+
+
 def request_permission(doc, user=None, permission_type=None):
     user = user or frappe.session.user
     conf = getattr(frappe, "conf", None) or {}
@@ -49,11 +75,10 @@ def request_permission(doc, user=None, permission_type=None):
         return False
     if not company_access(doc.company, user):
         return False
-    if doc.owner == user or {"System Manager", "HR Manager"}.intersection(frappe.get_roles(user)):
-        return True
-    # Stage assignees (e.g. the requester's direct manager) read the request they act on.
-    return bool(doc.get("workflow_instance") and frappe.db.exists(
-        "ASOUD Workflow Task", {"workflow_instance": doc.workflow_instance, "assigned_to": user}))
+    # Raw document read (REST / frappe.get_doc) is granted only at FULL: the owner, a
+    # privileged manager with company access, or the current assignee. A previous assignee
+    # who acted (MASKED) reads through the masked whitelisted APIs, not the raw document.
+    return request_level(doc, user) == policy.FULL
 
 
 def request_query(user=None):
@@ -67,9 +92,14 @@ def request_query(user=None):
     allowed_sql = ",".join(frappe.db.escape(company) for company in allowed)
     if {"System Manager", "HR Manager"}.intersection(frappe.get_roles(user)):
         return "`tabASOUD Workflow Request`.`company` IN (" + allowed_sql + ")"
+    # FULL only (PA-055): the owner, the current assignee (a task still Open for them), or a
+    # privileged manager. A previous assignee who acted (MASKED) is excluded from the raw
+    # list so a raw REST list cannot hand them unmasked values; they read through the masked
+    # whitelisted APIs.
     return ("(`tabASOUD Workflow Request`.`owner` = " + frappe.db.escape(user)
         + " OR `tabASOUD Workflow Request`.`workflow_instance` IN (SELECT `workflow_instance`"
-        " FROM `tabASOUD Workflow Task` WHERE `assigned_to` = " + frappe.db.escape(user) + "))"
+        " FROM `tabASOUD Workflow Task` WHERE `assigned_to` = " + frappe.db.escape(user)
+        + " AND `status` = 'Open'))"
         + " AND `tabASOUD Workflow Request`.`company` IN (" + allowed_sql + ")")
 
 
