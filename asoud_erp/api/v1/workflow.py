@@ -19,6 +19,7 @@ from asoud_erp.services.workflow_stage_policy import (
     REQUEST_CATEGORIES,
     ROLE_BASED_TYPES,
     normalize_stage_config,
+    resolve_document_access,
 )
 from asoud_erp.services.workflow_user_action_policy import condition_fields as action_condition_fields
 
@@ -878,6 +879,13 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
             raw = {**raw, 'submission_source': previous_source}
     try:
         normalized = normalize_stage_config(doc.stage_type, raw)
+        if doc.stage_type in {'User Task', 'Approval'}:
+            # PA-066: a stored «ویرایش محدود» (Limited Edit) is never silently rewritten to
+            # Edit by an app that re-sends it untouched, and Limited Edit is no longer offered
+            # as a new choice. The document_access_changed flag is not stored.
+            stored_access = json.loads(doc.config_json or '{}').get('document_access')
+            normalized['document_access'] = resolve_document_access(
+                stored_access, raw.get('document_access'), bool(raw.get('document_access_changed')))
         if doc.stage_type == 'Wait' and normalized.get('wait_version') == 1:
             from asoud_erp.services.workflow_wait import validate_design
 
