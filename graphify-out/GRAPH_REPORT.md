@@ -1,868 +1,706 @@
-# Graph Report - w-pa015-guard  (2026-11-17)
+# Graph Report - w-graphify-be  (2026-11-06)
 
 ## Corpus Check
-- 783 files · ~479,563 words
+- 691 files · ~405,692 words
 - Verdict: corpus is large enough that graph structure adds value.
-- Unclassified: 6 file(s) not represented in the graph (top: (none) 4, .in 1, .lock 1)
 
 ## Summary
-- 7890 nodes · 22249 edges · 442 communities (311 shown, 131 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 277 edges (avg confidence: 0.87)
+- 6902 nodes · 18989 edges · 372 communities (264 shown, 108 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 215 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
-## Graph Freshness
-- Built from commit: `23119f8e`
-- Run `git rev-parse HEAD` and compare to check if the graph is stale.
-- Run `graphify update .` after code changes (no API cost).
-
 ## Community Hubs (Navigation)
-- success
-- frappe
-- test_personnel.py
-- workflow_request.py
-- re
-- getdate
-- run_financial_report
-- require_company
-- validate_voucher_lines
-- normalize_stage_config
-- auth.py
-- reporting_service.py
-- asoud_organization_chart.py
-- TestASOUDPersonnelNative
-- TestASOUDWorkflowRequest
-- execute_mutation
-- normalize_purchase_items
-- pathlib
-- company
-- forms.py
-- employment_contracts.py
-- asoud_floating_detail.py
-- ASOUDSettings
-- json
-- frappe_model_document
-- pytest
-- .create
-- record
-- list_forms
-- asoud_communication_recipient.py
-- asoud_company_setup.py
-- v1/employment_certificates.py
-- types
-- save_stage_settings
-- throw_error
-- services/__init__.py
-- asoud_voucher_line.py
-- .login
-- asoud_work_report.py
-- asoud_workflow_activity.py
-- asoud_workflow_instance.py
-- number_pattern
-- asoud_workflow_task.py
-- normalize_form_response
-- make_world
-- services/hr_onboarding.py
-- leave_hours.py
-- get_request
-- install
-- state.ts
-- sys
-- validate-coverage-ledger.cjs
-- demo/seed.py
-- NativeResult
-- validate-findings.cjs
-- account_recovery.py
-- TestAutomaticActionAudit
-- normalize_action
-- fixtures.ts
-- v1/hiring_orders.py
-- services/setup_reset.py
-- request_lookup.py
-- v1/salary_change_orders.py
-- save_form
-- request_native_documents.py
-- TestRequestVoid
-- test_account_status.py
-- system_admin.py
-- tests/test_form_execution.py
-- TestReceiptConfirmation
-- CertificateCase
-- test_workflow_request_engine.py
-- hr.py
-- request_comments.py
-- FakeDoc
-- hashlib
-- save_stage_routes
-- test_native_payloads.py
-- base.py
-- test
-- TestDirectiveStartProgressAndReminders
-- copy
-- hr_self_service.py
-- tests/test_document_templates.py
-- paging
-- tests/test_workflow_start_phase3.py
-- buying.py
-- datetime
-- sales_orders.py
-- services/first_office_setup.py
-- test_leave_mission_overtime_execution.py
-- stock.py
-- role_management.py
-- APITestCase
-- tests/test_workflow_condition_v2.py
-- test_request_link_values.py
-- payments.py
-- api.ts
-- v1/workflow_paths.py
-- to_persian_digits
-- _fake_site.py
-- organization.py
-- services/workflow_wait.py
-- .day
-- role_assignment_service.py
-- request_followup_runtime.py
-- test_directive_paging.py
-- personnel_native.py
-- test_workflow_request_flows.py
-- scripts
-- asoud_role_category.py
-- asoud_role_definition.py
-- calendar.py
-- directive_access.py
-- request_void_actions.py
-- services/hiring_orders.py
-- tests/test_workflow_approval_quorum.py
-- site_prep.py
-- save_chart
-- personnel.py
-- exit.py
-- tests/test_workflow_condition_catalog.py
-- validate-findings.test.cjs
-- TestAccountOps
-- serialize_workflow
-- get_workflow_design
-- tests/test_attendance_correction_execution.py
-- leave_balance.py
-- warehouse
-- tests/test_personnel_file.py
-- simulate_workflow
-- normalize_action
-- Zarinpal payment gateway (Next.js / Node.js)
-- Login, first-run onboarding, system administrator, roles and HR onboarding
-- TestFormRecordSources
-- request_status.py
-- run
-- TestDocumentTemplates
-- security_audit.py
-- leave_rules.py
-- request_attachments.py
-- tests/test_request_execution.py
-- as_administrator
-- jalali.ts
-- hiring_order_workflow.py
-- pos.py
-- integration_tests/test_demo_seed.py
-- apply
-- tests/__init__.py
-- test_request_templates_engine.py
-- test_sync.py
-- validate-coverage-ledger.test.cjs
-- Form builder
-- Organization units and import
-- TestPersonnelIntroductionLetters
-- TestShiftExecution
-- make_event
-- TestStageSupplementaryForm
-- tests/test_form_execution_certificate.py
-- request_void.py
-- workflow_contract.py
-- tests/test_workflow_wait.py
-- tests/test_workflow_condition_dryrun.py
-- tests/test_workflow_graph_snapshot.py
-- Agent guidelines — asoud_erp (Frappe / ERPNext / HRMS v15)
-- directives.py
-- to_ascii_digits
-- test_request_attachments_pure.py
-- workflow_condition.py
-- _get
-- report.py
-- support.py
-- ensure_system_templates
-- TestAttendanceCorrectionExecution
-- .submit
-- validate_rows
-- test_permission_catalog.py
-- test_workflow_history.py
-- services/workflow_templates.py
-- Security Audit
-- ParsPack S3 image upload (Next.js App Router)
-- Software Development
-- dashboard.py
-- _mutation
-- save_party
-- test_persian_digits.py
-- base64
-- TestFormExecutionRuntime
-- certificate_issue.py
-- tests/test_personnel_introduction_letters.py
-- test_post_login.py
-- test_role_completion.py
-- test_workflow_submission_policy.py
-- TestWorkflowCheck
-- build
-- test_request_link_values_extended.py
-- 4. Contract Issuance & Management Endpoints
-- voucher.py
-- markers.py
-- .definition
-- test_organization_assignments.py
-- request_templates/seed.py
-- validate_workflow
-- test_workflow_task_assignment_policy.py
-- hr-manager.spec.ts
-- ATTACK-CLASSES.md
-- 1. Rulebook
-- demo_email
-- ensure_department_description
-- TestFormExecutionEmployeeAdvance
-- Base
-- TestPartyCompanyScope
-- execute
-- record_labels.py
-- build_viewer
-- parse_instance_names
-- lmo-execution.spec.ts
-- compilerOptions
-- Changelog
-- get_attachment
-- list_my_requests
-- guard_storage
-- TestRequestNumbering
-- test_account_ops.py
-- .approve_form
-- TestApprovalQuorum
-- services/document_templates.py
-- type_balance
-- build_stages
-- ممیزی اقدام خودکار و کنترل مسیر — ۲۰۲۶/۱۱/۱۱
-- global-setup.ts
-- Iranian validation (اعتبارسنجی ایرانی)
-- Kavenegar SMS / OTP (implementation guide)
-- Form execution after approval
-- Request templates — `asoud_erp.api.v1.workflow_request`
-- demo_leave_dates
-- normalize_asoud_roles
-- period.py
-- tests/test_form_execution_training.py
-- tests/test_stage_supplementary_form.py
-- workflow_check.py
-- test_workflow_wait_past.py
-- automatic-actions.spec.ts
-- Persian / RTL rules for this project
-- Jalali calendar (تقویم شمسی)
-- Persian RTL UI (رابط راست‌چین)
-- Persian UI copy (متن رابط کاربری)
-- احکام افزایش یا تغییر حقوق و مزایا — `asoud_erp.api.v1.salary_change_orders`
-- guard
-- TestDemoFiscalYearRules
-- TestDispatch
-- preflightJsonText
-- Workflow: test, delegate, review, release, deploy, merge
-- Client-Side and Browser Hunting
-- Cloud and Deployment Hunting
-- Desktop, Mobile, and Local IPC Hunting
-- HTTP-Protocol and Authentication Hunting
-- Formal Persian (فارسی رسمی و اداری)
-- Persian SEO (سئوی فارسی)
-- save_document_template
-- disable_party
-- TestWorkflowAccess
-- backfill_request_status_key.py
-- diff_values
-- assignment_values
-- ممیزی و تکمیل «انتظار و زمان‌بندی» — ۲۰۲۶/۱۱/۱۳
-- Gotchas (learned the hard way)
-- AI, LLM, and Agent Hunting
-- Data Isolation and Lifecycle Hunting
-- Vulnerability Hunting
-- Memory Safety, Binary, and Kernel Hunting
-- Conversational Persian (فارسی محاوره‌ای)
-- Persian typography guide (راهنمای تایپوگرافی فارسی)
-- Soroush's working style
-- Leave requests — `asoud_erp.api.v1.leave_request`
-- Setup reset correction — implementation and verification
-- _ensure_installed_apps_setup_complete
-- TestFirstOfficeSetup
-- TestRequestExecution
-- training_enrollment.py
-- party_validation.py
-- create_material_request
-- workflow_step_validation.py
-- TestDemoNaming
-- documents.spec.ts
-- Protocols, RPC, and Messaging Hunting
-- Resource Exhaustion and Availability Hunting
-- Supply Chain and Release Hunting
-- Validation, Structured Output, Verification, and Reporting
-- ASOUD personnel access contract (v1)
-- HR self-service — `asoud_erp.api.v1.hr_self_service`
-- create_leave_document
-- test_workflow_next_stage.py
-- Condition & Routing audit — 2026-11-11
-- Desktop apps, system tooling and network clients (sub-skill of software-development)
-- ERP / business-app development (sub-skill of software-development)
-- Frontend (sub-skill of software-development)
-- QA / Testing (sub-skill of software-development)
-- Account operations — `asoud_erp.api.v1.auth`
-- Listing
-- ASOUD ERP API v1 — conventions
-- Login, onboarding, system administrator, roles and HR onboarding: audit and decisions
-- TestPersonnelFile
-- leave_subject
-- description_value
-- test_request_error_messages.py
-- Automatic actions, schema 2
-- Demo seed (`asoud_erp.demo.seed`)
-- ASOUD ERP end-to-end tests (Playwright)
-- _manager_photo
-- ASOUDSecurityAudit
-- TestPartyEmployeeSoD
-- TestSelfApprovalRouting
-- TestWorkflowConditionCatalog
-- TestWorkflowStartPhase3
-- private_file.py
-- Native draft path editing
-- Approval stage supplementary form (pinned ASOUD Form revision)
-- Architecture
-- Engineering principles for ASOUD ERP work (workers and manager)
-- DevOps (sub-skill of software-development)
-- Workers (sub-skill of software-development)
-- First-office bootstrap (account-only HR lead)
-- Follow-up tasks and receipt confirmation (N6, `asset_movement` Issue)
-- احکام استخدام — `asoud_erp.api.v1.hiring_orders`
-- معرفی‌نامه پرسنل به بانک‌ها و سازمان‌ها
-- Directives: deployment and integration
-- e2e.yml
-- ASOUD ERP Frappe App
-- TestExitCommentIsNotCopied
-- Approval destinations verification — 2026-11-11
-- organization.spec.ts
-- ASOUD ERP expert
-- Document templates (`asoud_erp.api.v1.document_templates`)
-- Attendance correction (`attendance_correction`)
-- Leave, mission and overtime (`leave_application`, `mission`, `overtime`)
-- Personnel file — `asoud_erp.api.v1.personnel_file`
-- Backend module map and roadmap
-- ASOUDAccountToken
-- asoud_office_role_assignment.py
-- LeaveRuleError
-- AttachmentError
-- workflow_history_limits.py
-- E2EExecutor
-- Chart of accounts — `asoud_erp.api.v1.account`
-- گواهی‌های اشتغال به کار
-- Selling — `asoud_erp.api.v1.selling`
-- workflow-stage-form-binding.md
-- Independent workflow drafts from system templates
-- ASOUD workflow runtime v1
-- User actions — implementation and verification boundary
-- asoud_action_execution.py
-- TestVoidIsRegistered
-- Context pack: put this block (15 to 30 lines) at the top of every worker task
-- Dashboard — `asoud_erp.api.v1.dashboard`
-- Payments — `asoud_erp.api.v1.payments`
-- Projects, tasks and timesheets — `asoud_erp.api.v1.projects`
-- Accounting vouchers — `asoud_erp.api.v1.voucher`
-- Workflow card lifecycle (existing APIs)
-- User action settings — additive v1
-- API and changed-file inventory
-- اتصال پرسنل به مدل استاندارد
-- Role management
-- workflow-end.md
-- CLAUDE.md
-- Glossary: what the Persian UI words mean in code
-- hr-document-print.md
-- hr-documents-lifecycle.md
-- Payroll — `asoud_erp.api.v1.payroll`
-- Point of sale — `asoud_erp.api.v1.pos`
-- report.md
-- Stock — `asoud_erp.api.v1.stock`
-- workflow-start-settings.md
-- Mobile drafts and conflict handling
-- Automatic action extension
-- Request types
-- asoud_erp
-- Buying — `asoud_erp.api.v1.buying`
-- Financial reports — `asoud_erp.api.v1.financial_reports`
-- Workflow start configuration
-- Sales pipeline — `asoud_erp.api.v1.sales_orders`
-- Support and assets — `asoud_erp.api.v1.support`
-- ASOUD audit — 2026-09-19
-- Purchase request integration
+- Community 0
+- Community 1
+- Community 2
+- Community 3
+- Community 4
+- Community 5
+- Community 6
+- Community 7
+- Community 8
+- Community 9
+- Community 10
+- Community 11
+- Community 12
+- Community 13
+- Community 14
+- Community 15
+- Community 16
+- Community 17
+- Community 18
+- Community 19
+- Community 20
+- Community 21
+- Community 22
+- Community 23
+- Community 24
+- Community 25
+- Community 26
+- Community 27
+- Community 28
+- Community 29
+- Community 30
+- Community 31
+- Community 32
+- Community 33
+- Community 34
+- Community 35
+- Community 36
+- Community 37
+- Community 38
+- Community 39
+- Community 40
+- Community 41
+- Community 42
+- Community 43
+- Community 44
+- Community 45
+- Community 46
+- Community 47
+- Community 48
+- Community 49
+- Community 50
+- Community 51
+- Community 52
+- Community 53
+- Community 54
+- Community 55
+- Community 56
+- Community 57
+- Community 58
+- Community 59
+- Community 60
+- Community 61
+- Community 62
+- Community 63
+- Community 64
+- Community 65
+- Community 66
+- Community 67
+- Community 68
+- Community 69
+- Community 70
+- Community 71
+- Community 72
+- Community 73
+- Community 74
+- Community 75
+- Community 76
+- Community 77
+- Community 78
+- Community 79
+- Community 80
+- Community 81
+- Community 82
+- Community 83
+- Community 84
+- Community 85
+- Community 86
+- Community 87
+- Community 88
+- Community 89
+- Community 90
+- Community 91
+- Community 92
+- Community 93
+- Community 94
+- Community 95
+- Community 96
+- Community 97
+- Community 98
+- Community 99
+- Community 100
+- Community 101
+- Community 102
+- Community 103
+- Community 104
+- Community 105
+- Community 106
+- Community 107
+- Community 108
+- Community 109
+- Community 110
+- Community 111
+- Community 112
+- Community 113
+- Community 114
+- Community 115
+- Community 116
+- Community 117
+- Community 118
+- Community 119
+- Community 120
+- Community 121
+- Community 122
+- Community 123
+- Community 124
+- Community 125
+- Community 126
+- Community 127
+- Community 128
+- Community 129
+- Community 130
+- Community 131
+- Community 132
+- Community 133
+- Community 134
+- Community 135
+- Community 136
+- Community 137
+- Community 138
+- Community 139
+- Community 140
+- Community 141
+- Community 142
+- Community 143
+- Community 144
+- Community 145
+- Community 146
+- Community 147
+- Community 148
+- Community 149
+- Community 150
+- Community 151
+- Community 152
+- Community 153
+- Community 154
+- Community 155
+- Community 156
+- Community 157
+- Community 158
+- Community 159
+- Community 160
+- Community 161
+- Community 162
+- Community 163
+- Community 164
+- Community 165
+- Community 166
+- Community 167
+- Community 168
+- Community 169
+- Community 170
+- Community 171
+- Community 172
+- Community 173
+- Community 174
+- Community 175
+- Community 176
+- Community 177
+- Community 178
+- Community 179
+- Community 180
+- Community 181
+- Community 182
+- Community 183
+- Community 184
+- Community 185
+- Community 186
+- Community 187
+- Community 188
+- Community 189
+- Community 190
+- Community 191
+- Community 192
+- Community 193
+- Community 194
+- Community 195
+- Community 196
+- Community 197
+- Community 198
+- Community 199
+- Community 200
+- Community 201
+- Community 202
+- Community 203
+- Community 204
+- Community 205
+- Community 206
+- Community 207
+- Community 208
+- Community 209
+- Community 210
+- Community 211
+- Community 212
+- Community 213
+- Community 214
+- Community 215
+- Community 216
+- Community 217
+- Community 218
+- Community 219
+- Community 220
+- Community 221
+- Community 222
+- Community 223
+- Community 224
+- Community 225
+- Community 226
+- Community 227
+- Community 228
+- Community 229
+- Community 230
+- Community 231
+- Community 232
+- Community 233
+- Community 234
+- Community 235
+- Community 236
+- Community 237
+- Community 238
+- Community 239
+- Community 240
+- Community 241
+- Community 242
+- Community 243
+- Community 244
+- Community 245
+- Community 246
+- Community 247
+- Community 248
+- Community 249
+- Community 250
+- Community 251
+- Community 252
+- Community 253
+- Community 254
+- Community 255
+- Community 256
+- Community 257
+- Community 258
+- Community 259
+- Community 260
+- Community 261
+- Community 262
+- Community 263
+- Community 264
+- Community 265
+- Community 266
+- Community 267
+- Community 268
+- Community 269
+- Community 270
+- Community 271
+- Community 272
+- Community 273
+- Community 274
+- Community 275
+- Community 276
+- Community 277
+- Community 278
+- Community 279
+- Community 280
+- Community 281
+- Community 282
+- Community 283
+- Community 284
+- Community 285
+- Community 286
+- Community 287
+- Community 288
+- Community 289
+- Community 290
+- Community 291
+- Community 292
+- Community 293
+- Community 294
+- Community 295
+- Community 296
+- Community 297
+- Community 298
+- Community 299
+- Community 300
+- Community 301
+- Community 302
+- Community 303
+- Community 304
+- Community 305
+- Community 306
+- Community 307
+- Community 308
+- Community 309
+- Community 310
+- Community 311
+- Community 312
+- Community 313
+- Community 314
+- Community 365
 
 ## God Nodes (most connected - your core abstractions)
-1. `success()` - 399 edges
-2. `require_company()` - 242 edges
-3. `require_roles()` - 231 edges
-4. `APITestCase` - 171 edges
-5. `make_definition()` - 156 edges
-6. `company()` - 107 edges
-7. `complete_workflow_task()` - 91 edges
-8. `setup_tenancy()` - 88 edges
-9. `save_stage_settings()` - 82 edges
-10. `create()` - 78 edges
+1. `success()` - 386 edges
+2. `require_company()` - 224 edges
+3. `require_roles()` - 217 edges
+4. `APITestCase` - 134 edges
+5. `company()` - 108 edges
+6. `make_definition()` - 92 edges
+7. `setup_tenancy()` - 76 edges
+8. `getdate()` - 70 edges
+9. `complete_workflow_task()` - 68 edges
+10. `create_request()` - 68 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `سرور` --references--> `submit_form()`  [INFERRED]
-  docs/audits/automatic-actions-2026-11-11.md → asoud_erp/api/v1/forms.py
-- `Field catalog metadata` --references--> `connect_workflow_stages()`  [INFERRED]
-  docs/api/workflow-condition.md → asoud_erp/api/v1/workflow.py
-- `Findings and minimal repair` --references--> `save_stage_routes()`  [INFERRED]
-  docs/audits/approval-destinations-2026-11-11.md → asoud_erp/api/v1/workflow.py
-- `Completing the task` --references--> `validate_values()`  [INFERRED]
-  docs/api/workflow-stage-supplementary-form.md → asoud_erp/services/form_schema.py
-- ``workflow.validate_workflow` (GET)` --references--> `get_workflow_design()`  [INFERRED]
-  docs/api/workflow-check.md → asoud_erp/api/v1/workflow.py
+- `Create a named route; backward routes are deliberately supported.` --rationale_for--> `connect_workflow_stages()`  [EXTRACTED]
+  frappe-erp-next-2/asoud_erp/api/v1/workflow.py → asoud_erp/api/v1/workflow.py
+- `Split one existing route into source -> new stage -> old destination.` --rationale_for--> `insert_workflow_stage()`  [EXTRACTED]
+  frappe-erp-next-2/asoud_erp/api/v1/workflow.py → asoud_erp/api/v1/workflow.py
+- `Set a stage's exit routes by decision, e.g. {"Approve": stage, "Reject": ""}.…` --rationale_for--> `save_stage_routes()`  [EXTRACTED]
+  frappe-erp-next-2/asoud_erp/api/v1/workflow.py → asoud_erp/api/v1/workflow.py
+- `Persist designer coordinates without changing workflow semantics.` --rationale_for--> `update_stage_positions()`  [EXTRACTED]
+  frappe-erp-next-2/asoud_erp/api/v1/workflow.py → asoud_erp/api/v1/workflow.py
+- `Keep installation and migration hooks explicitly idempotent.` --rationale_for--> `after_migrate()`  [EXTRACTED]
+  frappe-erp-next-2/asoud_erp/install.py → asoud_erp/install.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (442 total, 131 thin omitted)
+## Communities (372 total, 108 thin omitted)
 
-### Community 0 - "success"
-Cohesion: 0.06
-Nodes (39): disable_detail_group(), list_account_mappings(), list_detail_groups(), save_account_mapping(), save_detail_group(), seed_default_detail_groups(), document_template_link_options(), document_template_options() (+31 more)
-
-### Community 1 - "frappe"
+### Community 0 - "Community 0"
 Cohesion: 0.03
-Nodes (83): create_purchase_request(), _serialize(), _workflow_for_company(), assert_design_valid(), _graph_rows(), _definition(), get_certificate(), _action_context() (+75 more)
+Nodes (31): APITestCase, _employee(), _user(), _account_mapping(), coded_accounts(), _department(), _designation(), _employee() (+23 more)
 
-### Community 2 - "test_personnel.py"
-Cohesion: 0.07
-Nodes (11): ASOUDPartyProfile, validate_financial(), validate_record(), api(), record_api(), test_document_metadata_is_validated_and_kept(), test_evaluation_context_is_kept_by_contract(), test_invalid_record_rejected() (+3 more)
-
-### Community 3 - "workflow_request.py"
+### Community 1 - "Community 1"
 Cohesion: 0.04
-Nodes (56): _request_fields(), _assert_form_is_editable(), _activity(), _apply_locked_defaults(), _builtin_default(), cancel_request(), _certificate_file(), _certificate_summary() (+48 more)
+Nodes (70): _activity(), _action_context(), _activate_stage(), _assert_generic_access(), _assert_instance_access(), _assert_task_owner(), complete_workflow_task(), _completed_task_rows() (+62 more)
 
-### Community 4 - "re"
-Cohesion: 0.09
-Nodes (34): create_fiscal_year(), get_account_code_settings(), get_company_settings(), get_enabled_roles(), get_settings(), get_setup_status(), list_fiscal_years(), _office_scoped_manager() (+26 more)
+### Community 2 - "Community 2"
+Cohesion: 0.05
+Nodes (71): _actions(), _active(), _audit(), _bind(), close(), run(), _data(), dispatch_reminders() (+63 more)
 
-### Community 5 - "getdate"
-Cohesion: 0.10
-Nodes (29): _activity(), add_promotion(), _announcements(), _attach(), _attendance(), build_file(), _contract_file(), _contracts() (+21 more)
+### Community 3 - "Community 3"
+Cohesion: 0.04
+Nodes (19): make_definition(), make_spec(), native_workflow(), _Patched, patched_specs(), seed_test_templates(), act(), clear_request_records() (+11 more)
 
-### Community 6 - "run_financial_report"
-Cohesion: 0.11
-Nodes (12): _columns(), list_financial_reports(), run_financial_report(), allow_fiscal_year(), TestFinancialReports, report(), normalize_item_codes(), report_filters() (+4 more)
-
-### Community 7 - "require_company"
+### Community 4 - "Community 4"
 Cohesion: 0.06
-Nodes (35): _account_level(), apply_chart_template(), create_account(), delete_account(), _detail_groups(), import_accounts(), list_accounts(), preview_chart_template() (+27 more)
+Nodes (47): _build_print_html(), _ensure_template(), finalize_letter(), _format_jalali(), _get_active_template_data(), _get_employee_extra(), get_employee_options(), get_letter() (+39 more)
 
-### Community 8 - "validate_voucher_lines"
-Cohesion: 0.23
-Nodes (6): ASOUDAccountingVoucher, money(), validate_voucher_lines(), VoucherTotals, test_balanced_voucher_is_valid(), test_invalid_voucher_is_rejected()
-
-### Community 9 - "normalize_stage_config"
-Cohesion: 0.08
-Nodes (46): _deadline_policy(), _description(), _document_access(), _field_extensions(), _normalize_assignment(), _normalize_form_fields(), _normalize_form_layout(), normalize_stage_config() (+38 more)
-
-### Community 10 - "auth.py"
-Cohesion: 0.12
-Nodes (16): _access_profile(), _account_status(), _blocked_modules(), current_user(), _data_scope(), delete_employee_access(), _employee_context(), _ensure_data_scope() (+8 more)
-
-### Community 11 - "reporting_service.py"
-Cohesion: 0.29
-Nodes (6): AccountBalance, decimal_amount(), running_balance(), summarize_entries(), test_running_balance_is_added_to_each_entry(), test_summarize_entries_by_account()
-
-### Community 12 - "asoud_organization_chart.py"
-Cohesion: 0.29
-Nodes (4): ASOUDOrganizationChart, normalize_assignments(), resolve_employee(), validate_position_units()
-
-### Community 15 - "execute_mutation"
-Cohesion: 0.29
-Nodes (5): execute_mutation(), _fingerprint(), _is_mutation(), _payload(), TestSyncReplay
-
-### Community 16 - "normalize_purchase_items"
-Cohesion: 0.53
-Nodes (3): normalize_purchase_items(), test_invalid_purchase_items_are_rejected(), test_purchase_items_are_normalized()
-
-### Community 17 - "pathlib"
-Cohesion: 0.08
-Nodes (11): api(), test_create_terminal_at_requested_level(), test_invalid_selection_rejected(), test_update_keeps_level_and_persists_multiple_groups(), _hardcoded_throw_message(), _has_english(), test_known_messages_are_now_persian_sentences(), test_workflow_error_messages_are_persian() (+3 more)
-
-### Community 18 - "company"
-Cohesion: 0.03
-Nodes (33): company(), _employee(), _ensure(), _holiday_list(), setup_records(), _user(), _account_mapping(), coded_accounts() (+25 more)
-
-### Community 19 - "forms.py"
-Cohesion: 0.05
-Nodes (64): allowed(), designer(), get_history(), get_link_options(), load(), matches_access(), _may_read_schedule(), native_mapping() (+56 more)
-
-### Community 20 - "employment_contracts.py"
+### Community 5 - "Community 5"
 Cohesion: 0.06
-Nodes (43): _ensure_company_contract_template(), finalize_contract(), _format_jalali(), _get_active_template_data(), get_contract(), get_contract_field_catalog(), get_contract_print(), get_contract_template() (+35 more)
+Nodes (43): approve_leave_application(), cancel_leave_application(), create_checkin(), create_employee_advance(), create_expense_claim(), create_leave_application(), create_travel_request(), _decide_leave() (+35 more)
 
-### Community 23 - "json"
+### Community 6 - "Community 6"
 Cohesion: 0.05
-Nodes (69): _prepare_for_insert(), _validate_links(), _activate_stage(), _execute_system_action(), _latest_form_value(), _notify_user(), process_workflow_deadlines(), _record_activity() (+61 more)
+Nodes (42): _accessible_companies(), _linked_company(), list_floating_details(), _may_manage_catalogue(), _ensure(), _holiday_list(), leaf(), setup_records() (+34 more)
 
-### Community 24 - "frappe_model_document"
-Cohesion: 0.05
-Nodes (13): ASOUDAccessAssignment, ASOUDAccountMapping, ASOUDAccountState, ASOUDAPIRequest, ASOUDDetailGroup, ASOUDDirectiveReceipt, ASOUDDocumentTemplate, ASOUDEmployeeInvitation (+5 more)
-
-### Community 25 - "pytest"
-Cohesion: 0.05
-Nodes (54): test_context_required(), test_empty_optional_parameters(), test_invalid_parameter(), test_swap_payload_and_missing_parameters(), link(), source_schema(), test_chain_formula_cycle_rejected(), test_chain_formula_divide_by_zero_rejected() (+46 more)
-
-### Community 26 - ".create"
-Cohesion: 0.09
-Nodes (12): direct_manager_user(), get_leave_balance(), make_leave_type(), TemplateTestCase, weekday(), leave_applications(), ledger_entries(), TestLeaveRequestTemplate (+4 more)
-
-### Community 27 - "record"
-Cohesion: 0.06
-Nodes (35): create_first_office(), get_admin_profile(), save_admin_profile(), login_state(), logout(), _require_session(), select_office(), TestLoginStateAndFirstRun (+27 more)
-
-### Community 28 - "list_forms"
+### Community 7 - "Community 7"
 Cohesion: 0.08
-Nodes (33): _builtin_key(), copy_form(), list_forms(), open_builtin(), store(), TestStageForms, _ExprParser, validate_schema() (+25 more)
+Nodes (41): _ensure_company_contract_template(), finalize_contract(), _format_jalali(), _get_active_template_data(), get_contract(), get_contract_field_catalog(), get_contract_print(), get_contract_template() (+33 more)
 
-### Community 31 - "v1/employment_certificates.py"
-Cohesion: 0.09
-Nodes (38): _build_print_html(), _certificate_response(), _ensure_template(), finalize_certificate(), _format_jalali(), _get_active_template_data(), get_certificate(), get_template() (+30 more)
-
-### Community 32 - "types"
-Cohesion: 0.05
-Nodes (29): directives(), _doc(), test_state_summarises_active_recipients(), schema(), employees(), test_distinct_occupants_across_positions_are_normalized(), test_duplicate_inside_one_position_keeps_its_own_message(), test_legacy_row_and_v2_occupant_of_same_employee_is_refused() (+21 more)
-
-### Community 33 - "save_stage_settings"
-Cohesion: 0.10
-Nodes (18): add_condition_branch(), add_workflow_stage(), connect_workflow_stages(), _design_payload(), save_stage_settings(), save_start_settings(), set_workflow_status(), test_workflow_condition() (+10 more)
-
-### Community 34 - "throw_error"
-Cohesion: 0.06
-Nodes (31): pending_reference(), _pending_url(), update_reference(), category_label(), throw_error(), available_for(), base_summary(), batched_label() (+23 more)
-
-### Community 35 - "services/__init__.py"
-Cohesion: 0.05
-Nodes (22): activate_account(), recovery_status(), request_password_reset(), complete(), create_hr_lead(), status(), bootstrap_hr_lead(), issue_temporary_password() (+14 more)
-
-### Community 37 - ".login"
-Cohesion: 0.08
-Nodes (11): change_password(), assign_role(), audit(), LoginOnboardingBase, TestAdminCanDirectAndReport, TestAuditTrail, TestChangePassword, TestCreateOfficePermission (+3 more)
-
-### Community 41 - "number_pattern"
-Cohesion: 0.15
-Nodes (10): ASOUDWorkflowRequest, number_pattern(), number_prefix(), series_key(), test_introduction_numbers_use_shared_jalali_numbering_pattern(), test_custom_request_types_keep_the_legacy_series(), test_known_templates_have_a_prefix_without_their_spec_module(), test_pattern_has_four_digits() (+2 more)
-
-### Community 43 - "normalize_form_response"
-Cohesion: 0.08
-Nodes (37): attachment_references(), _file_reference(), _finite_number(), _is_visible(), _item_rows(), map_attachment_values(), normalize_form_response(), _text() (+29 more)
-
-### Community 44 - "make_world"
-Cohesion: 0.06
-Nodes (25): _deadline_task_names(), next_keyset_cursor(), world(), _completed_task(), test_complete_replay_is_bound_to_the_same_task(), test_complete_replays_previous_result_on_request_id_retry(), test_complete_without_request_id_still_rejects_completed_task(), world() (+17 more)
-
-### Community 45 - "services/hr_onboarding.py"
-Cohesion: 0.08
-Nodes (31): clean_name(), normalize_email(), normalize_mobile(), normalize_national_id(), password_errors(), rate_limit_state(), employee_exists_for(), find_person() (+23 more)
-
-### Community 46 - "leave_hours.py"
-Cohesion: 0.09
-Nodes (28): category_rows(), daily_duration(), daily_hours_value(), day_equivalent(), duration_text(), exceeds_available(), exceeds_remaining(), hourly_duration() (+20 more)
-
-### Community 47 - "get_request"
-Cohesion: 0.09
-Nodes (8): get_request(), status_key(), TestRequestResubmit, TestRequestStatusMirror, TestRequestViewer, TestSensitiveValues, _stage_title(), TestReturnForCorrection
-
-### Community 48 - "install"
-Cohesion: 0.08
-Nodes (21): install(), isolate(), Site, aar(), aar(), aar(), aar(), aar() (+13 more)
-
-### Community 49 - "state.ts"
+### Community 8 - "Community 8"
 Cohesion: 0.07
-Nodes (29): BENCH, SiteState, loadState(), sitePrep(), state, resolveJournalEntry(), StoredJe, state (+21 more)
+Nodes (41): apply_salary_change_order_to_payroll(), approve_salary_change_order(), _format_jalali(), get_salary_change_order(), get_salary_change_order_payroll(), get_salary_change_order_template(), _letterhead(), list_salary_change_order_people() (+33 more)
 
-### Community 50 - "sys"
+### Community 9 - "Community 9"
 Cohesion: 0.06
-Nodes (9): cleanup(), make_user(), prepare(), prepare(), prepare(), fields(), prepare(), foreign_request() (+1 more)
+Nodes (33): _account_level(), apply_chart_template(), create_account(), delete_account(), _detail_groups(), import_accounts(), list_accounts(), preview_chart_template() (+25 more)
 
-### Community 51 - "validate-coverage-ledger.cjs"
+### Community 10 - "Community 10"
+Cohesion: 0.05
+Nodes (29): complete(), create_hr_lead(), status(), create_first_office(), get_admin_profile(), save_admin_profile(), login_state(), logout() (+21 more)
+
+### Community 11 - "Community 11"
+Cohesion: 0.07
+Nodes (38): list_payment_entries(), list_payroll_entries(), list_salary_structure_assignments(), _assignees(), create_project(), create_task(), create_timesheet(), get_project() (+30 more)
+
+### Community 12 - "Community 12"
+Cohesion: 0.05
+Nodes (36): _builtin_default(), _certificate_file(), _certificate_summary(), company_settings(), confidential_fields(), _detail(), effective_values(), _fields_by_name() (+28 more)
+
+### Community 13 - "Community 13"
+Cohesion: 0.06
+Nodes (43): balance_for(), category_label(), category_rows(), daily_duration(), daily_hours_value(), day_equivalent(), duration_text(), exceeds_available() (+35 more)
+
+### Community 14 - "Community 14"
+Cohesion: 0.05
+Nodes (30): confirm_receipt(), reject_receipt(), make_employee(), make_user(), ensure(), mark_password_changed(), set_must_change(), clean_reason() (+22 more)
+
+### Community 15 - "Community 15"
+Cohesion: 0.06
+Nodes (45): test_context_required(), test_empty_optional_parameters(), test_invalid_parameter(), test_swap_payload_and_missing_parameters(), link(), source_schema(), test_chain_formula_cycle_rejected(), test_chain_formula_divide_by_zero_rejected() (+37 more)
+
+### Community 16 - "Community 16"
+Cohesion: 0.04
+Nodes (37): Buying — `asoud_erp.api.v1.buying`, Financial reports — `asoud_erp.api.v1.financial_reports`, Creating a payment, Payment object, Payments — `asoud_erp.api.v1.payments`, Payroll — `asoud_erp.api.v1.payroll`, Site configuration HRMS needs, Point of sale — `asoud_erp.api.v1.pos` (+29 more)
+
+### Community 17 - "Community 17"
+Cohesion: 0.05
+Nodes (28): api(), test_create_terminal_at_requested_level(), test_invalid_selection_rejected(), test_update_keeps_level_and_persists_multiple_groups(), directives(), _doc(), test_state_summarises_active_recipients(), schema() (+20 more)
+
+### Community 18 - "Community 18"
+Cohesion: 0.09
+Nodes (29): add_condition_branch(), add_workflow_stage(), _assert_form_is_editable(), _assert_stage_in_definition(), connect_workflow_stages(), create_workflow_draft(), delete_workflow(), _design_payload() (+21 more)
+
+### Community 19 - "Community 19"
+Cohesion: 0.07
+Nodes (16): change_password(), assign_role(), _gate(), list_office_roles(), unassign_role(), audit(), LoginOnboardingBase, TestAdminCanDirectAndReport (+8 more)
+
+### Community 20 - "Community 20"
+Cohesion: 0.06
+Nodes (17): CertificateCase, series_value(), TestCertificateDispatch, TestCertificateDownload, TestCertificateIssue, apply(), build(), _day() (+9 more)
+
+### Community 21 - "Community 21"
+Cohesion: 0.06
+Nodes (25): activate_account(), confirm_password_reset(), recovery_status(), request_password_reset(), TestRecovery, confirm(), consume(), find_user() (+17 more)
+
+### Community 22 - "Community 22"
+Cohesion: 0.07
+Nodes (28): _activity(), add_promotion(), _announcements(), _attendance(), build_file(), _contract_file(), _contracts(), create_announcement() (+20 more)
+
+### Community 23 - "Community 23"
+Cohesion: 0.08
+Nodes (45): _deadline_policy(), _description(), _document_access(), _field_extensions(), _normalize_assignment(), _normalize_form_fields(), _normalize_form_layout(), normalize_stage_config() (+37 more)
+
+### Community 24 - "Community 24"
+Cohesion: 0.06
+Nodes (29): available_for(), base_summary(), batched_label(), cached_value(), check_delivery(), check_needed_date(), check_requester(), cost_center_required() (+21 more)
+
+### Community 25 - "Community 25"
+Cohesion: 0.09
+Nodes (37): employee_schedule(), get_options(), get_validation(), matches_access(), _may_read_schedule(), native_mapping(), _validate_execution_submit(), _validate_shift_request() (+29 more)
+
+### Community 26 - "Community 26"
+Cohesion: 0.07
+Nodes (31): _entries_with_scopes(), AttachmentError, complete_entry(), content_type(), delete_files(), entry(), extension(), file_scopes() (+23 more)
+
+### Community 27 - "Community 27"
+Cohesion: 0.06
+Nodes (26): active_employee(), daily_working_hours(), fail(), hourly_entries(), hourly_taken_in_period(), _in_period(), leave_type_category(), leave_type_info() (+18 more)
+
+### Community 28 - "Community 28"
+Cohesion: 0.08
+Nodes (29): bootstrap_hr_lead(), issue_temporary_password(), _list(), register_personnel(), clean_name(), normalize_email(), normalize_mobile(), normalize_national_id() (+21 more)
+
+### Community 29 - "Community 29"
+Cohesion: 0.11
+Nodes (27): _access(), apply_templates(), _base_roles(), catalog(), _code(), create_category(), _lock_definitions(), _object() (+19 more)
+
+### Community 30 - "Community 30"
+Cohesion: 0.08
+Nodes (28): _execution(), notify_native_result(), record_native_failure(), _activity(), _change(), _fail(), last_void(), _latest() (+20 more)
+
+### Community 31 - "Community 31"
+Cohesion: 0.09
+Nodes (36): attachment_references(), _file_reference(), _finite_number(), _is_visible(), _item_rows(), normalize_form_response(), _text(), _visibility() (+28 more)
+
+### Community 32 - "Community 32"
+Cohesion: 0.09
+Nodes (26): BENCH, PYTHON, SITE, SiteState, loadState(), sitePrep(), state, resolveJournalEntry() (+18 more)
+
+### Community 33 - "Community 33"
+Cohesion: 0.10
+Nodes (32): _build_print_html(), _certificate_response(), _ensure_template(), _format_jalali(), _get_active_template_data(), _has_payroll_permission(), _is_designer(), _letterhead() (+24 more)
+
+### Community 34 - "Community 34"
+Cohesion: 0.09
+Nodes (17): cancel_payment_entry(), create_payment_entry(), get_payment_entry(), list_outstanding_documents(), payment_options(), serialize_payment(), submit_payment_entry(), cancel_sales_invoice() (+9 more)
+
+### Community 35 - "Community 35"
+Cohesion: 0.07
+Nodes (19): all_specs(), get(), _load_spec_modules(), _passthrough(), register(), _skip_native(), TemplateSpec, validate_form_stage_response() (+11 more)
+
+### Community 36 - "Community 36"
 Cohesion: 0.12
 Nodes (41): ATTEMPT_FIELDS, ATTEMPT_STATUSES, canonicalCoverageId(), collectUnitErrors(), createErrorList(), encodeCanonicalRef(), escapeUnsafeDiagnosticCharacters(), fs (+33 more)
 
-### Community 52 - "demo/seed.py"
-Cohesion: 0.12
-Nodes (30): _contract_pdf(), _count(), _demo_employees(), _drive_to_completed(), _ensure_attendance(), _ensure_company(), _ensure_company_setup(), _ensure_departments() (+22 more)
+### Community 37 - "Community 37"
+Cohesion: 0.10
+Nodes (19): buying_options(), cancel_purchase_document(), create_purchase_invoice(), create_purchase_invoice_from_order(), create_purchase_order(), create_purchase_order_from_request(), create_purchase_receipt_from_order(), _doctype() (+11 more)
 
-### Community 53 - "NativeResult"
-Cohesion: 0.07
-Nodes (17): build(), Executor, NativeResult, ctx(), test_empty_optionals(), test_form_select_ids_map_to_native_purpose(), test_issue_mapping_and_purity(), test_issue_preserves_existing_custodian_as_source() (+9 more)
+### Community 38 - "Community 38"
+Cohesion: 0.08
+Nodes (22): _apply_locked_defaults(), cancel_request(), _check_subject(), create_request(), pending_reference(), _employee_of(), _engine_checks(), _header() (+14 more)
 
-### Community 54 - "validate-findings.cjs"
+### Community 39 - "Community 39"
+Cohesion: 0.09
+Nodes (17): make_event(), participants(), TestTrainingEnrollmentDispatch, TestTrainingEnrollmentExecution, apply(), build(), _event_name(), _notes() (+9 more)
+
+### Community 40 - "Community 40"
 Cohesion: 0.11
 Nodes (37): canonicalKey(), append(), encode(), codePointLength(), collect(), collectDataLimitErrors(), collectFindingSemanticErrors(), collectSchemaErrors() (+29 more)
 
-### Community 55 - "account_recovery.py"
+### Community 41 - "Community 41"
+Cohesion: 0.10
+Nodes (22): _balances(), close_pos_session(), create_pos_invoice(), create_pos_session(), get_open_pos_session(), get_pos_items(), list_pos_invoices(), _open_session() (+14 more)
+
+### Community 42 - "Community 42"
+Cohesion: 0.12
+Nodes (29): _contract_pdf(), _count(), _demo_employees(), _drive_to_completed(), _ensure_attendance(), _ensure_company(), _ensure_company_setup(), _ensure_departments() (+21 more)
+
+### Community 43 - "Community 43"
+Cohesion: 0.10
+Nodes (26): execution_query(), communication_permission(), communication_query(), directive_for(), file_clause(), file_permission(), guard_write(), instance_clause() (+18 more)
+
+### Community 44 - "Community 44"
+Cohesion: 0.08
+Nodes (18): _native_message(), _allowed_shifts(), apply(), build(), conflict_days(), review_reason(), _spread(), _absolute() (+10 more)
+
+### Community 45 - "Community 45"
 Cohesion: 0.09
-Nodes (18): confirm_password_reset(), TestRecovery, confirm(), consume(), find_user(), issue(), recovery_available(), request_reset() (+10 more)
+Nodes (20): ApiSession, ASOUD, errorText(), FrappeResponse, isDeadlock(), parse(), PREFIX, ApiFixture (+12 more)
 
-### Community 56 - "TestAutomaticActionAudit"
-Cohesion: 0.10
-Nodes (8): save(), TestAutomaticActionAudit, compatible(), identity(), target_doctype(), validate_config(), validate_mapping(), validate_permissions()
+### Community 46 - "Community 46"
+Cohesion: 0.14
+Nodes (22): allowed(), get_form(), get_history(), list_forms(), list_my_entries(), load(), revision(), row() (+14 more)
 
-### Community 57 - "normalize_action"
-Cohesion: 0.12
-Nodes (32): bounded_int(), calculate(), visit(), identifier(), mappings(), normalize_action(), number(), source() (+24 more)
-
-### Community 58 - "fixtures.ts"
-Cohesion: 0.10
-Nodes (28): METHOD, requestId(), RUN_ID, SITE, subject(), UserKey, USERS, state (+20 more)
-
-### Community 59 - "v1/hiring_orders.py"
+### Community 47 - "Community 47"
 Cohesion: 0.18
-Nodes (21): _format_jalali(), get_hiring_order(), get_hiring_order_payroll(), get_hiring_order_payroll_catalog(), get_hiring_order_template(), list_hiring_order_people(), list_hiring_orders(), print_hiring_order() (+13 more)
+Nodes (19): _format_jalali(), get_hiring_order(), get_hiring_order_payroll(), get_hiring_order_payroll_catalog(), get_hiring_order_template(), list_hiring_order_people(), list_hiring_orders(), print_hiring_order() (+11 more)
 
-### Community 60 - "services/setup_reset.py"
-Cohesion: 0.12
+### Community 48 - "Community 48"
+Cohesion: 0.07
+Nodes (9): ASOUDPartyProfile, validate_financial(), validate_record(), api(), record_api(), test_document_metadata_is_validated_and_kept(), test_evaluation_context_is_kept_by_contract(), test_invalid_record_rejected() (+1 more)
+
+### Community 49 - "Community 49"
+Cohesion: 0.10
+Nodes (18): ASOUDAccountingVoucher, AccountBalance, decimal_amount(), running_balance(), summarize_entries(), money(), validate_voucher_lines(), VoucherTotals (+10 more)
+
+### Community 50 - "Community 50"
+Cohesion: 0.07
+Nodes (6): cleanup(), fields(), prepare(), one(), prepare(), foreign_request()
+
+### Community 51 - "Community 51"
+Cohesion: 0.13
 Nodes (20): perform(), preview(), status(), TestSetupReset, access(), allows_workflow_cleanup(), _collect(), _committed() (+12 more)
 
-### Community 61 - "request_lookup.py"
-Cohesion: 0.10
-Nodes (23): execute(), item_uoms(), delivery_location_value(), _delivery_locations(), _departments(), _items(), leave_category_for(), leave_type_label() (+15 more)
-
-### Community 62 - "v1/salary_change_orders.py"
-Cohesion: 0.15
-Nodes (21): apply_salary_change_order_to_payroll(), approve_salary_change_order(), _format_jalali(), get_salary_change_order(), get_salary_change_order_template(), _letterhead(), list_salary_change_orders(), print_salary_change_order() (+13 more)
-
-### Community 63 - "save_form"
-Cohesion: 0.13
-Nodes (11): get_form(), row(), save_form(), types(), transition(), TestForms, TestResultFormRefusesStageKind, _schema() (+3 more)
-
-### Community 64 - "request_native_documents.py"
-Cohesion: 0.08
-Nodes (12): make_employee(), make_user(), execute(), create_followup(), dispatch(), effective_values(), _error_text(), _loads() (+4 more)
-
-### Community 66 - "test_account_status.py"
-Cohesion: 0.09
-Nodes (22): account_status(), allowed_modules(), can_resend_invitation(), history_limit(), login_events(), login_history(), resend_blocked_message(), _session_data() (+14 more)
-
-### Community 67 - "system_admin.py"
-Cohesion: 0.10
-Nodes (22): escalation_violation(), active_named_admins(), admin_change_violation(), guard_user_change(), guard_user_trash(), holds_admin_role(), is_active_admin(), _lock_admins() (+14 more)
-
-### Community 68 - "tests/test_form_execution.py"
-Cohesion: 0.08
-Nodes (23): collect_parameters(), _mapped(), compatible_type(), validate_execution(), validate_parameter_fields(), validate_stage_parameters(), executor_schema(), SampleExecutor (+15 more)
-
-### Community 69 - "TestReceiptConfirmation"
-Cohesion: 0.12
-Nodes (3): TestAssetMovementExecution, TestReceiptConfirmation, apply()
-
-### Community 70 - "CertificateCase"
+### Community 53 - "Community 53"
 Cohesion: 0.11
-Nodes (5): CertificateCase, series_value(), TestCertificateDispatch, TestCertificateDownload, TestCertificateIssue
+Nodes (21): execute(), delivery_location_value(), _delivery_locations(), _departments(), _items(), leave_category_for(), leave_type_label(), leave_type_rows() (+13 more)
 
-### Community 71 - "test_workflow_request_engine.py"
+### Community 54 - "Community 54"
 Cohesion: 0.08
-Nodes (16): _all(), get_all(), _Dict, engine(), _Error, _FakeDB, _PermissionError, _row() (+8 more)
+Nodes (17): disable_detail_group(), list_account_mappings(), list_detail_groups(), save_detail_group(), seed_default_detail_groups(), preview_next_detail_code(), create_purchase_request(), list_my_purchase_requests() (+9 more)
 
-### Community 72 - "hr.py"
+### Community 55 - "Community 55"
+Cohesion: 0.09
+Nodes (26): METHOD, requestId(), RUN_ID, subject(), UserKey, USERS, state, Execution (+18 more)
+
+### Community 56 - "Community 56"
 Cohesion: 0.14
 Nodes (24): _active_employee(), create_communication(), _employee_for_user(), _employee_row(), get_dashboard(), get_my_profile(), list_communications(), list_notifications() (+16 more)
 
-### Community 73 - "request_comments.py"
+### Community 57 - "Community 57"
 Cohesion: 0.10
-Nodes (16): add_request_comment(), list_request_comments(), TestRequestComments, add_comment(), _author_names(), clean_comment_text(), count_comments(), _filters() (+8 more)
+Nodes (22): _item_row(), leave_application_payload(), leave_ledger_payload(), material_request_payload(), parse_delivery_location(), row_description(), supply_material_request_type(), build() (+14 more)
 
-### Community 74 - "FakeDoc"
-Cohesion: 0.09
-Nodes (17): FakeDoc, _instance(), test_cancel_clears_queued_receipts(), test_cancel_is_scoped_to_the_instance(), test_cancel_leaves_a_running_receipt_to_the_worker(), _graph(), _receipt(), test_error_route_to_a_system_action_is_refused() (+9 more)
-
-### Community 75 - "hashlib"
-Cohesion: 0.16
-Nodes (20): _build_print_html(), _ensure_template(), _format_jalali(), _get_active_template_data(), _get_employee_extra(), get_employee_options(), get_template(), _is_designer() (+12 more)
-
-### Community 76 - "save_stage_routes"
-Cohesion: 0.15
-Nodes (4): save_stage_routes(), _graph_fingerprint(), TestDesignGuard, TestWorkflowReturnRoute
-
-### Community 77 - "test_native_payloads.py"
-Cohesion: 0.11
-Nodes (21): _item_row(), leave_ledger_payload(), material_request_payload(), parse_delivery_location(), row_description(), supply_material_request_type(), check_delivery(), build() (+13 more)
-
-### Community 78 - "base.py"
-Cohesion: 0.08
-Nodes (12): all_specs(), get(), _load_spec_modules(), _passthrough(), register(), _skip_native(), validate_form_stage_response(), ValidationContext (+4 more)
-
-### Community 79 - "test"
-Cohesion: 0.11
-Nodes (18): PYTHON, test, Certificate, Prepared, Prepared, Request, state, Prepared (+10 more)
-
-### Community 80 - "TestDirectiveStartProgressAndReminders"
-Cohesion: 0.19
-Nodes (5): dispatch_reminders(), notify_reminder(), _key(), _reminder(), TestDirectiveStartProgressAndReminders
-
-### Community 81 - "copy"
-Cohesion: 0.11
-Nodes (18): _search_text(), build_search_text(), default_summary(), first_per_key(), hidden_file_urls(), mask_sensitive_values(), overlay_sensitive(), schema_fields() (+10 more)
-
-### Community 82 - "hr_self_service.py"
-Cohesion: 0.06
-Nodes (54): approve_leave_application(), cancel_leave_application(), create_checkin(), create_employee_advance(), create_expense_claim(), create_leave_application(), create_travel_request(), _decide_leave() (+46 more)
-
-### Community 83 - "tests/test_document_templates.py"
-Cohesion: 0.12
-Nodes (24): build_document(), document_type(), normalize_template(), resolve_values(), test_auto_submit_turns_off_draft(), test_automatic_action_documents_have_a_schema_and_builder(), test_coming_soon_document_is_rejected_on_save(), test_invalid_templates_are_rejected() (+16 more)
-
-### Community 84 - "paging"
-Cohesion: 0.09
-Nodes (25): list_payment_entries(), _assignees(), create_project(), create_task(), create_timesheet(), get_project(), list_my_tasks(), list_my_timesheets() (+17 more)
-
-### Community 85 - "tests/test_workflow_start_phase3.py"
-Cohesion: 0.14
-Nodes (25): normalize_settings(), start_change_data(), start_decision(), validate_request_id(), _document_event(), _manual(), test_first_start_is_new(), test_prevent_duplicate_is_always_on() (+17 more)
-
-### Community 86 - "buying.py"
-Cohesion: 0.19
-Nodes (15): buying_options(), cancel_purchase_document(), create_purchase_invoice(), create_purchase_invoice_from_order(), create_purchase_order(), create_purchase_order_from_request(), create_purchase_receipt_from_order(), _doctype() (+7 more)
-
-### Community 87 - "datetime"
-Cohesion: 0.13
-Nodes (17): build_schedule(), covers(), date_label(), parse_range(), _completion_order(), current_jalali_year(), gregorian_to_jalali(), jalali_fiscal_period() (+9 more)
-
-### Community 88 - "sales_orders.py"
-Cohesion: 0.10
-Nodes (28): cancel_sales_document(), create_delivery_note_from_order(), create_quotation(), create_sales_invoice_from(), create_sales_order(), create_sales_order_from_quotation(), _doctype(), _finish() (+20 more)
-
-### Community 89 - "services/first_office_setup.py"
-Cohesion: 0.13
-Nodes (24): block_internal_mail(), complete(), create_hr_lead(), format_password_policy_error(), internal_email(), _require_fiscal(), _setup(), status() (+16 more)
-
-### Community 90 - "test_leave_mission_overtime_execution.py"
-Cohesion: 0.11
-Nodes (22): build(), build(), build(), clean_text(), context(), leave(), overtime_params(), test_leave_build_maps_native_fields() (+14 more)
-
-### Community 91 - "stock.py"
-Cohesion: 0.14
-Nodes (12): cancel_stock_entry(), _company_warehouses(), create_stock_entry(), get_item(), get_stock_entry(), list_items(), save_item(), serialize_stock_entry() (+4 more)
-
-### Community 92 - "role_management.py"
-Cohesion: 0.09
-Nodes (31): _access(), apply_templates(), _base_roles(), catalog(), _code(), create_category(), _lock_definitions(), _object() (+23 more)
-
-### Community 93 - "APITestCase"
-Cohesion: 0.03
-Nodes (27): _assert_stage_in_definition(), insert_workflow_stage(), APITestCase, leaf(), make_definition(), make_spec(), native_workflow(), _Patched (+19 more)
-
-### Community 94 - "tests/test_workflow_condition_v2.py"
+### Community 58 - "Community 58"
 Cohesion: 0.20
-Nodes (26): evaluate_group(), normalize_group(), normalize_text(), config(), rule(), test_additional_real_form_scalar_types(), test_any_does_not_hide_invalid_source_data(), test_combination() (+18 more)
+Nodes (5): make_leave_type(), weekday(), leave_applications(), ledger_entries(), TestLeaveRequestTemplate
 
-### Community 95 - "test_request_link_values.py"
-Cohesion: 0.19
-Nodes (7): _conversion_factor(), _DB, _end_of_life(), _get_all(), links(), test_invalid_erpnext_references_are_rejected(), test_user_must_belong_to_the_request_company()
-
-### Community 96 - "payments.py"
-Cohesion: 0.17
-Nodes (8): cancel_payment_entry(), create_payment_entry(), get_payment_entry(), list_outstanding_documents(), payment_options(), serialize_payment(), submit_payment_entry(), TestSellingAndPayments
-
-### Community 97 - "api.ts"
-Cohesion: 0.11
-Nodes (15): ApiSession, errorText(), FrappeResponse, isDeadlock(), parse(), Case, fixture(), FOREIGN (+7 more)
-
-### Community 98 - "v1/workflow_paths.py"
-Cohesion: 0.15
-Nodes (14): discard_inserted_stage(), editable(), plan(), preview_path_removal(), remove_path(), _touch_workflow(), TestWorkflowPathEditing, references_any() (+6 more)
-
-### Community 99 - "to_persian_digits"
-Cohesion: 0.13
-Nodes (16): to_persian_digits(), _amount(), calculate_comparison_row(), calculate_comparison_table(), default_template(), format_salary_change_order_print(), normalize_search(), render_article_body() (+8 more)
-
-### Community 100 - "_fake_site.py"
+### Community 59 - "Community 59"
 Cohesion: 0.10
-Nodes (13): _alias(), _check(), Dict, DoesNotExistError, Error, FakeDB, get_all(), get_doc() (+5 more)
+Nodes (20): account_status(), allowed_modules(), can_resend_invitation(), login_events(), login_history(), resend_blocked_message(), _session_data(), session_rows() (+12 more)
 
-### Community 101 - "organization.py"
-Cohesion: 0.19
-Nodes (19): _access(), apply_import(), delete_unit(), employee_photo(), list_employees(), preview_delete_position(), preview_delete_unit(), preview_import() (+11 more)
+### Community 60 - "Community 60"
+Cohesion: 0.09
+Nodes (19): collect_parameters(), _completion_order(), _mapped(), validate_execution(), executor_schema(), SampleExecutor, test_absent_step_values_do_not_erase_request_but_explicit_empty_values_do(), test_all_completed_tasks_contribute_even_when_they_repeat_a_stage() (+11 more)
 
-### Community 102 - "services/workflow_wait.py"
+### Community 61 - "Community 61"
+Cohesion: 0.09
+Nodes (19): test, Prepared, Request, Prepared, Request, Chart, Review, state (+11 more)
+
+### Community 62 - "Community 62"
+Cohesion: 0.10
+Nodes (18): execute_mutation(), _fingerprint(), _is_mutation(), _payload(), TestSyncReplay, _load_module(), test_cancel_methods_are_replayable(), cancel_sales_invoice() (+10 more)
+
+### Community 63 - "Community 63"
+Cohesion: 0.14
+Nodes (6): finalize_certificate(), get_certificate(), company(), TestEmploymentCertificates, TestHRDocumentPrivacy, TestHRDocumentsLifecycle
+
+### Community 64 - "Community 64"
+Cohesion: 0.11
+Nodes (20): _normalize_numeric(), _is_number_like(), normalize_column_rows(), normalize_numeric_text(), to_ascii_digits(), normalize_numeric(), refresh_profile_cache(), resolve_link() (+12 more)
+
+### Community 65 - "Community 65"
+Cohesion: 0.10
+Nodes (12): abbr(), warehouse(), ensure_branch(), ensure_department(), error_codes(), pdf_text(), _account(), payroll_employee() (+4 more)
+
+### Community 66 - "Community 66"
+Cohesion: 0.11
+Nodes (12): _columns(), list_financial_reports(), run_financial_report(), allow_fiscal_year(), TestFinancialReports, report(), normalize_item_codes(), report_filters() (+4 more)
+
+### Community 67 - "Community 67"
+Cohesion: 0.12
+Nodes (14): _default_group_for_role(), disable_party(), _ensure_customer(), _ensure_employee(), _ensure_supplier(), list_parties(), _may_read_bank_details(), _parse_detail_groups() (+6 more)
+
+### Community 68 - "Community 68"
+Cohesion: 0.13
+Nodes (12): TestExitExecution, apply(), assert_no_open_settlement(), build(), check(), _day(), _open_requests(), _optional_text() (+4 more)
+
+### Community 69 - "Community 69"
+Cohesion: 0.11
+Nodes (13): as_administrator(), assert_restored(), fake(), FakeDict, FakeFrappe, snapshot(), test_attributes_absent_before_are_absent_after(), test_nested_use_restores_each_level() (+5 more)
+
+### Community 70 - "Community 70"
+Cohesion: 0.10
+Nodes (14): _all(), get_all(), _Dict, _Error, _PermissionError, _row(), test_a_spec_summary_is_used_and_a_broken_one_falls_back(), test_legacy_rows_without_a_status_key_fall_back_to_the_instance() (+6 more)
+
+### Community 71 - "Community 71"
+Cohesion: 0.07
+Nodes (26): ASOUD workflow runtime v1, Decision routes, Purchase request integration, Request access, Request types, System actions, API and compatibility, Automatic actions, schema 2 (+18 more)
+
+### Community 72 - "Community 72"
+Cohesion: 0.07
+Nodes (29): `asoud_erp.api.v1.request_followup.confirm_receipt` (POST), `asoud_erp.api.v1.request_followup.reject_receipt` (POST), Asset movement (`asset_movement`), asset_movement — جابه‌جایی تجهیزات, Attendance correction (`attendance_correction`), Companion keys of Time fields, Download — `asoud_erp.api.v1.workflow_request.get_certificate`, Employee advance (`employee_advance`) (+21 more)
+
+### Community 73 - "Community 73"
+Cohesion: 0.18
+Nodes (19): add_record(), _company(), get_personnel(), get_profile_options(), get_record_options(), list_personnel(), _lock_person(), _manager() (+11 more)
+
+### Community 74 - "Community 74"
 Cohesion: 0.16
-Nodes (21): get_wait_options(), audit(), binding(), blocked_message(), destination(), dispatch(), _fail_past(), failed() (+13 more)
+Nodes (18): _amount(), _bool(), build_document(), document_type(), _normalize_source(), normalize_template(), render_placeholders(), resolve_values() (+10 more)
 
-### Community 103 - ".day"
-Cohesion: 0.17
-Nodes (8): rows(), TestMissionExecution, _allowed_shifts(), apply(), conflict_days(), review_reason(), _spread(), test_mission_conflicts_only_on_boundary_holidays_and_working_days()
-
-### Community 104 - "role_assignment_service.py"
+### Community 75 - "Community 75"
 Cohesion: 0.14
 Nodes (19): assigned_offices(), _assignments(), _base_roles_lookup(), effective_roles(), merge_roles(), office_role_map(), office_roles(), offices_of() (+11 more)
 
-### Community 105 - "request_followup_runtime.py"
-Cohesion: 0.13
-Nodes (18): clean_reason(), closed_message(), normalize(), _activity(), _alert_users(), _close(), confirm(), _draft_movement() (+10 more)
+### Community 76 - "Community 76"
+Cohesion: 0.19
+Nodes (20): _access(), apply_import(), delete_unit(), employee_photo(), list_employees(), preview_delete_position(), preview_delete_unit(), preview_import() (+12 more)
 
-### Community 106 - "test_directive_paging.py"
-Cohesion: 0.11
-Nodes (17): history(), _reminder_time(), history_limits(), lookahead_page(), next_cursor(), review_index(), site_naive_datetime(), test_cursor_follows_raw_page_even_when_access_filter_hides_every_row() (+9 more)
-
-### Community 107 - "personnel_native.py"
-Cohesion: 0.18
-Nodes (20): employee_for(), profile_options(), refresh_profile_cache(), resolve_link(), write_shared(), migrate_legacy_records(), create_native(), editable() (+12 more)
-
-### Community 108 - "test_workflow_request_flows.py"
-Cohesion: 0.15
-Nodes (20): b64(), fake_links(), _template(), test_a_required_attachment_field_cannot_lose_its_file(), test_attachment_problems_are_reported_with_the_attachment_code(), test_cancel_sets_the_instance_and_request_status(), test_comments_are_added_listed_and_notified(), test_custom_create_stores_files_values_header_and_returns_the_detail() (+12 more)
-
-### Community 109 - "scripts"
-Cohesion: 0.07
-Nodes (25): description, devDependencies, playwright, @playwright/test, @types/node, typescript, name, private (+17 more)
-
-### Community 112 - "calendar.py"
-Cohesion: 0.18
-Nodes (16): day(), dispatch_reminders(), fail(), get_calendar(), import_official(), manager(), parse_payload(), personal_row() (+8 more)
-
-### Community 113 - "directive_access.py"
-Cohesion: 0.13
-Nodes (20): download_attachment(), notify_overdue(), _admin_in_company(), can_read(), communication_permission(), communication_query(), directive_for(), file_clause() (+12 more)
-
-### Community 114 - "request_void_actions.py"
+### Community 77 - "Community 77"
 Cohesion: 0.14
-Nodes (16): _execution(), _activity(), _change(), _fail(), last_void(), _latest(), _mark_draft(), marker_actions() (+8 more)
+Nodes (18): escalation_violation(), active_named_admins(), admin_change_violation(), guard_user_change(), guard_user_trash(), holds_admin_role(), is_active_admin(), _lock_admins() (+10 more)
 
-### Community 115 - "services/hiring_orders.py"
+### Community 78 - "Community 78"
+Cohesion: 0.12
+Nodes (21): build(), build(), leave(), overtime_params(), test_collect_parameters_passes_next_day_companion_of_mapped_time_field(), test_leave_build_maps_native_fields(), test_leave_half_day_rules(), test_leave_invalid_input() (+13 more)
+
+### Community 79 - "Community 79"
 Cohesion: 0.13
-Nodes (16): _amount(), format_hiring_order_print(), _print_date(), render_article_body(), snapshot_payroll(), validate_template(), test_default_hiring_template_has_six_stable_articles_and_payroll_bindings(), test_format_hiring_order_print_omits_watermark_when_final() (+8 more)
+Nodes (17): _amount(), format_hiring_order_print(), normalize_search(), _print_date(), render_article_body(), snapshot_payroll(), validate_template(), test_default_hiring_template_has_six_stable_articles_and_payroll_bindings() (+9 more)
 
-### Community 116 - "tests/test_workflow_approval_quorum.py"
+### Community 80 - "Community 80"
+Cohesion: 0.20
+Nodes (16): cancel_sales_document(), create_delivery_note_from_order(), create_quotation(), create_sales_invoice_from(), create_sales_order(), create_sales_order_from_quotation(), _doctype(), _finish() (+8 more)
+
+### Community 81 - "Community 81"
+Cohesion: 0.08
+Nodes (8): ASOUDAccessAssignment, ASOUDAccountMapping, ASOUDDirectiveReceipt, ASOUDDocumentTemplate, ASOUDEmployeeInvitation, ASOUDOfficeRoleAssignment, ASOUDWorkflowActivity, ASOUDWorkflowTask
+
+### Community 82 - "Community 82"
+Cohesion: 0.22
+Nodes (20): build(), params(), test_absent_required_parameter(), test_build_punch(), test_empty_optional_values(), test_exit_requires_valid_exit_time(), test_invalid_calendar_date(), test_invalid_context_shape() (+12 more)
+
+### Community 83 - "Community 83"
 Cohesion: 0.13
-Nodes (15): current_round(), decision_counts(), normalize_mode(), required_approvals(), stage_reached_quorum(), test_current_round_keeps_only_the_newest_activation(), test_invalid_inputs_raise_persian_errors(), test_legacy_configs_keep_their_behaviour() (+7 more)
+Nodes (15): build_row(), redact(), request_source(), blocked(), enforce_password_change(), method_of(), completed_companies(), workflow_reset_allowed() (+7 more)
 
-### Community 117 - "site_prep.py"
-Cohesion: 0.14
-Nodes (19): abbr(), activate(), attach(), cleanup(), company(), connect(), drop_definition(), ensure() (+11 more)
-
-### Community 118 - "save_chart"
+### Community 84 - "Community 84"
 Cohesion: 0.21
 Nodes (7): get_chart(), list_units(), save_chart(), save_unit(), TestOrganization, cleanup(), cleanup()
 
-### Community 119 - "personnel.py"
-Cohesion: 0.21
-Nodes (18): add_record(), _company(), get_personnel(), get_profile_options(), get_record_options(), list_personnel(), _lock_person(), _manager() (+10 more)
+### Community 85 - "Community 85"
+Cohesion: 0.16
+Nodes (17): normalize_settings(), start_decision(), validate_request_id(), normalize(), manual(), test_form_submission_does_not_require_a_manual_reason(), test_invalid_or_fabricated_settings_are_rejected(), test_manual_reason_is_supplied_by_initiator_and_no_restart_exists_by_default() (+9 more)
 
-### Community 120 - "exit.py"
-Cohesion: 0.15
-Nodes (10): TestExitExecution, apply(), assert_no_open_settlement(), build(), check(), _day(), _open_requests(), _optional_text() (+2 more)
+### Community 86 - "Community 86"
+Cohesion: 0.17
+Nodes (19): b64(), _template(), test_a_required_attachment_field_cannot_lose_its_file(), test_attachment_problems_are_reported_with_the_attachment_code(), test_cancel_sets_the_instance_and_request_status(), test_comments_are_added_listed_and_notified(), test_custom_create_stores_files_values_header_and_returns_the_detail(), test_detail_permissions_rejection_reason_and_native_error() (+11 more)
 
-### Community 121 - "tests/test_workflow_condition_catalog.py"
-Cohesion: 0.14
-Nodes (15): _Attr, binding(), _by_field(), _catalog_frappe(), _fake_frappe(), _Field, _instance(), _system_config() (+7 more)
-
-### Community 122 - "validate-findings.test.cjs"
+### Community 87 - "Community 87"
 Cohesion: 0.11
 Nodes (19): LIMITS, assert, confirmed(), errorsFor(), evidence(), fs, {
   LIMITS,
@@ -871,115 +709,111 @@ Nodes (19): LIMITS, assert, confirmed(), errorsFor(), evidence(), fs, {
   validateDocument,
 }, needsValidation() (+11 more)
 
-### Community 123 - "TestAccountOps"
-Cohesion: 0.12
-Nodes (7): get_login_history(), _linked_user(), set_account_enabled(), _purge(), _session(), _sessions_of(), TestAccountOps
+### Community 88 - "Community 88"
+Cohesion: 0.08
+Nodes (22): Architecture contract, 10. Before you say "done", 11. Lessons from the November 2026 review (each item was found in merged code), 1. Architecture contract, 2. Layers, 3. How to write a change (the order that keeps quality high), 4. Definition of done (a feature is NOT finished without all of these), 5. Data integrity and invariants (+14 more)
 
-### Community 124 - "serialize_workflow"
-Cohesion: 0.13
-Nodes (10): create_workflow_draft(), _create_workflow_draft(), normalize_module_key(), serialize_workflow(), test_canonical_keys_pass_through(), test_canonical_module_key_is_unchanged_on_read(), test_legacy_keys_map_to_canonical(), test_saved_workflow_with_a_legacy_module_key_still_loads() (+2 more)
+### Community 89 - "Community 89"
+Cohesion: 0.19
+Nodes (15): _access(), options(), require_execution_ready(), save(), execution_permission(), identity(), _output_type(), prior_stages() (+7 more)
 
-### Community 125 - "get_workflow_design"
+### Community 90 - "Community 90"
 Cohesion: 0.20
-Nodes (3): delete_workflow(), get_workflow_design(), TestWorkflowCardActions
+Nodes (14): day(), dispatch_reminders(), fail(), get_calendar(), import_official(), manager(), parse_payload(), personal_row() (+6 more)
 
-### Community 126 - "tests/test_attendance_correction_execution.py"
-Cohesion: 0.25
-Nodes (20): build(), params(), test_absent_required_parameter(), test_build_punch(), test_empty_optional_values(), test_exit_requires_valid_exit_time(), test_invalid_calendar_date(), test_invalid_context_shape() (+12 more)
+### Community 91 - "Community 91"
+Cohesion: 0.23
+Nodes (15): create_fiscal_year(), get_account_code_settings(), get_company_settings(), get_enabled_roles(), get_settings(), get_setup_status(), list_fiscal_years(), _office_scoped_manager_or_user() (+7 more)
 
-### Community 127 - "leave_balance.py"
-Cohesion: 0.13
-Nodes (14): active_employee(), balance_for(), daily_working_hours(), fail(), hourly_entries(), hourly_taken_in_period(), _in_period(), leave_type_info() (+6 more)
+### Community 92 - "Community 92"
+Cohesion: 0.17
+Nodes (18): block_internal_mail(), complete(), create_hr_lead(), internal_email(), _require_fiscal(), _setup(), status(), _summary() (+10 more)
 
-### Community 128 - "warehouse"
-Cohesion: 0.14
-Nodes (11): abbr(), warehouse(), ensure_branch(), ensure_department(), error_codes(), _account(), payroll_employee(), setup_payroll() (+3 more)
+### Community 93 - "Community 93"
+Cohesion: 0.12
+Nodes (13): _alias(), _check(), Dict, DoesNotExistError, Error, install(), get_all(), get_doc() (+5 more)
 
-### Community 129 - "tests/test_personnel_file.py"
+### Community 94 - "Community 94"
+Cohesion: 0.08
+Nodes (22): description, devDependencies, playwright, @playwright/test, @types/node, typescript, name, private (+14 more)
+
+### Community 96 - "Community 96"
+Cohesion: 0.21
+Nodes (3): TemplateTestCase, material_requests(), TestPurchaseRequestTemplate
+
+### Community 98 - "Community 98"
+Cohesion: 0.17
+Nodes (6): Base, rows(), TestDateUpperBound, TestLeaveTypeSource, TestMissionExecution, TestTimeOrder
+
+### Community 99 - "Community 99"
 Cohesion: 0.19
 Nodes (13): _date(), as_date(), contract_state(), days_remaining(), document_status(), promotion_rows(), service_length(), sort_history() (+5 more)
 
-### Community 130 - "simulate_workflow"
-Cohesion: 0.21
-Nodes (18): _allowed_actions(), _as_dict(), _error(), _route_action(), _select_route(), simulate_workflow(), _stage_config(), _edge() (+10 more)
+### Community 100 - "Community 100"
+Cohesion: 0.15
+Nodes (16): activity_change(), build_execution(), _state(), _state(), test_a_template_without_execution_is_not_applicable(), test_activity_change_is_empty_when_missing_or_broken(), test_activity_change_parses_before_and_after(), test_approved_alone_is_never_reported_as_done() (+8 more)
 
-### Community 131 - "normalize_action"
+### Community 101 - "Community 101"
 Cohesion: 0.22
 Nodes (17): condition_fields(), normalize_action(), required(), simple_schema(), config(), test_canvas_reuses_scalar_result_fields_but_never_exposes_private_values(), test_capabilities_are_independent(), test_capabilities_require_real_booleans() (+9 more)
 
-### Community 132 - "Zarinpal payment gateway (Next.js / Node.js)"
+### Community 102 - "Community 102"
 Cohesion: 0.09
 Nodes (22): API route: request, API route: verify, Base URLs, Database model, Endpoints, Environment variables, Error handling, Frontend integration (+14 more)
 
-### Community 133 - "Login, first-run onboarding, system administrator, roles and HR onboarding"
+### Community 103 - "Community 103"
 Cohesion: 0.09
 Nodes (22): account_security, `account_security.change_password(current_password, new_password, repeat_password)` — POST, Create-office permission, Deployment, Errors summary, hr and directives (administrator without an Employee), hr_onboarding, `hr_onboarding.bootstrap_hr_lead(company, first_name, last_name, mobile, email, national_id?, activation?, gender?, birth_date?, date_of_joining?, request_id?)` — POST (+14 more)
 
-### Community 134 - "TestFormRecordSources"
-Cohesion: 0.20
-Nodes (4): employee_schedule(), get_entry(), TestFormRecordSources, fetch_value()
+### Community 104 - "Community 104"
+Cohesion: 0.14
+Nodes (7): get_account_status(), get_login_history(), set_account_enabled(), _purge(), _session(), _sessions_of(), TestAccountOps
 
-### Community 135 - "request_status.py"
+### Community 105 - "Community 105"
 Cohesion: 0.16
-Nodes (13): _list_item(), _status_fields(), compute_status_key(), group_keys(), status_group(), status_label(), tab_counts(), test_display_status_overrides_only_a_running_instance() (+5 more)
+Nodes (11): document_template_link_options(), document_template_options(), get_document_template(), list_document_templates(), _options(), _request_fields(), save_document_template(), _serialize() (+3 more)
 
-### Community 136 - "run"
-Cohesion: 0.22
-Nodes (3): save_wait_settings(), TestWorkflowWait, run()
-
-### Community 138 - "security_audit.py"
-Cohesion: 0.16
-Nodes (12): build_row(), redact(), request_source(), completed_companies(), workflow_reset_allowed(), test_build_row_has_actor_action_time_source_result(), test_redact_bounds_size(), test_redact_removes_secrets_at_any_depth() (+4 more)
-
-### Community 139 - "leave_rules.py"
-Cohesion: 0.15
-Nodes (12): minutes_overlap(), parse_hhmm(), _dry_run_leave_application(), evaluate_leave(), _hrms_holiday_list(), _iso(), _leave_application_on(), _segment() (+4 more)
-
-### Community 140 - "request_attachments.py"
+### Community 106 - "Community 106"
 Cohesion: 0.13
-Nodes (13): complete_entry(), content_type(), delete_files(), entry(), extension(), file_scopes(), is_image(), store_uploads() (+5 more)
+Nodes (9): after_install(), after_migrate(), ensure_security_roles(), execute(), execute(), description_value(), ensure_department_description(), test_description_optional_text_and_boundaries() (+1 more)
 
-### Community 141 - "tests/test_request_execution.py"
-Cohesion: 0.16
-Nodes (15): activity_change(), build_execution(), _state(), _state(), test_a_template_without_execution_is_not_applicable(), test_activity_change_is_empty_when_missing_or_broken(), test_activity_change_parses_before_and_after(), test_approved_alone_is_never_reported_as_done() (+7 more)
+### Community 107 - "Community 107"
+Cohesion: 0.18
+Nodes (4): TestRequestTemplatesSeed, _ensure_native_workflow(), ensure_system_templates(), on_company_insert()
 
-### Community 142 - "as_administrator"
-Cohesion: 0.15
-Nodes (11): as_administrator(), assert_restored(), fake(), FakeDict, FakeFrappe, snapshot(), test_attributes_absent_before_are_absent_after(), test_nested_use_restores_each_level() (+3 more)
+### Community 108 - "Community 108"
+Cohesion: 0.28
+Nodes (4): TestLeaveExecution, TestOvertimeExecution, apply(), check_balance()
 
-### Community 143 - "jalali.ts"
+### Community 109 - "Community 109"
+Cohesion: 0.21
+Nodes (19): resolve(), retry_delay(), _audit(), _company(), _context(), dispatch(), _final_failure(), _finish() (+11 more)
+
+### Community 110 - "Community 110"
+Cohesion: 0.13
+Nodes (13): _complete_rows(), _create_hourly_ledger_entry(), _create_leave_application(), create_leave_document(), create_material_request(), _default_warehouse(), effective_values(), _error_text() (+5 more)
+
+### Community 111 - "Community 111"
 Cohesion: 0.20
 Nodes (21): BREAKS, d2g(), d2j(), div(), FA, faDigits(), formatJalali(), formatJalaliNumeric() (+13 more)
 
-### Community 144 - "hiring_order_workflow.py"
-Cohesion: 0.13
-Nodes (17): _letterhead(), _finalize(), on_instance_update(), _store(), submit(), validate_workflow(), on_instance_update(), Flutter (+9 more)
+### Community 112 - "Community 112"
+Cohesion: 0.21
+Nodes (14): _letterhead(), _finalize(), on_instance_update(), _store(), submit(), validate_workflow(), current_jalali_year(), gregorian_to_jalali() (+6 more)
 
-### Community 145 - "pos.py"
-Cohesion: 0.20
-Nodes (10): _balances(), close_pos_session(), create_pos_invoice(), create_pos_session(), get_open_pos_session(), get_pos_items(), list_pos_invoices(), _open_session() (+2 more)
+### Community 113 - "Community 113"
+Cohesion: 0.26
+Nodes (16): employee_for(), migrate_legacy_records(), create_native(), editable(), evaluation_context(), external_id(), external_records(), fingerprint() (+8 more)
 
-### Community 146 - "integration_tests/test_demo_seed.py"
-Cohesion: 0.13
-Nodes (8): _reset(), run(), _delete_robustly(), demo_counts(), demo_request(), leave_requests_seeded(), request_status(), TestDemoSeed
+### Community 114 - "Community 114"
+Cohesion: 0.16
+Nodes (13): add_comment(), _author_names(), clean_comment_text(), count_comments(), _filters(), list_comments(), _notify(), _serialize() (+5 more)
 
-### Community 147 - "apply"
-Cohesion: 0.27
-Nodes (4): TestLeaveExecution, apply(), check_balance(), _native_message()
-
-### Community 148 - "tests/__init__.py"
-Cohesion: 0.12
-Nodes (9): _key(), _receipts(), _setup(), test_genuine_duplicate_trigger_with_terminal_receipt_still_raises(), test_reentry_with_fresh_trigger_schedules_a_new_receipt(), _entry(), test_update_form_entry_is_refused_and_values_stay(), test_repeated_draft_saves_keep_one_activity_row_per_task() (+1 more)
-
-### Community 149 - "test_request_templates_engine.py"
+### Community 115 - "Community 115"
 Cohesion: 0.15
-Nodes (15): _dispatch_recorder(), make_spec(), _running(), snapshot(), test_a_version_bump_rewrites_only_the_form_fields(), test_admin_cannot_save_the_system_form_stage_but_can_edit_the_approver(), test_an_unexpected_native_failure_is_recorded_and_never_raised(), test_deadlocks_are_not_swallowed() (+7 more)
+Nodes (14): _dispatch_recorder(), make_spec(), _running(), snapshot(), test_a_version_bump_rewrites_only_the_form_fields(), test_an_unexpected_native_failure_is_recorded_and_never_raised(), test_deadlocks_are_not_swallowed(), test_every_contract_form_is_accepted_by_the_form_policy_when_seeded() (+6 more)
 
-### Community 150 - "test_sync.py"
-Cohesion: 0.14
-Nodes (13): _load_module(), test_cancel_methods_are_replayable(), cancel_sales_invoice(), resolve(), test_directive_actions_are_accepted_as_queued_mutations(), test_execute_mutation_returns_saved_response_without_second_execution(), insert(), test_payload_accepts_json_object() (+5 more)
-
-### Community 151 - "validate-coverage-ledger.test.cjs"
+### Community 116 - "Community 116"
 Cohesion: 0.10
 Nodes (14): LIMITS, archivedAttempt(), assert, fs, {
   LIMITS,
@@ -991,721 +825,625 @@ Nodes (14): LIMITS, archivedAttempt(), assert, fs, {
   validateDocument,
 }, localCheck(), os, path (+6 more)
 
-### Community 152 - "Form builder"
+### Community 117 - "Community 117"
 Cohesion: 0.10
 Nodes (20): Additive presentation and entry-validation keys (schema version 2), Built-in HR catalog, Confidential fields in every output, Consumption, E1 Schema keys (form level and field level, additive, schema_version stays 2), E2 Registry (backend), E3 Parameter values, E4 When and how it runs (+12 more)
 
-### Community 153 - "Organization units and import"
+### Community 118 - "Community 118"
 Cohesion: 0.10
 Nodes (18): apply_import, delete_unit, employee_photo, list_units, Persian organization labels, Organization units and import, preview_delete_position, preview_delete_unit (+10 more)
 
-### Community 154 - "TestPersonnelIntroductionLetters"
-Cohesion: 0.31
-Nodes (4): finalize_letter(), get_letter(), print_letter(), TestPersonnelIntroductionLetters
+### Community 119 - "Community 119"
+Cohesion: 0.25
+Nodes (4): designer(), get_entry(), get_link_options(), TestFormRecordSources
 
-### Community 155 - "TestShiftExecution"
+### Community 120 - "Community 120"
+Cohesion: 0.23
+Nodes (13): open_builtin(), remove_builtin(), store(), builtin_key(), _bundle(), catalog(), catalog_rows(), ensure_builtin() (+5 more)
+
+### Community 121 - "Community 121"
+Cohesion: 0.18
+Nodes (8): ASOUDOrganizationChart, normalize_assignments(), resolve_employee(), synchronize_managers(), plan(), unit(), validate_parent(), validate_position_units()
+
+### Community 123 - "Community 123"
 Cohesion: 0.18
 Nodes (5): TestShiftExecution, apply(), build(), _day(), _text()
 
-### Community 156 - "make_event"
-Cohesion: 0.21
-Nodes (5): make_event(), participants(), TestTrainingEnrollmentDispatch, TestTrainingEnrollmentExecution, apply()
+### Community 124 - "Community 124"
+Cohesion: 0.14
+Nodes (13): build_search_text(), first_per_key(), mask_sensitive_values(), overlay_sensitive(), with_attachment_refs(), test_a_field_already_sensitive_in_the_workflow_stays_sensitive(), test_attachment_refs_are_added_to_a_copy(), test_default_summary_uses_values_then_the_row() (+5 more)
 
-### Community 158 - "tests/test_form_execution_certificate.py"
-Cohesion: 0.17
-Nodes (14): can_download(), build(), test_download_rule(), test_english_and_missing_letterhead_need_review(), test_future_relieving_date_still_employed(), test_invalid_parameters(), test_missing_designation_is_left_out_not_invented(), test_missing_salary_is_needs_review_never_a_number() (+6 more)
-
-### Community 159 - "request_void.py"
-Cohesion: 0.15
-Nodes (12): already_reissued(), can_reissue(), can_reissue_now(), clean_reason(), reissue_blocker(), void_plan(), test_execution_lane_reports_a_voided_document(), test_reason_is_trimmed_required_and_bounded() (+4 more)
-
-### Community 160 - "workflow_contract.py"
+### Community 125 - "Community 125"
 Cohesion: 0.23
 Nodes (14): activation_requirements(), design_details_summary(), is_system_workflow(), _validate_saved_routes(), _validate_saved_stage(), graph(), test_complete_graph_can_activate_without_native_workflow_link(), test_incomplete_graph_is_rejected() (+6 more)
 
-### Community 161 - "tests/test_workflow_wait.py"
-Cohesion: 0.19
-Nodes (14): clock(), due_time(), integer(), local_instant(), normalize(), zone(), config(), test_bad_durations_fail() (+6 more)
+### Community 126 - "Community 126"
+Cohesion: 0.11
+Nodes (18): 0.10.0, 0.11.0, 0.12.0, Changelog, 0.10.0, 0.11.0, 0.12.0, 0.13.0 (+10 more)
 
-### Community 162 - "tests/test_workflow_condition_dryrun.py"
-Cohesion: 0.22
-Nodes (14): amount_row(), config(), note_row(), test_blank_text_sample_is_a_missing_error(), test_combination(), test_empty_operator_needs_no_sample(), test_endpoint_writes_nothing(), test_failing_v2_condition_logs_with_defer_insert_and_instance_reference() (+6 more)
+### Community 127 - "Community 127"
+Cohesion: 0.11
+Nodes (16): آزمون, اتصال پرسنل به مدل استاندارد, نصب و ارتقا, ASOUD ERP Frappe App, Native HR integration, بررسی توسعه, قابلیت‌های نسخه 0.8.0, نصب (+8 more)
 
-### Community 163 - "tests/test_workflow_graph_snapshot.py"
-Cohesion: 0.24
-Nodes (18): _graph(), _instance(), _stages(), test_backfill_consistent_when_graph_matches_execution(), test_backfill_inconsistent_when_current_stage_orphan(), test_backfill_inconsistent_when_current_stage_unreachable(), test_backfill_inconsistent_when_task_stage_missing(), test_backfill_inconsistent_without_single_start() (+10 more)
+### Community 128 - "Community 128"
+Cohesion: 0.15
+Nodes (3): _attach(), b64(), _pdf()
 
-### Community 164 - "Agent guidelines — asoud_erp (Frappe / ERPNext / HRMS v15)"
-Cohesion: 0.10
-Nodes (20): 10. Before you say "done", 11. Lessons from the November 2026 review (each item was found in merged code), 1. Architecture contract, 2. Layers, 3. How to write a change (the order that keeps quality high), 4. Definition of done (a feature is NOT finished without all of these), 5. Data integrity and invariants, 6. Performance (+12 more)
-
-### Community 165 - "directives.py"
-Cohesion: 0.22
-Nodes (13): _bind(), _employee(), _file_row(), _files(), options(), _people(), _person(), _policy() (+5 more)
-
-### Community 166 - "to_ascii_digits"
-Cohesion: 0.18
-Nodes (14): _is_number_like(), normalize_column_rows(), to_ascii_digits(), test_arabic_indic_digits_become_ascii(), test_letters_of_a_name_are_preserved_while_digits_translate(), test_mixed_persian_arabic_and_ascii_digits(), test_none_and_non_strings_pass_through(), test_normalize_column_rows_only_reports_changes() (+6 more)
-
-### Community 167 - "test_request_attachments_pure.py"
-Cohesion: 0.21
-Nodes (15): limits_from(), parse_uploads(), _b64(), _image(), test_extensions_include_excel_and_word_and_are_checked_case_insensitively(), test_file_count_includes_files_already_attached(), test_filename_is_reduced_to_its_basename(), test_leave_extensions_come_from_the_template_config() (+7 more)
-
-### Community 168 - "workflow_condition.py"
-Cohesion: 0.18
-Nodes (13): condition_value(), evaluate_condition(), guaranteed_predecessors(), _parse_date_string(), select_boolean_transition(), test_boolean_transition_requires_one_exact_match(), test_contains_and_is_set_are_safe(), test_gregorian_date_condition_is_unchanged() (+5 more)
-
-### Community 169 - "_get"
-Cohesion: 0.30
-Nodes (18): _actions(), _active(), _audit(), run(), _finish(), _get(), run(), _new_task() (+10 more)
-
-### Community 170 - "report.py"
+### Community 129 - "Community 129"
 Cohesion: 0.19
 Nodes (6): _account_scope(), _base_filters(), general_ledger(), trial_balance(), _validate_period(), TestReportCompanyScope
 
-### Community 171 - "support.py"
+### Community 130 - "Community 130"
 Cohesion: 0.24
-Nodes (11): add_issue_comment(), create_issue(), get_issue(), issue_options(), list_assets(), list_my_assets(), list_my_issues(), _my_email() (+3 more)
+Nodes (6): add_request_comment(), get_attachment(), get_request(), list_request_comments(), _readable_request(), TestRequestComments
 
-### Community 174 - ".submit"
+### Community 131 - "Community 131"
+Cohesion: 0.16
+Nodes (7): run(), _delete_robustly(), demo_counts(), demo_request(), leave_requests_seeded(), request_status(), TestDemoSeed
+
+### Community 133 - "Community 133"
 Cohesion: 0.20
 Nodes (5): Executor, form_schema(), FormRequestCase, TestDetailAndSearch, TestExecutionCopies
 
-### Community 175 - "validate_rows"
+### Community 134 - "Community 134"
 Cohesion: 0.20
-Nodes (10): reset_revision(), validate_rows(), localize_position(), organization_label(), test_hierarchy(), test_invalid_hierarchy(), test_display_is_not_a_rename_or_authoritative_input(), test_known_labels_and_custom_names() (+2 more)
+Nodes (14): can_download(), build(), test_download_rule(), test_english_and_missing_letterhead_need_review(), test_future_relieving_date_still_employed(), test_invalid_parameters(), test_missing_designation_is_left_out_not_invented(), test_missing_salary_is_needs_review_never_a_number() (+6 more)
 
-### Community 176 - "test_permission_catalog.py"
+### Community 135 - "Community 135"
+Cohesion: 0.20
+Nodes (12): build(), ctx(), test_empty_optionals(), test_form_select_ids_map_to_native_purpose(), test_issue_mapping_and_purity(), test_issue_preserves_existing_custodian_as_source(), test_missing_employee(), test_missing_location() (+4 more)
+
+### Community 136 - "Community 136"
 Cohesion: 0.19
 Nodes (11): capabilities_for(), catalog_rows(), levels_for(), validate_grant(), test_admin_holds_every_capability_others_only_through_roles(), test_advanced_differs_from_medium_regression(), test_catalog_skips_doctypes_missing_on_the_site(), test_hr_module_lists_the_complete_set_of_operations() (+3 more)
 
-### Community 177 - "test_workflow_history.py"
-Cohesion: 0.18
-Nodes (13): carried_draft(), _keep(), preceding_stages(), select_return_stage(), test_first_visit_or_unreadable_history_gives_an_empty_draft(), test_latest_correction_overrides_previous_response(), test_preceding_stages_excludes_correction_edges_and_handles_shared_paths(), test_return_can_target_approval_stage_with_supplementary_form() (+5 more)
-
-### Community 178 - "services/workflow_templates.py"
+### Community 137 - "Community 137"
 Cohesion: 0.23
 Nodes (12): appearance(), graph_plan(), rebind(), access(), catalog(), create_from_template(), graph(), test_appearance_validates_without_touching_design() (+4 more)
 
-### Community 179 - "Security Audit"
+### Community 138 - "Community 138"
 Cohesion: 0.11
 Nodes (18): Anti-patterns, Core principles, Cost budget, Coverage and prior runs, Full audit planning, Full audit setup, Full audit workflow, Operating modes (+10 more)
 
-### Community 180 - "ParsPack S3 image upload (Next.js App Router)"
+### Community 139 - "Community 139"
 Cohesion: 0.11
 Nodes (17): 10. Auth / middleware notes, 11. ParsPack-specific checklist, 12. Common failure modes, 13. Optional extensions, 14. Minimal test plan, 1. Dependencies, 2. Environment variables, 3. File structure (+9 more)
 
-### Community 181 - "Software Development"
+### Community 140 - "Community 140"
 Cohesion: 0.11
 Nodes (17): 0. Scale the process to the risk, 10. Workers, 11. Other areas, 1. Graphify first (full process), 2. Workflow, 3. Quality rules (every project), 4. Backend, 5. DevOps (+9 more)
 
-### Community 182 - "dashboard.py"
+### Community 141 - "Community 141"
+Cohesion: 0.15
+Nodes (9): _account_status(), _blocked_modules(), current_user(), _data_scope(), _employee_context(), _ensure_data_scope(), _frappe_roles(), _installed_modules() (+1 more)
+
+### Community 142 - "Community 142"
+Cohesion: 0.18
+Nodes (7): _access_profile(), delete_employee_access(), get_employee_access(), list_employee_invitations(), _require_hr_manager(), send_employee_invitation(), sync_employee_access()
+
+### Community 143 - "Community 143"
 Cohesion: 0.20
 Nodes (9): _bank_and_cash(), _can_read(), _count(), get_home_summary(), get_system_summary(), _open_documents(), _storage(), _sum() (+1 more)
 
-### Community 183 - "_mutation"
-Cohesion: 0.32
-Nodes (13): close(), _data(), get_directive(), issue(), list_directives(), _mutation(), report(), review() (+5 more)
+### Community 144 - "Community 144"
+Cohesion: 0.26
+Nodes (4): execution_kinds(), ExampleExecutor, NativeExecutor, TestFormExecutionRuntime
 
-### Community 184 - "save_party"
-Cohesion: 0.23
-Nodes (13): _default_group_for_role(), _ensure_customer(), _ensure_employee(), _ensure_supplier(), list_parties(), _may_read_bank_details(), _parse_detail_groups(), _parse_roles() (+5 more)
+### Community 145 - "Community 145"
+Cohesion: 0.25
+Nodes (10): add_issue_comment(), create_issue(), get_issue(), issue_options(), list_my_assets(), list_my_issues(), _my_email(), _own_issue() (+2 more)
 
-### Community 185 - "test_persian_digits.py"
-Cohesion: 0.13
-Nodes (3): TestASOUDPartyProfile, TestPersianDigits, execute()
+### Community 146 - "Community 146"
+Cohesion: 0.15
+Nodes (7): request_field_options(), _item_row(), item_uoms(), _validate_department(), validate_link_values(), _validate_user(), validate_source_value()
 
-### Community 187 - "TestFormExecutionRuntime"
+### Community 147 - "Community 147"
+Cohesion: 0.24
+Nodes (13): compatible(), validate_mapping(), bounded_int(), calculate(), visit(), identifier(), mappings(), normalize_action() (+5 more)
+
+### Community 148 - "Community 148"
+Cohesion: 0.26
+Nodes (12): build(), _empty(), test_build_native_fields(), test_empty_optional_values(), test_invalid_amount(), test_invalid_posting_date(), test_invalid_purpose(), test_invalid_repay() (+4 more)
+
+### Community 149 - "Community 149"
 Cohesion: 0.27
-Nodes (3): ExampleExecutor, NativeExecutor, TestFormExecutionRuntime
+Nodes (12): digits(), identity(), mobile(), postal_code(), website(), is_valid_iranian_legal_id(), is_valid_iranian_mobile(), is_valid_iranian_national_code() (+4 more)
 
-### Community 188 - "certificate_issue.py"
-Cohesion: 0.22
-Nodes (12): apply(), build(), _day(), _existing(), jalali(), _letterhead(), money(), normalize() (+4 more)
-
-### Community 189 - "tests/test_personnel_introduction_letters.py"
-Cohesion: 0.23
-Nodes (13): build_print_html(), normalize_search(), render_snapshot(), _token_value(), validate_template(), test_build_print_html_draft_and_final_markers(), test_default_template_is_valid(), test_optional_workflow_reference_is_preserved_in_template_snapshot() (+5 more)
-
-### Community 190 - "test_post_login.py"
+### Community 150 - "Community 150"
 Cohesion: 0.21
 Nodes (13): resolve_next_route(), route(), test_admin_profile_precedes_first_office_and_pending_setup(), test_admin_with_no_accessible_office_after_setup(), test_admin_with_office_but_incomplete_profile(), test_admin_without_office_gets_first_office_form(), test_complete_admin_with_one_office_goes_home(), test_completed_profile_proceeds_to_office_then_setup() (+5 more)
 
-### Community 191 - "test_role_completion.py"
-Cohesion: 0.20
-Nodes (11): completion(), summary(), test_non_system_with_base_roles_is_complete_regardless_of_grants(), test_non_system_without_base_roles_and_no_grant_is_incomplete(), test_non_system_without_base_roles_but_with_role_grant_is_complete(), test_summary_counts_incomplete_from_the_row_value(), test_summary_counts_only_managed_non_system_roles(), test_summary_duplicate_categories_not_double_counted() (+3 more)
-
-### Community 192 - "test_workflow_submission_policy.py"
-Cohesion: 0.22
-Nodes (12): choose_route(), normalize(), candidate(), test_available_does_not_mask_a_real_routing_gap(), test_available_only_form_saves_as_ordinary_record(), test_invalid_sources_are_rejected(), test_old_stage_without_source_keeps_its_output(), test_shared_form_default_and_conditional_selection() (+4 more)
-
-### Community 193 - "TestWorkflowCheck"
-Cohesion: 0.25
-Nodes (3): simulate_workflow(), validate_workflow(), TestWorkflowCheck
-
-### Community 194 - "build"
+### Community 151 - "Community 151"
 Cohesion: 0.28
-Nodes (12): build(), _empty(), test_build_native_fields(), test_empty_optional_values(), test_invalid_amount(), test_invalid_posting_date(), test_invalid_purpose(), test_invalid_repay() (+4 more)
+Nodes (3): get_record(), TestASOUDPersonnelNative, external_owner()
 
-### Community 195 - "test_request_link_values_extended.py"
+### Community 152 - "Community 152"
+Cohesion: 0.31
+Nodes (7): valid_pdf_bytes(), attachment_bytes(), b64(), jpg(), png(), TestRequestAttachments, pdf()
+
+### Community 153 - "Community 153"
 Cohesion: 0.19
 Nodes (10): _DB, links(), _rows(), _select(), test_invalid_system_select_values_are_rejected(), test_purchase_scope_rejects_non_purchase_items_but_all_accepts_them(), test_row_options_add_flags_note_and_attachment(), test_row_options_without_note_or_attachment_do_not_store_them() (+2 more)
 
-### Community 196 - "4. Contract Issuance & Management Endpoints"
+### Community 154 - "Community 154"
 Cohesion: 0.12
 Nodes (15): 1. Role & Permission Separation, 2.1 `get_contract_template`, 2.2 `save_contract_template`, 2.3 `publish_contract_template`, 2. Template Builder Endpoints, 3.1 `get_contract_field_catalog`, 3. Field Catalog for Insert-Field Drawer, 4.1 `prepare_contract` (+7 more)
 
-### Community 197 - "voucher.py"
+### Community 155 - "Community 155"
 Cohesion: 0.26
 Nodes (8): approve_voucher(), list_vouchers(), _parse_lines(), reject_voucher(), save_voucher(), _serialize(), submit_for_approval(), TestVoucherCompanyScope
 
-### Community 198 - "markers.py"
+### Community 156 - "Community 156"
+Cohesion: 0.21
+Nodes (10): _list_item(), _status_fields(), group_keys(), status_group(), status_label(), tab_counts(), test_display_status_overrides_only_a_running_instance(), test_group_keys() (+2 more)
+
+### Community 157 - "Community 157"
 Cohesion: 0.19
 Nodes (3): guard_error(), site_allowed(), TestDemoSiteGuard
 
-### Community 199 - ".definition"
-Cohesion: 0.18
-Nodes (9): TestAutomaticActions, Snapshot backfill (PA-015), Tests, `workflow.simulate_workflow` (POST), `workflow.validate_workflow` (GET), Workflow validity check and side-effect-free simulation, Condition stages, version 2, Condition test (+1 more)
+### Community 160 - "Community 160"
+Cohesion: 0.19
+Nodes (6): execute(), compute_status_key(), on_instance_update(), request_status_key(), test_finished_instance_ignores_stage_flags(), test_status_key_table()
 
-### Community 200 - "test_organization_assignments.py"
+### Community 161 - "Community 161"
 Cohesion: 0.29
 Nodes (11): deletion_review(), reconcile(), row(), test_delete_review_counts_and_missing_position(), test_deletion_cannot_cascade_reporting_children(), test_end_and_reassign_retains_both_periods(), test_history_cannot_be_forged_or_erased_on_save(), test_invalid_capacity_and_duplicate_assignment() (+3 more)
 
-### Community 201 - "request_templates/seed.py"
-Cohesion: 0.24
-Nodes (9): TemplateSpec, _approval_config(), _create_definition(), _create_or_adopt_definition(), _ensure_definition(), _ensure_native_workflow(), _form_config(), on_company_insert() (+1 more)
+### Community 162 - "Community 162"
+Cohesion: 0.17
+Nodes (6): isolate(), Site, env(), Env, fake_links(), world()
 
-### Community 202 - "validate_workflow"
-Cohesion: 0.44
-Nodes (13): validate_workflow(), _codes(), _edge(), _stage(), test_disabled_decision_with_route_is_a_warning(), test_loop_without_exit_is_an_error(), test_missing_start_is_an_error(), test_reference_to_missing_form_is_an_error() (+5 more)
-
-### Community 203 - "test_workflow_task_assignment_policy.py"
-Cohesion: 0.19
-Nodes (8): approval_assignees(), check_assignee_cap(), test_approval_falls_back_to_escalation_users_without_the_initiator(), test_approval_never_assigns_to_the_initiator_when_others_exist(), test_approval_with_only_the_initiator_fails_with_a_persian_reason_instead_of_a_stuck_task(), test_approval_without_initiator_in_list_is_unchanged_and_skips_escalation_lookup(), test_cap_counts_only_the_final_authorised_list_and_defaults_above_200(), test_cap_is_configurable_and_bad_values_fall_back_to_default()
-
-### Community 204 - "hr-manager.spec.ts"
-Cohesion: 0.13
-Nodes (10): ASOUD, PREFIX, day, Me, state, READS, state, WRITES (+2 more)
-
-### Community 205 - "ATTACK-CLASSES.md"
+### Community 163 - "Community 163"
 Cohesion: 0.14
 Nodes (7): Attack Classes, Attack classes — choose and split based on Phase 1, Architecture summary and companion selection, Deterministic coverage ledger, Phase 1: Map the source and plan coverage, Prior-run input, Reconnaissance
 
-### Community 206 - "1. Rulebook"
+### Community 164 - "Community 164"
 Cohesion: 0.13
 Nodes (14): 1. Rulebook, 2. Agent block, 3. Done checklist, Color, Content, Icons, Layout and loading, Motion and micro-interactions (+6 more)
 
-### Community 207 - "demo_email"
+### Community 165 - "Community 165"
+Cohesion: 0.26
+Nodes (6): create_payroll_entry(), create_salary_structure_assignment(), get_payroll_entry(), payroll_options(), serialize_payroll_entry(), submit_payroll_salary_slips()
+
+### Community 166 - "Community 166"
 Cohesion: 0.21
-Nodes (10): demo_email(), _cancel_and_delete(), check(), _definition_names(), _delete_one(), _demo_instance_names(), _pluck(), _reset_records() (+2 more)
+Nodes (10): demo_email(), _cancel_and_delete(), check(), _definition_names(), _delete_one(), _demo_instance_names(), _pluck(), _reset() (+2 more)
 
-### Community 208 - "ensure_department_description"
-Cohesion: 0.21
-Nodes (6): after_install(), after_migrate(), ensure_security_roles(), execute(), execute(), ensure_department_description()
+### Community 169 - "Community 169"
+Cohesion: 0.26
+Nodes (9): issue(), hash_code(), matches(), new_code(), new_salt(), normalize_code(), usable(), test_codes_are_unambiguous_random_and_hashed() (+1 more)
 
-### Community 210 - "Base"
-Cohesion: 0.16
-Nodes (7): Base, TestDateUpperBound, TestLeaveTypeSource, TestOvertimeExecution, TestTimeOrder, apply(), lock_employee()
-
-### Community 212 - "execute"
-Cohesion: 0.23
-Nodes (5): TestSnapshotBackfill, execute(), _touched_stages(), backfill_consistent(), backfill_snapshot()
-
-### Community 213 - "record_labels.py"
+### Community 170 - "Community 170"
 Cohesion: 0.25
 Nodes (9): asset_label(), attendance_label(), clock(), jalali_date(), _parse(), shift_label(), training_event_label(), test_attendance_label_full_and_partial() (+1 more)
 
-### Community 214 - "build_viewer"
+### Community 171 - "Community 171"
 Cohesion: 0.27
 Nodes (9): build_viewer(), _config(), open_task_view(), _task(), test_first_task_wins_and_broken_config_is_tolerated(), test_flags_follow_the_stage_config(), test_missing_flags_default_to_not_allowed(), test_no_open_task_means_no_action_card() (+1 more)
 
-### Community 215 - "parse_instance_names"
-Cohesion: 0.24
-Nodes (9): parse_instance_names(), test_accepts_a_json_string(), test_accepts_a_list_and_deduplicates(), test_allows_exactly_100_names(), test_rejects_bad_json_string(), test_rejects_empty_or_non_string_names(), test_rejects_more_than_100_names(), test_rejects_non_list() (+1 more)
+### Community 172 - "Community 172"
+Cohesion: 0.19
+Nodes (7): _conversion_factor(), _DB, _end_of_life(), _get_all(), links(), test_invalid_erpnext_references_are_rejected(), test_user_must_belong_to_the_request_company()
 
-### Community 216 - "lmo-execution.spec.ts"
+### Community 173 - "Community 173"
 Cohesion: 0.14
-Nodes (7): ApiFixture, Prepared, Request, state, Execution, Native, Request
+Nodes (13): ASOUD personnel access contract (v1), Current user, Employee access provisioning, Personnel role mapping, Architectural decision needed:, ASOUD personnel access contract (v1), Current user, Employee access provisioning (+5 more)
 
-### Community 217 - "compilerOptions"
+### Community 174 - "Community 174"
 Cohesion: 0.14
 Nodes (13): compilerOptions, esModuleInterop, lib, module, moduleResolution, noEmit, noUnusedLocals, resolveJsonModule (+5 more)
 
-### Community 218 - "Changelog"
-Cohesion: 0.14
-Nodes (14): 0.10.0, 0.11.0, 0.12.0, 0.13.0, 0.13.1, 0.14.0, 0.15.0 - 2026-10-09, 0.15.1 - 2026-10-10 (+6 more)
-
-### Community 219 - "get_attachment"
-Cohesion: 0.38
-Nodes (5): get_attachment(), b64(), png(), TestRequestAttachments, pdf()
-
-### Community 220 - "list_my_requests"
+### Community 175 - "Community 175"
 Cohesion: 0.28
 Nodes (3): _like(), list_my_requests(), TestRequestList
 
-### Community 221 - "guard_storage"
+### Community 176 - "Community 176"
+Cohesion: 0.22
+Nodes (5): start_workflow_instance(), _validate_request_id(), configure(), TestWorkflowStartSettings, TestWorkflowSubmissionSource
+
+### Community 177 - "Community 177"
 Cohesion: 0.19
 Nodes (4): ASOUDForm, ASOUDFormEntry, ASOUDFormRevision, guard_storage()
 
-### Community 223 - "test_account_ops.py"
-Cohesion: 0.23
-Nodes (7): _activity(), _company(), _department(), _employee(), _outgoing_email_account(), _profile(), _user()
-
-### Community 226 - "services/document_templates.py"
-Cohesion: 0.22
-Nodes (8): _amount(), _bool(), _normalize_source(), _order_item(), render_placeholders(), _require_items(), _stock_entry_item(), test_placeholders_resolve_known_and_request_values()
-
-### Community 227 - "type_balance"
-Cohesion: 0.24
-Nodes (10): type_balance(), test_category_rows_sum_non_lwp_types_and_skip_unpaid(), test_insufficient_checks(), test_leave_application_overlay(), test_leave_type_without_allocation_is_zero(), test_lwp_has_no_remaining_or_available(), test_preview_balance_subtracts_the_requested_days(), test_remaining_pending_available_follow_the_contract() (+2 more)
-
-### Community 228 - "build_stages"
+### Community 179 - "Community 179"
 Cohesion: 0.31
 Nodes (9): build_stages(), _stage_status(), _text(), by_name(), task(), test_four_statuses(), test_no_tasks_is_pending_and_empty(), test_orders_by_sequence_and_skips_non_human_stages() (+1 more)
 
-### Community 229 - "ممیزی اقدام خودکار و کنترل مسیر — ۲۰۲۶/۱۱/۱۱"
+### Community 180 - "Community 180"
 Cohesion: 0.15
-Nodes (12): الف) ایرادهای اثبات‌شده, ب) پیکربندی, ج) محدودیت‌های واقعی موجود, ح) نصب و بازگشت, د) مسیر داده و فایل‌های این اصلاح, ز) وضعیت نهایی, سرور, ممیزی اقدام خودکار و کنترل مسیر — ۲۰۲۶/۱۱/۱۱ (+4 more)
+Nodes (3): FakeDoc, next_stage(), test_admin_cannot_save_the_system_form_stage_but_can_edit_the_approver()
 
-### Community 230 - "global-setup.ts"
+### Community 181 - "Community 181"
 Cohesion: 0.26
 Nodes (12): bench(), designIsUsable(), designRequestType(), FORM_FIELDS, globalSetup(), ensureDefinition(), LEGACY_SYSTEM_CONFIG, readDesign() (+4 more)
 
-### Community 231 - "Iranian validation (اعتبارسنجی ایرانی)"
+### Community 182 - "Community 182"
 Cohesion: 0.15
 Nodes (12): 0. Normalize digits first (every field), 10. Checklist, 1. National ID (کد ملی), 2. Mobile numbers (شماره موبایل), 3. Landlines (تلفن ثابت), 4. IBAN / Sheba (شماره شبا), 5. Bank cards (شماره کارت), 6. Postal code (کد پستی) (+4 more)
 
-### Community 232 - "Kavenegar SMS / OTP (implementation guide)"
+### Community 183 - "Community 183"
 Cohesion: 0.15
 Nodes (12): API endpoint, Environment variables, Error handling notes, Kavenegar SMS / OTP (implementation guide), Official resources, Optional query params, Phone number format, Required query params (+4 more)
 
-### Community 233 - "Form execution after approval"
-Cohesion: 0.15
-Nodes (13): Asset movement (`asset_movement`), asset_movement — جابه‌جایی تجهیزات, Download — `asoud_erp.api.v1.workflow_request.get_certificate`, Employee advance (`employee_advance`), Employment certificate (`certificate_issue`), Form execution after approval, Registry hook `validate_submit` (E2 note), `reissue_native_document(name)` (+5 more)
-
-### Community 234 - "Request templates — `asoud_erp.api.v1.workflow_request`"
+### Community 184 - "Community 184"
 Cohesion: 0.15
 Nodes (13): Attachments, Companies and scoping, Endpoints, Error codes, Execution lane (`get_request.execution`), For template authors, Form fields, Numbering (+5 more)
 
-### Community 235 - "demo_leave_dates"
+### Community 185 - "Community 185"
+Cohesion: 0.24
+Nodes (7): create_document(), _definition(), fail_after_insert(), _request_attachments(), create_output(), _no_cycle(), validate_target()
+
+### Community 187 - "Community 187"
 Cohesion: 0.20
 Nodes (3): demo_leave_dates(), _request_plans(), TestDemoLeaveDates
 
-### Community 236 - "normalize_asoud_roles"
+### Community 188 - "Community 188"
 Cohesion: 0.29
 Nodes (7): access_level_for(), frappe_roles_for(), normalize_asoud_roles(), test_access_level_follows_the_native_roles_a_user_holds(), test_balance_policy_is_not_treated_as_security_role(), test_legacy_labels_are_normalized_and_unknown_values_are_ignored(), test_role_mapping_is_deduplicated_and_allow_listed()
 
-### Community 237 - "period.py"
-Cohesion: 0.20
-Nodes (5): _absolute(), clock_minutes(), date_range(), day(), flag()
+### Community 190 - "Community 190"
+Cohesion: 0.33
+Nodes (10): abbreviation_seed(), normalize_digits(), normalize_enabled_roles(), unique_abbreviation(), validate_economic_code(), test_economic_code_validation(), test_normalize_persian_digits(), test_system_manager_is_always_an_enabled_business_role() (+2 more)
 
-### Community 238 - "tests/test_form_execution_training.py"
-Cohesion: 0.26
-Nodes (7): plan(), event(), test_build_requires_employee_and_company(), test_event_without_company_is_accepted(), test_invalid_parameters(), test_plan_draft_adds_and_submitted_needs_review(), test_plan_refusals()
-
-### Community 239 - "tests/test_stage_supplementary_form.py"
-Cohesion: 0.21
-Nodes (8): validate_binding_shape(), without_required(), _stage_schema(), test_approve_enforces_required_but_reject_does_not(), test_read_binding_returns_dict_or_none(), test_validate_binding_shape_accepts_good(), test_validate_binding_shape_rejects_bad(), test_without_required_clears_top_level_and_columns()
-
-### Community 240 - "workflow_check.py"
-Cohesion: 0.21
-Nodes (7): _as_dict(), _can_reach_end(), _config(), _in_cycle(), _outgoing(), referenced_forms(), _route_action()
-
-### Community 241 - "test_workflow_wait_past.py"
-Cohesion: 0.42
-Nodes (10): _instance(), _notified(), _recalculate(), _snapshot(), test_fail_past_notifies_the_owner_with_a_business_reason(), test_handle_past_fails_a_keep_formdate_wait(), test_handle_past_fails_a_non_recalculate_wait(), test_handle_past_parks_a_recalculate_wait() (+2 more)
-
-### Community 242 - "automatic-actions.spec.ts"
+### Community 191 - "Community 191"
 Cohesion: 0.17
 Nodes (8): definition, Design, NOTIFICATION, Options, ROUTES, stages, state, instanceOf()
 
-### Community 243 - "Persian / RTL rules for this project"
+### Community 192 - "Community 192"
 Cohesion: 0.17
 Nodes (11): Before you finish, Components and colors, Direction and layout, Forms and validation, Going further, Language and register, Numbers, money, dates, Persian project rules (for CLAUDE.md / AGENTS.md / Cursor rules) (+3 more)
 
-### Community 244 - "Jalali calendar (تقویم شمسی)"
+### Community 193 - "Community 193"
 Cohesion: 0.17
 Nodes (11): 10. Checklist, 1. The calendar in one table, 2. Week and weekend, 3. Time zone, 4. Storage and transport, 5. Display formats, 6. Using `Intl` correctly, 7. Date pickers and ranges (+3 more)
 
-### Community 245 - "Persian RTL UI (رابط راست‌چین)"
+### Community 194 - "Community 194"
 Cohesion: 0.17
 Nodes (11): 10. Checklist before returning code, 1. Direction, 2. Typography, 3. Numbers, money, dates, 4. Forms, 5. Colors and shape, 6. Motion, 7. Accessibility (+3 more)
 
-### Community 246 - "Persian UI copy (متن رابط کاربری)"
+### Community 195 - "Community 195"
 Cohesion: 0.17
 Nodes (11): 10. Checklist, 1. Choose the product register once, 2. Glossary (English → Persian UI), 3. Buttons and actions, 4. Forms, 5. Confirmations and dialogs, 6. Empty, loading, success, failure, 7. Numbers, money, dates inside copy (+3 more)
 
-### Community 247 - "احکام افزایش یا تغییر حقوق و مزایا — `asoud_erp.api.v1.salary_change_orders`"
+### Community 196 - "Community 196"
 Cohesion: 0.17
 Nodes (11): احکام افزایش یا تغییر حقوق و مزایا — `asoud_erp.api.v1.salary_change_orders`, ساختار شیء قالب (`template`), قوانین حیاتی اعمال بر حقوق (`apply_salary_change_order_to_payroll`):, قوانین داده‌های حقوق قبلی:, وضعیت‌های اعمال بر سیستم حقوق (`application_status`):, وضعیت‌های تأیید (`status`):, ۱. چرخه حیات قالب (Template Lifecycle), ۲. منابع داده صدور (Issuance Sources) (+3 more)
 
-### Community 248 - "guard"
+### Community 197 - "Community 197"
 Cohesion: 0.25
 Nodes (3): guard(), ASOUDCalendarHoliday, ASOUDCalendarScope
 
-### Community 249 - "TestDemoFiscalYearRules"
+### Community 198 - "Community 198"
 Cohesion: 0.25
 Nodes (3): fiscal_year_reset_action(), fiscal_year_seed_action(), TestDemoFiscalYearRules
 
-### Community 251 - "preflightJsonText"
+### Community 201 - "Community 201"
+Cohesion: 0.31
+Nodes (7): build_schedule(), date_label(), parse_range(), test_open_ended_assignment_covers_every_later_day(), test_schedule_marks_holiday_and_none_without_default(), test_schedule_range_is_bounded(), test_schedule_uses_assignment_then_default_then_holiday()
+
+### Community 202 - "Community 202"
+Cohesion: 0.31
+Nodes (6): reset_revision(), validate_rows(), test_hierarchy(), test_invalid_hierarchy(), test_reset_revision(), test_reset_revision_rejects_unsafe_inputs()
+
+### Community 203 - "Community 203"
 Cohesion: 0.40
 Nodes (11): JsonStructureError, preflightJsonText(), beginContainer(), beginString(), beginValue(), closeContainer(), countValue(), currentContainer() (+3 more)
 
-### Community 252 - "Workflow: test, delegate, review, release, deploy, merge"
+### Community 204 - "Community 204"
+Cohesion: 0.18
+Nodes (10): Document templates (`asoud_erp.api.v1.document_templates`), Methods, Supported documents, Use in a workflow, Value sources, Document templates (`asoud_erp.api.v1.document_templates`), Methods, Supported documents (+2 more)
+
+### Community 205 - "Community 205"
 Cohesion: 0.18
 Nodes (10): 1. Local backend bench (user space, no root), 2. Flutter, 3. Team mode (the manager plans, prompts and reviews; workers code), 4. Review checklist (every worker, every time), 4b. Turn every worker's DOUBTS into a review task, 5. Live test on emulators (what a "tour" is), 6. Releases, 7. Deploy to the demo server (only with the user's explicit approval; he gave it once for 0.15.0) (+2 more)
 
-### Community 253 - "Client-Side and Browser Hunting"
+### Community 206 - "Community 206"
 Cohesion: 0.18
 Nodes (10): Client-Side and Browser Hunting, Core discipline (include in every agent prompt for this domain), Cross-origin messaging and network attack classes (subagent_type: `general`), Cross-site information leak classes (subagent_type: `general`), DOM and object-state attack classes (subagent_type: `general`), Service-worker and browser-storage attack classes (subagent_type: `general`), UI-redress and navigation attack classes (subagent_type: `general`), Universal moves (apply across the above) (+2 more)
 
-### Community 254 - "Cloud and Deployment Hunting"
+### Community 207 - "Community 207"
 Cohesion: 0.18
 Nodes (10): Cloud and Deployment Hunting, Configuration and secret lifecycle attack classes (subagent_type: `general`), Container and orchestration attack classes (subagent_type: `general`), Core discipline (include in every agent prompt for this domain), Ingress, network, and control-plane attack classes (subagent_type: `general`), Managed storage, events, and edge attack classes (subagent_type: `general`), Universal moves (apply across the above), Validation rules (apply before reporting ANY finding here) (+2 more)
 
-### Community 255 - "Desktop, Mobile, and Local IPC Hunting"
+### Community 208 - "Community 208"
 Cohesion: 0.18
 Nodes (10): Application-state and device-lifecycle attack classes (subagent_type: `general`), Core discipline (include in every agent prompt for this domain), Deep-link, callback, and navigation attack classes (subagent_type: `general`), Desktop, Mobile, and Local IPC Hunting, Local IPC and exported-component attack classes (subagent_type: `general`), Privileged-helper and local-file attack classes (subagent_type: `general`), Universal moves (apply across the above), Validation rules (apply before reporting ANY finding here) (+2 more)
 
-### Community 256 - "HTTP-Protocol and Authentication Hunting"
+### Community 209 - "Community 209"
 Cohesion: 0.18
 Nodes (10): API-key and mTLS attack classes (subagent_type: `general`), Browser-session attack classes (subagent_type: `general`), Core discipline (include in every agent prompt for this domain), Federated-identity attack classes (subagent_type: `general`), HTTP framing and cache attack classes (subagent_type: `general`), HTTP-Protocol and Authentication Hunting, MFA, passkey, and account-transition attack classes (subagent_type: `general`), Universal moves (apply across the above) (+2 more)
 
-### Community 257 - "Formal Persian (فارسی رسمی و اداری)"
+### Community 210 - "Community 210"
 Cohesion: 0.18
 Nodes (10): 1. Two formal registers, 2. Verb and vocabulary rules, 3. Banned phrases (bureaucratic and AI tells), 4. نامه اداری (letter to an organization), 5. Formal email, 6. Invoices, contracts, terms, 7. Orthography (non-negotiable), 8. Before / after (+2 more)
 
-### Community 258 - "Persian SEO (سئوی فارسی)"
+### Community 211 - "Community 211"
 Cohesion: 0.18
 Nodes (10): 1. Document language and direction, 2. Metadata, 3. URLs and slugs, 4. Structured data (JSON-LD), 5. Sitemaps, robots, indexing, 6. Keyword research in Persian, 7. Content that ranks, 8. Performance for Persian pages (+2 more)
 
-### Community 259 - "save_document_template"
-Cohesion: 0.31
-Nodes (3): create_document(), save_document_template(), fail_after_insert()
-
-### Community 263 - "backfill_request_status_key.py"
+### Community 212 - "Community 212"
 Cohesion: 0.27
-Nodes (5): execute(), item_count(), item_rows_of(), request_status_key(), test_item_rows_are_found_by_shape()
+Nodes (3): _office_scoped_manager(), save_office(), TestASOUDCompanySetup
 
-### Community 264 - "diff_values"
+### Community 213 - "Community 213"
 Cohesion: 0.33
 Nodes (6): diff_values(), _shown(), test_a_sensitive_value_is_masked_on_both_sides(), test_a_table_shows_its_row_count_and_an_unchanged_table_is_skipped(), test_a_value_added_or_cleared_is_a_change_and_long_text_is_cut(), test_only_changed_keys_are_listed_with_old_and_new_values()
 
-### Community 265 - "assignment_values"
+### Community 214 - "Community 214"
 Cohesion: 0.33
 Nodes (6): assignment_values(), test_approval_uses_approver_department(), test_initiator_assignment_needs_no_static_target(), test_initiator_relative_assignments_need_no_static_target(), test_specific_employee_assignment_is_read_from_stage_config(), test_unknown_assignment_type_is_rejected()
 
-### Community 266 - "ممیزی و تکمیل «انتظار و زمان‌بندی» — ۲۰۲۶/۱۱/۱۳"
-Cohesion: 0.20
-Nodes (9): Flutter, آزمون‌های اجراشده, بک‌اند, محدودیت‌های راستی‌آزمایی, مسیر داده و فایل‌های مربوط به این اصلاح, ممیزی و تکمیل «انتظار و زمان‌بندی» — ۲۰۲۶/۱۱/۱۳, منطق اجرا و حفاظت اطلاعات, نتیجه و علت مشکل قبلی (+1 more)
-
-### Community 267 - "Gotchas (learned the hard way)"
+### Community 215 - "Community 215"
 Cohesion: 0.20
 Nodes (9): Android / release build, Backend, Flutter, Gotchas (learned the hard way), "I can't find / it doesn't work" reports, Personnel file (state on 2026-10-10), Server / deployment, Session, setup and permissions (all found by live tests) (+1 more)
 
-### Community 268 - "AI, LLM, and Agent Hunting"
+### Community 216 - "Community 216"
 Cohesion: 0.20
 Nodes (9): AI, LLM, and Agent Hunting, Context, retrieval, and memory attack classes (subagent_type: `general`), Core discipline (include in every agent prompt for this domain), MCP and sub-agent trust classes (subagent_type: `general`), Output and disclosure attack classes (subagent_type: `general`), Tool and action attack classes (subagent_type: `general`), Universal moves (apply across the above), Validation rules (apply before reporting ANY finding here) (+1 more)
 
-### Community 269 - "Data Isolation and Lifecycle Hunting"
+### Community 217 - "Community 217"
 Cohesion: 0.20
 Nodes (9): Core discipline (include in every agent prompt for this domain), Data Isolation and Lifecycle Hunting, Deletion, revocation, and lifecycle attack classes (subagent_type: `general`), Derived-data and disclosure attack classes (subagent_type: `general`), Export, backup, restore, and migration attack classes (subagent_type: `general`), Tenant and object-isolation attack classes (subagent_type: `general`), Universal moves (apply across the above), Validation rules (apply before reporting ANY finding here) (+1 more)
 
-### Community 270 - "Vulnerability Hunting"
+### Community 218 - "Community 218"
 Cohesion: 0.20
 Nodes (10): Core hunting method — include in every hunter prompt, Core validation rules — include in every hunter prompt, Coverage-critic waves, Local validation boundaries, Parent consolidation and ledger update, Phase 2: Run coverage-led hunting waves, Promotion procedure — copy this promotion procedure verbatim into every hunter prompt, Required hunter prompt (+2 more)
 
-### Community 271 - "Memory Safety, Binary, and Kernel Hunting"
+### Community 219 - "Community 219"
 Cohesion: 0.20
 Nodes (10): Binary loading and runtime attack classes (subagent_type: `general`), Bounds, integer, and representation attack classes (subagent_type: `general`), Core discipline (include in every agent prompt for this domain), FFI and ABI attack classes (subagent_type: `general`), Kernel and privileged-interface attack classes (subagent_type: `general`), Lifetime, type, and concurrency attack classes (subagent_type: `general`), Memory Safety, Binary, and Kernel Hunting, Universal moves (apply across the above) (+2 more)
 
-### Community 272 - "Conversational Persian (فارسی محاوره‌ای)"
+### Community 220 - "Community 220"
 Cohesion: 0.20
 Nodes (9): 1. Decide the dial first, 2. Verb forms (the core of the register), 3. Sound shifts and particles, 4. What does NOT change in colloquial, 5. The هکسره trap, 6. Tone limits, 7. Before / after, 8. Checklist before you return text (+1 more)
 
-### Community 273 - "Persian typography guide (راهنمای تایپوگرافی فارسی)"
+### Community 221 - "Community 221"
 Cohesion: 0.20
 Nodes (9): 1. Choosing a font, 2. Loading fonts, 3. Sizes and spacing, 4. Digits, 5. Mixed Persian and Latin, 6. ZWNJ and spacing in HTML, 7. Alignment and direction inside components, 8. Quick checks (+1 more)
 
-### Community 274 - "Soroush's working style"
+### Community 222 - "Community 222"
 Cohesion: 0.20
 Nodes (9): Code, Communication, Git, commits, PRs (hard rules), Machine quirks (macOS), Science and honesty (his top priority), Soroush's working style, Tests, Toolkit-first principle (+1 more)
 
-### Community 275 - "Leave requests — `asoud_erp.api.v1.leave_request`"
-Cohesion: 0.20
-Nodes (7): `get_leave_balance`, `hr_self_service.get_my_leave_summary(date?)`, Known limitations, Leave requests — `asoud_erp.api.v1.leave_request`, `preview_leave_request`, Rules and error codes, What approval creates
-
-### Community 276 - "Setup reset correction — implementation and verification"
+### Community 223 - "Community 223"
 Cohesion: 0.20
 Nodes (8): Complete first-entry reset correction, Deployment and recovery, Temporary, administrator-authenticated setup reset, Actual local verification, Cause and scope, Files for this correction, Not verified / deployment still required, Setup reset correction — implementation and verification
 
-### Community 277 - "_ensure_installed_apps_setup_complete"
-Cohesion: 0.25
-Nodes (4): setup_apps(), _ensure_desk_defaults(), _ensure_installed_apps_setup_complete(), test_demo_setup_apps_excludes_uninstalled_and_unrelated_apps()
-
-### Community 280 - "training_enrollment.py"
+### Community 224 - "Community 224"
 Cohesion: 0.33
-Nodes (5): build(), _event_name(), _notes(), _participants(), validate_submit()
+Nodes (3): catalog(), create_from_template(), TestWorkflowTemplates
 
-### Community 281 - "party_validation.py"
-Cohesion: 0.44
-Nodes (7): is_valid_iranian_legal_id(), is_valid_iranian_mobile(), is_valid_iranian_national_code(), normalize_optional(), test_individual_national_code_checksum(), test_legal_id_and_mobile_shapes(), test_optional_values_are_normalized()
+### Community 227 - "Community 227"
+Cohesion: 0.28
+Nodes (3): default_summary(), hidden_file_urls(), priority_label()
 
-### Community 282 - "create_material_request"
-Cohesion: 0.22
-Nodes (6): _complete_rows(), create_material_request(), _default_warehouse(), _has_stock_items(), on_approved(), on_approved()
-
-### Community 283 - "workflow_step_validation.py"
-Cohesion: 0.36
-Nodes (5): _number(), project_request_rows(), validate_request_bounds(), test_equipment_rows_are_projected_and_each_quantity_is_bounded(), test_salary_advance_requires_positive_bounded_amount_and_reduction_reason()
-
-### Community 285 - "documents.spec.ts"
-Cohesion: 0.22
-Nodes (8): CreatedRequest, Instance, JournalEntryAccountRow, JournalEntryDoc, LinkOption, state, Task, TemplatePayload
-
-### Community 286 - "Protocols, RPC, and Messaging Hunting"
-Cohesion: 0.22
-Nodes (9): Broker and queue isolation attack classes (subagent_type: `general`), Core discipline (include in every agent prompt for this domain), Framing, schema, and interpretation attack classes (subagent_type: `general`), Protocols, RPC, and Messaging Hunting, Replay, ordering, and transaction attack classes (subagent_type: `general`), RPC identity and authorization attack classes (subagent_type: `general`), Universal moves (apply across the above), Validation rules (apply before reporting ANY finding here) (+1 more)
-
-### Community 287 - "Resource Exhaustion and Availability Hunting"
-Cohesion: 0.22
-Nodes (9): Computational amplification attack classes (subagent_type: `general`), Core discipline (include in every agent prompt for this domain), Failure and recovery attack classes (subagent_type: `general`), Quota and scheduling attack classes (subagent_type: `general`), Resource accumulation attack classes (subagent_type: `general`), Resource Exhaustion and Availability Hunting, Universal moves (apply across the above), Validation rules (apply before reporting ANY finding here) (+1 more)
-
-### Community 288 - "Supply Chain and Release Hunting"
-Cohesion: 0.22
-Nodes (8): CI and automation attack classes (subagent_type: `general`), Core discipline (include in every agent prompt for this domain), Dependency and build-input attack classes (subagent_type: `general`), Release and update attack classes (subagent_type: `general`), Supply Chain and Release Hunting, Universal moves (apply across the above), Validation rules (apply before reporting ANY finding here), When to use this file
-
-### Community 289 - "Validation, Structured Output, Verification, and Reporting"
-Cohesion: 0.22
-Nodes (9): Candidate-verifier prompt, `FINDINGS-DETAIL.md`, `NEEDS-VALIDATION.md`, Phase 3: Independently validate every candidate, Phase 4: Write and validate `findings.json`, Phase 5: Verify the final records with fresh eyes, Phase 6: Produce target-neutral reports from final records, `REPORT.md` (+1 more)
-
-### Community 290 - "ASOUD personnel access contract (v1)"
-Cohesion: 0.22
-Nodes (9): Architectural decision needed:, ASOUD personnel access contract (v1), Current user, Employee access provisioning, Employee is HR-only master data, Manager screens and role gates policy, Personnel role mapping, Request query and read access for privileged roles (`request_query` vs `request_permission`) (+1 more)
-
-### Community 291 - "HR self-service — `asoud_erp.api.v1.hr_self_service`"
+### Community 229 - "Community 229"
 Cohesion: 0.22
 Nodes (9): Check-in — Employee Checkin, Expense claim — Expense Claim, HR self-service — `asoud_erp.api.v1.hr_self_service`, Leave (مرخصی) — Leave Application, Mission (مأموریت) — Travel Request, Payslips, attendance and holidays (read-only), Salary advance (مساعده) — Employee Advance, Site configuration HRMS needs (+1 more)
 
-### Community 292 - "create_leave_document"
-Cohesion: 0.25
-Nodes (6): leave_application_payload(), _create_leave_application(), create_leave_document(), _requester_employee(), on_approved(), test_daily_leave_application_payload()
+### Community 230 - "Community 230"
+Cohesion: 0.22
+Nodes (8): CreatedRequest, Instance, JournalEntryAccountRow, JournalEntryDoc, LinkOption, state, Task, TemplatePayload
 
-### Community 293 - "test_workflow_next_stage.py"
+### Community 231 - "Community 231"
+Cohesion: 0.22
+Nodes (9): Broker and queue isolation attack classes (subagent_type: `general`), Core discipline (include in every agent prompt for this domain), Framing, schema, and interpretation attack classes (subagent_type: `general`), Protocols, RPC, and Messaging Hunting, Replay, ordering, and transaction attack classes (subagent_type: `general`), RPC identity and authorization attack classes (subagent_type: `general`), Universal moves (apply across the above), Validation rules (apply before reporting ANY finding here) (+1 more)
+
+### Community 232 - "Community 232"
+Cohesion: 0.22
+Nodes (9): Computational amplification attack classes (subagent_type: `general`), Core discipline (include in every agent prompt for this domain), Failure and recovery attack classes (subagent_type: `general`), Quota and scheduling attack classes (subagent_type: `general`), Resource accumulation attack classes (subagent_type: `general`), Resource Exhaustion and Availability Hunting, Universal moves (apply across the above), Validation rules (apply before reporting ANY finding here) (+1 more)
+
+### Community 233 - "Community 233"
+Cohesion: 0.22
+Nodes (8): CI and automation attack classes (subagent_type: `general`), Core discipline (include in every agent prompt for this domain), Dependency and build-input attack classes (subagent_type: `general`), Release and update attack classes (subagent_type: `general`), Supply Chain and Release Hunting, Universal moves (apply across the above), Validation rules (apply before reporting ANY finding here), When to use this file
+
+### Community 234 - "Community 234"
+Cohesion: 0.22
+Nodes (9): Candidate-verifier prompt, `FINDINGS-DETAIL.md`, `NEEDS-VALIDATION.md`, Phase 3: Independently validate every candidate, Phase 4: Write and validate `findings.json`, Phase 5: Verify the final records with fresh eyes, Phase 6: Produce target-neutral reports from final records, `REPORT.md` (+1 more)
+
+### Community 235 - "Community 235"
+Cohesion: 0.22
+Nodes (9): Check-in — Employee Checkin, Expense claim — Expense Claim, HR self-service — `asoud_erp.api.v1.hr_self_service`, Leave (مرخصی) — Leave Application, Mission (مأموریت) — Travel Request, Payslips, attendance and holidays (read-only), Salary advance (مساعده) — Employee Advance, Site configuration HRMS needs (+1 more)
+
+### Community 236 - "Community 236"
+Cohesion: 0.25
+Nodes (3): direct_manager_user(), get_leave_balance(), preview_leave_request()
+
+### Community 238 - "Community 238"
 Cohesion: 0.39
-Nodes (5): _graph(), test_approval_persian_labels_still_match(), test_system_action_persian_continue_label_matches_complete(), test_unmatched_action_on_multi_route_user_task_returns_none(), test_user_task_persian_continue_label_matches_complete()
+Nodes (4): compatible_type(), validate_parameter_fields(), validate_stage_parameters(), validate_for_workflow()
 
-### Community 294 - "Condition & Routing audit — 2026-11-11"
-Cohesion: 0.25
-Nodes (7): Compatibility and remaining limits, Condition & Routing audit — 2026-11-11, Current-task changed files, Final executed verification, Findings and fixes, Reported production sample error: what is and is not proven, Scope and preservation
-
-### Community 295 - "Desktop apps, system tooling and network clients (sub-skill of software-development)"
-Cohesion: 0.25
-Nodes (7): Architecture, Desktop apps, system tooling and network clients (sub-skill of software-development), Diagnosing "connected but X doesn't work", i18n, Privileged operations and OS state, Supervising an external process, Test, CI and release
-
-### Community 296 - "ERP / business-app development (sub-skill of software-development)"
-Cohesion: 0.25
-Nodes (7): API contract discipline (app <-> server), ERP / business-app development (sub-skill of software-development), Flutter specifics, Quality rules, Reuse the platform, Security and ops (never relax), UX rules for business apps
-
-### Community 297 - "Frontend (sub-skill of software-development)"
-Cohesion: 0.25
-Nodes (7): Frontend (sub-skill of software-development), Generic frontend defaults (any project), Non-negotiable rules (summary; full text in the vendored files), Vendored reference (MIT, copied unmodified from TronIsHere/vibafarsiui, license in `frontend/vibefarsi/LICENSE`), Vengeance UI, VibeFarsi, Which one to use
-
-### Community 298 - "QA / Testing (sub-skill of software-development)"
-Cohesion: 0.25
-Nodes (7): Flaky test policy, Playwright conventions, QA / Testing (sub-skill of software-development), Regression selection, Sources (referenced, not vendored), Standing rule: Playwright, always, Test design discipline (from naodeng's QA skills)
-
-### Community 299 - "Account operations — `asoud_erp.api.v1.auth`"
-Cohesion: 0.25
-Nodes (7): Account operations — `asoud_erp.api.v1.auth`, Account status, Login history, Reading, Tests, Writing, «ارسال مجدد دعوت» is refused after the first login
-
-### Community 300 - "Listing"
-Cohesion: 0.25
-Nodes (7): Bank details, Company scope on writes, Input normalisation, Listing, Office identity/contact validation, Parties — `asoud_erp.api.v1.party`, Personnel parties
-
-### Community 301 - "ASOUD ERP API v1 — conventions"
+### Community 240 - "Community 240"
 Cohesion: 0.25
 Nodes (8): ASOUD ERP API v1 — conventions, Authorization, Calling a method, Dates, numbers and money, Errors, Idempotent writes (offline outbox), Response envelope, Tests
 
-### Community 302 - "Login, onboarding, system administrator, roles and HR onboarding: audit and decisions"
+### Community 241 - "Community 241"
+Cohesion: 0.25
+Nodes (7): Architecture, Desktop apps, system tooling and network clients (sub-skill of software-development), Diagnosing "connected but X doesn't work", i18n, Privileged operations and OS state, Supervising an external process, Test, CI and release
+
+### Community 242 - "Community 242"
+Cohesion: 0.25
+Nodes (7): API contract discipline (app <-> server), ERP / business-app development (sub-skill of software-development), Flutter specifics, Quality rules, Reuse the platform, Security and ops (never relax), UX rules for business apps
+
+### Community 243 - "Community 243"
+Cohesion: 0.25
+Nodes (7): Frontend (sub-skill of software-development), Generic frontend defaults (any project), Non-negotiable rules (summary; full text in the vendored files), Vendored reference (MIT, copied unmodified from TronIsHere/vibafarsiui, license in `frontend/vibefarsi/LICENSE`), Vengeance UI, VibeFarsi, Which one to use
+
+### Community 244 - "Community 244"
+Cohesion: 0.25
+Nodes (7): Flaky test policy, Playwright conventions, QA / Testing (sub-skill of software-development), Regression selection, Sources (referenced, not vendored), Standing rule: Playwright, always, Test design discipline (from naodeng's QA skills)
+
+### Community 245 - "Community 245"
+Cohesion: 0.25
+Nodes (7): Account operations — `asoud_erp.api.v1.auth`, Account status, Login history, Reading, Tests, Writing, «ارسال مجدد دعوت» is refused after the first login
+
+### Community 246 - "Community 246"
+Cohesion: 0.25
+Nodes (8): ASOUD ERP API v1 — conventions, Authorization, Calling a method, Dates, numbers and money, Errors, Idempotent writes (offline outbox), Response envelope, Tests
+
+### Community 247 - "Community 247"
 Cohesion: 0.25
 Nodes (7): Decisions, Gaps and things not done, Login, onboarding, system administrator, roles and HR onboarding: audit and decisions, Patches and rollback, Root cause of "advanced equals medium", Root causes of the administrator bug, What existed before
 
-### Community 304 - "leave_subject"
+### Community 248 - "Community 248"
+Cohesion: 0.38
+Nodes (3): ASOUDWorkflowDefinition, _parse_requirements(), require_activation_ready()
+
+### Community 250 - "Community 250"
+Cohesion: 0.38
+Nodes (3): test_context_required(), test_invalid_parameters(), test_optional_empty()
+
+### Community 251 - "Community 251"
 Cohesion: 0.29
-Nodes (5): leave_type_category(), leave_subject(), build_subject(), build_subject(), test_generated_subject()
+Nodes (6): API and changed-file inventory, Current working trees, Literal endpoints, API and changed-file inventory, Current working trees, Literal endpoints
 
-### Community 305 - "description_value"
-Cohesion: 0.43
-Nodes (3): description_value(), test_description_optional_text_and_boundaries(), test_invalid_description_is_rejected()
-
-### Community 307 - "Automatic actions, schema 2"
+### Community 252 - "Community 252"
 Cohesion: 0.29
-Nodes (6): API and compatibility, Automatic actions, schema 2, Deployment and safe default, Implemented operations and deliberate limits, Reliable execution, Verification status
+Nodes (6): API, Deployment, Role management, API, Deployment, Role management
 
-### Community 308 - "Demo seed (`asoud_erp.demo.seed`)"
+### Community 253 - "Community 253"
+Cohesion: 0.33
+Nodes (6): Case, fixture(), FOREIGN, inspect(), Inspected, Prepared
+
+### Community 254 - "Community 254"
+Cohesion: 0.29
+Nodes (7): `get_leave_balance`, `hr_self_service.get_my_leave_summary(date?)`, Known limitations, Leave requests — `asoud_erp.api.v1.leave_request`, `preview_leave_request`, Rules and error codes, What approval creates
+
+### Community 255 - "Community 255"
+Cohesion: 0.29
+Nodes (7): Bank details, Company scope on writes, Input normalisation, Listing, Office identity/contact validation, Parties — `asoud_erp.api.v1.party`, Personnel parties
+
+### Community 256 - "Community 256"
 Cohesion: 0.29
 Nodes (6): Check, Demo seed (`asoud_erp.demo.seed`), Reset, Run, Tests, What it creates
 
-### Community 309 - "ASOUD ERP end-to-end tests (Playwright)"
+### Community 257 - "Community 257"
 Cohesion: 0.29
 Nodes (6): ASOUD ERP end-to-end tests (Playwright), CI, Layout, Requirements, Running, What the suites cover
 
-### Community 310 - "_manager_photo"
-Cohesion: 0.40
-Nodes (3): _manager_photo(), native_photo(), photo_record()
+### Community 260 - "Community 260"
+Cohesion: 0.53
+Nodes (3): normalize_purchase_items(), test_invalid_purchase_items_are_rejected(), test_purchase_items_are_normalized()
 
-### Community 317 - "Native draft path editing"
-Cohesion: 0.33
-Nodes (5): Cancellation, Delete preview and confirmation, Existing insertion API, Limits, Native draft path editing
-
-### Community 318 - "Approval stage supplementary form (pinned ASOUD Form revision)"
-Cohesion: 0.33
-Nodes (5): Approval stage supplementary form (pinned ASOUD Form revision), Completing the task, Multi-approver policy, Stage settings, Task detail
-
-### Community 319 - "Architecture"
+### Community 262 - "Community 262"
 Cohesion: 0.33
 Nodes (5): Access, setup and roles, App (Flutter), Architecture, Backend (`asoud_erp`), Workflow engine
 
-### Community 320 - "Engineering principles for ASOUD ERP work (workers and manager)"
+### Community 263 - "Community 263"
 Cohesion: 0.33
 Nodes (5): API contract and server, Backend (Frappe / ERPNext / HRMS), Engineering principles for ASOUD ERP work (workers and manager), Flutter app, Quality
 
-### Community 321 - "DevOps (sub-skill of software-development)"
+### Community 264 - "Community 264"
 Cohesion: 0.33
 Nodes (5): DevOps (sub-skill of software-development), Repo map (where to look), Safety, Security tie-in, Working conventions (distilled from the repo)
 
-### Community 322 - "Workers (sub-skill of software-development)"
+### Community 265 - "Community 265"
 Cohesion: 0.33
 Nodes (5): 1. Model approval gate (before the first spawn of a session, and whenever a different model is wanted), 2. Manager workflow (summary), 3. Token management tips, 4. Environment notes, Workers (sub-skill of software-development)
 
-### Community 323 - "First-office bootstrap (account-only HR lead)"
+### Community 266 - "Community 266"
 Cohesion: 0.33
 Nodes (5): `complete(company)`, `create_hr_lead(company, full_name, username, contact, temporary_password)`, Deployment / migration, First-office bootstrap (account-only HR lead), `status(company)`
 
-### Community 324 - "Follow-up tasks and receipt confirmation (N6, `asset_movement` Issue)"
-Cohesion: 0.33
-Nodes (6): `asoud_erp.api.v1.request_followup.confirm_receipt` (POST), `asoud_erp.api.v1.request_followup.reject_receipt` (POST), Errors (Persian, `frappe.throw`), Follow-up tasks and receipt confirmation (N6, `asset_movement` Issue), Generic hook: `NativeResult.followup`, Task storage (no new DocType, no migration)
-
-### Community 325 - "احکام استخدام — `asoud_erp.api.v1.hiring_orders`"
+### Community 267 - "Community 267"
 Cohesion: 0.33
 Nodes (5): احکام, احکام استخدام — `asoud_erp.api.v1.hiring_orders`, خطاها, دادهٔ فرم صدور, قالب
 
-### Community 326 - "معرفی‌نامه پرسنل به بانک‌ها و سازمان‌ها"
+### Community 268 - "Community 268"
 Cohesion: 0.33
 Nodes (5): جزئیات اعتبارسنجی و قوانین کاری, صدور، فهرست و چاپ, قالب معرفی‌نامه, معرفی‌نامه پرسنل به بانک‌ها و سازمان‌ها, گردش کار صدور
 
-### Community 327 - "Directives: deployment and integration"
-Cohesion: 0.33
-Nodes (5): Directives: deployment and integration, Implemented contract, Installation, Start and progress reports, Verification and remaining boundaries
-
-### Community 328 - "e2e.yml"
+### Community 269 - "Community 269"
 Cohesion: 0.33
 Nodes (5): asoud_erp app), which is more than a GitHub runner has out of the box. Keep, PROPOSAL — not verified on a runner., result; do not add it to branch protection before then., The Playwright suite needs a full Frappe bench (site + MariaDB + Redis + the, this manual until someone runs it against a real bench image and reports the
 
-### Community 329 - "ASOUD ERP Frappe App"
-Cohesion: 0.33
-Nodes (5): ASOUD ERP Frappe App, Native HR integration, بررسی توسعه, قابلیت‌های نسخه 0.8.0, نصب
-
-### Community 331 - "Approval destinations verification — 2026-11-11"
-Cohesion: 0.40
-Nodes (4): Acceptance evidence, Approval destinations verification — 2026-11-11, Changed files in this task, Findings and minimal repair
-
-### Community 332 - "organization.spec.ts"
-Cohesion: 0.40
-Nodes (4): Chart, Review, state, Unit
-
-### Community 333 - "ASOUD ERP expert"
-Cohesion: 0.40
-Nodes (4): ASOUD ERP expert, Non-negotiable rules, Start here (what to read for which job), Where things are (app, `lib/features/`)
-
-### Community 334 - "Document templates (`asoud_erp.api.v1.document_templates`)"
-Cohesion: 0.40
-Nodes (5): Document templates (`asoud_erp.api.v1.document_templates`), Methods, Supported documents, Use in a workflow, Value sources
-
-### Community 335 - "Attendance correction (`attendance_correction`)"
-Cohesion: 0.40
-Nodes (5): Attendance correction (`attendance_correction`), خطاهای فارسی, فیلدها و کنترلرهای بررسی‌شده, نگاشت بومی و نتیجه, پارامترها
-
-### Community 336 - "Leave, mission and overtime (`leave_application`, `mission`, `overtime`)"
-Cohesion: 0.40
-Nodes (5): Companion keys of Time fields, Leave (`leave_application`, «درخواست مرخصی»), Leave, mission and overtime (`leave_application`, `mission`, `overtime`), Mission (`mission`, «درخواست مأموریت»), Overtime (`overtime`, «درخواست اضافه‌کار»)
-
-### Community 337 - "Personnel file — `asoud_erp.api.v1.personnel_file`"
+### Community 271 - "Community 271"
 Cohesion: 0.40
 Nodes (5): Employee home — `get_my_home()`, File object, Personnel file — `asoud_erp.api.v1.personnel_file`, Reading, Writing (HR managers)
 
-### Community 338 - "Backend module map and roadmap"
+### Community 272 - "Community 272"
 Cohesion: 0.40
 Nodes (5): Backend module map and roadmap, Development bench, Modules, Request cards → native documents, What the app should change next
 
-### Community 345 - "Chart of accounts — `asoud_erp.api.v1.account`"
-Cohesion: 0.50
-Nodes (3): Chart of accounts — `asoud_erp.api.v1.account`, Company scope, Detail groups and floating details
+### Community 273 - "Community 273"
+Cohesion: 0.40
+Nodes (4): Mobile drafts and conflict handling, Organization chart and native Employee managers, Mobile drafts and conflict handling, Organization chart and native Employee managers
 
-### Community 346 - "گواهی‌های اشتغال به کار"
-Cohesion: 0.50
-Nodes (3): صدور و فهرست, قالب, گواهی‌های اشتغال به کار
+### Community 274 - "Community 274"
+Cohesion: 0.40
+Nodes (4): ASOUD ERP expert, Non-negotiable rules, Start here (what to read for which job), Where things are (app, `lib/features/`)
 
-### Community 347 - "Selling — `asoud_erp.api.v1.selling`"
+### Community 275 - "Community 275"
+Cohesion: 0.40
+Nodes (5): Employee home — `get_my_home()`, File object, Personnel file — `asoud_erp.api.v1.personnel_file`, Reading, Writing (HR managers)
+
+### Community 276 - "Community 276"
+Cohesion: 0.40
+Nodes (5): Backend module map and roadmap, Development bench, Modules, Request cards → native documents, What the app should change next
+
+### Community 286 - "Community 286"
+Cohesion: 0.67
+Nodes (3): item_count(), item_rows_of(), test_item_rows_are_found_by_shape()
+
+### Community 288 - "Community 288"
 Cohesion: 0.50
 Nodes (4): Errors, Invoice lines, Invoice object, Selling — `asoud_erp.api.v1.selling`
 
-### Community 349 - "Independent workflow drafts from system templates"
+### Community 289 - "Community 289"
+Cohesion: 0.50
+Nodes (3): Chart of accounts — `asoud_erp.api.v1.account`, Company scope, Detail groups and floating details
+
+### Community 290 - "Community 290"
+Cohesion: 0.50
+Nodes (3): صدور و فهرست, قالب, گواهی‌های اشتغال به کار
+
+### Community 291 - "Community 291"
+Cohesion: 0.50
+Nodes (4): Errors, Invoice lines, Invoice object, Selling — `asoud_erp.api.v1.selling`
+
+### Community 292 - "Community 292"
 Cohesion: 0.50
 Nodes (3): `catalog(company, search='', module_key='', start=0, page_length=20, include_user=0)`, `create_from_template(company, source, source_modified, workflow_title,, Independent workflow drafts from system templates
 
-### Community 350 - "ASOUD workflow runtime v1"
-Cohesion: 0.50
-Nodes (4): ASOUD workflow runtime v1, Decision routes, Request access, System actions
-
-### Community 351 - "User actions — implementation and verification boundary"
+### Community 293 - "Community 293"
 Cohesion: 0.50
 Nodes (3): Intentional behavior, User actions — implementation and verification boundary, Verification
 
-### Community 355 - "Dashboard — `asoud_erp.api.v1.dashboard`"
+### Community 307 - "Community 307"
 Cohesion: 0.67
 Nodes (3): Dashboard — `asoud_erp.api.v1.dashboard`, `get_home_summary(company)` — GET, `get_system_summary()` — GET, System Manager
 
-### Community 356 - "Payments — `asoud_erp.api.v1.payments`"
-Cohesion: 0.67
-Nodes (3): Creating a payment, Payment object, Payments — `asoud_erp.api.v1.payments`
-
-### Community 357 - "Projects, tasks and timesheets — `asoud_erp.api.v1.projects`"
+### Community 308 - "Community 308"
 Cohesion: 0.67
 Nodes (3): Employees, Managers, Projects, tasks and timesheets — `asoud_erp.api.v1.projects`
 
-### Community 361 - "API and changed-file inventory"
+### Community 311 - "Community 311"
 Cohesion: 0.67
-Nodes (3): API and changed-file inventory, Current working trees, Literal endpoints
+Nodes (3): Creating a payment, Payment object, Payments — `asoud_erp.api.v1.payments`
 
-### Community 362 - "اتصال پرسنل به مدل استاندارد"
+### Community 312 - "Community 312"
 Cohesion: 0.67
-Nodes (3): آزمون, اتصال پرسنل به مدل استاندارد, نصب و ارتقا
-
-### Community 363 - "Role management"
-Cohesion: 0.67
-Nodes (3): API, Deployment, Role management
+Nodes (3): Employees, Managers, Projects, tasks and timesheets — `asoud_erp.api.v1.projects`
 
 ## Knowledge Gaps
-- **623 isolated node(s):** `@types/node`, `typescript`, `asoud_erp`, `Start here (what to read for which job)`, `Non-negotiable rules` (+618 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2432 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **131 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **617 isolated node(s):** `asoud_erp`, `@types/node`, `typescript`, `Start here (what to read for which job)`, `Non-negotiable rules` (+612 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2236 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **108 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `APITestCase` connect `APITestCase` to `warehouse`, `success`, `frappe`, `workflow_request.py`, `disable_party`, `run_financial_report`, `require_company`, `TestFormRecordSources`, `TestDocumentTemplates`, `TestWorkflowAccess`, `run`, `execute_mutation`, `company`, `forms.py`, `employment_contracts.py`, `json`, `TestRequestExecution`, `.create`, `TestPersonnelIntroductionLetters`, `make_event`, `list_forms`, `TestStageSupplementaryForm`, `v1/employment_certificates.py`, `save_stage_settings`, `.login`, `report.py`, `support.py`, `ensure_system_templates`, `.submit`, `get_request`, `dashboard.py`, `TestAutomaticActionAudit`, `TestPartyEmployeeSoD`, `TestSelfApprovalRouting`, `TestFormExecutionRuntime`, `v1/hiring_orders.py`, `services/setup_reset.py`, `v1/salary_change_orders.py`, `save_form`, `TestWorkflowConditionCatalog`, `TestRequestVoid`, `TestWorkflowCheck`, `TestWorkflowStartPhase3`, `voucher.py`, `CertificateCase`, `.definition`, `request_comments.py`, `save_stage_routes`, `TestDirectiveStartProgressAndReminders`, `Base`, `hr_self_service.py`, `TestPartyCompanyScope`, `paging`, `execute`, `sales_orders.py`, `get_attachment`, `role_management.py`, `list_my_requests`, `TestRequestNumbering`, `test_account_ops.py`, `.approve_form`, `payments.py`, `stock.py`, `TestApprovalQuorum`, `v1/workflow_paths.py`, `save_chart`, `TestAccountOps`, `get_workflow_design`?**
-  _High betweenness centrality (0.044) - this node is a cross-community bridge._
-- **What connects `@types/node`, `typescript`, `asoud_erp` to the rest of the system?**
-  _623 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `success` be split into smaller, more focused modules?**
-  _Cohesion score 0.059237319511292116 - nodes in this community are weakly interconnected._
-- **Why does `success()` connect `success` to `frappe`, `save_document_template`, `disable_party`, `getdate`, `run_financial_report`, `require_company`, `TestFormRecordSources`, `re`, `auth.py`, `workflow_request.py`, `TestASOUDPersonnelNative`, `pos.py`, `forms.py`, `employment_contracts.py`, `.create`, `record`, `list_forms`, `TestPersonnelIntroductionLetters`, `v1/employment_certificates.py`, `save_stage_settings`, `services/__init__.py`, `.login`, `directives.py`, `report.py`, `support.py`, `get_request`, `dashboard.py`, `account_recovery.py`, `TestAutomaticActionAudit`, `_mutation`, `save_party`, `v1/hiring_orders.py`, `services/setup_reset.py`, `v1/salary_change_orders.py`, `save_form`, `TestWorkflowCheck`, `voucher.py`, `hr.py`, `request_comments.py`, `hashlib`, `save_stage_routes`, `hr_self_service.py`, `paging`, `buying.py`, `sales_orders.py`, `stock.py`, `role_management.py`, `APITestCase`, `get_attachment`, `list_my_requests`, `payments.py`, `v1/workflow_paths.py`, `organization.py`, `services/workflow_wait.py`, `test_directive_paging.py`, `calendar.py`, `directive_access.py`, `save_chart`, `personnel.py`, `TestAccountOps`, `serialize_workflow`, `get_workflow_design`?**
-  _High betweenness centrality (0.038) - this node is a cross-community bridge._
-- **Should `frappe` be split into smaller, more focused modules?**
-  _Cohesion score 0.029002236490873676 - nodes in this community are weakly interconnected._
-- **Why does `make_definition()` connect `APITestCase` to `frappe`, `workflow_request.py`, `TestWorkflowAccess`, `run`, `company`, `forms.py`, `employment_contracts.py`, `json`, `TestPersonnelIntroductionLetters`, `make_event`, `TestStageSupplementaryForm`, `v1/employment_certificates.py`, `save_stage_settings`, `.submit`, `sys`, `TestAutomaticActionAudit`, `TestSelfApprovalRouting`, `v1/hiring_orders.py`, `TestFormExecutionRuntime`, `v1/salary_change_orders.py`, `save_form`, `request_native_documents.py`, `TestRequestVoid`, `TestWorkflowCheck`, `CertificateCase`, `hashlib`, `save_stage_routes`, `Base`, `TestRequestNumbering`, `.approve_form`, `TestApprovalQuorum`, `TestDispatch`?**
-  _High betweenness centrality (0.018) - this node is a cross-community bridge._
-- **Should `test_personnel.py` be split into smaller, more focused modules?**
-  _Cohesion score 0.0748663101604278 - nodes in this community are weakly interconnected._
+- **Why does `success()` connect `Community 11` to `Community 0`, `Community 129`, `Community 2`, `Community 130`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 1`, `Community 12`, `Community 141`, `Community 14`, `Community 142`, `Community 143`, `Community 144`, `Community 145`, `Community 19`, `Community 18`, `Community 21`, `Community 22`, `Community 151`, `Community 277`, `Community 25`, `Community 146`, `Community 155`, `Community 28`, `Community 29`, `Community 33`, `Community 34`, `Community 37`, `Community 165`, `Community 38`, `Community 41`, `Community 46`, `Community 47`, `Community 175`, `Community 176`, `Community 51`, `Community 54`, `Community 56`, `Community 66`, `Community 67`, `Community 73`, `Community 76`, `Community 80`, `Community 84`, `Community 212`, `Community 89`, `Community 90`, `Community 91`, `Community 224`, `Community 104`, `Community 105`, `Community 236`, `Community 119`, `Community 120`?**
+  _High betweenness centrality (0.058) - this node is a cross-community bridge._
+- **What connects `asoud_erp`, `@types/node`, `typescript` to the rest of the system?**
+  _617 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `Community 0` be split into smaller, more focused modules?**
+  _Cohesion score 0.03066812705366922 - nodes in this community are weakly interconnected._
+- **Why does `APITestCase` connect `Community 0` to `Community 129`, `Community 2`, `Community 3`, `Community 259`, `Community 133`, `Community 6`, `Community 7`, `Community 5`, `Community 9`, `Community 4`, `Community 11`, `Community 8`, `Community 1`, `Community 270`, `Community 143`, `Community 144`, `Community 145`, `Community 18`, `Community 19`, `Community 20`, `Community 130`, `Community 152`, `Community 155`, `Community 34`, `Community 37`, `Community 39`, `Community 168`, `Community 46`, `Community 47`, `Community 175`, `Community 176`, `Community 178`, `Community 51`, `Community 52`, `Community 54`, `Community 62`, `Community 63`, `Community 65`, `Community 66`, `Community 200`, `Community 80`, `Community 84`, `Community 96`, `Community 97`, `Community 98`, `Community 226`, `Community 225`, `Community 224`, `Community 104`, `Community 107`, `Community 119`?**
+  _High betweenness centrality (0.024) - this node is a cross-community bridge._
+- **Should `Community 1` be split into smaller, more focused modules?**
+  _Cohesion score 0.038779956427015254 - nodes in this community are weakly interconnected._
+- **Why does `setup_tenancy()` connect `Community 0` to `Community 65`, `Community 3`, `Community 6`, `Community 47`, `Community 175`, `Community 176`, `Community 63`?**
+  _High betweenness centrality (0.024) - this node is a cross-community bridge._
+- **Should `Community 2` be split into smaller, more focused modules?**
+  _Cohesion score 0.0515406162464986 - nodes in this community are weakly interconnected._
