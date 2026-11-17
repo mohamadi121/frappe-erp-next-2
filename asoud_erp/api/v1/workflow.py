@@ -1207,17 +1207,22 @@ def delete_workflow(name=None) -> dict:
 
 
 def assert_design_valid(definition: str) -> None:
-    """Refuse to start an execution whose stored graph has an error-severity issue.
+    """Refuse to start an execution whose stored graph is structurally broken.
 
     Activation already validates the design, but a design can be corrupted after
     it is Active (a stage deleted at the DB level, a route left dangling). An
     invalid design must never run, so the start path re-checks the saved graph
     under the definition lock (PA-015). Saving Inactive drafts is unaffected.
+
+    Only *structural* breakage is checked (``structural_issues``): the designer's
+    Start trigger/initiator rules and other activation-only config rules are NOT
+    applied, because the system request types are started through
+    ``create_request`` and their Start has no ``trigger_type``/``initiator_roles``.
     """
-    from asoud_erp.services.workflow_check import validate_workflow as check
+    from asoud_erp.services.workflow_contract import structural_issues
 
     stages, transitions = _graph_rows(definition)
-    if not check(stages, transitions)['ok']:
+    if structural_issues(stages, transitions):
         frappe.throw('این گردش‌کار معتبر نیست و تا اصلاح طراحی قابل اجرا نیست.')
 
 

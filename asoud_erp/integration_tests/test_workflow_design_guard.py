@@ -14,7 +14,11 @@ import frappe
 
 from asoud_erp.api.v1 import workflow
 from asoud_erp.integration_tests.fixtures import APITestCase
-from asoud_erp.integration_tests.request_fixtures import make_definition
+from asoud_erp.integration_tests.request_fixtures import (
+    make_definition,
+    patched_specs,
+    seed_test_templates,
+)
 from asoud_erp.integration_tests.request_helpers import act, create
 
 
@@ -218,3 +222,49 @@ class TestSnapshotBackfill(APITestCase):
         self.assertTrue(first)
         execute()
         self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "graph_snapshot_json"), first)
+
+
+class TestSystemTemplatesStart(APITestCase):
+    """The start-time check must not block the real system request types.
+
+    The seeded system templates (leave/purchase/supply) are started through
+    ``create_request``; their Start stage has no usable Manual trigger
+    (``initiator_roles`` is empty), so the designer's activation rules reject
+    them. The start-time check must only reject *structural* breakage, so a
+    request can still be created for a healthy template, and a DB-corrupted one
+    (an orphan approval / dangling route) is refused.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.specs = patched_specs()
+        self.specs.__enter__()
+        self.definitions = seed_test_templates(self.company)
+
+    def tearDown(self):
+        self.specs.__exit__()
+        super().tearDown()
+
+    def _approval_stage(self, definition):
+        return frappe.db.get_value("ASOUD Workflow Stage",
+                                   {"workflow_definition": definition, "stage_type": "Approval"}, "name")
+
+    def test_create_request_works_for_the_seeded_system_templates(self):
+        # The regression: with the old check every leave/purchase request was
+        # refused because the seeded Start has no trigger_type/initiator_roles.
+        for key in ("leave", "purchase"):
+            result = create(self.company, template_key=key)
+            instance = frappe.get_doc("ASOUD Workflow Instance", result["workflow_instance"])
+            self.assertEqual(instance.status, "Running", key)
+            self.assertEqual(instance.workflow_definition, self.definitions[key])
+
+    def test_a_db_corrupted_system_template_is_refused(self):
+        definition = self.definitions["leave"]
+        # Corrupt the design at the DB level: delete the approval stage so the
+        # form stage's route dangles. The graph is now structurally broken.
+        frappe.db.delete("ASOUD Workflow Stage", self._approval_stage(definition))
+        with self.assertRaises(frappe.ValidationError) as caught:
+            create(self.company, template_key="leave")
+        self.assertIn("این گردش‌کار معتبر نیست", str(caught.exception))
+        self.assertIsNone(frappe.db.get_value("ASOUD Workflow Instance",
+                                               {"workflow_definition": definition, "status": "Running"}))

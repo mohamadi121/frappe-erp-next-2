@@ -17,11 +17,18 @@ Deactivation only prevents new starts; running instances and historical rows rem
 Activation validates the saved graph, but a design can be corrupted after it is
 Active (a stage deleted at the DB level, a route left dangling). `start_workflow_instance`
 therefore re-checks the stored graph under the definition lock and refuses to start
-when `validate_workflow` reports an `error`-severity issue, with the Persian message
-`این گردش‌کار معتبر نیست و تا اصلاح طراحی قابل اجرا نیست.` This covers every start path
-(`create_request`, form submission, purchase requests). Saving an `Inactive` draft is
-unaffected — designers still save incomplete drafts step by step; the check runs only
-at start, and only for an `Active` workflow.
+when the pure `services/workflow_contract.structural_issues` reports breakage, with the
+Persian message `این گردش‌کار معتبر نیست و تا اصلاح طراحی قابل اجرا نیست.` This covers
+every start path (`create_request`, form submission, purchase requests). Saving an
+`Inactive` draft is unaffected — designers still save incomplete drafts step by step;
+the check runs only at start, and only for an `Active` workflow.
+
+The check is **structural only**: it rejects a missing Start/End, a route to a stage
+outside the definition, a stage unreachable from Start or with no path to an End, an
+Approval with no Approve route, and an invalid route condition. It deliberately does
+**not** apply the designer's Start trigger/initiator rules or other activation-only
+config rules, because the system request types (leave/purchase/supply) are started
+through `create_request` and their Start stage has no `trigger_type`/`initiator_roles`.
 
 Deletion uses whitelisted POST `workflow.delete_workflow(name)` (or existing POST `frappe.client.delete(doctype="ASOUD Workflow Definition",
 name=...)`). Native delete permission, company scope and manager

@@ -48,11 +48,7 @@ def make_definition(company: str, approvals: int = 1, fields: list | None = None
         "allow_user_submission": 1, "frappe_workflow": native_workflow(), "template_key": template_key,
         "template_version": 1 if template_key else 0, "is_system_template": 1 if template_key else 0,
     }).insert(ignore_permissions=True)
-    # The Start config must satisfy the activation/start-time graph check
-    # (a Manual start needs initiator roles), so the Active fixture is a valid
-    # design that `start_workflow_instance` will accept.
-    configs = [("Start", {"title": "شروع", "trigger_type": "Manual",
-                          "initiator_roles": ["Employee", "HR User"]}),
+    configs = [("Start", {"title": "شروع"}),
                ("User Task", {"title": "ثبت درخواست", "activity_type": "Data Entry", "assignment_type": "Initiator",
                               "form_fields": fields if fields is not None else REQUEST_FIELDS})]
     configs += [("Approval", {"title": f"تأیید {index + 1}", "assignment_type": "Direct Manager",

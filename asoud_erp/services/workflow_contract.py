@@ -105,6 +105,55 @@ def activation_requirements(stages, transitions):
     return list(dict.fromkeys(errors))
 
 
+def structural_issues(stages, transitions):
+    """Structural breakage that can mis-route a running request.
+
+    Unlike ``activation_requirements`` this never inspects a stage's *config*
+    (``_validate_saved_stage``): the designer's Start trigger/initiator rules and
+    the other activation-only config rules must not block a definition that is
+    started through ``create_request`` (the system request types, whose Start has
+    no ``trigger_type``/``initiator_roles``). It only rejects shapes the runtime
+    cannot follow: a missing Start/End, a route to a stage outside the definition,
+    a stage unreachable from Start or with no path to an End, an Approval with no
+    Approve route, and an invalid route condition.
+    """
+    issues = []
+    names = {row['name'] for row in stages}
+    starts = [row['name'] for row in stages if row['stage_type'] == 'Start']
+    ends = {row['name'] for row in stages if row['stage_type'] == 'End'}
+    if len(starts) != 1 or not ends:
+        issues.append('گردش‌کار باید یک شروع و دست‌کم یک پایان داشته باشد.')
+    outgoing = {name: [] for name in names}
+    for edge in transitions:
+        if edge['from_stage'] not in names or edge['to_stage'] not in names:
+            issues.append('یکی از مسیرها به مرحله‌ای خارج از این گردش‌کار متصل است.')
+            continue
+        outgoing[edge['from_stage']].append(edge)
+    for row in stages:
+        kind, name = row['stage_type'], row['name']
+        try:
+            _validate_saved_routes(kind, outgoing[name])
+        except (ValueError, TypeError, KeyError):
+            issues.append('مسیر خروج یکی از مراحل کامل و معتبر نیست.')
+    if len(starts) == 1:
+        reached, pending = set(), [starts[0]]
+        while pending:
+            node = pending.pop()
+            if node in reached:
+                continue
+            reached.add(node)
+            pending.extend(e['to_stage'] for e in outgoing[node])
+        can_finish = set(ends)
+        while True:
+            expanded = can_finish | {e['from_stage'] for e in transitions if e['to_stage'] in can_finish}
+            if expanded == can_finish:
+                break
+            can_finish = expanded
+        if reached != names or can_finish != names:
+            issues.append(DISCONNECTED_PATHS)
+    return list(dict.fromkeys(issues))
+
+
 def design_details_summary(stages, transitions):
     """Read-only presentation of the same checks; never trusts stale Pending text."""
     requirements = activation_requirements(stages, transitions)

@@ -85,7 +85,11 @@ changes nothing.
 ## Tests
 
 - Pure: `asoud_erp/tests/test_workflow_check.py`, `asoud_erp/tests/test_workflow_simulation.py`,
-  `asoud_erp/tests/test_workflow_graph_snapshot.py` (snapshot + backfill consistency).
+  `asoud_erp/tests/test_workflow_contract.py` (`structural_issues` — the start-time
+  structural check), `asoud_erp/tests/test_workflow_graph_snapshot.py` (snapshot +
+  backfill consistency).
 - Integration (real site, no mocks): `asoud_erp/integration_tests/test_workflow_check.py`,
-  `asoud_erp/integration_tests/test_workflow_design_guard.py` (guards, start-time validity,
-  backfill) — both registered in `.github/integration-modules.txt`.
+  `asoud_erp/integration_tests/test_workflow_design_guard.py` (guards, start-time
+  validity — including that the seeded system templates still start and a
+  DB-corrupted one is refused — backfill) — both registered in
+  `.github/integration-modules.txt`.
