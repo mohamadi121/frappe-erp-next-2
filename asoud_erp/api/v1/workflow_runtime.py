@@ -844,6 +844,12 @@ def start_workflow_instance(
     workflow = frappe.get_doc("ASOUD Workflow Definition", definition, for_update=True)
     if workflow.status != "Active" or workflow.readiness_status != "Ready":
         frappe.throw(_("فقط گردش‌کار فعال قابل شروع است."))
+    # An Active design can be corrupted after activation; never start an invalid
+    # graph (PA-015). Checked under the definition lock so a concurrent design
+    # change cannot slip between the check and the instance insert.
+    from asoud_erp.api.v1.workflow import assert_design_valid
+
+    assert_design_valid(definition)
 
     if request_id:
         activity_rows = frappe.db.sql("""
