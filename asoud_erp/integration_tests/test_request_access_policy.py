@@ -196,6 +196,28 @@ class TestOrdinaryUserDenied(ConfidentialRequestCase):
             frappe.set_user("Administrator")
 
 
+class TestRequesterSubmissionIsNotActing(ConfidentialRequestCase):
+    """PA-055 P1 vs P3: completing the request's own form stage is the requester's
+    submission, not an assignee decision. Once ownership and the task move away, the
+    requester is NONE (not a masked previous assignee)."""
+
+    def test_requester_is_none_after_ownership_and_task_move_away(self):
+        request, file = self.submit_confidential()
+        instance = frappe.db.get_value("ASOUD Workflow Request", request, "workflow_instance")
+        # The requester (EMPLOYEE_USER) completed their own form task while submitting, so a
+        # "Complete" activity exists for them on the form stage. Move ownership and the task
+        # to Administrator, as the doctype test does, so they are neither owner nor assignee.
+        frappe.db.set_value("ASOUD Workflow Request", request, "owner", "Administrator")
+        frappe.db.set_value("ASOUD Workflow Task",
+                            {"workflow_instance": instance}, "assigned_to", "Administrator")
+        # The submission must not count as acting: the requester is NONE, denied everywhere.
+        with self.assertRaises(frappe.PermissionError):
+            self.detail_as(EMPLOYEE_USER, request)
+        self.assertFalse(self.raw_read(EMPLOYEE_USER, request))
+        self.assertEqual(self.raw_list(EMPLOYEE_USER, request), [])
+        self.assertFalse(self.file_read(EMPLOYEE_USER, file))
+
+
 class TestCrossOffice(ConfidentialRequestCase):
     def test_hr_manager_of_another_office_is_denied(self):
         request, file = self.submit_confidential()
