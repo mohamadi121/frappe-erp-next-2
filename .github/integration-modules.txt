@@ -2,6 +2,7 @@ test_workflow_user_actions
 test_workflow_access
 test_workflow_start_settings
 test_workflow_document_access
+test_module_rollback
 test_selling_payments
 test_sales_orders
 test_stock_buying
