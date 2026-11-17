@@ -25,16 +25,21 @@ the check runs only at start, and only for an `Active` workflow.
 
 The check mirrors what the runtime (`workflow_runtime._next_stage`) can actually
 follow, not the designer's activation rules. It rejects: a missing Start/End; a route
-to a stage outside the definition; a stage unreachable from Start or with no path to
-an End; a non-End stage with no outgoing route (the instance would stall); and a route
-whose `condition_json` does not parse to a dict. It deliberately does **not** apply
-the designer's activation rules — neither `_validate_saved_stage` (the Start
-trigger/initiator and other config rules) nor `_validate_saved_routes` (the
-route-shape rules). That matters for two real cases: the system request types
-(leave/purchase/supply) are started through `create_request` and their Start stage has
-no `trigger_type`/`initiator_roles`; and a user-edited workflow may give a stage a
-single unlabeled default route (e.g. a System Action or Approval whose only exit is an
-unlabeled `Continue` route), which the runtime treats as the stage's main route.
+to a stage outside the definition; a stage unreachable from Start (following every
+route kind the runtime follows — Approve/Reject/Return/Complete/Success/Error and the
+unlabeled default); and a route whose `condition_json` does not parse to a dict. A
+stage does not have to reach an End or have an outgoing route: the runtime parks at a
+stage reached via an Error or Return route (e.g. a System Action's Error route to a
+User Task) waiting for a human action, and a dead-end that makes the End unreachable
+is still caught because the End then stops being reachable from Start. It
+deliberately does **not** apply the designer's activation rules — neither
+`_validate_saved_stage` (the Start trigger/initiator and other config rules) nor
+`_validate_saved_routes` (the route-shape rules). That matters for two real cases: the
+system request types (leave/purchase/supply) are started through `create_request` and
+their Start stage has no `trigger_type`/`initiator_roles`; and a user-edited workflow
+may give a stage a single unlabeled default route (e.g. a System Action or Approval
+whose only exit is an unlabeled `Continue` route), which the runtime treats as the
+stage's main route.
 
 Deletion uses whitelisted POST `workflow.delete_workflow(name)` (or existing POST `frappe.client.delete(doctype="ASOUD Workflow Definition",
 name=...)`). Native delete permission, company scope and manager
