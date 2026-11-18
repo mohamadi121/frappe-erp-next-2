@@ -77,3 +77,4 @@ test_workflow_check
 test_stage_supplementary_form
 test_workflow_return_phase4
 test_workflow_approval_quorum
+test_phase_a_acceptance
