@@ -46,8 +46,11 @@ class TestWorkflowDocumentAccess(APITestCase):
         definition, stage = self._definition_and_stage()
         self._store(stage, 'Limited Edit')
         # App 0.31.0 re-sends Edit for a stored Limited Edit without the change flag.
-        workflow.save_stage_settings(definition, stage.name, _user_task_config('Edit'))
+        result = workflow.save_stage_settings(definition, stage.name, _user_task_config('Edit'))
         self.assertEqual(self._stored_access(stage), 'Limited Edit')
+        # The save is not a silent no-op: the response carries a Persian notice.
+        self.assertIn('ویرایش محدود', result['meta']['notice'])
+        self.assertIn('به‌روزرسانی', result['meta']['notice'])
 
     def test_stored_limited_edit_resent_is_kept(self):
         definition, stage = self._definition_and_stage()
@@ -55,12 +58,23 @@ class TestWorkflowDocumentAccess(APITestCase):
         workflow.save_stage_settings(definition, stage.name, _user_task_config('Limited Edit'))
         self.assertEqual(self._stored_access(stage), 'Limited Edit')
 
+    def test_read_only_from_031_is_applied_without_notice(self):
+        # 0.31.0 offers Read Only / Edit. Picking Read Only for a stored Limited Edit is
+        # unambiguous, so it is applied (no protection, no notice).
+        definition, stage = self._definition_and_stage()
+        self._store(stage, 'Limited Edit')
+        result = workflow.save_stage_settings(definition, stage.name, _user_task_config('Read Only'))
+        self.assertEqual(self._stored_access(stage), 'Read Only')
+        self.assertNotIn('notice', result['meta'])
+
     def test_explicit_change_from_limited_edit_is_saved(self):
         definition, stage = self._definition_and_stage()
         self._store(stage, 'Limited Edit')
-        workflow.save_stage_settings(definition, stage.name,
+        result = workflow.save_stage_settings(definition, stage.name,
             {**_user_task_config('Edit'), 'document_access_changed': True})
         self.assertEqual(self._stored_access(stage), 'Edit')
+        # A genuine explicit change is applied, not protected, so no notice.
+        self.assertNotIn('notice', result['meta'])
         # The change flag itself is never stored in config_json.
         self.assertNotIn('document_access_changed', json.loads(
             frappe.db.get_value('ASOUD Workflow Stage', stage.name, 'config_json')))
