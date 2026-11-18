@@ -242,9 +242,13 @@ def _action_request_definition(company, role):
         "allow_user_submission": 1, "frappe_workflow": native_workflow(),
         "template_key": "", "template_version": 0, "is_system_template": 0,
     }).insert(ignore_permissions=True)
+    # `assignment_type` is required by `_normalize_assignment` (it defaults to Role and
+    # demands `assignee_roles`); the runtime resolves the shared-claim holders from
+    # `assignment_rule` for a versioned user-action stage, so `Initiator` here only
+    # satisfies the policy — the same shape as `test_workflow_user_actions.make_action`.
     review_config = {"title": "بررسی", "activity_type": "Data Entry", "task_purpose": "Existing",
-                     "action_contract_version": 1, "result_mode": "Simple",
-                     "simple_result_style": "Report", "allow_draft": True,
+                     "assignment_type": "Initiator", "action_contract_version": 1,
+                     "result_mode": "Simple", "simple_result_style": "Report", "allow_draft": True,
                      "allow_add_attachments": False, "allow_reassign": True,
                      "assignment_rule": {"basis": "Role", "role": role, "scope": "Company"}}
     stages = [
