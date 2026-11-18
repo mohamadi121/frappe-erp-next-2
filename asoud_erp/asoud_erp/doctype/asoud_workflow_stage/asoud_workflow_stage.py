@@ -7,6 +7,13 @@ from frappe.model.document import Document
 
 class ASOUDWorkflowStage(Document):
     def validate(self) -> None:
+        # Backstop for design writes that bypass the guarded whitelisted functions
+        # (raw /api/resource, frappe.client, Desk, import, bulk edit): a running
+        # instance reads its graph from these rows, so editing them while an
+        # instance is Running (or the definition is Active) must be refused (PA-015).
+        from asoud_erp.services.workflow_condition_binding import assert_design_editable
+
+        assert_design_editable(self)
         if self.stage_type == "Start" and frappe.db.exists(
             "ASOUD Workflow Stage",
             {"workflow_definition": self.workflow_definition, "stage_type": "Start", "name": ["!=", self.name]},
@@ -40,3 +47,8 @@ class ASOUDWorkflowStage(Document):
             except ValueError as error:
                 frappe.throw(str(error))
         self.config_json = json.dumps(config, ensure_ascii=False)
+
+    def on_trash(self) -> None:
+        from asoud_erp.services.workflow_condition_binding import assert_design_editable
+
+        assert_design_editable(self)

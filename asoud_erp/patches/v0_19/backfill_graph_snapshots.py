@@ -33,13 +33,22 @@ def execute() -> None:
     instances = frappe.get_all(
         "ASOUD Workflow Instance",
         filters={"status": "Running"},
-        fields=["name", "workflow_definition", "current_stage", "graph_snapshot_json"],
+        fields=["name", "workflow_definition", "current_stage", "graph_snapshot_json",
+                "reference_doctype"],
         limit_page_length=0,
     )
     inconsistent = []
+    skipped_directives = 0
     for instance in instances:
         if instance.graph_snapshot_json:
             continue  # Already frozen (by start or a previous backfill run).
+        # Directive adapter instances run on their own engine (api/v1/directives.py),
+        # not the graph runtime: their definition has no Start/End/transitions, so
+        # backfill_consistent would always flag them. Skip them and count them
+        # separately instead of logging a false "needs review" on every migrate.
+        if instance.reference_doctype == "ASOUD Internal Communication":
+            skipped_directives += 1
+            continue
         definition = instance.workflow_definition
         stages = frappe.get_all(
             STAGE, filters={"workflow_definition": definition},
@@ -51,14 +60,22 @@ def execute() -> None:
         if not backfill_consistent(instance.current_stage, stages, transitions, task_stages):
             inconsistent.append(instance.name)
             continue
+        # A raw DB update: no Document hooks, no notifications, and it does not
+        # touch status/assignees. update_modified=False keeps the running
+        # instance's modified timestamp (we are backfilling a snapshot, not
+        # modifying its business state).
         frappe.db.set_value("ASOUD Workflow Instance", instance.name,
-                            "graph_snapshot_json", backfill_snapshot(definition))
+                            "graph_snapshot_json", backfill_snapshot(definition),
+                            update_modified=False)
     if inconsistent:
         frappe.log_error(
             title="PA-015 snapshot backfill needs review",
             message="These Running instances have no snapshot and their live graph is "
                     "inconsistent with what they already executed; they were left "
-                    "unchanged: " + ", ".join(sorted(inconsistent)),
+                    "unchanged: " + ", ".join(sorted(inconsistent))
+                    + (f" ({skipped_directives} directive adapter instance(s) skipped: "
+                       "they run on their own engine, not the graph runtime)"
+                       if skipped_directives else ""),
         )
 
 
