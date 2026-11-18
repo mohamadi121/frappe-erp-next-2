@@ -1009,7 +1009,12 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
     workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
     workflow.version_no = int(workflow.version_no or 1) + 1
     workflow.save()
-    return success(_design_payload(definition), meta={'notice': access_notice} if access_notice else None)
+    payload = _design_payload(definition)
+    # The app reads the notice from the design payload (data), not from meta; keep it in
+    # both so the fixed app (data.notice) and any meta-aware consumer both see it.
+    if access_notice:
+        payload['notice'] = access_notice
+    return success(payload, meta={'notice': access_notice} if access_notice else None)
 
 
 ROUTE_ACTIONS = {
