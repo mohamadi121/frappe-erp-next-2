@@ -110,6 +110,17 @@ def test_structural_check_accepts_orphan_stage_reached_only_via_return():
     assert structural_issues(stages, transitions) == []
 
 
+def test_structural_check_rejects_no_path_from_start_to_end():
+    # The live PA-015 finding: save_stage_routes can leave the flow cut so that no
+    # route leads from Start to any End. The request would start but never finish.
+    # Start -> User Task, with the User Task -> End route deleted.
+    stages = [_stage("S", "Start", "شروع", {"title": "شروع"}),
+              _stage("U", "User Task", "ثبت", {"title": "ثبت"}),
+              _stage("E", "End", "پایان", {"title": "پایان", "outcome": "Completed"})]
+    transitions = [_edge("e1", "S", "U")]  # the User Task -> End route is gone
+    assert any("مسیری از شروع به پایان" in issue for issue in structural_issues(stages, transitions))
+
+
 def test_structural_check_accepts_system_action_with_unlabeled_default_route():
     # Real shape (SYS-LEAVE-D2 / SYS-SUPPLY-D2 / SYS-PURCHASE-D2): a System Action
     # whose only exit is an unlabeled default route ("{}", label "Continue") to End.

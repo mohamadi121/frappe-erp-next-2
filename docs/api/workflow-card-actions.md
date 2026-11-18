@@ -26,14 +26,17 @@ the check runs only at start, and only for an `Active` workflow.
 The check mirrors what the runtime (`workflow_runtime._next_stage` and
 `start_workflow_instance`) can actually follow, not the designer's activation rules.
 It rejects: a missing Start/End; a Start stage with no outgoing route (the runtime
-throws «گردش‌کار مرحلهٔ قابل‌اجرا ندارد.»); a route to a stage outside the
-definition; and a route whose `condition_json` does not parse to a dict. It does
-**not** require every stage to be reachable from Start, to reach an End, or to have an
-outgoing route: the runtime only navigates from the current stage (its outgoing
-routes) or back to a previously-completed stage (Return, which walks the instance's
-completed tasks, not the transitions), so a stage with no incoming transition (e.g. a
-User Task that is only a Return target) and a stage reached via an Error route are
-valid designs. It deliberately does **not** apply the designer's activation rules —
+throws «گردش‌کار مرحلهٔ قابل‌اجرا ندارد.»); no path from Start to any End (following
+every route kind the runtime follows — Approve/Reject/Return/Complete/Success/Error
+and the unlabeled default), so a definition whose transitions can no longer lead from
+Start to any End (e.g. `save_stage_routes` deleted the route into End) is refused; a
+route to a stage outside the definition; and a route whose `condition_json` does not
+parse to a dict. It does **not** require every stage to be reachable from Start, to
+reach an End, or to have an outgoing route: the runtime only navigates from the
+current stage (its outgoing routes) or back to a previously-completed stage (Return,
+which walks the instance's completed tasks, not the transitions), so a stage with no
+incoming transition (e.g. a User Task that is only a Return target) and a stage
+reached via an Error route are valid designs. It deliberately does **not** apply the designer's activation rules —
 neither `_validate_saved_stage` (the Start trigger/initiator and other config rules)
 nor `_validate_saved_routes` (the route-shape rules). That matters for two real cases:
 the system request types (leave/purchase/supply) are started through `create_request`

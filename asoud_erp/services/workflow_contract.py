@@ -134,7 +134,11 @@ def structural_issues(stages, transitions):
     every stage is reachable from Start, so this check does not either: a stage
     with no incoming transition (e.g. a User Task that is only a Return target)
     is a valid design, and a stage whose only exit is an unlabeled default route
-    (``condition_json "{}"``, label ``Continue``) is a valid main route.
+    (``condition_json "{}"``, label ``Continue``) is a valid main route. The one
+    reachability rule it DOES keep is that at least one End is reachable from
+    Start: a definition whose transitions can no longer lead from Start to any
+    End (e.g. ``save_stage_routes`` deleted the route into End) would start
+    requests that can never finish.
 
     Each check maps to a runtime rule:
     - one Start + at least one End: the engine needs a start point and a
@@ -142,6 +146,12 @@ def structural_issues(stages, transitions):
     - the Start stage has an outgoing route: ``start_workflow_instance`` does
       ``_next_stage(instance, start)`` and throws «گردش‌کار مرحلهٔ قابل‌اجرا
       ندارد.» when the Start has no route.
+    - at least one End is reachable from Start (following every route kind the
+      runtime follows — Approve/Reject/Return/Complete/Success/Error and the
+      unlabeled default): a request that can never reach an End is a broken
+      design. This is the only reachability rule; a stage does NOT have to be
+      reachable from Start or to reach an End (Return-only and Error-parked
+      stages stay valid).
     - no route to a stage outside the definition: ``stage_for`` returns ``None``
       for a deleted/external destination and the runtime throws
       «مرحلهٔ مقصد حذف شده است».
@@ -162,8 +172,18 @@ def structural_issues(stages, transitions):
         outgoing[edge['from_stage']].append(edge)
         if not _condition_is_dict(edge.get('condition_json')):
             issues.append('شرط یکی از مسیرها معتبر نیست.')
-    if len(starts) == 1 and not outgoing[starts[0]]:
-        issues.append('مرحلهٔ شروع مسیر خروج ندارد و اجرا نمی‌تواند آغاز شود.')
+    if len(starts) == 1:
+        if not outgoing[starts[0]]:
+            issues.append('مرحلهٔ شروع مسیر خروج ندارد و اجرا نمی‌تواند آغاز شود.')
+        reached, pending = set(), [starts[0]]
+        while pending:
+            node = pending.pop()
+            if node in reached:
+                continue
+            reached.add(node)
+            pending.extend(e['to_stage'] for e in outgoing[node])
+        if not (reached & ends):
+            issues.append('مسیری از شروع به پایان وجود ندارد.')
     return list(dict.fromkeys(issues))
 
 
