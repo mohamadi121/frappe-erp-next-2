@@ -309,22 +309,28 @@ class TestSnapshotBackfill(APITestCase):
         # engine, not the graph runtime: its definition has no Start/End/transitions
         # and current_stage is NULL. The backfill must skip it (counted separately)
         # rather than flag it as inconsistent on every migrate.
-        from asoud_erp.services.directive_access import ADAPTER_PREFIX, COMMUNICATION
+        from asoud_erp.services.directive_access import ADAPTER_PREFIX, COMMUNICATION, service_write
 
-        definition = frappe.get_doc({"doctype": "ASOUD Workflow Definition",
-            "workflow_code": ADAPTER_PREFIX + "directive-test", "workflow_title": "دستور سازمانی",
-            "company": self.company, "module_key": "HR", "target_doctype": COMMUNICATION,
-            "status": "Inactive", "readiness_status": "Pending"}).insert(ignore_permissions=True)
-        for index, kind in enumerate(["Report", "Review", "Close"]):
-            frappe.get_doc({"doctype": "ASOUD Workflow Stage", "workflow_definition": definition.name,
-                "stage_key": f"{definition.name}-{kind}", "stage_type": "User Task" if kind == "Report" else "Approval",
-                "stage_subtype": kind, "stage_title": kind, "sequence_no": index + 1,
-                "config_json": "{}"}).insert(ignore_permissions=True)
-        instance = frappe.get_doc({"doctype": "ASOUD Workflow Instance",
-            "workflow_definition": definition.name, "subject": "دستور آزمایشی",
-            "reference_doctype": COMMUNICATION, "reference_name": "directive-test",
-            "status": "Running", "started_by": frappe.session.user,
-            "started_on": frappe.utils.now_datetime()}).insert(ignore_permissions=True)
+        # Build the directive rows the way the product does: the directive API
+        # (api/v1/directives.issue) writes them inside service_write(), which sets
+        # the _writing flag that directive_access.guard_write checks. Without it,
+        # the adapter-owned rows (workflow_code ADAPTER_PREFIX*) are protected and
+        # a direct write is refused.
+        with service_write():
+            definition = frappe.get_doc({"doctype": "ASOUD Workflow Definition",
+                "workflow_code": ADAPTER_PREFIX + "directive-test", "workflow_title": "دستور سازمانی",
+                "company": self.company, "module_key": "HR", "target_doctype": COMMUNICATION,
+                "status": "Inactive", "readiness_status": "Pending"}).insert(ignore_permissions=True)
+            for index, kind in enumerate(["Report", "Review", "Close"]):
+                frappe.get_doc({"doctype": "ASOUD Workflow Stage", "workflow_definition": definition.name,
+                    "stage_key": f"{definition.name}-{kind}", "stage_type": "User Task" if kind == "Report" else "Approval",
+                    "stage_subtype": kind, "stage_title": kind, "sequence_no": index + 1,
+                    "config_json": "{}"}).insert(ignore_permissions=True)
+            instance = frappe.get_doc({"doctype": "ASOUD Workflow Instance",
+                "workflow_definition": definition.name, "subject": "دستور آزمایشی",
+                "reference_doctype": COMMUNICATION, "reference_name": "directive-test",
+                "status": "Running", "started_by": frappe.session.user,
+                "started_on": frappe.utils.now_datetime()}).insert(ignore_permissions=True)
         # No snapshot, no current_stage: the shape of a real directive instance.
         self.assertIsNone(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "current_stage"))
         from asoud_erp.patches.v0_19.backfill_graph_snapshots import execute
