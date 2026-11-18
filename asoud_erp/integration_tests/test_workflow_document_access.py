@@ -48,9 +48,11 @@ class TestWorkflowDocumentAccess(APITestCase):
         # App 0.31.0 re-sends Edit for a stored Limited Edit without the change flag.
         result = workflow.save_stage_settings(definition, stage.name, _user_task_config('Edit'))
         self.assertEqual(self._stored_access(stage), 'Limited Edit')
-        # The save is not a silent no-op: the response carries a Persian notice.
+        # The save is not a silent no-op: the notice is in the design payload (data), which
+        # the app reads, and also in meta for meta-aware consumers.
+        self.assertIn('ویرایش محدود', result['data']['notice'])
+        self.assertIn('به‌روزرسانی', result['data']['notice'])
         self.assertIn('ویرایش محدود', result['meta']['notice'])
-        self.assertIn('به‌روزرسانی', result['meta']['notice'])
 
     def test_stored_limited_edit_resent_is_kept(self):
         definition, stage = self._definition_and_stage()
@@ -65,6 +67,7 @@ class TestWorkflowDocumentAccess(APITestCase):
         self._store(stage, 'Limited Edit')
         result = workflow.save_stage_settings(definition, stage.name, _user_task_config('Read Only'))
         self.assertEqual(self._stored_access(stage), 'Read Only')
+        self.assertNotIn('notice', result['data'])
         self.assertNotIn('notice', result['meta'])
 
     def test_explicit_change_from_limited_edit_is_saved(self):
@@ -74,6 +77,7 @@ class TestWorkflowDocumentAccess(APITestCase):
             {**_user_task_config('Edit'), 'document_access_changed': True})
         self.assertEqual(self._stored_access(stage), 'Edit')
         # A genuine explicit change is applied, not protected, so no notice.
+        self.assertNotIn('notice', result['data'])
         self.assertNotIn('notice', result['meta'])
         # The change flag itself is never stored in config_json.
         self.assertNotIn('document_access_changed', json.loads(

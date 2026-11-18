@@ -124,6 +124,18 @@ configs) the stored value is resolved against the incoming one:
   `document_access_changed: true` (the fixed app sends this only when the user really
   picked an option). The flag itself is **not** stored in `config_json`.
 
+**Notice on a protected save.** App 0.31.0 normalizes a stored `Limited Edit` to `Edit`
+on load and offers only `Read Only`/`Edit`, so it cannot express "the user really picked
+Edit" versus "the user only changed another setting" — both send `Edit` without
+`document_access_changed`. When the backend therefore keeps a stored `Limited Edit`
+against an unflagged `Edit`, the `save_stage_settings` response carries a Persian notice
+so the save is not a silent no-op. The notice is returned as a **top-level `notice` key in
+the design payload** (`data.notice`) — which the app reads — and also in `meta.notice` for
+meta-aware consumers. The key is **absent** when there is no notice (a genuine explicit
+change, a `Read Only` pick, or any non-Limited-Edit stage). `Read Only` is unambiguous and
+is applied without a notice. The fixed app (which sends `document_access_changed`) is
+unaffected.
+
 Existing stored `Limited Edit` values are preserved exactly; nothing is converted to
 `Edit` automatically. No new DocType, field, migration, or permission change.
 
