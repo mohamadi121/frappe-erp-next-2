@@ -309,38 +309,41 @@ class TestSnapshotBackfill(APITestCase):
         # engine, not the graph runtime: its definition has no Start/End/transitions
         # and current_stage is NULL. The backfill must skip it (counted separately)
         # rather than flag it as inconsistent on every migrate.
-        from asoud_erp.services.directive_access import ADAPTER_PREFIX, COMMUNICATION, service_write
+        from frappe.utils import add_days, nowdate
 
-        # Build the directive rows the way the product does: the directive API
-        # (api/v1/directives.issue) writes them inside service_write(), which sets
-        # the _writing flag that directive_access.guard_write checks. Without it,
-        # the adapter-owned rows (workflow_code ADAPTER_PREFIX*) are protected and
-        # a direct write is refused.
-        with service_write():
-            definition = frappe.get_doc({"doctype": "ASOUD Workflow Definition",
-                "workflow_code": ADAPTER_PREFIX + "directive-test", "workflow_title": "دستور سازمانی",
-                "company": self.company, "module_key": "HR", "target_doctype": COMMUNICATION,
-                "status": "Inactive", "readiness_status": "Pending"}).insert(ignore_permissions=True)
-            for index, kind in enumerate(["Report", "Review", "Close"]):
-                frappe.get_doc({"doctype": "ASOUD Workflow Stage", "workflow_definition": definition.name,
-                    "stage_key": f"{definition.name}-{kind}", "stage_type": "User Task" if kind == "Report" else "Approval",
-                    "stage_subtype": kind, "stage_title": kind, "sequence_no": index + 1,
-                    "config_json": "{}"}).insert(ignore_permissions=True)
-            instance = frappe.get_doc({"doctype": "ASOUD Workflow Instance",
-                "workflow_definition": definition.name, "subject": "دستور آزمایشی",
-                "reference_doctype": COMMUNICATION, "reference_name": "directive-test",
-                "status": "Running", "started_by": frappe.session.user,
-                "started_on": frappe.utils.now_datetime()}).insert(ignore_permissions=True)
-        # No snapshot, no current_stage: the shape of a real directive instance.
-        self.assertIsNone(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "current_stage"))
+        from asoud_erp.api.v1 import directives
+        from asoud_erp.integration_tests.fixtures import APPROVER_USER, EMPLOYEE_USER
+        from asoud_erp.services.directive_access import ADAPTER_PREFIX, COMMUNICATION
+
+        # Create a REAL directive the way test_directives.py does: the approver
+        # drafts it and issues it to their direct report. The adapter definition,
+        # stages and Running instance are created by the product code, so every
+        # Link/Dynamic Link (reference_name -> the Communication) is valid.
+        frappe.set_user(APPROVER_USER)
+        draft = directives.save_draft(company=self.company, payload={
+            "subject": "دستور آزمایشی بک‌فیل", "body": "گزارش ثبت شود.", "priority": "Medium",
+            "due_date": str(add_days(nowdate(), 7)), "executor_ids": [EMPLOYEE_USER],
+            "primary_id": EMPLOYEE_USER}, request_key="req-backfill-draft-" + "1" * 10)["data"]
+        directives.issue(company=self.company, directive=draft["id"],
+                         request_key="req-backfill-issue-" + "2" * 10)
+        instance_name = frappe.db.get_value(COMMUNICATION, draft["id"], "workflow_instance")
+        self.assertTrue(instance_name)
+        instance = frappe.get_doc("ASOUD Workflow Instance", instance_name)
+        # The adapter definition has no Start/End/transitions; the instance has no
+        # snapshot and no current_stage: the shape of a real directive instance.
+        self.assertEqual(instance.reference_doctype, COMMUNICATION)
+        self.assertTrue(frappe.db.get_value("ASOUD Workflow Definition", instance.workflow_definition,
+                                            "workflow_code").startswith(ADAPTER_PREFIX))
+        self.assertIsNone(instance.current_stage)
+        self.assertIsNone(instance.graph_snapshot_json)
         from asoud_erp.patches.v0_19.backfill_graph_snapshots import execute
 
         with patch.object(frappe, "log_error") as log_error:
             execute()
         # Neither written nor reported as inconsistent.
-        self.assertIsNone(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "graph_snapshot_json"))
+        self.assertIsNone(frappe.db.get_value("ASOUD Workflow Instance", instance_name, "graph_snapshot_json"))
         message = log_error.call_args.kwargs.get("message", "") if log_error.called else ""
-        self.assertNotIn(instance.name, message)
+        self.assertNotIn(instance_name, message)
 
 
 class TestSystemTemplatesStart(APITestCase):
