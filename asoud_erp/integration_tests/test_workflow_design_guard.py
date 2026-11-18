@@ -102,6 +102,65 @@ class TestDesignGuard(APITestCase):
         self.assertEqual(_graph_fingerprint(self.definition), before)
         self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "status"), "Running")
 
+    def test_inactive_with_running_refuses_every_design_edit(self):
+        # assert_editable refuses on Active OR a Running instance. Deactivating
+        # (Active -> Inactive) must NOT open the design while an instance is still
+        # Running: every guarded design edit is refused, not just the routes.
+        instance = self._start()
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition, "status", "Inactive")
+        before = _graph_fingerprint(self.definition)
+        edge = frappe.db.get_value("ASOUD Workflow Transition",
+                                   {"workflow_definition": self.definition, "from_stage": self.approval1.name})
+        edits = (
+            lambda: workflow.save_stage_routes(self.definition, self.approval1.name, {"Approve": self.end.name}),
+            lambda: workflow.save_stage_settings(self.definition, self.approval1.name,
+                                                 {"title": "تأیید", "assignment_type": "Direct Manager",
+                                                  "approval_mode": "Any", "allow_reject": True, "allow_return": True}),
+            lambda: workflow.save_stage_settings(self.definition, self.form_stage.name,
+                                                 {"title": "ثبت", "activity_type": "Data Entry",
+                                                  "assignment_type": "Initiator", "form_fields": []}),
+            lambda: workflow.connect_workflow_stages(self.definition, self.approval1.name, self.end.name, "ادامه"),
+            lambda: workflow.insert_workflow_stage(self.definition, edge, "Approval"),
+            lambda: workflow.add_workflow_stage(self.definition, "Approval", self.approval1.name),
+            lambda: workflow.save_start_settings(self.definition, "Manual", ["Accounts Manager"], "General Subject"),
+        )
+        for edit in edits:
+            with self.assertRaises(frappe.ValidationError):
+                edit()
+        self.assertEqual(_graph_fingerprint(self.definition), before)
+        self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "status"), "Running")
+
+    def test_raw_stage_write_is_refused_while_running(self):
+        # A raw write that bypasses the guarded whitelisted functions (/api/resource
+        # PUT, frappe.client.save, Desk, import, bulk edit) goes through the
+        # controller's validate(); the DocType-level backstop must refuse it while an
+        # instance is Running, even though the definition is Inactive.
+        self._start()
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition, "status", "Inactive")
+        stage_doc = frappe.get_doc("ASOUD Workflow Stage", self.approval1.name)
+        with patch.dict(frappe.flags, {"in_test": False}):
+            with self.assertRaises(frappe.ValidationError) as caught:
+                stage_doc.validate()
+        self.assertIn("برای حفظ اجراها", str(caught.exception))
+
+    def test_raw_transition_insert_is_refused_while_running(self):
+        self._start()
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition, "status", "Inactive")
+        transition = frappe.get_doc({"doctype": "ASOUD Workflow Transition",
+            "workflow_definition": self.definition, "from_stage": self.approval1.name,
+            "to_stage": self.end.name})
+        with patch.dict(frappe.flags, {"in_test": False}):
+            with self.assertRaises(frappe.ValidationError):
+                transition.validate()
+
+    def test_raw_stage_delete_is_refused_while_running(self):
+        self._start()
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition, "status", "Inactive")
+        stage_doc = frappe.get_doc("ASOUD Workflow Stage", self.approval1.name)
+        with patch.dict(frappe.flags, {"in_test": False}):
+            with self.assertRaises(frappe.ValidationError):
+                stage_doc.on_trash()
+
     def test_allowed_when_inactive_and_no_running(self):
         # No instance has started, so the design is editable.
         frappe.db.set_value("ASOUD Workflow Definition", self.definition, "status", "Inactive")
@@ -132,6 +191,28 @@ class TestDesignGuard(APITestCase):
         self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "current_stage"),
                          self.approval1.name)
         self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "status"), "Running")
+
+    def test_old_instance_cannot_skip_approval_via_raw_write(self):
+        # An old instance (no snapshot) reads its routes from the live rows. A raw
+        # write that bypasses the guarded functions (the DocType-level backstop) must
+        # still be refused while it is Running, so it cannot skip approval 2 by any
+        # reachable path. The definition is Inactive, so only the Running-instance
+        # rule can refuse it.
+        instance = self._start()
+        frappe.db.set_value("ASOUD Workflow Instance", instance.name, "graph_snapshot_json", None)
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition, "status", "Inactive")
+        # A raw route edit that would let approval 1 jump straight to End.
+        transition = frappe.get_doc({"doctype": "ASOUD Workflow Transition",
+            "workflow_definition": self.definition, "from_stage": self.approval1.name,
+            "to_stage": self.end.name})
+        with patch.dict(frappe.flags, {"in_test": False}):
+            with self.assertRaises(frappe.ValidationError):
+                transition.validate()
+        # The instance is untouched: still at approval 1, still running, no snapshot.
+        self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "current_stage"),
+                         self.approval1.name)
+        self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "status"), "Running")
+        self.assertIsNone(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "graph_snapshot_json"))
 
     def test_no_request_deleted_duplicated_or_reassigned(self):
         request = create(self.company, definition=self.definition)
@@ -222,6 +303,38 @@ class TestSnapshotBackfill(APITestCase):
         self.assertTrue(first)
         execute()
         self.assertEqual(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "graph_snapshot_json"), first)
+
+    def test_directive_adapter_instance_is_skipped_not_flagged(self):
+        # A directive adapter instance (api/v1/directives.issue) runs on its own
+        # engine, not the graph runtime: its definition has no Start/End/transitions
+        # and current_stage is NULL. The backfill must skip it (counted separately)
+        # rather than flag it as inconsistent on every migrate.
+        from asoud_erp.services.directive_access import ADAPTER_PREFIX, COMMUNICATION
+
+        definition = frappe.get_doc({"doctype": "ASOUD Workflow Definition",
+            "workflow_code": ADAPTER_PREFIX + "directive-test", "workflow_title": "دستور سازمانی",
+            "company": self.company, "module_key": "HR", "target_doctype": COMMUNICATION,
+            "status": "Inactive", "readiness_status": "Pending"}).insert(ignore_permissions=True)
+        for index, kind in enumerate(["Report", "Review", "Close"]):
+            frappe.get_doc({"doctype": "ASOUD Workflow Stage", "workflow_definition": definition.name,
+                "stage_key": f"{definition.name}-{kind}", "stage_type": "User Task" if kind == "Report" else "Approval",
+                "stage_subtype": kind, "stage_title": kind, "sequence_no": index + 1,
+                "config_json": "{}"}).insert(ignore_permissions=True)
+        instance = frappe.get_doc({"doctype": "ASOUD Workflow Instance",
+            "workflow_definition": definition.name, "subject": "دستور آزمایشی",
+            "reference_doctype": COMMUNICATION, "reference_name": "directive-test",
+            "status": "Running", "started_by": frappe.session.user,
+            "started_on": frappe.utils.now_datetime()}).insert(ignore_permissions=True)
+        # No snapshot, no current_stage: the shape of a real directive instance.
+        self.assertIsNone(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "current_stage"))
+        from asoud_erp.patches.v0_19.backfill_graph_snapshots import execute
+
+        with patch.object(frappe, "log_error") as log_error:
+            execute()
+        # Neither written nor reported as inconsistent.
+        self.assertIsNone(frappe.db.get_value("ASOUD Workflow Instance", instance.name, "graph_snapshot_json"))
+        message = log_error.call_args.kwargs.get("message", "") if log_error.called else ""
+        self.assertNotIn(instance.name, message)
 
 
 class TestSystemTemplatesStart(APITestCase):
