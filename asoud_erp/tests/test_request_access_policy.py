@@ -107,3 +107,24 @@ def test_requester_own_submission_is_none():
     # The requester's own form submission is excluded from "acting": with no other task or
     # activity they are NONE, not a masked previous assignee.
     assert policy.classify(False, False, [], False) == policy.NONE
+
+
+# --- History visibility: a MASKED viewer sees only their own activity rows ---
+
+def test_full_sees_the_whole_history():
+    rows = [{"actor": "a@x.com"}, {"actor": "b@x.com"}]
+    assert policy.visible_activities(policy.FULL, "a@x.com", rows) == rows
+
+
+def test_masked_sees_only_their_own_rows():
+    rows = [{"actor": "a@x.com"}, {"actor": "b@x.com"}, {"actor": "a@x.com"}]
+    visible = policy.visible_activities(policy.MASKED, "a@x.com", rows)
+    assert [row["actor"] for row in visible] == ["a@x.com", "a@x.com"]
+
+
+def test_masked_with_no_own_rows_sees_nothing():
+    assert policy.visible_activities(policy.MASKED, "a@x.com", [{"actor": "b@x.com"}]) == []
+
+
+def test_none_sees_nothing():
+    assert policy.visible_activities(policy.NONE, "a@x.com", [{"actor": "a@x.com"}]) == []

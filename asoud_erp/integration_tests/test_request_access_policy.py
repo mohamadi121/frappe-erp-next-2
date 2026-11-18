@@ -306,9 +306,9 @@ class TestCancelledAndReassigned(ConfidentialRequestCase):
                                "action": action, "assigned_on": "2026-01-01 00:00:00"}
                               ).insert(ignore_permissions=True).name
 
-    def _activity(self, instance, actor, action):
+    def _activity(self, instance, actor, action, comment=""):
         frappe.get_doc({"doctype": "ASOUD Workflow Activity", "workflow_instance": instance,
-                        "actor": actor, "action": action, "comment": "",
+                        "actor": actor, "action": action, "comment": comment,
                         "created_on": "2026-01-01 00:00:00"}).insert(ignore_permissions=True)
 
     def test_cancelled_task_without_acting_is_none(self):
@@ -396,3 +396,88 @@ class TestCancelledAndReassigned(ConfidentialRequestCase):
         self.assertEqual(rows[-1].target, task)
         self.assertEqual(rows[-1].company, self.company)
         self.assertNotIn(SECRET, rows[-1].details)
+
+
+class TestMaskedHistoryIsOwnOnly(ConfidentialRequestCase):
+    """PA-055 close-out: a MASKED previous assignee's access is limited to the authorized
+    history of their OWN action. They must not see another participant's comment or
+    change_json in the instance history, the task history, or the request's stage list.
+    """
+
+    def _instance_of(self, request):
+        return frappe.db.get_value("ASOUD Workflow Request", request, "workflow_instance")
+
+    def _company_user(self, prefix):
+        """A user with company access to office A (an active Employee)."""
+        email = prefix + uuid4().hex[:8] + "@example.test"
+        frappe.get_doc({"doctype": "User", "email": email, "first_name": "کارمند",
+                        "send_welcome_email": 0, "user_type": "System User",
+                        "roles": [{"role": "Employee"}]}).insert(ignore_permissions=True)
+        frappe.get_doc({"doctype": "Employee", "first_name": "کارمند", "gender": "Male",
+                        "date_of_birth": "1990-01-01", "date_of_joining": "2020-01-01",
+                        "company": self.company, "status": "Active", "user_id": email,
+                        "create_user_permission": 0}).insert(ignore_permissions=True)
+        return email
+
+    def test_masked_viewer_sees_only_their_own_activity_rows(self):
+        request, _file = self.submit_confidential()
+        instance = self._instance_of(request)
+        # APPROVER_USER acts (Approve) with a comment; their task is now Completed -> MASKED.
+        act(instance, "Approve", comment="تأیید شد با توضیح محرمانه")
+        # The instance history: only APPROVER_USER's own rows, with their own comment.
+        frappe.set_user(APPROVER_USER)
+        try:
+            data = workflow_runtime.get_workflow_instance(instance)["data"]
+        finally:
+            frappe.set_user("Administrator")
+        actors = {row["actor"] for row in data["activities"]}
+        self.assertEqual(actors, {APPROVER_USER})
+        # Their own comment is present (their authorized history).
+        self.assertTrue(any(row["comment"] == "تأیید شد با توضیح محرمانه" for row in data["activities"]))
+
+    def _activity(self, instance, actor, action, comment=""):
+        frappe.get_doc({"doctype": "ASOUD Workflow Activity", "workflow_instance": instance,
+                        "actor": actor, "action": action, "comment": comment,
+                        "created_on": "2026-01-01 00:00:00"}).insert(ignore_permissions=True)
+
+    def test_masked_viewer_does_not_see_another_actor_comment(self):
+        request, _file = self.submit_confidential()
+        instance = self._instance_of(request)
+        # APPROVER_USER acts (MASKED). A second participant's activity row carries a comment.
+        act(instance, "Approve", comment="تأیید شد")
+        other = self._company_user("pa055-hist-")
+        self._activity(instance, other, "Follow Up", comment="نظر شرکت‌کنندهٔ دیگر")
+        # The MASKED viewer sees only their own rows: the other actor's comment is absent.
+        frappe.set_user(APPROVER_USER)
+        try:
+            data = workflow_runtime.get_workflow_instance(instance)["data"]
+        finally:
+            frappe.set_user("Administrator")
+        for row in data["activities"]:
+            self.assertEqual(row["actor"], APPROVER_USER)
+            self.assertNotIn("نظر شرکت‌کنندهٔ دیگر", row["comment"])
+
+    def test_masked_viewer_request_stages_hide_other_comments(self):
+        request, _file = self.submit_confidential()
+        instance = self._instance_of(request)
+        act(instance, "Approve", comment="توضیح تأییدکننده")
+        detail = self.detail_as(APPROVER_USER, request)
+        # The stage list keeps names/statuses but not another actor's comment.
+        for stage in detail["stages"]:
+            self.assertEqual(stage["comment"], "")
+        # The confidential value is still masked for this MASKED viewer.
+        self.assertEqual(detail["values"]["reason"], MASK)
+
+    def test_full_viewer_still_sees_the_whole_history(self):
+        request, _file = self.submit_confidential()
+        instance = self._instance_of(request)
+        act(instance, "Approve", comment="تأیید شد با توضیح محرمانه")
+        # The requester (FULL, owner) sees every actor's rows and comments.
+        detail = self.detail_as(EMPLOYEE_USER, request)
+        self.assertEqual(detail["values"]["reason"], SECRET)
+        frappe.set_user(EMPLOYEE_USER)
+        try:
+            data = workflow_runtime.get_workflow_instance(instance)["data"]
+        finally:
+            frappe.set_user("Administrator")
+        self.assertTrue(any(row["comment"] == "تأیید شد با توضیح محرمانه" for row in data["activities"]))

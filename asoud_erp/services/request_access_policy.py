@@ -21,6 +21,21 @@ MASKED = "MASKED"
 NONE = "NONE"
 
 
+def visible_activities(level, user, activities) -> list:
+    """The activity rows a viewer of ``level`` may see on an instance (PA-055 close-out).
+
+    FULL sees the whole history. MASKED sees only their own rows: a previous assignee's
+    access is limited to the authorized history of their own action, so another actor's
+    comment or change_json is never shown. NONE sees nothing (the caller denies the read).
+    """
+    rows = list(activities or [])
+    if level == FULL:
+        return rows
+    if level == MASKED:
+        return [row for row in rows if row.get("actor") == user]
+    return []
+
+
 def is_submission(user, started_by, stage, form_stage) -> bool:
     """Whether a decision on ``stage`` is the requester's own form submission (PA-055 P1).
 
