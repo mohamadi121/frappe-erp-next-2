@@ -18,7 +18,7 @@ app — uses one vocabulary (see `services/modules.py`):
 | `Stock` | انبار |
 | `HR` | منابع انسانی |
 | `Admin` | خدمات اداری |
-| `IT` | IT و تجهیزات |
+| `IT` | فناوری اطلاعات |
 
 `create_workflow_draft` and `update_request_type_info` accept the legacy workflow
 keys and normalize them before storing: `Accounting`→`Finance`, `Sales`→`Selling`,
