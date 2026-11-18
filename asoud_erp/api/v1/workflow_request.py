@@ -469,6 +469,12 @@ def _detail(doc) -> dict:
     hidden = request_serializer.hidden_file_urls(values, fields, can_view)
     entries = [entry for entry in entries if entry["file_url"] not in hidden]
     by_url = {entry["file_url"]: entry for entry in entries}
+    # Approved policy (PA-055 close-out): a MASKED previous assignee sees the stage names and
+    # statuses but not another actor's comment on a stage. FULL viewers are unchanged.
+    stages = _stage_rows(doc.workflow_definition, doc.workflow_instance)
+    if not can_view:
+        for stage in stages:
+            stage["comment"] = ""
     return {
         "name": doc.name, "number": doc.name, "company": doc.company, "template_key": doc.template_key or "",
         "template_version": doc.template_version or 0, "workflow_definition": doc.workflow_definition,
@@ -484,7 +490,7 @@ def _detail(doc) -> dict:
         "item_count": request_serializer.item_count(visible_values), "attachment_count": len(entries),
         "comment_count": request_comments.count_comments(doc.name),
         "values": request_serializer.with_attachment_refs(visible_values, by_url),
-        "attachments": entries, "fields": fields, "stages": _stage_rows(doc.workflow_definition, doc.workflow_instance),
+        "attachments": entries, "fields": fields, "stages": stages,
         "native": {"doctype": doc.native_doctype or "", "name": doc.native_name or "",
                    "status": doc.native_status or "", "error": (doc.native_error or "") if privileged else ""},
         "execution": _execution(doc, instance_status, privileged, end_outcome),

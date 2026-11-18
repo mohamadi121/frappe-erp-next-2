@@ -1100,6 +1100,15 @@ def get_workflow_instance(instance: str) -> dict:
             *(["change_json"] if frappe.db.has_column("ASOUD Workflow Activity", "change_json") else []),
         ],
     )
+    # Approved policy (PA-055 close-out): a MASKED previous assignee sees only their own
+    # activity rows; another actor's comment or change_json is not part of their authorized
+    # history. FULL viewers are unchanged.
+    from asoud_erp.services import request_access, request_access_policy
+
+    request = _request_of(doc)
+    if request is not None:
+        level = request_access.request_level(request)
+        activities = request_access_policy.visible_activities(level, frappe.session.user, activities)
     for activity in activities:
         activity.update(activity_change(activity.pop("change_json", None)))
         activity["stage_title"] = (
@@ -1267,6 +1276,11 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
         doc.workflow_instance,
         ["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
     )
+    # Approved policy (PA-055 close-out): a MASKED previous assignee sees only their own
+    # activity rows in the task history; another actor's comment is not their history.
+    if request is not None:
+        history = request_access_policy.visible_activities(
+            request_access.request_level(request), frappe.session.user, history)
     document_context = {}
     from asoud_erp.services.workflow_submission_source import task_snapshot
 
@@ -1324,6 +1338,11 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
             draft = project_request_rows(config.get("form_fields", []), request_values_for_instance(frappe, instance), draft)
     except ValueError as error:
         frappe.throw(_(str(error)))
+    # Approved policy (PA-055 close-out): the legacy draft projection seeds request-derived
+    # (read-only) rows from the request's values; a MASKED viewer must not read confidential
+    # values there, so the projected draft is masked exactly as `request_values` is.
+    if request is not None and draft:
+        draft = workflow_request.mask_request_values(request.name, draft)
     request_row = frappe.db.get_value(
         "ASOUD Workflow Request", {"workflow_instance": doc.workflow_instance}, ["name", "company"], as_dict=True
     ) or {}
