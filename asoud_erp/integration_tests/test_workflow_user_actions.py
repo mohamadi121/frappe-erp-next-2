@@ -28,9 +28,13 @@ class TestWorkflowUserActions(APITestCase):
             'assignment_type': 'Initiator', 'action_contract_version': 1, 'result_mode': 'Simple',
             'allow_draft': True, 'allow_add_attachments': False,
             'assignment_rule': rule or {'basis': 'Subject', 'subject': 'Initiator'}, **settings}
+        # Design edits require an Inactive workflow (PA-015); the instance start
+        # below needs it Active again.
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         workflow.save_stage_settings(definition, stage.name, config)
         workflow.save_start_settings(definition, 'Manual', ['Employee', 'System Manager'], 'General Subject',
             settings={'trigger_type': 'Manual', 'initiator_roles': ['Employee', 'System Manager']})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         return definition, stage.name
 
     def start(self, definition, user=EMPLOYEE_USER):

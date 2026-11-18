@@ -108,6 +108,7 @@ class TestApprovalQuorum(APITestCase):
 
     def test_save_stage_settings_rejects_an_unknown_mode(self):
         definition, _stages = make_definition(self.company, approvals=1)
+        frappe.db.set_value("ASOUD Workflow Definition", definition, "status", "Inactive")
         stage = frappe.get_doc("ASOUD Workflow Stage", {"workflow_definition": definition, "stage_type": "Approval"})
         with self.assertRaisesRegex(frappe.ValidationError, "حالت رأی‌گیری مرحلهٔ تأیید نامعتبر است"):
             workflow.save_stage_settings(definition, stage.name, {
@@ -117,6 +118,7 @@ class TestApprovalQuorum(APITestCase):
 
     def test_save_stage_settings_accepts_majority(self):
         definition, _stages = make_definition(self.company, approvals=1)
+        frappe.db.set_value("ASOUD Workflow Definition", definition, "status", "Inactive")
         stage = frappe.get_doc("ASOUD Workflow Stage", {"workflow_definition": definition, "stage_type": "Approval"})
         workflow.save_stage_settings(definition, stage.name, {
             "title": "تأیید", "assignment_type": "Employee",

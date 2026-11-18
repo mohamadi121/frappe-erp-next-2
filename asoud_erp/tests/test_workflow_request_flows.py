@@ -117,8 +117,11 @@ def world(monkeypatch):
     module = importlib.import_module("asoud_erp.api.v1.workflow_request")
     monkeypatch.setattr(module, "require_company", lambda company: None)
     monkeypatch.setattr(module, "validate_link_values", fake_links)
-    monkeypatch.setattr(module, "request_permission",
-                        lambda doc, user=None, permission_type=None: doc.owner == site.user or "HR Manager" in site.roles)
+    # Read access is decided by the approved policy level (PA-055); the fake world grants
+    # FULL to the owner and HR Managers, NONE to everyone else.
+    monkeypatch.setattr(module.request_access, "request_level",
+                        lambda doc, user=None: "FULL" if (doc.owner == site.user or "HR Manager" in site.roles)
+                        else "NONE")
     state.module = module
     yield state
     restore()

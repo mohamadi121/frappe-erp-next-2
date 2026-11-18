@@ -1,6 +1,8 @@
 test_workflow_user_actions
 test_workflow_access
 test_workflow_start_settings
+test_workflow_document_access
+test_module_rollback
 test_selling_payments
 test_sales_orders
 test_stock_buying
@@ -18,6 +20,7 @@ test_workflow_submission_source
 test_workflow_start_phase3
 test_workflow_return_route
 test_workflow_graph_snapshot
+test_workflow_design_guard
 test_automatic_action_audit
 test_workflow_path_editing
 test_workflow_wait
@@ -51,6 +54,7 @@ test_form_execution_shift_request
 test_form_execution_exit
 test_form_execution_training
 test_confidential_fields
+test_request_access_policy
 test_request_void
 test_form_execution_certificate
 test_form_execution_receipt
@@ -73,3 +77,4 @@ test_workflow_check
 test_stage_supplementary_form
 test_workflow_return_phase4
 test_workflow_approval_quorum
+test_phase_a_acceptance

@@ -6,6 +6,7 @@ from asoud_erp.services.modules import (
     LEGACY_MODULE_KEYS,
     MODULE_DOCTYPES,
     MODULE_KEYS,
+    MODULE_LABELS,
     normalize_module_key,
 )
 from asoud_erp.services.workflow_contract import serialize_workflow
@@ -13,6 +14,13 @@ from asoud_erp.services.workflow_contract import serialize_workflow
 
 def test_canonical_module_keys_are_the_template_set() -> None:
     assert MODULE_KEYS == ("Finance", "Purchase", "Selling", "Stock", "HR", "Admin", "IT")
+
+
+def test_it_module_label_is_fanavari_e_elmlat() -> None:
+    # PA-054 close-out: the owner finalized the IT module's Persian title. The
+    # technical key stays "IT"; only the display label is «فناوری اطلاعات».
+    assert MODULE_LABELS["IT"] == "فناوری اطلاعات"
+    assert "IT" in MODULE_KEYS
 
 
 @pytest.mark.parametrize(

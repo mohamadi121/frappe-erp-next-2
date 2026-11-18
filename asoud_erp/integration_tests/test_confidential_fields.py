@@ -190,7 +190,8 @@ class TestAutomaticActions(APITestCase):
         fields = [{'key': 'reason', 'label': 'دلیل', 'type': 'Long Text', 'max_length': 2000,
                    'sensitive': True},
                   {'key': 'amount', 'label': 'مبلغ', 'type': 'Number'}]
-        configs = [('Start', {'title': 'شروع'}),
+        configs = [('Start', {'title': 'شروع', 'trigger_type': 'Manual',
+                              'initiator_roles': ['Employee']}),
                    ('User Task', {'title': 'ثبت', 'activity_type': 'Data Entry',
                                   'assignment_type': 'Initiator', 'form_fields': fields}),
                    ('System Action', action_config),
@@ -242,9 +243,11 @@ class TestAutomaticActions(APITestCase):
             source_workflow=definition)['data']
         stage = frappe.db.get_value('ASOUD Workflow Stage', {
             'workflow_definition': definition, 'stage_type': 'System Action'}, 'name')
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         workflow.save_stage_settings(definition, stage, {
             'title': 'ثبت سند', 'action_type': 'Create Document', 'document_template': template['name'],
             'document_remark': 'بر اساس {{RequestNo}}'})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         request = self.submit(definition)
         name = frappe.db.get_value('ASOUD Workflow Activity', {
             'workflow_instance': request['workflow_instance'], 'action': 'System Action Succeeded'},

@@ -28,14 +28,17 @@ an eligible submitter. The draft schema is never selected. Built-ins first use
 `open_builtin(manage=1)` to resolve their published identity. `get_form` includes
 additive `active_revision` and `disabled` fields for stale-selection checks.
 
-Assigned task users see a read-only submitted-form snapshot. Because a task
-assignee is a participant of the instance, sensitive fields and attachment URLs
-are shown to them, matching the confidential-field policy in `forms.md` (sensitive
-values are returned to the request owner, System Manager, HR Manager, and users
-who have or previously had a task on the instance). Submitted values are never
-accepted as editable task responses. Normal assignee, deadlines, decisions and
-permission checks apply. New form revisions require explicit rebinding; no silent
-migration.
+Assigned task users see a read-only submitted-form snapshot. The snapshot follows the
+approved confidential-data policy in `forms.md` (PA-055): the current assignee is a **FULL**
+viewer of the request (owner, current assignee, or System Manager / HR Manager with company
+access), so they read the full request through `get_request`. The snapshot itself never exposes
+confidential values or attachment URLs to anyone — `sanitized` drops `sensitive` fields and
+`File`/`Image`/`Signature` fields from the snapshot for every viewer, including the assignee.
+A previous assignee who acted (MASKED) reads the request with confidential values masked and
+files hidden; a user whose task was Cancelled or who was reassigned away without acting (NONE)
+cannot read the request at all. Submitted values are never accepted as editable task responses.
+Normal assignee, deadlines, decisions and permission checks apply. New form revisions require
+explicit rebinding; no silent migration.
 Request values come from the original saved entry. Document values are read from
 the original native document under its read permission, not a second ledger or a
 frozen copy of a live document. Snapshot rendering prevents client recalculation;

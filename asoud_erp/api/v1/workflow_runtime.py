@@ -46,9 +46,12 @@ MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 
 
 def _assert_generic_access(doc):
-    from asoud_erp.services.request_access import workflow_record_permission
+    from asoud_erp.services.request_access import workflow_read_allowed
 
-    if workflow_record_permission(doc) is False:
+    # The masked whitelisted endpoints allow a MASKED previous assignee to read their own
+    # task and the instance's history; NONE is denied. (Raw REST uses the stricter
+    # workflow_record_permission, which stays FULL-only.)
+    if workflow_read_allowed(doc) is False:
         frappe.throw("شما به گردش‌کار این درخواست دسترسی ندارید.", frappe.PermissionError)
 
 
@@ -844,6 +847,12 @@ def start_workflow_instance(
     workflow = frappe.get_doc("ASOUD Workflow Definition", definition, for_update=True)
     if workflow.status != "Active" or workflow.readiness_status != "Ready":
         frappe.throw(_("فقط گردش‌کار فعال قابل شروع است."))
+    # An Active design can be corrupted after activation; never start an invalid
+    # graph (PA-015). Checked under the definition lock so a concurrent design
+    # change cannot slip between the check and the instance insert.
+    from asoud_erp.api.v1.workflow import assert_design_valid
+
+    assert_design_valid(definition)
 
     if request_id:
         activity_rows = frappe.db.sql("""
@@ -1097,6 +1106,15 @@ def get_workflow_instance(instance: str) -> dict:
             *(["change_json"] if frappe.db.has_column("ASOUD Workflow Activity", "change_json") else []),
         ],
     )
+    # Approved policy (PA-055 close-out): a MASKED previous assignee sees only their own
+    # activity rows; another actor's comment or change_json is not part of their authorized
+    # history. FULL viewers are unchanged.
+    from asoud_erp.services import request_access, request_access_policy
+
+    request = _request_of(doc)
+    if request is not None:
+        level = request_access.request_level(request)
+        activities = request_access_policy.visible_activities(level, frappe.session.user, activities)
     for activity in activities:
         activity.update(activity_change(activity.pop("change_json", None)))
         activity["stage_title"] = (
@@ -1208,9 +1226,36 @@ def _followup_task(doc, followup: dict, activity_type: str) -> dict:
     }
 
 
+def _request_of(instance):
+    """The request doc of a request instance, else None (PA-055)."""
+    if instance.reference_doctype == "ASOUD Workflow Request" and instance.reference_name:
+        return frappe.get_doc("ASOUD Workflow Request", instance.reference_name)
+    return None
+
+
 @frappe.whitelist()
 def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dict:
     doc = frappe.get_doc("ASOUD Workflow Task", task)
+    instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
+    # Approved policy (PA-055): a user whose task was Cancelled without acting (NONE) must
+    # not read the task's request values. The task's assigned_to is still them, so the
+    # owner check alone would not stop them; the level is decided by the request.
+    from asoud_erp.api.v1 import workflow_request
+    from asoud_erp.services import request_access, request_access_policy
+
+    request = _request_of(instance)
+    # A user whose task was Cancelled without acting (NONE) is the task's holder but must not
+    # read the request values; the owner check alone would not stop them. (A stranger probing
+    # a task name is denied by the owner check below, without an audit row.)
+    if (request is not None and doc.assigned_to == frappe.session.user
+            and request_access.request_level(request) == request_access_policy.NONE):
+        from asoud_erp.services import security_audit
+
+        security_audit.record("task.read_denied", result="denied", target_type="ASOUD Workflow Task",
+                              target=task, company=request.company,
+                              details={"endpoint": "get_workflow_task", "request": request.name},
+                              commit=True)
+        frappe.throw(_("مشاهدهٔ این وظیفه برای شما مجاز نیست."), frappe.PermissionError)
     _assert_task_owner(doc)
     from asoud_erp.services.directive_access import directive_for
     directive = directive_for(doc)
@@ -1224,7 +1269,6 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
     followup = followup_of(doc.draft_json)
     if followup:
         return success(_followup_task(doc, followup, ACTIVITY_TYPE[followup["kind"]]))
-    instance = frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
     stage = require_stage(instance, doc.workflow_stage)
     config = json.loads(stage.config_json or "{}")
     if candidate_query is not None:
@@ -1238,11 +1282,27 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
         doc.workflow_instance,
         ["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
     )
+    # Approved policy (PA-055 close-out): a MASKED previous assignee sees only their own
+    # activity rows in the task history; another actor's comment is not their history.
+    if request is not None:
+        history = request_access_policy.visible_activities(
+            request_access.request_level(request), frappe.session.user, history)
     document_context = {}
     from asoud_erp.services.workflow_submission_source import task_snapshot
 
+    # Approved policy (PA-055): a previous assignee (MASKED) reads their own task with
+    # confidential values masked and confidential file urls removed; the level is decided
+    # by the request, not the task (whose assigned_to is the user whatever its status).
+    def _mask_request_values(values):
+        return workflow_request.mask_request_values(request.name, values) if request else values
+
     submitted_form = task_snapshot(instance) if original_access else {}
-    if original_access and not submitted_form and instance.reference_doctype and instance.reference_name:
+    if submitted_form and request:
+        submitted_form = {**submitted_form, "values": _mask_request_values(submitted_form.get("values"))}
+    # A request instance's values are already carried (masked) in `request_values`; dumping
+    # the request's raw fields here would leak values_json/attachments_json to a MASKED viewer.
+    if (original_access and not submitted_form and request is None
+            and instance.reference_doctype and instance.reference_name):
         if not frappe.has_permission(
             instance.reference_doctype,
             "read",
@@ -1284,6 +1344,11 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
             draft = project_request_rows(config.get("form_fields", []), request_values_for_instance(frappe, instance), draft)
     except ValueError as error:
         frappe.throw(_(str(error)))
+    # Approved policy (PA-055 close-out): the legacy draft projection seeds request-derived
+    # (read-only) rows from the request's values; a MASKED viewer must not read confidential
+    # values there, so the projected draft is masked exactly as `request_values` is.
+    if request is not None and draft:
+        draft = workflow_request.mask_request_values(request.name, draft)
     request_row = frappe.db.get_value(
         "ASOUD Workflow Request", {"workflow_instance": doc.workflow_instance}, ["name", "company"], as_dict=True
     ) or {}
@@ -1319,10 +1384,14 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
             "draft": draft,
             "response": strip_supplementary(json.loads(doc.response_json or "{}")),
             "history": history,
-            "previous_data": _previous_task_data(instance, exclude_task=doc.name),
+            "previous_data": workflow_request.mask_previous_data(
+                request.name, _previous_task_data(instance, exclude_task=doc.name)) if request
+                else _previous_task_data(instance, exclude_task=doc.name),
             "document": document_context,
             "submitted_form": submitted_form,
-            "request_values": (submitted_form['values'] if submitted_form else request_values_for_instance(frappe, instance)) if original_access else {},
+            "request_values": _mask_request_values(
+                submitted_form['values'] if submitted_form else request_values_for_instance(frappe, instance))
+                if original_access else {},
         }
     )
 

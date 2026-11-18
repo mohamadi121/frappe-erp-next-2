@@ -63,7 +63,7 @@ MODULES: dict[str, dict[str, Any]] = {
         ],
     },
     "IT": {
-        "label": "IT و تجهیزات",
+        "label": "فناوری اطلاعات",
         "description": "تجهیزات و زیرساخت",
         "types": [
             {"key": "Asset Movement", "label": "جابه‌جایی دارایی", "enabled": False},

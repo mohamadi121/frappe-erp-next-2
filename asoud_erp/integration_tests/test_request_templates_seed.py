@@ -67,6 +67,7 @@ class TestRequestTemplatesSeed(APITestCase):
     def test_a_version_bump_rewrites_only_the_form_fields(self):
         name = self.definitions["purchase"]
         stages = self._stages(name)
+        frappe.db.set_value("ASOUD Workflow Definition", name, "status", "Inactive")
         workflow.save_stage_settings(name, stages["Approval"].name, {
             "title": "تأیید مالی", "assignment_type": "Role", "approver_roles": ["HR Manager"],
             "approval_mode": "All", "allow_reject": True, "allow_return": False})
@@ -86,6 +87,7 @@ class TestRequestTemplatesSeed(APITestCase):
     def test_admin_cannot_save_the_system_form_stage(self):
         name = self.definitions["leave"]
         stages = self._stages(name)
+        frappe.db.set_value("ASOUD Workflow Definition", name, "status", "Inactive")
         before = frappe.db.get_value("ASOUD Workflow Stage", stages["User Task"].name, "config_json")
         with self.assertRaises(frappe.ValidationError):
             workflow.save_stage_settings(name, stages["User Task"].name, {

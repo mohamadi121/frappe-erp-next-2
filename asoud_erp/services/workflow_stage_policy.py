@@ -475,6 +475,43 @@ def _document_access(raw: dict[str, Any]) -> str:
     return value
 
 
+# «ویرایش محدود» (Limited Edit) is no longer offered as a new choice, but values stored
+# before it was removed must keep working. This message is shown when a client tries to
+# pick it for a stage that does not already have it.
+LIMITED_EDIT_REMOVED_MESSAGE = (
+    "گزینهٔ ویرایش محدود دیگر قابل انتخاب نیست؛ «فقط مشاهده» یا «مشاهده و ویرایش» را انتخاب کنید."
+)
+
+
+def resolve_document_access(stored: Any, incoming: Any, changed: bool) -> str:
+    """Decide the ``document_access`` to store when a stage is saved.
+
+    ``stored`` is the value already in ``config_json`` (may be ``None`` for a fresh stage),
+    ``incoming`` the value the client sent, and ``changed`` whether the client explicitly
+    picked an option (``document_access_changed``). The flag itself is never stored.
+
+    Rules (PA-066):
+    - a stored ``Limited Edit`` is never silently rewritten to ``Edit`` by an app that sends
+      ``Edit`` without the change flag (app 0.31.0 rewrites it on save);
+    - ``Limited Edit`` is kept when it is already stored and re-sent;
+    - ``Limited Edit`` is rejected as a *new* choice for a stage that does not have it;
+    - an explicit change (``changed``) to ``Read Only``/``Edit`` is saved.
+    """
+    if incoming in (None, ""):
+        # The client did not express a choice; keep the stored value (or the default).
+        return stored if stored in {"Read Only", "Edit", "Limited Edit"} else "Read Only"
+    if incoming not in {"Read Only", "Edit", "Limited Edit"}:
+        raise ValueError("Invalid document access mode")
+    if incoming == "Limited Edit":
+        if stored == "Limited Edit":
+            return "Limited Edit"
+        raise ValueError(LIMITED_EDIT_REMOVED_MESSAGE)
+    if stored == "Limited Edit" and incoming == "Edit" and not changed:
+        # App 0.31.0 sends Edit for a stored Limited Edit even when untouched.
+        return "Limited Edit"
+    return incoming
+
+
 def _deadline_policy(raw: dict[str, Any]) -> dict[str, Any]:
     value = raw.get("deadline_value")
     if value in (None, "", 0, "0"):

@@ -339,8 +339,10 @@ class TestAutomaticActionAudit(APITestCase):
         source = forms.get_form(saved['name'])['data']
         child, stages = make_definition(self.company, approvals=0, fields=[])
         user_stage = next(row for row in stages.values() if row.stage_type == 'User Task')
+        frappe.db.set_value('ASOUD Workflow Definition', child, 'status', 'Inactive')
         workflow.save_stage_settings(child, user_stage.name, {'title': 'بررسی', 'activity_type': 'Review',
             'assignment_type': 'Initiator', 'submission_source': {'form': source['name'], 'revision': source['revision']}})
+        frappe.db.set_value('ASOUD Workflow Definition', child, 'status', 'Active')
         config = validate_config(definition, stage, {'schema_version': 2, 'action_type': 'Create Request',
             'operation': {'request_type': child, 'link_original': False, 'mapping': {
                 'subject': {'source': 'constant', 'value': 'ثبت خودکار فرم منتشرشده'},

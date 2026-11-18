@@ -45,6 +45,36 @@ def assert_editable(definition):
         frappe.throw('برای حفظ اجراها، گردش کار را غیرفعال کنید و تا پایان اجراهای جاری منتظر بمانید؛ یا یک کپی مستقل برای طراحی بسازید.')
 
 
+def assert_design_editable(doc):
+    """DocType-level backstop mirroring :func:`assert_editable`'s Active/Running rule.
+
+    Called from the Stage/Transition controllers (``validate``/``on_trash``) to
+    catch design writes that bypass the guarded whitelisted functions (raw
+    ``/api/resource`` POST/PUT/DELETE, ``frappe.client.set_value/insert/delete``,
+    Desk, import, bulk edit). A running instance reads its graph from the live
+    Stage/Transition rows (or its snapshot), so editing them while an instance is
+    Running could let it skip an approval; an Active definition is the same
+    refusal :func:`assert_editable` applies.
+
+    Skipped during install/migrate/patch/test and for ``ignore_permissions``
+    writes: the directive adapter (``api/v1/directives.issue``), template seeding
+    (``request_templates.seed`` — which creates stages on an Active definition),
+    setup reset, and the guarded whitelisted functions (which call
+    :func:`assert_editable` themselves before saving) all write these rows with
+    ``ignore_permissions=True`` and are not user design edits.
+    """
+    if frappe.flags.in_test or frappe.flags.in_install or frappe.flags.in_migrate or frappe.flags.in_patch:
+        return
+    if getattr(doc.flags, 'ignore_permissions', False):
+        return
+    definition = doc.workflow_definition
+    if frappe.db.exists('ASOUD Workflow Instance',
+            {'workflow_definition': definition, 'status': 'Running'}):
+        frappe.throw('برای حفظ اجراها، گردش کار را غیرفعال کنید و تا پایان اجراهای جاری منتظر بمانید؛ یا یک کپی مستقل برای طراحی بسازید.')
+    if frappe.db.get_value('ASOUD Workflow Definition', definition, 'status') == 'Active':
+        frappe.throw('برای حفظ اجراها، گردش کار را غیرفعال کنید و تا پایان اجراهای جاری منتظر بمانید؛ یا یک کپی مستقل برای طراحی بسازید.')
+
+
 def _is_money(field):
     # Only a form-builder Money field has a known currency (the company default);
     # a native Currency field's currency is per document (its options name a field).
