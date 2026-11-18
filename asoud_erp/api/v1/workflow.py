@@ -877,6 +877,7 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
         previous_source = json.loads(doc.config_json or '{}').get('submission_source')
         if previous_source:
             raw = {**raw, 'submission_source': previous_source}
+    access_notice = None
     try:
         normalized = normalize_stage_config(doc.stage_type, raw)
         if doc.stage_type in {'User Task', 'Approval'}:
@@ -886,6 +887,16 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
             stored_access = json.loads(doc.config_json or '{}').get('document_access')
             normalized['document_access'] = resolve_document_access(
                 stored_access, raw.get('document_access'), bool(raw.get('document_access_changed')))
+            # App 0.31.0 normalizes a stored Limited Edit to Edit on load and offers only
+            # Read Only / Edit, so it cannot express "the user really picked Edit" versus
+            # "the user only changed another setting" — both send Edit without the flag.
+            # When we therefore keep Limited Edit against an unflagged Edit, surface a notice
+            # so the save is not a silent no-op. Read Only is unambiguous, so it is applied
+            # without a notice.
+            if (stored_access == 'Limited Edit' and raw.get('document_access') == 'Edit'
+                    and not raw.get('document_access_changed')):
+                access_notice = (
+                    'تنظیم «ویرایش محدود» این مرحله حفظ شد؛ برای تغییر آن، اپ را به‌روزرسانی کنید.')
         if doc.stage_type == 'Wait' and normalized.get('wait_version') == 1:
             from asoud_erp.services.workflow_wait import validate_design
 
@@ -998,7 +1009,7 @@ def save_stage_settings(definition: str, stage: str, config: str | dict) -> dict
     workflow = frappe.get_doc("ASOUD Workflow Definition", definition)
     workflow.version_no = int(workflow.version_no or 1) + 1
     workflow.save()
-    return success(_design_payload(definition))
+    return success(_design_payload(definition), meta={'notice': access_notice} if access_notice else None)
 
 
 ROUTE_ACTIONS = {

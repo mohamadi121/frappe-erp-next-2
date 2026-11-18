@@ -253,3 +253,9 @@ def test_orders_and_stock_entries_carry_the_dates_erpnext_requires():
     entry = build_document("Stock Entry", {"purpose": "Material Receipt", "posting_date": "2026-11-16",
                                            "items": items, "warehouse": "Stores - T"}, "Taban")
     assert entry["set_posting_time"] == 1 and entry["posting_date"] == "2026-11-16"
+
+
+def test_it_module_label_is_fanavari_e_elmlat() -> None:
+    # PA-054 close-out: the IT module's Persian title is «فناوری اطلاعات» in the
+    # document-template vocabulary too; the key stays "IT".
+    assert MODULES["IT"]["label"] == "فناوری اطلاعات"

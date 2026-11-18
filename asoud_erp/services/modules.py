@@ -19,7 +19,7 @@ MODULE_LABELS = {
     "Stock": "انبار",
     "HR": "منابع انسانی",
     "Admin": "خدمات اداری",
-    "IT": "IT و تجهیزات",
+    "IT": "فناوری اطلاعات",
 }
 
 MODULE_DESCRIPTIONS = {

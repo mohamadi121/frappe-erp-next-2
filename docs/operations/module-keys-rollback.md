@@ -83,9 +83,10 @@ change made after the upgrade** (new workflows, requests, documents, and any oth
 written since). Use it only if the post-upgrade data is disposable or has been re-created.
 Prefer the targeted reverse map above when the post-upgrade data must be kept.
 
-## Label difference — needs owner approval
+## IT module label
 
-The `IT` module is labelled **«فناوری اطلاعات»** in app 0.30.0 but **«IT و تجهیزات»** in
-the backend and in app 0.31.0 (`services/modules.py` `MODULE_LABELS`). This is a display
-label, not a key, so it does not affect the rollback SQL. The final label is **not yet
-approved by the owner** and must not be changed as part of this rollback.
+The `IT` module's Persian title is **«فناوری اطلاعات»** everywhere in the backend
+(`services/modules.py` `MODULE_LABELS`, `services/document_templates.py`, and the docs).
+App 0.31.0 showed «IT و تجهیزات»; the owner has finalized the label as «فناوری اطلاعات».
+This is a display label, not a key — the technical key stays `IT` — so it does not affect
+the rollback SQL.
