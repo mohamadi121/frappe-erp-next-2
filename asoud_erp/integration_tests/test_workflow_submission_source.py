@@ -32,6 +32,7 @@ class TestWorkflowSubmissionSource(APITestCase):
     def setUp(self):
         super().setUp()
         self.definition, stages = make_definition(self.company, approvals=0, fields=[])
+        frappe.db.set_value('ASOUD Workflow Definition', self.definition, 'status', 'Inactive')
         workflow.save_start_settings(self.definition, 'Document Event', [], 'Referenced Document')
         self.stage = next(s for s in stages.values() if s.stage_type == 'User Task')
         saved = forms.save_form(self.company, schema(), client_id=uuid4().hex)['data']
@@ -406,8 +407,10 @@ class TestWorkflowSubmissionSource(APITestCase):
 
     def test_fixed_manual_only_workflow_is_not_selectable_or_publishable(self):
         chosen, _ = make_definition(self.company, approvals=0, fields=[])
+        frappe.db.set_value('ASOUD Workflow Definition', chosen, 'status', 'Inactive')
         workflow.save_start_settings(chosen, 'Manual', ['Employee'], 'General Subject',
             settings={'trigger_type': 'Manual', 'initiator_roles': ['Employee']})
+        frappe.db.set_value('ASOUD Workflow Definition', chosen, 'status', 'Active')
         current = forms.get_form(self.source['name'], manage=1)['data']
         draft = schema()
         draft.update(workflow_mode='Fixed', workflow=chosen)
