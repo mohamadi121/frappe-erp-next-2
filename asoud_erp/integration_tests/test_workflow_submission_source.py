@@ -32,6 +32,8 @@ class TestWorkflowSubmissionSource(APITestCase):
     def setUp(self):
         super().setUp()
         self.definition, stages = make_definition(self.company, approvals=0, fields=[])
+        frappe.db.set_value('ASOUD Workflow Definition', self.definition, 'status', 'Inactive')
+        workflow.save_start_settings(self.definition, 'Document Event', [], 'Referenced Document')
         self.stage = next(s for s in stages.values() if s.stage_type == 'User Task')
         saved = forms.save_form(self.company, schema(), client_id=uuid4().hex)['data']
         forms.transition(saved['name'], 'publish', saved['draft_version'])
@@ -148,6 +150,291 @@ class TestWorkflowSubmissionSource(APITestCase):
             'reference_name': special['name']}), 1)
         ordinary = forms.submit_form(self.source['name'], self.source['revision'], 'ارسال عادی', {'note': 'عادی'}, uuid4().hex)['data']
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', ordinary['workflow_instance'], 'workflow_definition'), self.definition)
+
+    def publish_mode(self, mode, selected=None):
+        """Only fresh test records; production presets are never changed."""
+        current = forms.get_form(self.source['name'], manage=1)['data']
+        changed = schema()
+        changed['workflow_mode'] = mode
+        if selected is not None:
+            changed['workflow'] = selected
+        saved = forms.save_form(self.company, changed, self.source['name'], current['draft_version'])['data']
+        forms.transition(saved['name'], 'publish', saved['draft_version'])
+        self.source = forms.get_form(saved['name'])['data']
+        self.config['submission_source']['revision'] = self.source['revision']
+        if mode not in {'Fixed', 'Conditional'}:
+            # Explicit legacy rebinding still follows the new design guard.
+            frappe.db.set_value('ASOUD Workflow Definition', self.definition, 'status', 'Inactive')
+            workflow.save_stage_settings(self.definition, self.stage.name, self.config)
+            frappe.db.set_value('ASOUD Workflow Definition', self.definition, 'status', 'Active')
+
+    def test_explicit_fixed_beats_matching_condition_and_uses_existing_inbox(self):
+        self.publish_mode('Fixed', self.definition)
+        other = self.conditional_route()
+        # Even an unpublished draft with different intent cannot override it.
+        current = forms.get_form(self.source['name'], manage=1)['data']
+        draft = schema()
+        draft.update(workflow_mode='Conditional', workflow=other)
+        forms.save_form(self.company, draft, current['name'], current['draft_version'])
+        frappe.set_user(EMPLOYEE_USER)
+        with self.assertRaisesRegex(frappe.ValidationError, 'فیلد ناشناخته'):
+            forms.submit_form(self.source['name'], self.source['revision'], 'ورودی دستکاری شده',
+                {'note': 'ویژه', 'workflow_mode': 'Conditional', 'workflow': other}, uuid4().hex)
+        result = forms.submit_form(self.source['name'], self.source['revision'], 'گردش انتخاب شده',
+            {'note': 'ویژه'}, uuid4().hex)['data']
+        instance = frappe.get_doc('ASOUD Workflow Instance', result['workflow_instance'])
+        self.assertEqual(instance.workflow_definition, self.definition)
+        self.assertEqual(instance.reference_name, result['name'])
+        task = frappe.db.get_value('ASOUD Workflow Task', {'workflow_instance': instance.name}, 'name')
+        self.assertIn(task, [row['name'] for row in workflow_runtime.list_my_workflow_tasks()['data']])
+        self.assertEqual(frappe.db.count('ASOUD Workflow Instance', {
+            'reference_doctype': 'ASOUD Form Entry', 'reference_name': result['name']}), 1)
+
+    def test_explicit_fixed_can_use_independent_legacy_definition(self):
+        chosen, _ = make_definition(self.company, approvals=0, fields=[])
+        self.publish_mode('Fixed', chosen)
+        self.conditional_route()
+        frappe.set_user(EMPLOYEE_USER)
+        result = forms.submit_form(self.source['name'], self.source['revision'], 'گردش مستقل',
+            {'note': 'ویژه'}, uuid4().hex)['data']
+        entry = frappe.get_doc('ASOUD Form Entry', result['name'])
+        request = frappe.get_doc('ASOUD Workflow Request', entry.reference_name)
+        self.assertEqual(request.workflow_definition, chosen)
+        self.assertEqual(result['workflow_instance'], request.workflow_instance)
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', request.workflow_instance,
+            'workflow_definition'), chosen)
+
+    def test_explicit_conditional_ignores_retained_workflow_and_selects_match(self):
+        self.publish_mode('Conditional', self.definition)
+        chosen = self.conditional_route()
+        frappe.set_user(EMPLOYEE_USER)
+        result = forms.submit_form(self.source['name'], self.source['revision'], 'مسیر مشروط',
+            {'note': 'ویژه'}, uuid4().hex)['data']
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', result['workflow_instance'],
+            'workflow_definition'), chosen)
+
+    def test_explicit_fixed_inactive_cannot_fall_back_to_matching_condition(self):
+        self.publish_mode('Fixed', self.definition)
+        self.conditional_route()
+        workflow.set_workflow_status(self.definition, 'Inactive')
+        before = {dt: frappe.db.count(dt) for dt in
+            ('ASOUD Form Entry', 'ASOUD Workflow Instance', 'ASOUD Workflow Task')}
+        frappe.set_user(EMPLOYEE_USER)
+        with self.assertRaisesRegex(frappe.ValidationError, 'فعال و آماده نیست'):
+            forms.submit_form(self.source['name'], self.source['revision'], 'انتخاب غیرفعال',
+                {'note': 'ویژه'}, uuid4().hex)
+        for dt, count in before.items():
+            self.assertEqual(frappe.db.count(dt), count)
+
+    def test_invalid_fixed_identifier_rejects_publish_without_replacing_revision(self):
+        current = forms.get_form(self.source['name'], manage=1)['data']
+        draft = schema()
+        draft.update(workflow_mode='Fixed', workflow='missing-selected-workflow')
+        saved = forms.save_form(self.company, draft, current['name'], current['draft_version'])['data']
+        with self.assertRaisesRegex(frappe.ValidationError, 'وجود ندارد'):
+            forms.transition(saved['name'], 'publish', saved['draft_version'])
+        self.assertEqual(frappe.db.get_value('ASOUD Form', current['name'], 'active_revision'),
+            self.source['revision'])
+
+    def test_record_only_requires_approved_policy_not_an_inferred_exemption(self):
+        current = forms.get_form(self.source['name'], manage=1)['data']
+        draft = schema()
+        draft['workflow_mode'] = 'RecordOnly'
+        saved = forms.save_form(self.company, draft, current['name'], current['draft_version'])['data']
+        before = {dt: frappe.db.count(dt) for dt in
+            ('ASOUD Form Entry', 'ASOUD Workflow Instance', 'ASOUD Workflow Task')}
+        with self.assertRaisesRegex(frappe.ValidationError, 'سیاست معتبر'):
+            forms.transition(saved['name'], 'publish', saved['draft_version'])
+        # Defence in depth for an imported published revision, without rewriting
+        # any existing revision. This record is rolled back with the test.
+        rev = forms.store(frappe.get_doc({'doctype': 'ASOUD Form Revision',
+            'form': current['name'], 'version': 99, 'schema_json': json.dumps(draft)}))
+        doc = frappe.get_doc('ASOUD Form', current['name'])
+        doc.active_revision = rev.name
+        forms.store(doc)
+        frappe.set_user(EMPLOYEE_USER)
+        with self.assertRaisesRegex(frappe.ValidationError, 'سیاست معتبر'):
+            forms.submit_form(doc.name, rev.name, 'فقط ثبت نامجاز', {'note': 'ویژه'}, uuid4().hex)
+        for dt, count in before.items():
+            self.assertEqual(frappe.db.count(dt), count)
+
+    def test_explicit_conditional_without_routes_does_not_create_bare_entry(self):
+        draft = schema()
+        draft['workflow_mode'] = 'Conditional'
+        saved = forms.save_form(self.company, draft, client_id=uuid4().hex)['data']
+        before = frappe.db.count('ASOUD Form Entry')
+        with self.assertRaisesRegex(frappe.ValidationError, 'هیچ مسیر معتبر'):
+            forms.transition(saved['name'], 'publish', saved['draft_version'])
+        self.assertFalse(frappe.db.get_value('ASOUD Form', saved['name'], 'active_revision'))
+        self.assertEqual(frappe.db.count('ASOUD Form Entry'), before)
+
+    def test_empty_explicit_mode_preserves_legacy_conditional_routing(self):
+        self.publish_mode('')
+        chosen = self.conditional_route()
+        frappe.set_user(EMPLOYEE_USER)
+        result = forms.submit_form(self.source['name'], self.source['revision'], 'فرم قدیمی خالی',
+            {'note': 'ویژه'}, uuid4().hex)['data']
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', result['workflow_instance'],
+            'workflow_definition'), chosen)
+
+    def test_fixed_cannot_select_another_companys_definition(self):
+        foreign, _ = make_definition(self.second, approvals=0, fields=[])
+        current = forms.get_form(self.source['name'], manage=1)['data']
+        draft = schema()
+        draft.update(workflow_mode='Fixed', workflow=foreign)
+        saved = forms.save_form(self.company, draft, current['name'], current['draft_version'])['data']
+        with self.assertRaisesRegex(frappe.ValidationError, 'همین دفتر'):
+            forms.transition(saved['name'], 'publish', saved['draft_version'])
+
+    def test_picker_lists_bound_conditional_without_legacy_form_stage(self):
+        chosen = self.conditional_route()
+        options = forms.get_options(self.company, form=self.source['name'])['data']['workflows']
+        self.assertIn(chosen, [row['name'] for row in options])
+        self.assertEqual(next(row for row in options if row['name'] == chosen)['fields'], [])
+
+    def test_fixed_foreign_source_rejected_by_picker_and_publish(self):
+        other = forms.save_form(self.company, schema(), client_id=uuid4().hex)['data']
+        forms.transition(other['name'], 'publish', other['draft_version'])
+        current = forms.get_form(other['name'], manage=1)['data']
+        draft = schema()
+        draft.update(workflow_mode='Fixed', workflow=self.definition)
+        saved = forms.save_form(self.company, draft, current['name'], current['draft_version'])['data']
+        before = forms.get_form(current['name'])['data']['revision']
+        count = frappe.db.count('ASOUD Form Revision', {'form': current['name']})
+        with self.assertRaisesRegex(frappe.ValidationError, 'فرم مبدأ'):
+            forms.transition(saved['name'], 'publish', saved['draft_version'])
+        self.assertEqual(forms.get_form(current['name'])['data']['revision'], before)
+        self.assertEqual(frappe.db.count('ASOUD Form Revision', {'form': current['name']}), count)
+        options = forms.get_options(self.company, form=current['name'])['data']['workflows']
+        self.assertNotIn(self.definition, [row['name'] for row in options])
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', self.definition,
+            'source_form'), self.source['name'])
+
+    def test_conditional_publish_atomically_rebinds_ready_routes(self):
+        chosen = self.conditional_route()
+        old = self.source['revision']
+        self.publish_mode('Conditional')
+        for name in (self.definition, chosen):
+            self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', name,
+                'source_revision'), self.source['revision'])
+            for stage in frappe.get_all('ASOUD Workflow Stage', filters={'workflow_definition': name},
+                    fields=['config_json']):
+                source = json.loads(stage.config_json or '{}').get('submission_source')
+                if source:
+                    self.assertEqual(source['revision'], self.source['revision'])
+        self.assertTrue(frappe.db.exists('ASOUD Form Revision', old))
+        frappe.set_user(EMPLOYEE_USER)
+        result = forms.submit_form(self.source['name'], self.source['revision'], 'اتصال نسخه جدید',
+            {'note': 'ویژه'}, uuid4().hex)['data']
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', result['workflow_instance'],
+            'workflow_definition'), chosen)
+
+    def test_failed_conditional_rebind_preserves_operational_revision_and_all_bindings(self):
+        chosen = self.conditional_route()
+        old = self.source['revision']
+        old_count = frappe.db.count('ASOUD Form Revision', {'form': self.source['name']})
+        current = forms.get_form(self.source['name'], manage=1)['data']
+        draft = schema()
+        draft.update(workflow_mode='Conditional')
+        draft['sections'][0]['fields'][0]['key'] = 'renamed_note'
+        saved = forms.save_form(self.company, draft, current['name'], current['draft_version'])['data']
+        with self.assertRaises(frappe.ValidationError):
+            forms.transition(saved['name'], 'publish', saved['draft_version'])
+        self.assertEqual(forms.get_form(current['name'])['data']['revision'], old)
+        self.assertEqual(frappe.db.count('ASOUD Form Revision', {'form': current['name']}), old_count)
+        for name in (self.definition, chosen):
+            self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', name, 'source_revision'), old)
+        frappe.set_user(EMPLOYEE_USER)
+        result = forms.submit_form(self.source['name'], old, 'نسخه قبلی سالم', {'note': 'ویژه'}, uuid4().hex)['data']
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', result['workflow_instance'],
+            'workflow_definition'), chosen)
+
+    def test_record_only_direct_start_guard_does_not_rewrite_existing_execution(self):
+        frappe.set_user(EMPLOYEE_USER)
+        running = forms.submit_form(self.source['name'], self.source['revision'], 'اجرای قبلی',
+            {'note': 'معمولی'}, uuid4().hex)['data']['workflow_instance']
+        frappe.set_user('Administrator')
+        # Imported explicit revision: publication remains blocked by policy, but
+        # the direct-start boundary must independently enforce this saved intent.
+        draft = schema()
+        draft['workflow_mode'] = 'RecordOnly'
+        rev = forms.store(frappe.get_doc({'doctype': 'ASOUD Form Revision', 'form': self.source['name'],
+            'version': 99, 'schema_json': json.dumps(draft)}))
+        doc = frappe.get_doc('ASOUD Form', self.source['name'])
+        doc.active_revision = rev.name
+        forms.store(doc)
+        # A historical existing instance must not short-circuit the policy check.
+        entry = forms.store(frappe.get_doc({'doctype': 'ASOUD Form Entry', 'form': doc.name,
+            'revision': rev.name, 'company': self.company, 'subject': 'فقط ثبت', 'values_json': '{}'}))
+        # Use a separate unused workflow; existing source cannot be rebound while running.
+        candidate, _ = make_definition(self.company, approvals=0, fields=[])
+        source = frappe.get_doc('ASOUD Workflow Definition', candidate)
+        source.source_form, source.source_revision = doc.name, rev.name
+        source.flags.submission_source_service = True
+        source.save()
+        from asoud_erp.services.workflow_submission_source import assert_reference
+
+        frappe.get_doc({'doctype': 'ASOUD Workflow Instance', 'workflow_definition': candidate,
+            'reference_doctype': 'ASOUD Form Entry', 'reference_name': entry.name,
+            'subject': 'سابقه آزمون', 'status': 'Completed'}).insert(ignore_permissions=True)
+        with self.assertRaisesRegex(frappe.ValidationError, 'فقط ثبت'):
+            assert_reference(source, entry.name)
+        with self.assertRaisesRegex(frappe.ValidationError, 'فقط ثبت'):
+            workflow_runtime.start_workflow_instance(candidate, 'شروع مستقیم نامجاز', 'ASOUD Form Entry', entry.name)
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', running, 'status'), 'Running')
+        frappe.set_user(EMPLOYEE_USER)
+        task = frappe.db.get_value('ASOUD Workflow Task', {'workflow_instance': running}, 'name')
+        workflow_runtime.complete_workflow_task(task, 'Complete', response={})
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', running, 'status'), 'Completed')
+
+    def test_conditional_publish_cannot_rebind_a_running_workflow(self):
+        other = self.conditional_route()
+        old = self.source['revision']
+        frappe.set_user(EMPLOYEE_USER)
+        running = forms.submit_form(self.source['name'], old, 'اجرای در حال انجام',
+            {'note': 'عادی'}, uuid4().hex)['data']['workflow_instance']
+        frappe.set_user('Administrator')
+        current = forms.get_form(self.source['name'], manage=1)['data']
+        draft = schema()
+        draft['workflow_mode'] = 'Conditional'
+        saved = forms.save_form(self.company, draft, current['name'], current['draft_version'])['data']
+        with self.assertRaisesRegex(frappe.ValidationError, 'در حال اجرا'):
+            forms.transition(saved['name'], 'publish', saved['draft_version'])
+        self.assertEqual(forms.get_form(current['name'])['data']['revision'], old)
+        for name in (self.definition, other):
+            self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', name, 'source_revision'), old)
+        self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', running, 'status'), 'Running')
+
+    def test_fixed_manual_only_workflow_is_not_selectable_or_publishable(self):
+        chosen, _ = make_definition(self.company, approvals=0, fields=[])
+        frappe.db.set_value('ASOUD Workflow Definition', chosen, 'status', 'Inactive')
+        workflow.save_start_settings(chosen, 'Manual', ['Employee'], 'General Subject',
+            settings={'trigger_type': 'Manual', 'initiator_roles': ['Employee']})
+        frappe.db.set_value('ASOUD Workflow Definition', chosen, 'status', 'Active')
+        current = forms.get_form(self.source['name'], manage=1)['data']
+        draft = schema()
+        draft.update(workflow_mode='Fixed', workflow=chosen)
+        saved = forms.save_form(self.company, draft, current['name'], current['draft_version'])['data']
+        with self.assertRaisesRegex(frappe.ValidationError, 'نحوهٔ شروع'):
+            forms.transition(saved['name'], 'publish', saved['draft_version'])
+        options = forms.get_options(self.company, form=current['name'])['data']['workflows']
+        self.assertNotIn(chosen, [row['name'] for row in options])
+
+    def test_publication_rebind_keeps_the_active_design_guard_outside_test_mode(self):
+        current = forms.get_form(self.source['name'], manage=1)['data']
+        draft = schema()
+        draft['workflow_mode'] = 'Conditional'
+        saved = forms.save_form(self.company, draft, current['name'], current['draft_version'])['data']
+        old_flag = frappe.flags.in_test
+        try:
+            frappe.flags.in_test = False
+            forms.transition(saved['name'], 'publish', saved['draft_version'])
+            target = frappe.get_doc('ASOUD Workflow Stage', self.stage.name)
+            target.stage_title = 'ویرایش طراحی غیرمجاز'
+            with self.assertRaisesRegex(frappe.ValidationError, 'برای حفظ اجراها'):
+                target.save()
+        finally:
+            frappe.flags.in_test = old_flag
 
     def test_overlapping_conditions_report_conflict_and_create_nothing(self):
         self.conditional_route()

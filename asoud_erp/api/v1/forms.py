@@ -305,7 +305,25 @@ def native_mapping(schema):
         fail('نگاشت فیلدهای اصلی سند کامل نیست.')
 
 
-def workflow_mapping(schema, company):
+def workflow_mapping(schema, company, form=None):
+    from asoud_erp.services.workflow_submission_policy import request_mode, require_record_only_policy
+
+    mode = request_mode(schema)
+    try:
+        require_record_only_policy(mode)
+    except ValueError as error:
+        fail(str(error))
+    if mode in {'Conditional', 'RecordOnly'}:
+        return
+    if mode == 'Fixed':
+        from asoud_erp.services.workflow_submission_source import fixed_definition, fixed_start_error
+
+        workflow = fixed_definition(schema, company)
+        error = fixed_start_error(workflow, form)
+        if error:
+            fail(error)
+        if workflow.get('source_form'):
+            return  # Submitted-entry runtime; it does not use legacy field mappings.
     if not schema.get('workflow'):
         return
     from asoud_erp.api.v1.workflow_request import _fields
@@ -349,6 +367,15 @@ def workflow_mapping(schema, company):
 
 @frappe.whitelist(methods=['POST'])
 def transition(name, action, expected_version, note=''):
+    frappe.db.savepoint('form_revision_transition')
+    try:
+        return _transition(name, action, expected_version, note)
+    except Exception:
+        frappe.db.rollback(save_point='form_revision_transition')
+        raise
+
+
+def _transition(name, action, expected_version, note=''):
     doc = load(name, edit=True, lock=True)
     if int(expected_version) != doc.draft_version:
         fail('نسخه فرم تغییر کرده است؛ دوباره دریافت کنید.')
@@ -364,17 +391,28 @@ def transition(name, action, expected_version, note=''):
         if schema['kind'] == 'Document':
             native_mapping(schema)
         if schema['kind'] == 'Request':
-            workflow_mapping(schema, doc.company)
+            workflow_mapping(schema, doc.company, doc)
         if doc.active_revision and revision(doc).schema_json == doc.draft_json:
             doc.disabled = 0
             doc.pending_review = 0
+            if schema['kind'] == 'Request':
+                from asoud_erp.services.workflow_submission_source import publish_revision
+
+                store(doc)
+                publish_revision(doc, revision(doc), doc.active_revision)
         else:
+            previous_revision = doc.active_revision
             version = int(frappe.db.count('ASOUD Form Revision', {'form': doc.name})) + 1
             rev = store(frappe.get_doc({'doctype': 'ASOUD Form Revision', 'form': doc.name, 'version': version,
                 'schema_json': doc.draft_json, 'published_by': frappe.session.user, 'published_on': now_datetime(), 'change_note': note[:500]}))
             doc.active_revision = rev.name
             doc.disabled = 0
             doc.pending_review = 0
+            if schema['kind'] == 'Request':
+                from asoud_erp.services.workflow_submission_source import publish_revision
+
+                store(doc)
+                publish_revision(doc, rev, previous_revision)
     elif action in {'disable', 'enable'}:
         require_roles(('System Manager',))
         if not doc.active_revision:
@@ -395,14 +433,17 @@ def get_history(name):
 
 
 @frappe.whitelist()
-def get_validation(company, schema, values=None):
+def get_validation(company, schema, values=None, form=None):
     require_company(company)
     require_roles(DESIGNERS)
+    form_doc = load(form, edit=True) if form else None
+    if form_doc and form_doc.company != company:
+        fail('فرم متعلق به همین دفتر نیست.')
     normalized = validate_schema(schema)
     if normalized['kind'] == 'Document':
         native_mapping(normalized)
     if normalized['kind'] == 'Request':
-        workflow_mapping(normalized, company)
+        workflow_mapping(normalized, company, form_doc)
     result = {'valid': True}
     if values is not None:
         result['values'] = validate_values(normalized, values, company)
@@ -410,16 +451,48 @@ def get_validation(company, schema, values=None):
 
 
 @frappe.whitelist()
-def get_options(company):
+def get_options(company, form=None, kind=None):
     require_company(company)
     require_roles(DESIGNERS)
-    from asoud_erp.api.v1.workflow_request import _fields
+    form_doc = load(form, edit=True) if form else None
+    if form_doc and form_doc.company != company:
+        fail('فرم متعلق به همین دفتر نیست.')
+    from asoud_erp.services.workflow_submission_source import fixed_start_error
     workflows = []
-    for name in frappe.get_all('ASOUD Workflow Definition', filters={'company': company, 'target_doctype': 'ASOUD Workflow Request', 'status': 'Active', 'readiness_status': 'Ready'}, pluck='name', limit_page_length=200):
-        workflow = frappe.get_doc('ASOUD Workflow Definition', name)
-        workflows.append({'name': name, 'title': workflow.workflow_title, 'fields': _fields(workflow)})
+    definitions = frappe.get_all('ASOUD Workflow Definition', filters={'company': company,
+        'target_doctype': 'ASOUD Workflow Request', 'status': 'Active', 'readiness_status': 'Ready'},
+        fields=['*'], limit_page_length=200)
+    stages = frappe.get_all('ASOUD Workflow Stage', filters={'workflow_definition': ['in',
+        [row.name for row in definitions] or ['']]}, fields=['name', 'workflow_definition', 'stage_type', 'config_json'],
+        limit_page_length=40201)
+    if len(stages) > 40200:
+        fail('تعداد مراحل فهرست گردش‌کار بیش از حد مجاز است.')
+    starts = {row.workflow_definition: row for row in stages if row.stage_type == 'Start'}
+    by_name = {row.name: row for row in stages}
+    edges = frappe.get_all('ASOUD Workflow Transition', filters={'from_stage': ['in',
+        [row.name for row in starts.values()] or ['']]}, fields=['from_stage', 'to_stage'], limit_page_length=40201)
+    if len(edges) > 40200:
+        fail('تعداد مسیرهای فهرست گردش‌کار بیش از حد مجاز است.')
+    outgoing = {}
+    for edge in edges:
+        outgoing.setdefault(edge.from_stage, []).append(edge.to_stage)
+    for workflow in definitions:
+        start = starts.get(workflow.name)
+        targets = outgoing.get(start.name, []) if start else []
+        first = by_name.get(targets[0]) if len(targets) == 1 else None
+        legacy_form = first if first and first.stage_type == 'User Task' else None
+        if fixed_start_error(workflow, form_doc, start=start, legacy_form=legacy_form):
+            continue
+        workflows.append({'name': workflow.name, 'title': workflow.workflow_title,
+            'fields': [] if workflow.get('source_form') else json.loads(legacy_form.config_json or '{}').get('form_fields', [])})
+    may_read_departments = frappe.has_permission('Department', 'read')
+    request_context = form_doc.kind == 'Request' if form_doc else kind == 'Request'
+    if not may_read_departments and not request_context:
+        # Preserve existing non-request callers' native permission behavior.
+        frappe.get_list('Department', filters={'company': company}, limit_page_length=1)
     return success({'roles': frappe.get_all('Role', filters={'disabled': 0}, pluck='name', limit_page_length=500), 'workflows': workflows,
-        'departments': frappe.get_list('Department', filters={'company': company}, pluck='name', limit_page_length=500),
+        'departments': frappe.get_list('Department', filters={'company': company}, pluck='name', limit_page_length=500) if may_read_departments else [],
+        'department_notice': '' if may_read_departments else 'مجوز مشاهدهٔ واحدهای سازمانی را ندارید؛ فهرست گردش‌کارهای مجاز در دسترس است.',
         'can_publish': 'System Manager' in frappe.get_roles() or frappe.session.user == 'Administrator',
         'targets': list(NATIVE), 'sources': sorted(SOURCES)})
 
@@ -673,9 +746,11 @@ def _submit_form(name, revision_name, subject, values, request_key):
 
     source_workflow = route(doc, rev, checked) if schema['kind'] == 'Request' else None
     reference_type = reference_name = ''
-    if not source_workflow and schema['kind'] == 'Request' and schema.get('workflow'):
+    from asoud_erp.services.workflow_submission_policy import request_mode
+
+    if not source_workflow and schema['kind'] == 'Request' and schema.get('workflow') and request_mode(schema) not in {'Conditional', 'RecordOnly'}:
         from asoud_erp.api.v1.workflow_request import create_request
-        workflow_mapping(schema, doc.company)
+        workflow_mapping(schema, doc.company, doc)
         payload = {}
         attachments = []
         for field in fields(schema):
@@ -727,7 +802,8 @@ def _submit_form(name, revision_name, subject, values, request_key):
         from asoud_erp.services.workflow_submission_source import values as source_values
 
         source_workflow = route(doc, rev, source_values(entry)[1])
-    instance_name = start(entry, source_workflow) if source_workflow else None
+    instance_name = start(entry, source_workflow) if source_workflow else (
+        result['data'].get('workflow_instance') if reference_type == 'ASOUD Workflow Request' else None)
     if reference_type == 'ASOUD Workflow Request':
         from asoud_erp.api.v1.workflow_request import refresh_search_text
 

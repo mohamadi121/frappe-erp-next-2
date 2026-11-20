@@ -74,3 +74,15 @@ def test_route_does_not_use_for_update(env):
     for query in env.sql_calls:
         assert "for update" not in query.lower(), (
             f"route() used FOR UPDATE in: {query}")
+
+
+def test_explicit_conditional_cannot_use_available_only_record_fallback(env):
+    env.site.add('ASOUD Workflow Stage', 'ST-1', workflow_definition='WF-1', stage_type='Start',
+        config_json=json.dumps({'submission_source': {'form': 'FORM-1', 'revision': 'REV-1'},
+                                'source_route': 'Available'}))
+    schema = {'kind': 'Request', 'workflow_mode': 'Conditional', 'sections': [
+        {'id': 'main', 'fields': [{'key': 'note', 'type': 'Text', 'label': 'شرح'}]}]}
+    revision = types.SimpleNamespace(name='REV-1', schema_json=json.dumps(schema))
+    form = types.SimpleNamespace(name='FORM-1', company='Co')
+    with pytest.raises(env.frappe.ValidationError, match='هیچ مسیر معتبر'):
+        env.module.route(form, revision, {'note': 'عادی'})
