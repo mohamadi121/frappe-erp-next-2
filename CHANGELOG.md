@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Enforce Fixed request workflow start compatibility in selection and publication. Publish explicit conditional form revisions with existing source bindings atomically, validating ready routes and preserving the previous operational revision on failure/running-instance guards. Refuse direct starts from explicit RecordOnly Request entries before reference reuse; existing executions and Document/legacy behavior are unchanged. No schema migration or production deployment.
+
+- Request form workflow intent is read from the published revision: Fixed never yields to source conditions, Conditional reuses existing routing without a record-only fallback, and absent/empty modes preserve legacy behavior. Explicit RecordOnly is blocked pending an authoritative approval-exemption policy; no blanket exemption is inferred. Existing entries, HR presets, document forms and task inbox remain unchanged. No migration or deployment performed.
+
 - Align the introduction-letter integration fixture with the existing End contract: valid `Stopped` persists as `Failed` without issuing a letter. Add a separate real-database regression proving that an invalid End outcome rejects submission and rolls back the request/instance while preserving the draft and revision. No runtime change or additional migration.
 
 - End-stage audit: preserve the approved three-field UI and four outcomes. Record an idempotent terminal activity with result message and decision context; map Stopped to existing Failed instead of Cancelled. Lock the instance before legacy human completion and reject late replies/nonterminal activation after completion. Validate real incoming/no outgoing edges and protect active/running End settings. No new DocType, status enum, business write or notification is added. Existing native module lifecycle mappings remain intact; no data rewrite/migration for this End-only change. Restart web/workers together; pair with Flutter's invalid-result and save-error handling. Old histories are unchanged.

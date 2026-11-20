@@ -8,6 +8,56 @@ Manager`) use `save_form`, `get_validation`, `get_options`, `get_history`, and
 `transition`. Only a System Manager may publish, enable, or disable a form.
 Every call takes or resolves the form's company and checks company access.
 
+## Request submission workflow selection
+
+An optional `workflow_mode` in a Request schema is retained in `draft_json` and
+the immutable published `schema_json`. Submission reads only the published
+revision; entry values and the editable draft cannot override this choice.
+
+- `Fixed`: `workflow` must name one active, ready workflow in the same company.
+  Conditional source bindings never replace it. Existing request mappings are
+  used for unbound definitions; a definition bound to this form/revision uses
+  the existing Form Entry runtime path instead.
+  Publication and `get_options(company, form=<form id>)` also enforce the real
+  start contract. A workflow bound to another source form, a stale source, a
+  manual-only start or an unavailable legacy request input is not selectable.
+  The source-only restriction is never removed or bypassed.
+- `Conditional`: use the existing source routing/condition evaluator, ignoring
+  any legacy `workflow` value. Missing routes and ambiguous matches reject the
+  submission; there is no fallback to record-only registration.
+  Publication stages a candidate revision inside a savepoint and reuses `bind`
+  to update all existing eligible source configurations together. Active/ready
+  routes and their conditions are validated against that revision before commit.
+  Missing/unready routes, inconsistent bindings, protected historical stages or
+  running instances abort publication and roll back the candidate revision and
+  every binding; the previous operational revision remains usable. No bindings
+  are detached and no running execution is rewritten.
+- `RecordOnly`: reserved explicit record-only intent. The current schema has no
+  authoritative approval-required policy. Therefore publication/submission of
+  this explicit mode is rejected with a Persian explanation until that policy
+  is approved and implemented. It is not inferred from module, title or fields.
+  Independently, `assert_reference` refuses a direct start from a Request entry
+  whose own saved revision explicitly says `RecordOnly`, even when a historical
+  reference lookup exists. This does not change completion of existing runs,
+  legacy forms or Document entries.
+
+Absent, null or empty `workflow_mode` retains the exact legacy routing order,
+including old conditional forms and empty `workflow`. No data migration or
+automatic revision rewrite occurs. Non-Request forms are unchanged. No new
+endpoint, runtime, task inbox or DocType is introduced.
+
+`get_options.workflows[].fields` remains the legacy input mapping catalog for
+unbound workflows. Source-bound workflows return an empty mapping catalog,
+because they consume the original published entry and need no legacy form stage.
+The optional `form` argument on `get_options` and `get_validation` identifies
+the form being edited and is checked against company/designer permissions. A
+new form without an id cannot select another form's exclusive source workflow.
+The native Department read permission is still enforced. Request-form designers
+(identified by `form`, or `kind=Request` for a new form) lacking it receive
+`departments: []` and `department_notice`, without losing their separately
+authorized workflow list. Non-request callers retain the previous native
+permission behavior. No role or document read permission is granted.
+
 ## Built-in HR catalog
 
 The ten existing Flutter HR presets are shipped unchanged as the trusted server

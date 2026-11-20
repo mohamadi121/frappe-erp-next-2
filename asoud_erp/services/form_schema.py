@@ -161,6 +161,12 @@ def number(value):
 
 def validate_schema(raw):
     schema = parse(raw)
+    from asoud_erp.services.workflow_submission_policy import request_mode
+
+    try:
+        request_mode(schema)
+    except ValueError as error:
+        fail(str(error))
     version = schema.get("schema_version", 1)
     if version is None:
         version = 1

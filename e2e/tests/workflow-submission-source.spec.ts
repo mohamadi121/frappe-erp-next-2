@@ -7,6 +7,39 @@ const workflow = 'asoud_erp.api.v1.workflow.';
 type Stage = {name: string; stage_type: string; config: Record<string, unknown>};
 type Design = {stages: Stage[]; transitions: Array<{name: string}>};
 
+test('request workflow intent validation uses real HTTP permissions and Persian failures', async ({api}) => {
+  const admin = await api.login('admin'); // Designer without an Employee record.
+  const employee = await api.login('employee');
+  const accounts = await api.login('accounts');
+  const method = 'asoud_erp.api.v1.forms.get_validation';
+  const options = 'asoud_erp.api.v1.forms.get_options';
+  const available = await admin.get<{departments: string[]; department_notice: string}>(options,
+    {company: state.company, kind: 'Request'});
+  expect(available.status, errorText(available)).toBe(200);
+  expect(available.envelope.data.departments).toEqual([]);
+  expect(available.envelope.data.department_notice).toContain('مجوز');
+  expect((await admin.get(options, {company: state.company, kind: 'Document'})).status).toBe(403);
+  expect((await employee.get(options, {company: state.company})).status).toBe(403);
+  expect((await accounts.get(options, {company: state.second_company})).status).toBe(403);
+  const schema = {kind: 'Request', title: 'E2E-intent-validation', sections: [
+    {id: 'main', title: 'اطلاعات', fields: [{key: 'note', label: 'شرح', type: 'Text'}]},
+  ]};
+  const args = (mode: string, selected?: string) => ({company: state.company,
+    schema: JSON.stringify({...schema, workflow_mode: mode, workflow: selected})});
+  expect((await employee.post(method, args('Conditional'))).status).toBe(403);
+  expect((await accounts.post(method, {...args('Conditional'), company: state.second_company})).status).toBe(403);
+  expect((await admin.post(method, args('Conditional'))).status).toBe(200);
+  const missing = await admin.post(method, args('Fixed', 'E2E-missing-selected-workflow'));
+  expect(missing.status).toBe(417);
+  expect(errorText(missing)).toContain('وجود ندارد');
+  const recordOnly = await admin.post(method, args('RecordOnly'));
+  expect(recordOnly.status).toBe(417);
+  expect(errorText(recordOnly)).toContain('سیاست معتبر');
+  const invalid = await admin.post(method, args('unrecognized'));
+  expect(invalid.status).toBe(417);
+  expect(errorText(invalid)).toContain('روش اتصال');
+});
+
 test('one published leave form binds to two drafts without changing their automatic start', async ({api}) => {
   const admin = await api.login('admin'); // No Employee needed to design workflows.
   const employee = await api.login('employee');

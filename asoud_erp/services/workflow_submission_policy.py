@@ -1,6 +1,29 @@
 """Pure input policy; importing the stage normalizer must not require a bench."""
 
 
+def request_mode(schema):
+    """Absent intent is legacy, never an inferred record-only policy."""
+    if schema.get('kind') != 'Request':
+        return None
+    mode = schema.get('workflow_mode')
+    if mode is None or mode == '':
+        return None
+    if not isinstance(mode, str) or mode not in {'Fixed', 'Conditional', 'RecordOnly'}:
+        raise ValueError('روش اتصال فرم به گردش‌کار معتبر نیست.')
+    if mode == 'Fixed':
+        name = schema.get('workflow')
+        if not isinstance(name, str) or not name.strip() or len(name) > 140:
+            raise ValueError('برای روش گردش مشخص، یک گردش‌کار معتبر انتخاب کنید.')
+    return mode
+
+
+def require_record_only_policy(mode):
+    # No existing, authoritative approval exemption exists. Do not introduce a
+    # blanket policy (or infer one from a preset's name) just to bypass routing.
+    if mode == 'RecordOnly':
+        raise ValueError('فقط ثبت فرم هنوز مجاز نیست؛ سیاست معتبرِ بی‌نیازی این فرم از تأیید مشخص نشده است.')
+
+
 def normalize(value):
     if value is None:
         return None
