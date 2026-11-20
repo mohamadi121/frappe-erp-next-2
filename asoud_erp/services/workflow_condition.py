@@ -17,6 +17,25 @@ TYPE_OPERATORS = {
 _DIGITS = str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٫', '01234567890123456789.')
 _TEXT_TRANSLATE = str.maketrans({'ي': 'ی', 'ى': 'ی', 'ك': 'ک', '‌': ' '})
 _TEXT_SPACES = re.compile(r'\s+')
+# A year in this band is a plausible Solar-Hijri (Jalali) year, not a Gregorian one.
+# Native Date fields always carry Gregorian ISO dates (year ~2026), so only a custom
+# form field that stores a Jalali string such as ``1403-08-20`` lands here.
+_JALALI_YEAR_MIN, _JALALI_YEAR_MAX = 1300, 1500
+
+
+def _parse_date_string(text: str) -> date:
+    """Parse an ISO date; a year in the Jalali band is converted to Gregorian.
+
+    ``date.fromisoformat`` would silently read ``1403-08-20`` as the year 1403 AD and
+    compare it wrongly against the server's current date. A year in the plausible
+    Jalali band is therefore converted with the shared Jalali engine.
+    """
+    parts = text.split('-')
+    if len(parts) == 3 and parts[0].isdigit() and _JALALI_YEAR_MIN <= int(parts[0]) <= _JALALI_YEAR_MAX:
+        from asoud_erp.services.jalali import jalali_to_gregorian
+
+        return jalali_to_gregorian(int(parts[0]), int(parts[1]), int(parts[2]))
+    return date.fromisoformat(text)
 
 
 def normalize_text(value: str) -> str:
@@ -66,7 +85,7 @@ def condition_value(kind, value, *, for_actual=False):
                 return value.date()
             if isinstance(value, date):
                 return value
-            return date.fromisoformat(str(value).translate(_DIGITS))
+            return _parse_date_string(str(value).translate(_DIGITS))
         except ValueError:
             raise ValueError('تاریخ شرط معتبر نیست.') from None
     if not isinstance(value, str) or len(value) > (100000 if for_actual else 2000):

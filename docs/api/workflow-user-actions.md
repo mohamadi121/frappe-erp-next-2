@@ -35,7 +35,7 @@ Client and backend deploy together; no database migration. Test execution is
 explicitly excluded by the user's standing instruction, not reported as passed.
 
 Existing User Task stage identities and legacy configs stay valid. New edits opt
-into `action_contract_version: 1`; the Persian name is اقدام کاربر. Existing
+into `action_contract_version: 1`; the default stage title is بررسی یا ویرایش سند. Existing
 `save_stage_settings` manager/write/company checks remain authoritative.
 
 Config: `result_mode` (Simple/Form), `result_form` ({form, revision}, published
@@ -105,6 +105,40 @@ described above reuses this same task API. Original submitted form entries remai
 does not grant native write access: existing request editing remains subject to
 its own owner/state checks; a task result never overwrites original entry values.
 
+### `document_access` save rule (PA-066)
+
+`document_access` is a design-time setting the app reads to choose the form UI; the
+backend does not enforce it at runtime (see the report in the PA-066 findings). On
+`save_stage_settings` (User Task and Approval stages, including v1 user-action
+configs) the stored value is resolved against the incoming one:
+
+- A stored `Limited Edit` (ویرایش محدود) is **never silently rewritten to `Edit`** by a
+  client that re-sends `Edit` without the change flag. App 0.31.0 rewrites a stored
+  Limited Edit to Edit on save even when the user did not touch the option, so the
+  backend keeps `Limited Edit` in that case.
+- A stored `Limited Edit` re-sent as `Limited Edit` is kept.
+- `Limited Edit` is **no longer offered as a new choice**: sending it for a stage that
+  does not already store it is rejected with
+  «گزینهٔ ویرایش محدود دیگر قابل انتخاب نیست؛ «فقط مشاهده» یا «مشاهده و ویرایش» را انتخاب کنید.»
+- An explicit change to `Read Only`/`Edit` is saved when the client sends
+  `document_access_changed: true` (the fixed app sends this only when the user really
+  picked an option). The flag itself is **not** stored in `config_json`.
+
+**Notice on a protected save.** App 0.31.0 normalizes a stored `Limited Edit` to `Edit`
+on load and offers only `Read Only`/`Edit`, so it cannot express "the user really picked
+Edit" versus "the user only changed another setting" — both send `Edit` without
+`document_access_changed`. When the backend therefore keeps a stored `Limited Edit`
+against an unflagged `Edit`, the `save_stage_settings` response carries a Persian notice
+so the save is not a silent no-op. The notice is returned as a **top-level `notice` key in
+the design payload** (`data.notice`) — which the app reads — and also in `meta.notice` for
+meta-aware consumers. The key is **absent** when there is no notice (a genuine explicit
+change, a `Read Only` pick, or any non-Limited-Edit stage). `Read Only` is unambiguous and
+is applied without a notice. The fixed app (which sends `document_access_changed`) is
+unaffected.
+
+Existing stored `Limited Edit` values are preserved exactly; nothing is converted to
+`Edit` automatically. No new DocType, field, migration, or permission change.
+
 The existing workflow-template catalog/copy endpoints also accept accessible
 non-archived user definitions in the same company. Copies always receive fresh
 definition/stage identities, version 1 and Pending configuration; no execution,
@@ -112,4 +146,4 @@ history or native workflow link is copied. Original and other-company records
 remain untouched. Pending v1 action copies validate the config's structure;
 published-form/subject bindings must be explicitly reviewed before activation.
 
-Candidate resolution queries (Role and Unit bases) filter candidates by enabled system users and company/department scope directly in the database query before enforcing the 200 cap, ensuring large global role counts do not block task completion. Overdue escalation (`escalate`) notifies all configured escalation roles (avoiding duplicate notifications) and sorts escalation candidates deterministically. Background deadline processing (`process_workflow_deadlines`) isolates each task in a database savepoint with error logging (`frappe.log_error`), preventing a failure in one task from interrupting execution of others.
+Candidate resolution queries (Role and Unit bases) filter candidates by enabled system users and company/department scope directly in the database query. The assignee cap (default 1000, site config `asoud_workflow_max_assignees`) applies to the final company/form/reference-authorised list, so a common role with more than 200 holders no longer blocks activation; above the cap activation fails with «تعداد مسئولان مجاز این اقدام بیش از حد مجاز است؛ نقش یا واحد را محدودتر کنید.» Overdue escalation (`escalate`) notifies all configured escalation roles (avoiding duplicate notifications) and sorts escalation candidates deterministically. Background deadline processing (`process_workflow_deadlines`) isolates each task in a database savepoint with error logging (`frappe.log_error`), preventing a failure in one task from interrupting execution of others. It walks due tasks in bounded keyset pages (500 per page, ordered by name) rather than one unbounded read, so a single run never loads the whole task table into memory while processing the same set of tasks.

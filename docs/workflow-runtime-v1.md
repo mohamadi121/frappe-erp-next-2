@@ -114,6 +114,40 @@ form stages. A return always requires a reason, preserves the latest submitted d
 as the correction draft, and cancels sibling tasks before reassignment. Reject also
 cancels sibling tasks to prevent a second decision. Flutter offline records are
 explicitly local-only and are not treated as ERPNext transactions.
+
+### Idempotent task completion and bounded history
+
+`complete_workflow_task` accepts an optional `request_id` (8–64 chars of
+`[A-Za-z0-9_-]`, validated like the start endpoint's). The id is stored on the
+completion activity's `change_json`. If the client re-sends the same `request_id`
+after the decision was already applied (a network retry), the server returns the
+stored result instead of throwing "task already completed". A different or missing
+`request_id` on a completed task is still rejected.
+
+`get_workflow_task` and `get_workflow_instance` return at most the newest 200
+`ASOUD Workflow Activity` rows (returned oldest-first for the timeline), so a long
+history never loads unbounded rows into memory.
+
+The cartable list endpoints (`list_my_workflow_tasks`, `list_my_workflow_instances`,
+`list_my_workflow_notifications`) refuse a guest (no signed-in account) with a
+permission error. `upload_workflow_attachment` verifies the file's actual bytes
+(magic numbers) against its extension before storing it. A user who already acted on
+an instance keeps read access to its detail and history after a task was reassigned
+away from them.
+
+### Batch instance summaries and standard-document attachments
+
+`get_workflow_instance_summaries(names)` returns the summary of up to 100 instances
+in one call (the cartable's "missing summaries" batch). `names` is a list or a JSON
+string of a list; each name is checked with the same per-instance access rule as
+`get_workflow_instance`, and instances the caller cannot read (or that do not exist)
+are **omitted** from the response. More than 100 names is refused with a Persian
+error. This replaces the client's per-instance `get_workflow_instance` loop.
+
+A task attachment on a workflow that references a standard ERPNext document (e.g.
+Purchase Order) is readable by anyone with native read permission on that document
+(`workflow_record_permission` delegates to `frappe.has_permission` on the reference),
+instead of always being denied.
 # Request types
 
 A request type is an `ASOUD Workflow Definition` on `ASOUD Workflow Request`. Its

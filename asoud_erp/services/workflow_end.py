@@ -13,9 +13,15 @@ def finish(instance, stage, *, previous_stage, source_task=None):
         return  # Retrying a committed end cannot overwrite it or repeat hooks.
     if stage.stage_type != 'End' or stage.workflow_definition != locked.workflow_definition:
         frappe.throw('مرحلهٔ پایان متعلق به این گردش کار نیست.')
-    if not frappe.db.exists('ASOUD Workflow Transition', {'workflow_definition': locked.workflow_definition,
-            'from_stage': previous_stage, 'to_stage': stage.name}):
+    from asoud_erp.services.workflow_graph_snapshot import has_transition
+
+    # The incoming route is a frozen-route check: a running instance keeps the route
+    # it started with, so it is read from the snapshot (live rows for old instances).
+    if not has_transition(locked, previous_stage, to_stage=stage.name):
         frappe.throw('مسیر ورودی معتبر برای پایان عملیات پیدا نشد.')
+    # The outgoing-route guard is a design-structure invariant (an End is terminal),
+    # not a frozen route: it reads the live graph so a designer error is caught even
+    # if it postdates the instance's snapshot.
     if frappe.db.exists('ASOUD Workflow Transition', {'workflow_definition': locked.workflow_definition,
             'from_stage': stage.name}):
         frappe.throw('مرحلهٔ پایان نمی‌تواند مسیر خروجی داشته باشد.')
@@ -61,3 +67,27 @@ def finish(instance, stage, *, previous_stage, source_task=None):
             ensure_ascii=False, default=str)}).insert(ignore_permissions=True)
     locked.save(ignore_permissions=True)  # Existing module lifecycle mappings only.
     instance.reload()
+
+
+def _end_outcomes(instances: list[str]) -> dict[str, str]:
+    if not instances:
+        return {}
+    rows = frappe.get_all(
+        "ASOUD Workflow Activity",
+        filters={"workflow_instance": ["in", instances], "action": "پایان عملیات"},
+        fields=["workflow_instance", "change_json"],
+        order_by="created_on desc",
+        limit_page_length=0,
+    )
+    result = {}
+    for row in rows:
+        if row.workflow_instance in result:
+            continue
+        try:
+            cjson = json.loads(row.change_json or "{}")
+            outcome = cjson.get("end_context", {}).get("outcome")
+            if outcome:
+                result[row.workflow_instance] = outcome
+        except Exception:
+            pass
+    return result

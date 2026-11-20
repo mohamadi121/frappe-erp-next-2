@@ -41,6 +41,16 @@ def validate_selection(company, settings, definition=None):
                 'name': ['!=', definition or ''], 'status': ['!=', 'Archived']}, pluck='name', limit_page_length=201)
             if len(names) > 200 or schema.get('workflow') or any(row['mode'] == 'Default' for row in routing_configs(names).values()):
                 frappe.throw('این فرم گردش‌کار پیش‌فرض دیگری دارد؛ فقط اتصال یا انتخاب مشروط را انتخاب کنید، یا پیش‌فرض قبلی را اصلاح کنید.')
+    # PA-020: a Conditional start route needs a Condition gate immediately after
+    # Start. Drafts may be saved before the gate exists (activation is guarded by
+    # require_activation_ready), but an already-Active workflow must not be
+    # switched to Conditional without one, or every submission would fail at
+    # runtime. The preflight surfaces this on the design page before saving.
+    if value.get('source_route') == 'Conditional' and definition and workflow.status == 'Active':
+        from asoud_erp.services.workflow_submission_source import conditional_gate
+
+        if not conditional_gate(definition):
+            frappe.throw('برای انتخاب مشروط، یک ایستگاه «شرط و مسیر» مستقیماً بعد از شروع قرار دهید.')
     return value
 
 
@@ -70,15 +80,43 @@ def save(definition, settings):
     start = frappe.get_doc('ASOUD Workflow Stage', names[0])
     start.check_permission('write')
     old_config = json.loads(start.config_json or '{}')
+    new_mode = values.get('source_route', 'Default' if values['submission_source'] else 'Available')
+    structural_changed = True  # Legacy (pre-v1) starts are always treated as structural.
     if old_config.get('start_settings_version') == 1:
         previous = normalize_settings({key: old_config[key] for key in ('trigger_type', 'initiator_roles',
             'submission_source', 'allow_manager_restart', 'require_manual_reason', 'source_route') if key in old_config})
         old_mode = previous.get('source_route', 'Default' if previous['submission_source'] else 'Available')
-        new_mode = values.get('source_route', 'Default' if values['submission_source'] else 'Available')
         if {**previous, 'source_route': old_mode} == {**values, 'source_route': new_mode}:
             return start  # A metadata-only save must not rewrite a live Start.
+        # Structural = trigger type, bound form or routing mode; these change how
+        # the workflow starts and must not race an in-flight instance. Initiator
+        # roles and the manager-restart flag are metadata and do not.
+        structural_changed = (previous.get('trigger_type') != values.get('trigger_type')
+            or previous.get('submission_source') != values.get('submission_source')
+            or old_mode != new_mode)
+    # PA-020: a Conditional start route needs a Condition gate immediately after
+    # Start. Drafts may be saved before the gate exists (activation is guarded by
+    # require_activation_ready), but an already-Active workflow must not be
+    # switched to Conditional without one, or every submission would fail at
+    # runtime. save() does not re-run the activation guard, so check it here.
+    if new_mode == 'Conditional' and workflow.status == 'Active':
+        from asoud_erp.services.workflow_submission_source import conditional_gate
+
+        if not conditional_gate(definition):
+            frappe.throw('برای انتخاب مشروط، یک ایستگاه «شرط و مسیر» مستقیماً بعد از شروع قرار دهید.')
     if frappe.db.exists('ASOUD Workflow Instance', {'workflow_definition': definition, 'status': 'Running'}):
-        frappe.throw('تا پایان اجراهای در حال انجام، تغییر تنظیمات شروع مجاز نیست.')
+        if structural_changed:
+            frappe.throw('تا پایان اجراهای در حال انجام، تغییر تنظیمات شروع مجاز نیست.')
+        # Metadata-only change while an instance is Running: update only the
+        # metadata keys (initiator roles, manager-restart flag) without rebinding
+        # the source. The bound form/route are unchanged, so the stored
+        # submission_source (which carries title/kind metadata) is preserved.
+        config = json.loads(start.config_json or '{}')
+        config['initiator_roles'] = values['initiator_roles']
+        config['allow_manager_restart'] = values['allow_manager_restart']
+        start.config_json = json.dumps(config, ensure_ascii=False)
+        start.save()
+        return start
     frappe.db.savepoint('workflow_start_settings')
     try:
         # Explicitly move only routing metadata, never the old task's form/content.

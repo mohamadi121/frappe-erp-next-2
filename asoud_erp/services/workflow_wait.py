@@ -149,6 +149,55 @@ def failed(instance, snapshot, error):
     audit(instance, snapshot, 'Wait Failed', str(error))
 
 
+def _notify_wait(instance, subject, message):
+    from asoud_erp.api.v1.workflow_runtime import _notify_user
+
+    frappe.db.savepoint('wait_past_notice')
+    try:
+        _notify_user(instance.started_by, subject, instance, message=message)
+    except Exception:
+        frappe.db.rollback(save_point='wait_past_notice')
+
+
+def _mark_past(instance, snapshot):
+    """A past due date under the Error policy on a Recalculate wait parks the wait; it does
+    not burn the instance. The instance stays ``Running`` and recoverable: the owner can
+    correct the source date and the dispatcher re-checks it (a Recalculate wait keeps its
+    past due) and resumes once the date is in the future.
+    """
+    snapshot.update(state='Past',
+                    error='زمان تعیین‌شدهٔ انتظار گذشته است؛ برای ادامهٔ فرایند تاریخ را اصلاح کنید.',
+                    actual_utc=utc_now().isoformat())
+    instance.wait_snapshot_json = json.dumps(snapshot, default=str, ensure_ascii=False)
+    # A Recalculate wait keeps its (past) due so the dispatcher re-checks it after a date
+    # correction; it is the only kind of wait that can recover from a past date.
+    instance.wait_due_utc = datetime.fromisoformat(snapshot['due_utc']).replace(tzinfo=None)
+    instance.save(ignore_permissions=True)
+    audit(instance, snapshot, 'Wait Past Date', 'زمان انتظار در گذشته است؛ برای ادامه، تاریخ مبدأ را اصلاح کنید.')
+    _notify_wait(instance, 'زمان انتظار گذشته است',
+                 'زمان تعیین‌شدهٔ انتظار در گذشته است؛ برای ادامهٔ فرایند تاریخ مبدأ را اصلاح کنید.')
+
+
+def _fail_past(instance, snapshot):
+    """A past due date under the Error policy on a wait that cannot recover (no Recalculate)
+    fails the instance with a business reason — not a technical error — and notifies the
+    requester, instead of leaving it Running forever with nothing to wake it.
+    """
+    reason = 'زمان تعیین‌شدهٔ انتظار در گذشته است و امکان اصلاح خودکار آن وجود ندارد؛ فرایند متوقف شد.'
+    failed(instance, snapshot, reason)
+    _notify_wait(instance, 'زمان انتظار گذشته است',
+                 'زمان تعیین‌شدهٔ انتظار در گذشته است و امکان اصلاح خودکار آن وجود ندارد؛ فرایند متوقف شد.')
+
+
+def _handle_past(instance, snapshot):
+    """Route a past due date under the Error policy: park a Recalculate wait (recoverable),
+    otherwise fail the instance with a business reason."""
+    if snapshot.get('config', {}).get('date_change_policy') == 'Recalculate':
+        _mark_past(instance, snapshot)
+    else:
+        _fail_past(instance, snapshot)
+
+
 def schedule(instance, stage, config):
     existing = json.loads(instance.get('wait_snapshot_json') or '{}')
     if existing.get('state') == 'Waiting' and existing.get('stage') == stage.name:
@@ -164,7 +213,8 @@ def schedule(instance, stage, config):
             due_utc=due.isoformat(), scheduled_utc=due.isoformat(),
             target=destination(instance.workflow_definition, stage.name).name)
         if due < utc_now() and config['past_policy'] == 'Error':
-            raise ValueError('زمان تعیین‌شدهٔ انتظار گذشته است؛ طبق سیاست این مرحله، فرایند متوقف شد.')
+            _handle_past(instance, snapshot)
+            return
         persist(instance, snapshot)
         audit(instance, snapshot, 'Wait Scheduled', 'انتظار ثبت شد؛ ادامهٔ فرایند به‌صورت خودکار در سرور انجام می‌شود.')
     except (ValueError, frappe.ValidationError, frappe.PermissionError) as error:
@@ -179,7 +229,8 @@ def run(name):
 
     instance = frappe.get_doc(INSTANCE, name, for_update=True)
     snapshot = json.loads(instance.wait_snapshot_json or '{}')
-    if snapshot.get('state') != 'Waiting':
+    # A parked (Past) wait is re-checked so a corrected source date can resume it.
+    if snapshot.get('state') not in {'Waiting', 'Past'}:
         return
     if instance.status != 'Running' or instance.current_stage != snapshot['stage']:
         snapshot.update(state='Cancelled', actual_utc=utc_now().isoformat())
@@ -195,9 +246,16 @@ def run(name):
                 due = due_time(config, datetime.fromisoformat(snapshot['entered_utc']), snapshot['time_zone'], value)
                 snapshot.update(source_value=str(value), previous_due_utc=snapshot['due_utc'], due_utc=due.isoformat())
                 if due < utc_now() and config['past_policy'] == 'Error':
-                    raise ValueError('تاریخ جدید مبدأ گذشته است؛ فرایند طبق تنظیمات متوقف شد.')
+                    _mark_past(instance, snapshot)
+                    return
+                # A corrected date that is acceptable resumes the wait from a parked state.
+                snapshot['state'] = 'Waiting'
                 persist(instance, snapshot)
                 audit(instance, snapshot, 'Wait Rescheduled', 'زمان انتظار بر اساس تغییر معتبر تاریخ مبدأ محاسبه شد.')
+        if snapshot.get('state') == 'Past':
+            # A parked wait (past date under the Error policy) is recoverable, not a
+            # completed one: it resumes only when the source date is corrected.
+            return
         if datetime.fromisoformat(snapshot['due_utc']) > utc_now():
             return
         if not frappe.db.exists('ASOUD Workflow Stage', snapshot['target']):
@@ -221,10 +279,13 @@ def run(name):
 def dispatch():
     if not ready():
         return
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
     after = ''
     while True:
         # Scan waiting rows in keyset pages; future Recalculate waits also need polling.
-        rows = frappe.get_all(INSTANCE, filters={'name': ['>', after], 'wait_due_utc': ['is', 'set']},
+        rows = frappe.get_all(INSTANCE,
+            filters=[['name', '>', after], ['status', '=', 'Running'], ['wait_due_utc', 'is', 'set']],
+            or_filters=[['wait_due_utc', '<=', now_naive], ['wait_snapshot_json', 'like', '%Recalculate%']],
             pluck='name', order_by='name asc', limit_page_length=200)
         if not rows:
             break

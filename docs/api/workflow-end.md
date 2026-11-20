@@ -16,7 +16,10 @@ its existing execution-specific Rejected override on a shared End.
 
 The activity uses existing before/after/labels JSON, recording outcome, message,
 source/end node, version, actor, decision, reason and completion time. Existing
-permission-scoped instance history returns it. No notification or business write
+permission-scoped instance history returns it. Request detail, request list, and
+workflow instance detail payloads include `end_outcome` (one of `Completed|Rejected|Cancelled|Stopped`
+when the instance ended through an End stage, else `null`), allowing the client to distinguish
+a deliberate `Stopped` end from a technical failure or wait error. No notification or business write
 is added by End; existing request/module lifecycle mappings remain authoritative.
 Open tasks are cancelled; waiting snapshots and unexecuted automatic receipts
 become inert through their existing terminal-state guards. Historical tasks,

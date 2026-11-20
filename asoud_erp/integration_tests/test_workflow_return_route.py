@@ -28,24 +28,35 @@ class TestWorkflowReturnRoute(APITestCase):
                                           fields=["to_stage", "condition_json"])}
 
     def test_return_to_end_is_refused(self):
+        self._deactivate()
         with self.assertRaises(frappe.ValidationError) as ctx:
             workflow.save_stage_routes(self.definition, self.approval.name,
                                        {"Approve": self.end.name, "Return": self.end.name})
         self.assertIn("مسیر بازگشت برای اصلاح باید به یک ایستگاه قابل‌اجرای قبلی برود.", str(ctx.exception))
 
+    def _deactivate(self, definition=None):
+        frappe.db.set_value("ASOUD Workflow Definition", definition or self.definition, "status", "Inactive")
+
+    def _activate(self, definition=None):
+        frappe.db.set_value("ASOUD Workflow Definition", definition or self.definition, "status", "Active")
+
     def test_return_to_a_user_task_is_saved(self):
+        self._deactivate()
         workflow.save_stage_routes(self.definition, self.approval.name,
                                    {"Approve": self.end.name, "Return": self.user_task.name})
         self.assertEqual(self._actions().get("Return"), self.user_task.name)
 
     def test_reject_to_end_stays_allowed(self):
+        self._deactivate()
         workflow.save_stage_routes(self.definition, self.approval.name,
                                    {"Approve": self.end.name, "Reject": self.end.name})
         self.assertEqual(self._actions().get("Reject"), self.end.name)
 
     def test_reject_to_normal_end_is_rejected_not_successful(self):
+        self._deactivate()
         workflow.save_stage_routes(self.definition, self.approval.name,
             {'Approve': self.end.name, 'Reject': self.end.name})
+        self._activate()
         request = create(self.company, definition=self.definition)
         act(request['workflow_instance'], 'Reject', comment='رد درخواست')
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance',
@@ -54,6 +65,7 @@ class TestWorkflowReturnRoute(APITestCase):
             self.end.name, 'config_json'))['outcome'], 'Completed')
 
     def test_approve_cannot_select_rejected_end(self):
+        self._deactivate()
         self.end.db_set('config_json', json.dumps({'title': 'پایان رد', 'outcome': 'Rejected'}))
         with self.assertRaises(frappe.ValidationError):
             workflow.save_stage_routes(self.definition, self.approval.name,
@@ -62,8 +74,10 @@ class TestWorkflowReturnRoute(APITestCase):
     def test_approve_does_not_fall_back_to_a_reject_only_route(self):
         from asoud_erp.api.v1 import workflow_runtime
 
+        self._deactivate()
         workflow.save_stage_routes(self.definition, self.approval.name,
             {'Approve': '', 'Reject': self.end.name})
+        self._activate()
         request = create(self.company, definition=self.definition)
         instance = frappe.get_doc('ASOUD Workflow Instance', request['workflow_instance'])
         self.assertIsNone(workflow_runtime._next_stage(instance, self.approval.name, 'Approve'))
@@ -79,6 +93,7 @@ class TestWorkflowReturnRoute(APITestCase):
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', request['workflow_instance'], 'status'), 'Completed')
 
     def test_missing_destination_has_a_clear_error(self):
+        self._deactivate()
         with self.assertRaises(frappe.ValidationError) as error:
             workflow.save_stage_routes(self.definition, self.approval.name,
                 {'Approve': 'removed-stage'})
@@ -88,8 +103,10 @@ class TestWorkflowReturnRoute(APITestCase):
         definition, stages = make_definition(self.company, approvals=2)
         source, next_stage = stages['Approval2'], stages['Approval3']
         count = frappe.db.count('ASOUD Workflow Stage', {'workflow_definition': definition})
+        self._deactivate(definition)
         workflow.save_stage_routes(definition, source.name, {'Approve': next_stage.name,
             'Reject': next_stage.name, 'Return': stages['User Task1'].name})
+        self._activate(definition)
         next_stage.stage_title = 'رسیدگی مجدد'
         next_stage.save()
         design = workflow.get_workflow_design(definition)['data']
@@ -105,8 +122,10 @@ class TestWorkflowReturnRoute(APITestCase):
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', request['workflow_instance'], 'status'), 'Running')
 
     def test_explicit_return_and_approve_execute_on_the_same_request(self):
+        self._deactivate()
         workflow.save_stage_routes(self.definition, self.approval.name, {'Approve': self.end.name,
             'Reject': '', 'Return': self.user_task.name})
+        self._activate()
         for action in ('Approve', 'Return'):
             with self.subTest(action=action):
                 request = create(self.company, definition=self.definition)
@@ -132,11 +151,13 @@ class TestWorkflowReturnRoute(APITestCase):
         newer = frappe.get_doc({'doctype': 'ASOUD Workflow Stage', 'workflow_definition': definition,
             'stage_key': 'modern-form', 'stage_title': 'گزارش جدید', 'stage_type': 'User Task',
             'sequence_no': 2, 'config_json': '{}'}).insert()
+        self._deactivate(definition)
         workflow.save_stage_settings(definition, newer.name, {'title': 'گزارش جدید',
             'action_contract_version': 1, 'result_mode': 'Form', 'activity_type': 'Data Entry',
             'task_purpose': 'Existing', 'assignment_type': 'Initiator',
             'assignment_rule': {'basis': 'Subject', 'subject': 'Initiator'},
             'result_form': {'form': form['name'], 'revision': form['revision']}})
+        self._activate(definition)
         request = create(self.company, definition=definition)
         # A real completed task represents a later action in this execution.
         from frappe.utils import add_to_date, now_datetime
@@ -157,6 +178,7 @@ class TestWorkflowReturnRoute(APITestCase):
             'config_json': '{}', 'configuration_status': 'Pending'}).insert().name
         before = frappe.get_all('ASOUD Workflow Transition', filters={
             'workflow_definition': self.definition}, fields=['name', 'from_stage', 'to_stage'], order_by='name')
+        self._deactivate()
         with self.assertRaises(frappe.ValidationError):
             workflow.save_stage_routes(self.definition, self.approval.name,
                 {'Approve': self.end.name, 'Return': later})
@@ -171,7 +193,9 @@ class TestWorkflowReturnRoute(APITestCase):
                     stage = stages['Approval2']
                     settings = {**json.loads(stage.config_json), 'comment_required': required,
                         'reject_comment_required': False}
+                    self._deactivate(definition)
                     workflow.save_stage_settings(definition, stage.name, settings)
+                    self._activate(definition)
                     design = workflow.get_workflow_design(definition)['data']
                     stored = next(row['config'] for row in design['stages'] if row['name'] == stage.name)
                     self.assertEqual(stored['comment_required'], required)

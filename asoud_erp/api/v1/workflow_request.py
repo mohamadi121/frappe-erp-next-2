@@ -10,6 +10,8 @@ from asoud_erp.api.v1.responses import success
 from asoud_erp.api.v1.workflow_runtime import _next_stage, start_workflow_instance
 from asoud_erp.services import (
     certificate_access,
+    request_access,
+    request_access_policy,
     request_comments,
     request_execution,
     request_lookup,
@@ -20,7 +22,7 @@ from asoud_erp.services import (
 from asoud_erp.services import request_attachments as files
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.form_execution.certificate_issue import number_of
-from asoud_erp.services.request_access import certificate_permission, request_permission, require_company
+from asoud_erp.services.request_access import certificate_permission, require_company
 from asoud_erp.services.request_link_values import validate_link_values
 from asoud_erp.services.request_status import (
     GROUP_NAMES,
@@ -35,6 +37,7 @@ from asoud_erp.services.request_status import (
 )
 from asoud_erp.services.request_templates import base as templates
 from asoud_erp.services.request_viewer import build_viewer
+from asoud_erp.services.workflow_end import _end_outcomes
 from asoud_erp.services.workflow_history import merge_completed_responses
 from asoud_erp.services.workflow_response import (
     attachment_references,
@@ -61,9 +64,9 @@ def _definition(name):
     definition = frappe.get_doc("ASOUD Workflow Definition", name)
     if (definition.status != "Active" or definition.readiness_status != "Ready"
             or definition.target_doctype != REQUEST_DOCTYPE):
-        frappe.throw(_("The selected workflow is not ready"))
+        frappe.throw(_("گردش‌کار انتخاب‌شده هنوز آمادهٔ استفاده نیست."))
     if not definition.allow_user_submission:
-        frappe.throw(_("Users cannot submit this request type"), frappe.PermissionError)
+        frappe.throw(_("کاربران نمی‌توانند این نوع درخواست را ثبت کنند."), frappe.PermissionError)
     return definition
 
 
@@ -92,7 +95,7 @@ def form_stage_name(definition_name):
 def _form_stage(definition):
     stage = _form_stage_or_none(definition.name)
     if not stage:
-        frappe.throw("Generic requests require a user-task form immediately after Start")
+        frappe.throw(_("درخواست‌های عمومی به یک فرم وظیفهٔ کاربر بلافاصله پس از شروع نیاز دارند."))
     return stage
 
 
@@ -120,6 +123,57 @@ def request_fields(request_name):
     """The request form fields with every confidentiality flag, for outputs that must mask."""
     definition = frappe.db.get_value(REQUEST_DOCTYPE, request_name, "workflow_definition")
     return confidential_fields(request_name, _fields_by_name(definition)) if definition else []
+
+
+def mask_request_values(request_name, values):
+    """``values`` masked for the signed-in user, exactly as ``_detail`` does (PA-055).
+
+    FULL viewers get the values unchanged; MASKED viewers get confidential values replaced
+    by «محرمانه» and confidential file urls removed. Used by the runtime task/instance
+    endpoints so a previous assignee cannot read unmasked values through the task API.
+    """
+    doc = frappe.get_doc(REQUEST_DOCTYPE, request_name)
+    if request_access.request_level(doc) == request_access_policy.FULL:
+        return values
+    fields = request_fields(request_name)
+    masked = request_serializer.mask_sensitive_values(values, fields, False)
+    hidden = request_serializer.hidden_file_urls(values, fields, False)
+    if hidden:
+        masked = _strip_hidden_refs(masked, hidden)
+    return masked
+
+
+def _strip_hidden_refs(values, hidden):
+    """A copy of ``values`` with any string that is a hidden confidential file url removed."""
+    result = {}
+    for key, value in (values or {}).items():
+        if isinstance(value, str) and value in hidden:
+            continue
+        if isinstance(value, list):
+            result[key] = [_strip_hidden_refs(row, hidden) if isinstance(row, dict) else row
+                           for row in value]
+        else:
+            result[key] = value
+    return result
+
+
+def mask_previous_data(request_name, sections):
+    """``previous_data`` (completed task responses) masked for the signed-in user (PA-055).
+
+    The form task is completed with the full request values, so a MASKED viewer would
+    otherwise read the confidential value through a previous task's response.
+    """
+    doc = frappe.get_doc(REQUEST_DOCTYPE, request_name)
+    if request_access.request_level(doc) == request_access_policy.FULL:
+        return sections
+    masked = []
+    for section in sections or []:
+        by_key = {item.get("key"): item.get("value") for item in section.get("values", [])}
+        safe = mask_request_values(request_name, by_key)
+        masked.append({**section, "values": [
+            {"key": item.get("key"), "label": item.get("label"), "value": safe.get(item.get("key"))}
+            for item in section.get("values", [])]})
+    return masked
 
 
 def refresh_search_text(request_name):
@@ -276,7 +330,7 @@ def _header(spec, values: dict, subject: str, priority, required_by, project, de
 
 def _check_subject(subject: str) -> None:
     if not 3 <= len(subject) <= 140:
-        frappe.throw(_("Request subject must contain at least 3 characters"))
+        frappe.throw(_("عنوان درخواست باید بین ۳ تا ۱۴۰ نویسه باشد."))
 
 
 def _store_new_files(doc, uploads, existing_entries, removed_names):
@@ -322,11 +376,11 @@ def _instance_row(instance_name):
                                ["name", "status", "current_stage", "started_by"], as_dict=True)
 
 
-def _status_fields(doc, instance_status) -> dict:
+def _status_fields(doc, instance_status, end_outcome=None) -> dict:
     key = doc.status_key or compute_status_key(instance_status, doc.status)
     return {"status": instance_status or doc.status, "display_status": doc.display_status or "",
             "status_key": key, "status_label": status_label(key, doc.display_status, instance_status),
-            "status_group": group_of_status(key)}
+            "status_group": group_of_status(key), "end_outcome": end_outcome}
 
 
 def _has_acted(instance_name, form_stage) -> bool:
@@ -389,6 +443,7 @@ def _stage_rows(definition, instance_name) -> list:
 def _detail(doc) -> dict:
     instance = _instance_row(doc.workflow_instance)
     instance_status = instance.status if instance else None
+    end_outcome = _end_outcomes([doc.workflow_instance]).get(doc.workflow_instance) if doc.workflow_instance else None
     fields = confidential_fields(doc.name, _fields_by_name(doc.workflow_definition))
     values = effective_values(doc.name)
     stored = json.loads(doc.attachments_json or "[]")
@@ -401,18 +456,25 @@ def _detail(doc) -> dict:
     owner = doc.owner == frappe.session.user
     running = instance_status == "Running"
     form_stage = form_stage_name(doc.workflow_definition) if instance else None
-    status = _status_fields(doc, instance_status)
+    status = _status_fields(doc, instance_status, end_outcome)
     returned = running and status["status_key"] == "returned"
     can_edit = owner and running and (returned or not _has_acted(instance.name, form_stage))
     privileged = bool(MANAGER_ROLES & set(frappe.get_roles()))
-    participant = bool(doc.workflow_instance and frappe.db.exists(
-        "ASOUD Workflow Task", {"workflow_instance": doc.workflow_instance,
-                                "assigned_to": frappe.session.user}))
-    visible_values = request_serializer.mask_sensitive_values(
-        values, fields, owner or privileged or participant)
-    hidden = request_serializer.hidden_file_urls(values, fields, owner or privileged or participant)
+    # Approved policy (PA-055): only FULL viewers (owner, privileged manager, current
+    # assignee) see confidential values and files; a previous assignee who acted (MASKED)
+    # reads the request but with confidential values masked and files hidden.
+    level = request_access.request_level(doc)
+    can_view = level == request_access_policy.FULL
+    visible_values = request_serializer.mask_sensitive_values(values, fields, can_view)
+    hidden = request_serializer.hidden_file_urls(values, fields, can_view)
     entries = [entry for entry in entries if entry["file_url"] not in hidden]
     by_url = {entry["file_url"]: entry for entry in entries}
+    # Approved policy (PA-055 close-out): a MASKED previous assignee sees the stage names and
+    # statuses but not another actor's comment on a stage. FULL viewers are unchanged.
+    stages = _stage_rows(doc.workflow_definition, doc.workflow_instance)
+    if not can_view:
+        for stage in stages:
+            stage["comment"] = ""
     return {
         "name": doc.name, "number": doc.name, "company": doc.company, "template_key": doc.template_key or "",
         "template_version": doc.template_version or 0, "workflow_definition": doc.workflow_definition,
@@ -428,10 +490,10 @@ def _detail(doc) -> dict:
         "item_count": request_serializer.item_count(visible_values), "attachment_count": len(entries),
         "comment_count": request_comments.count_comments(doc.name),
         "values": request_serializer.with_attachment_refs(visible_values, by_url),
-        "attachments": entries, "fields": fields, "stages": _stage_rows(doc.workflow_definition, doc.workflow_instance),
+        "attachments": entries, "fields": fields, "stages": stages,
         "native": {"doctype": doc.native_doctype or "", "name": doc.native_name or "",
                    "status": doc.native_status or "", "error": (doc.native_error or "") if privileged else ""},
-        "execution": _execution(doc, instance_status, privileged),
+        "execution": _execution(doc, instance_status, privileged, end_outcome),
         "certificate": _certificate_summary(doc),
     }
 
@@ -451,7 +513,7 @@ def _certificate_summary(doc):
             "issued_on": str(row.creation)} if row else None
 
 
-def _execution(doc, instance_status, privileged) -> dict:
+def _execution(doc, instance_status, privileged, end_outcome=None) -> dict:
     from asoud_erp.services import request_void as void_rules
     from asoud_erp.services import request_void_actions as void_actions
 
@@ -463,6 +525,7 @@ def _execution(doc, instance_status, privileged) -> dict:
         error=doc.native_error, privileged=privileged, reference=doc.native_name,
         executed_on=str(row.creation) if row else "",
         executed_by_name=get_fullname(row.owner) if row and row.owner != "Administrator" else "")
+    block["end_outcome"] = end_outcome
     hr = "HR Manager" in frappe.get_roles()
     block["can_void"] = hr and void_rules.can_void(instance_status, doc.native_status, doc.native_name)
     voided = doc.native_status == void_rules.VOIDED
@@ -475,11 +538,24 @@ def _execution(doc, instance_status, privileged) -> dict:
 
 def _readable_request(name):
     doc = frappe.get_doc(REQUEST_DOCTYPE, name)
-    readable = request_permission(doc)
-    if readable is None:
-        readable = doc.has_permission('read')
-    if not readable:
-        frappe.throw(_("Not permitted to view this request"), frappe.PermissionError)
+    conf = getattr(frappe, "conf", None) or {}
+    if frappe.session.user == conf.get("asoud_workflow_service_user"):
+        # The service user reads through ordinary DocType permissions, as before.
+        if not doc.has_permission("read"):
+            frappe.throw(_("مشاهدهٔ این درخواست برای شما مجاز نیست."), frappe.PermissionError)
+        return doc
+    level = request_access.request_level(doc)
+    if level not in (request_access_policy.FULL, request_access_policy.MASKED):
+        # A denied read is recorded (PA-055 P7) before the PermissionError rolls the
+        # request back; commit=True keeps the row. Only identifiers are stored, never
+        # confidential values.
+        from asoud_erp.services import security_audit
+
+        security_audit.record("request.read_denied", result="denied",
+                              target_type=REQUEST_DOCTYPE, target=name,
+                              company=doc.company,
+                              details={"endpoint": "get_request"}, commit=True)
+        frappe.throw(_("مشاهدهٔ این درخواست برای شما مجاز نیست."), frappe.PermissionError)
     return doc
 
 
@@ -582,9 +658,9 @@ def create_request(company: str, workflow_definition: str | None = None, subject
     # `request_id` follows `subject` to keep the original positional order of this endpoint.
     require_company(company)
     if not isinstance(request_id, str) or not 8 <= len(request_id) <= 100:
-        frappe.throw("Invalid request ID")
-    raw_values = _parse_json(values, "Invalid request values")
-    raw_attachments = _parse_json(attachments, "Invalid request attachment", "ATTACHMENT_INVALID")
+        frappe.throw(_("شناسهٔ درخواست نامعتبر است."))
+    raw_values = _parse_json(values, "مقادیر درخواست نامعتبر است.")
+    raw_attachments = _parse_json(attachments, "پیوست درخواست نامعتبر است.", "ATTACHMENT_INVALID")
     payload = dict(company=company, workflow=workflow_definition, subject=subject, values=raw_values,
                    attachments=raw_attachments, priority=priority, required_by=required_by,
                    project=project, department=department)
@@ -605,23 +681,23 @@ def create_request(company: str, workflow_definition: str | None = None, subject
         if not workflow_definition:
             templates.throw_error("TEMPLATE_NOT_AVAILABLE")
     elif not workflow_definition:
-        frappe.throw(_("A request type is required"))
+        frappe.throw(_("یک نوع درخواست لازم است."))
     definition = _definition(workflow_definition)
     if not _may_submit(definition.name, frappe.get_roles()):
-        frappe.throw(_("You are not allowed to submit this request type"), frappe.PermissionError)
+        frappe.throw(_("ثبت این نوع درخواست برای شما مجاز نیست."), frappe.PermissionError)
     if definition.company and definition.company != company:
-        frappe.throw(_("Workflow company does not match request company"))
+        frappe.throw(_("شرکت گردش‌کار با شرکت درخواست هم‌خوانی ندارد."))
     spec = _spec_for(definition)
     employee = _employee_of(company, frappe.session.user)
     if spec and not (employee and spec.available_for(company, frappe.session.user)):
         templates.throw_error("EMPLOYEE_NOT_FOUND")
     if not spec:
         if priority not in HEADER_PRIORITIES:
-            frappe.throw(_("Invalid request priority"))
+            frappe.throw(_("اولویت درخواست نامعتبر است."))
         if required_by and getdate(required_by) < getdate(nowdate()):
-            frappe.throw(_("Required-by date cannot be in the past"))
+            frappe.throw(_("تاریخ مهلت نمی‌تواند در گذشته باشد."))
     if not isinstance(raw_values, dict):
-        frappe.throw(_("Invalid request values"))
+        frappe.throw(_("مقادیر درخواست نامعتبر است."))
     fields = _fields(definition)
     limits = files.limits_from(spec.attachments if spec else None)
     try:
@@ -648,7 +724,7 @@ def create_request(company: str, workflow_definition: str | None = None, subject
         for doctype, value in (("Project", header["project"]), ("Department", header["department"])):
             if value and (not frappe.has_permission(doctype, "read", value)
                           or frappe.db.get_value(doctype, value, "company") != company):
-                frappe.throw("Invalid or inaccessible request context", frappe.PermissionError)
+                frappe.throw(_("زمینهٔ درخواست نامعتبر یا در دسترس نیست."), frappe.PermissionError)
     _check_subject(header["subject"])
     # Anyone who may submit creates their own request; access is decided by roles and company above.
     doc = frappe.get_doc({
@@ -690,14 +766,14 @@ def create_request(company: str, workflow_definition: str | None = None, subject
 def _own_running_request(name, not_editable_code: bool = False):
     doc = frappe.get_doc(REQUEST_DOCTYPE, name, for_update=True)
     if doc.owner != frappe.session.user:
-        frappe.throw(_("Only the requester can change this request"), frappe.PermissionError)
+        frappe.throw(_("فقط درخواست‌کننده می‌تواند این درخواست را تغییر دهد."), frappe.PermissionError)
     require_company(doc.company)
     instance = (frappe.get_doc("ASOUD Workflow Instance", doc.workflow_instance)
                 if doc.workflow_instance else None)
     if not instance or instance.status != "Running":
         if not_editable_code:
             templates.throw_error("REQUEST_NOT_EDITABLE")
-        frappe.throw(_("Only a request in progress can be changed"))
+        frappe.throw(_("فقط درخواستی که در جریان است قابل تغییر است."))
     return doc, instance
 
 
@@ -727,6 +803,10 @@ def cancel_request(name: str, reason: str = ""):
         instance = waiting
     frappe.db.set_value("ASOUD Workflow Task", {"workflow_instance": instance.name, "status": "Open"},
                         "status", "Cancelled", update_modified=False)
+    # A withdrawn request must not still fire a queued automatic action in the background.
+    from asoud_erp.services.automatic_action_runtime import cancel as cancel_queued_actions
+
+    cancel_queued_actions(instance)
     instance.status = "Cancelled"
     instance.completed_on = now_datetime()
     instance.save(ignore_permissions=True)
@@ -769,14 +849,14 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
     elif _has_acted(instance.name, form_stage.name):
         templates.throw_error("REQUEST_NOT_EDITABLE")
     spec = _spec_for(definition)
-    raw = _parse_json(values, "Invalid request values")
+    raw = _parse_json(values, "مقادیر درخواست نامعتبر است.")
     if not isinstance(raw, dict):
-        frappe.throw(_("Invalid request values"))
+        frappe.throw(_("مقادیر درخواست نامعتبر است."))
     fields = json.loads(form_stage.config_json or "{}").get("form_fields", [])
     previous = effective_values(doc.name)
     stored = json.loads(doc.attachments_json or "[]")
     by_name = {item["name"]: item for item in stored}
-    remove = set(str(item) for item in _json_list(remove_attachments, "Invalid attachment list", "ATTACHMENT_INVALID"))
+    remove = set(str(item) for item in _json_list(remove_attachments, "فهرست پیوست‌ها نامعتبر است.", "ATTACHMENT_INVALID"))
     for file_name in remove - set(by_name):
         # Already removed by an earlier attempt is fine; any other File is not this request's.
         if frappe.db.exists("File", file_name):
@@ -786,7 +866,7 @@ def update_request(name: str, subject: str = "", values: str | dict = "{}", atta
     limits = files.limits_from(spec.attachments if spec else None)
     try:
         uploads = files.parse_uploads(
-            _json_list(attachments, "Invalid request attachment", "ATTACHMENT_INVALID"), **{**limits, "max_files": 10 ** 6},
+            _json_list(attachments, "پیوست درخواست نامعتبر است.", "ATTACHMENT_INVALID"), **{**limits, "max_files": 10 ** 6},
             existing_bytes=sum(int(item.get("size") or 0) for item in kept))
         total_after = len(kept) + len(uploads)
         if total_after > limits["max_files"]:
@@ -875,7 +955,7 @@ def _names(doctype, names, field, key="name"):
         doctype, filters={key: ["in", names]}, fields=[key, field], limit_page_length=0)}
 
 
-def _list_item(row, instance_status, owner_names, labels, reasons):
+def _list_item(row, instance_status, owner_names, labels, reasons, end_outcome=None):
     values = json.loads(row.values_json or "{}")
     key = row.status_key or compute_status_key(instance_status, row.status)
     request_row = {**row, "rejection_reason": reasons.get(row.workflow_instance, ""), "_labels": labels}
@@ -894,7 +974,7 @@ def _list_item(row, instance_status, owner_names, labels, reasons):
         "department": row.department or "", "workflow_instance": row.workflow_instance or "",
         "status": instance_status or row.status, "display_status": row.display_status or "",
         "status_key": key, "status_label": status_label(key, row.display_status, instance_status),
-        "status_group": group_of_status(key), "request_id": row.request_id, "owner": row.owner,
+        "status_group": group_of_status(key), "end_outcome": end_outcome, "request_id": row.request_id, "owner": row.owner,
         "requester_name": owner_names.get(row.owner) or get_fullname(row.owner),
         "creation": str(row.creation or ""), "item_count": request_serializer.item_count(values),
         "attachment_count": len(json.loads(row.attachments_json or "[]")), "summary": summary,
@@ -912,14 +992,14 @@ def list_my_requests(company: str | None = None, template_key: str | None = None
     """
     require_company(company)
     if status_group not in ("all", *GROUP_NAMES):
-        frappe.throw(_("Invalid status group"))
+        frappe.throw(_("گروه وضعیت نامعتبر است."))
     if priority and priority not in PRIORITY_LABELS:
-        frappe.throw(_("Invalid request priority"))
+        frappe.throw(_("اولویت درخواست نامعتبر است."))
     try:
         start = max(0, int(limit_start))
         length = max(1, min(int(limit_page_length), LIST_MAX_PAGE_LENGTH))
     except (TypeError, ValueError):
-        frappe.throw(_("Invalid page"))
+        frappe.throw(_("شمارهٔ صفحه نامعتبر است."))
     filters = [["owner", "=", frappe.session.user]]
     if company:
         filters.append(["company", "=", company])
@@ -945,6 +1025,7 @@ def list_my_requests(company: str | None = None, template_key: str | None = None
         order_by="creation desc, name desc", limit_start=start, limit_page_length=length)
     instances = [row.workflow_instance for row in rows if row.workflow_instance]
     instance_status = _names("ASOUD Workflow Instance", instances, "status")
+    end_outcomes = _end_outcomes(instances)
     owner_names = _names("Employee", [row.owner for row in rows], "employee_name", key="user_id")
     summary_values = [json.loads(row.values_json or "{}") for row in rows]
     labels = {
@@ -962,7 +1043,7 @@ def list_my_requests(company: str | None = None, template_key: str | None = None
                                                            "status": "Rejected"},
                            fields=["workflow_instance", "comment"], order_by="completed_on desc",
                            limit_page_length=0), "workflow_instance").items()}
-    data = [_list_item(row, instance_status.get(row.workflow_instance), owner_names, labels, reasons)
+    data = [_list_item(row, instance_status.get(row.workflow_instance), owner_names, labels, reasons, end_outcomes.get(row.workflow_instance))
             for row in rows]
     return success(data, meta={"total": counts[status_group], "limit_start": start,
                                "limit_page_length": length, "counts": counts})
@@ -983,7 +1064,7 @@ def list_request_comments(name: str, limit_start: int = 0, limit_page_length: in
         start = max(0, int(limit_start))
         length = max(1, min(int(limit_page_length), LIST_MAX_PAGE_LENGTH))
     except (TypeError, ValueError):
-        frappe.throw(_("Invalid page"))
+        frappe.throw(_("شمارهٔ صفحه نامعتبر است."))
     comments, total = request_comments.list_comments(doc, start, length)
     return success(comments, meta={"total": total, "limit_start": start, "limit_page_length": length})
 
@@ -1001,17 +1082,33 @@ def add_request_comment(name: str, content: str = ""):
 def get_attachment(name, thumbnail: int | str = 0):
     file = frappe.get_doc("File", name)
     if file.attached_to_doctype != REQUEST_DOCTYPE or not file.is_private:
-        frappe.throw("Invalid request attachment", frappe.PermissionError)
+        frappe.throw("پیوست درخواست نامعتبر است.", frappe.PermissionError)
     request = _readable_request(file.attached_to_name)
     if file.attached_to_field == certificate_access.FIELD and not certificate_permission(request):
         frappe.throw(_(certificate_access.DENIED), frappe.PermissionError)
+    # A previous assignee who acted (MASKED) may read the request but not download a
+    # confidential file (PA-055 P3): the file is confidential when it is one of the urls
+    # hidden from non-FULL viewers.
+    level = request_access.request_level(request)
+    if level != request_access_policy.FULL:
+        fields = confidential_fields(request.name, _fields_by_name(request.workflow_definition))
+        hidden = request_serializer.hidden_file_urls(effective_values(request.name), fields, False)
+        if str(file.file_url) in hidden:
+            from asoud_erp.services import security_audit
+
+            security_audit.record("request.attachment_denied", result="denied",
+                                  target_type="File", target=file.name,
+                                  company=request.company,
+                                  details={"endpoint": "get_attachment", "request": request.name},
+                                  commit=True)
+            frappe.throw(_("دانلود این پیوست برای شما مجاز نیست."), frappe.PermissionError)
     if not str(file.file_url).startswith("/private/files/"):
-        frappe.throw("Remote attachments are unsupported")
+        frappe.throw(_("پیوست‌های از راه دور پشتیبانی نمی‌شوند."))
     content = file.get_content()
     if isinstance(content, str):
         content = content.encode()
     if len(content) > MAX_ATTACHMENT_BYTES:
-        frappe.throw("File exceeds download limit")
+        frappe.throw(_("فایل از حد مجاز دانلود بزرگ‌تر است."))
     if str(thumbnail).lower() in {"1", "true"}:
         content = files.thumbnail(content, file.file_name or "")
     return success({"filename": file.file_name, "content_type": files.content_type(file.file_name or ""),

@@ -1,6 +1,7 @@
 """`get_request.viewer` is derived from the signed-in user's own open task."""
 
 import base64
+import json
 
 import frappe
 
@@ -121,9 +122,13 @@ class TestSensitiveValues(APITestCase):
             self.assertEqual(detail["values"]["secret"], "رمز-۱۲۳")
             self.assertEqual(len(detail["attachments"]), 1)
 
-    def test_past_task_holder_still_sees_the_values(self):
+    def test_past_task_holder_sees_masked_values(self):
+        # PA-055 P3: a previous assignee who acted (task Completed) reads the request,
+        # but confidential values are masked and the secret is absent from the whole detail.
         act(self.request["workflow_instance"], "Approve")
-        self.assertEqual(self._detail_as(APPROVER_USER)["values"]["secret"], "رمز-۱۲۳")
+        detail = self._detail_as(APPROVER_USER)
+        self.assertEqual(detail["values"]["secret"], "محرمانه")
+        self.assertNotIn("رمز-۱۲۳", json.dumps(detail, ensure_ascii=False, default=str))
 
     def test_a_user_without_a_task_gets_the_mask_and_no_file(self):
         detail = self._detail_as(ACCOUNTANT_USER)
@@ -151,6 +156,7 @@ class TestSensitiveValues(APITestCase):
 class TestSelfApprovalRouting(APITestCase):
     def _request(self, approvers, escalation_roles=None):
         definition, _stages = make_definition(self.company, approvals=1)
+        self.definition = definition  # read back by the failure test below
         stage = frappe.get_doc("ASOUD Workflow Stage", {"workflow_definition": definition, "stage_type": "Approval"})
         config = frappe.parse_json(stage.config_json)
         config.update(assignment_type="Employee", approver_employees=[
@@ -175,13 +181,35 @@ class TestSelfApprovalRouting(APITestCase):
         self.assertIn(ACCOUNTANT_USER, assignees)
         self.assertNotIn(EMPLOYEE_USER, assignees)
 
-    def test_the_owner_alone_without_a_fallback_keeps_the_task_and_leaves_a_note(self):
-        request = self._request([EMPLOYEE_USER])
-        self.assertEqual(self._assignees(request), [EMPLOYEE_USER])
-        notes = frappe.get_all("ASOUD Workflow Activity", filters={
-            "workflow_instance": request["workflow_instance"], "action": "Note"}, pluck="comment")
-        self.assertEqual(notes, ["تأییدکننده‌ای غیر از درخواست‌دهنده برای این مرحله تعریف نشده است."])
-        task = open_task(request["workflow_instance"], EMPLOYEE_USER)
-        frappe.set_user(EMPLOYEE_USER)
-        with self.assertRaisesRegex(frappe.PermissionError, "تأیید درخواست خودتان مجاز نیست"):
-            workflow_runtime.complete_workflow_task(task.name, "Approve")
+    def test_the_owner_alone_without_a_fallback_fails_and_leaves_no_task_or_note(self):
+        # PA-008: when the owner is the only approver and no escalation role is set,
+        # starting the workflow must fail with a Persian error instead of leaving an
+        # Open task the owner can never complete. No task and no Note activity remain.
+        with self.assertRaisesRegex(
+            frappe.ValidationError, "تأییدکننده‌ای غیر از درخواست‌دهنده پیدا نشد"
+        ):
+            self._request([EMPLOYEE_USER])
+        # The request row is saved before the workflow start fails, so it persists.
+        # start_workflow_instance returned the instance name before the Form-stage
+        # auto-complete threw, so the request's workflow_instance is set.
+        request = frappe.db.get_value(
+            "ASOUD Workflow Request",
+            {"owner": EMPLOYEE_USER, "workflow_definition": self.definition},
+            ["name", "workflow_instance"],
+            as_dict=True,
+        )
+        self.assertIsNotNone(request)
+        self.assertTrue(request.workflow_instance)
+        # The instance row was inserted and saved before the throw, so it is visible
+        # in this transaction (rolled back in tearDown).
+        instance = request.workflow_instance
+        self.assertTrue(frappe.db.exists("ASOUD Workflow Instance", instance))
+        # No Open task was created for the owner (the old behaviour left one).
+        self.assertIsNone(open_task(instance, EMPLOYEE_USER))
+        # No Note activity was left for the owner (the old behaviour wrote one).
+        notes = frappe.get_all(
+            "ASOUD Workflow Activity",
+            filters={"workflow_instance": instance, "action": "Note"},
+            pluck="comment",
+        )
+        self.assertEqual(notes, [])

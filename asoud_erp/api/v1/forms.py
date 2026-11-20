@@ -172,14 +172,12 @@ def remove_builtin(company, key):
 
 @frappe.whitelist(methods=['POST'])
 def copy_form(company, name, title=None):
-    """Copy a published stage form into a new company-owned stage form; the source is never changed."""
+    """Copy a published form (any kind) into a new company-owned form of the same kind; the source is never changed."""
     require_roles(DESIGNERS)
     require_company(company)
     source = load(name, edit=True, lock=True)
     if source.company != company:
         fail('فرم باید متعلق به همین دفتر باشد.')
-    if source.kind != 'Stage':
-        fail('فقط فرم مرحله گردش کار قابل کپی است.')
     if not source.active_revision:
         fail('فرم هنوز منتشر نشده است.')
     rev = revision(source)
@@ -187,13 +185,13 @@ def copy_form(company, name, title=None):
     encoded = json.dumps(schema, ensure_ascii=False, sort_keys=True)
     new_name = frappe.generate_hash(length=32)
     doc = frappe.get_doc({'doctype': 'ASOUD Form', 'name': new_name, 'company': company,
-                          'title': (title or f'{source.title} - نسخه اختصاصی')[:140], 'kind': 'Stage',
+                          'title': (title or f'{source.title} - نسخه اختصاصی')[:140], 'kind': source.kind,
                           'module_key': source.module_key, 'draft_json': encoded, 'draft_version': 1})
     doc.flags.name_set = True
     store(doc)
     new_rev = store(frappe.get_doc({'doctype': 'ASOUD Form Revision', 'form': doc.name, 'version': 1,
         'schema_json': encoded, 'published_by': frappe.session.user,
-        'published_on': now_datetime(), 'change_note': 'کپی از فرم مرحله'}))
+        'published_on': now_datetime(), 'change_note': 'کپی از فرم'}))
     doc.active_revision = new_rev.name
     store(doc)
     return success(row(doc, schema=True))
@@ -350,8 +348,13 @@ def workflow_mapping(schema, company, form=None):
             continue
         if key not in targets or key in used:
             fail('نگاشت فیلد درخواست نامعتبر یا تکراری است.')
-        if field['type'] in {'File', 'Image', 'Signature'} or any(c['type'] in {'File', 'Image', 'Signature'} for c in field.get('columns', [])):
-            fail('نگاشت پیوست به گردش‌کار فعلاً از مسیر استاندارد درخواست انجام می‌شود.')
+        if field['type'] in {'File', 'Image', 'Signature'}:
+            # A form file field maps to a request Attachment field; the file is
+            # transferred to the request as an attachment at submission.
+            if targets[key].get('type') != 'Attachment':
+                fail('فیلد پیوست فرم فقط به فیلد پیوست درخواست نگاشت می‌شود.')
+        elif any(c['type'] in {'File', 'Image', 'Signature'} for c in field.get('columns', [])):
+            fail('نگاشت ستون پیوست به گردش‌کار فعلاً از مسیر استاندارد درخواست انجام می‌شود.')
         used.add(key)
         if field['type'] == 'Table':
             columns = {c['key'] for c in targets[key].get('columns', [])}
@@ -749,30 +752,47 @@ def _submit_form(name, revision_name, subject, values, request_key):
         from asoud_erp.api.v1.workflow_request import create_request
         workflow_mapping(schema, doc.company, doc)
         payload = {}
+        attachments = []
         for field in fields(schema):
             target_key = field.get('workflow_key')
             if not target_key or field['key'] not in checked:
                 continue
             value = checked[field['key']]
             if field['type'] in {'File', 'Image', 'Signature'}:
-                fail('پیوست متصل به گردش‌کار باید از مسیر استاندارد پیوست درخواست ثبت شود؛ این نگاشت پشتیبانی نمی‌شود.')
+                # A form file field maps to a request Attachment field. The file the
+                # user uploaded is re-sent through the request's standard attachment
+                # path so the request owns a copy; the value references it by ref.
+                names = [name for name in (value if isinstance(value, list) else [value]) if name]
+                if len(names) > 1:
+                    # A request Attachment field holds one file; never drop the rest silently.
+                    fail('فیلد پیوست درخواست فقط یک فایل می‌پذیرد؛ برای این فیلد یک فایل بارگذاری کنید.')
+                for name in names:
+                    file = frappe.get_doc('File', name)
+                    file.check_permission('read')
+                    ref = frappe.generate_hash(length=16)
+                    payload[target_key] = f'attachment:{ref}'
+                    attachments.append({'filename': file.file_name,
+                                        'content_base64': base64.b64encode(file.get_content()).decode(),
+                                        'ref': ref})
+                continue
             if field['type'] == 'Table':
                 value = [{c['workflow_key']: row.get(c['key']) for c in field['columns'] if c.get('workflow_key')} for row in (value or [])]
             payload[target_key] = value
-        result = create_request(company=doc.company, workflow_definition=schema['workflow'], subject=subject, values=payload, request_id=key)
+        result = create_request(company=doc.company, workflow_definition=schema['workflow'], subject=subject, values=payload,
+                                request_id=key, attachments=attachments)
         reference_type = 'ASOUD Workflow Request'
         reference_name = result['data']['name']
     if schema['kind'] == 'Document':
         native_mapping(schema)
         payload = {'doctype': schema['target'], 'company': doc.company}
         for field in fields(schema):
-            key = field.get('native_key')
-            if not key or field['key'] not in checked:
+            native_key = field.get('native_key')
+            if not native_key or field['key'] not in checked:
                 continue
             value = checked[field['key']]
             if field['type'] == 'Table':
                 value = [{c['native_key']: item.get(c['key']) for c in field['columns'] if c.get('native_key')} for item in (value or [])]
-            payload[key] = value
+            payload[native_key] = value
         native = frappe.get_doc(payload).insert()  # Native permissions + controller. Never auto-submit.
         reference_type, reference_name = native.doctype, native.name
     entry = store(frappe.get_doc({'doctype': 'ASOUD Form Entry', 'form': doc.name, 'revision': rev.name, 'company': doc.company,
@@ -781,14 +801,22 @@ def _submit_form(name, revision_name, subject, values, request_key):
     if schema['kind'] == 'Document':
         from asoud_erp.services.workflow_submission_source import values as source_values
 
-        source_workflow = route(doc, rev, source_values(entry))
+        source_workflow = route(doc, rev, source_values(entry)[1])
     instance_name = start(entry, source_workflow) if source_workflow else (
         result['data'].get('workflow_instance') if reference_type == 'ASOUD Workflow Request' else None)
     if reference_type == 'ASOUD Workflow Request':
         from asoud_erp.api.v1.workflow_request import refresh_search_text
 
         refresh_search_text(reference_name)
-    if reference_type == 'ASOUD Workflow Request' and schema.get('execution'):
+    # Native issuance normally happens in the ASOUD Workflow Instance on_update
+    # hook when the instance completes. A workflow with no approval stage completes
+    # inside start(), before this entry's values were saved, so that hook could not
+    # issue the document; issue it here, and only in that case (PA-027).
+    # The request may have started its own instance (create_request), so read it there.
+    request_instance = instance_name or (reference_type == 'ASOUD Workflow Request' and frappe.db.get_value(
+        'ASOUD Workflow Request', reference_name, 'workflow_instance'))
+    if (reference_type == 'ASOUD Workflow Request' and schema.get('execution') and request_instance
+            and frappe.db.get_value('ASOUD Workflow Instance', request_instance, 'status') == 'Completed'):
         from asoud_erp.services.request_templates.lifecycle import dispatch_native_document
 
         dispatch_native_document(reference_name)

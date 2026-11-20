@@ -126,6 +126,10 @@ def _update(doc, values, company):
         normalized = normalize_form_response(fields, merged)
         validate_link_values(fields, normalized, company)
         doc.values_json = _json(normalized)
+    elif doc.doctype == "ASOUD Form Entry":
+        # A submitted form entry is immutable by design (form_schema.guard_storage);
+        # refuse clearly instead of silently dropping the mapped fields.
+        frappe.throw("ثبت فرم پس از ارسال تغییرناپذیر است؛ «به‌روزرسانی فیلدها» را روی درخواست یا سند مرتبط تعریف کنید.")
     else:
         doc.update(values)
     doc.save()
@@ -360,7 +364,12 @@ def perform(receipt, instance, config, company):
                         raise ValueError("Automatic journal entries require accounts in the company currency")
         if op["doctype"] == "Material Request":
             validate_link_values([{"key": "items", "type": "Item Table"}], values, company)
+        if op["doctype"] == "Stock Entry" and not values.get("warehouse"):
+            values["warehouse"] = frappe.db.get_single_value("Stock Settings", "default_warehouse")
         doc = frappe.get_doc(build_document(op["doctype"], values, company))
+        from asoud_erp.api.v1.document_templates import _prepare_for_insert
+
+        _prepare_for_insert(doc)
         doc.insert()
         if op["initial_state"] == "Submitted":
             doc.submit()
@@ -373,12 +382,35 @@ def perform(receipt, instance, config, company):
 
             operands = _mapping(op['inputs'], context)
             # Reuse the form builder's Decimal evaluator, not a second float engine.
-            formula = ({'expression': op['formula']} if op['method'] == 'formula' else
-                {'op': 'add' if op['method'] == 'sum' else 'average', 'inputs': list(operands)})
+            method = op['method']
+            if op.get('table'):
+                # Aggregate one column of a Table field of the target record.
+                table = op['table']
+                # Read the rows from the same record the save-time check validated.
+                target = op.get('target', {'source': 'current'})
+                record_values = (context['current'] if target['source'] == 'current'
+                                 else context['stages'].get(target.get('stage'), {}))
+                rows = record_values.get(table['table'])
+                if not isinstance(rows, list):
+                    raise ValueError('فیلد جدول روی سند مقصد خالی یا موجود نیست.')
+                formula = {'op': method, 'table': table['table'], 'columns': [table['column']]}
+                values = {table['table']: rows}
+            elif method == 'formula':
+                formula, values = {'expression': op['formula']}, operands
+            elif method in {'min', 'max'}:
+                # The form engine has a scalar min/max over the mapped inputs.
+                formula, values = {'op': method, 'inputs': list(operands)}, operands
+            elif method in {'average', 'count'}:
+                # The form engine has no scalar average/count; route through its
+                # single-column table aggregation so the Decimal math stays in one place.
+                formula = {'op': method, 'table': 'rows', 'columns': ['value']}
+                values = {**operands, 'rows': [{'value': value} for value in operands.values()]}
+            else:  # sum
+                formula, values = {'op': 'add', 'inputs': list(operands)}, operands
             _update(
                 doc,
                 {
-                    op["field"]: calculate(formula, operands, raw_decimal=True)
+                    op["field"]: calculate(formula, values, raw_decimal=True)
                 },
                 company,
             )
@@ -449,8 +481,10 @@ def _finish(receipt, instance, success):
     target = routes.get("Success" if success else "Error")
     if target:
         stage = frappe.get_doc("ASOUD Workflow Stage", target)
+        # An error may route to a human task for correction or to an End stage to
+        # terminate the process as failed; it must not silently continue elsewhere.
         if stage.workflow_definition != instance.workflow_definition or (
-            not success and stage.stage_type != "User Task"
+            not success and stage.stage_type not in {"User Task", "End"}
         ):
             raise ValueError("Invalid automatic action route")
         _activate_stage(instance, stage, automatic_trigger=receipt.trigger_id)
@@ -474,10 +508,17 @@ def _final_failure(receipt, instance):
     if instance.status == "Failed":
         from asoud_erp.api.v1.workflow_runtime import _notify_user, _users_for_roles
 
-        for user in _users_for_roles(["System Manager"]):
+        # The requester must learn their request stopped, not only System Managers.
+        recipients = [instance.started_by] + _users_for_roles(["System Manager"])
+        for user in dict.fromkeys(recipients):
             frappe.db.savepoint("automatic_failure_notice")
             try:
-                _notify_user(user, "Automatic action failed", instance, message=f"Execution: {receipt.name}")
+                _notify_user(
+                    user,
+                    "اقدام خودکار درخواست شما با خطا مواجه شد",
+                    instance,
+                    message="اقدام خودکار این درخواست با خطا مواجه شد و فرایند متوقف شد؛ برای پیگیری با مدیر سامانه تماس بگیرید.",
+                )
             except Exception:
                 frappe.db.rollback(save_point="automatic_failure_notice")
 
@@ -528,6 +569,20 @@ def schedule(instance, stage, config, trigger="start"):
         return
     receipt.save(ignore_permissions=True)
     _audit(receipt, instance, "Waiting for background worker")
+
+
+def cancel(instance):
+    """Cancel queued automatic actions for a withdrawn instance.
+
+    Only queued receipts (Pending / Retry Pending) are cleared. A receipt that is
+    already Running is owned by a worker holding the row lock; the worker's own
+    instance-status check in ``run`` cancels it on its next read. Clearing the queue
+    stops a cancelled request from still triggering a background action.
+    """
+    queued = {"workflow_instance": instance.name, "status": ["in", ["Pending", "Retry Pending"]]}
+    count = frappe.db.count(RECEIPT, queued)
+    frappe.db.set_value(RECEIPT, queued, "status", "Cancelled", update_modified=False)
+    return count
 
 
 def run(execution):

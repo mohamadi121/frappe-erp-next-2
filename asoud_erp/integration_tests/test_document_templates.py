@@ -11,10 +11,13 @@ from asoud_erp.api.v1 import document_templates, workflow, workflow_request, wor
 from asoud_erp.integration_tests.fixtures import (
     ACCOUNTANT_USER,
     APPROVER_USER,
+    CUSTOMER,
     EMPLOYEE_USER,
     ITEM,
+    SUPPLIER,
     APITestCase,
     abbr,
+    warehouse,
 )
 from asoud_erp.integration_tests.service_identity import patch_service_conf
 
@@ -60,7 +63,8 @@ class TestDocumentTemplates(APITestCase):
             {"key": "items", "label": "اقلام", "type": "Item Table"},
         ]
         configs = {
-            "Start": {"title": "شروع"},
+            "Start": {"title": "شروع", "trigger_type": "Manual",
+                      "initiator_roles": ["Employee"]},
             "User Task": {"title": "ثبت درخواست", "activity_type": "Data Entry",
                           "assignment_type": "Initiator", "form_fields": fields},
             "Approval": {"title": "تأیید مدیر", "assignment_type": "Direct Manager",
@@ -100,9 +104,13 @@ class TestDocumentTemplates(APITestCase):
         )["data"]
 
     def _use_template(self, template: str, **extra):
+        # Design edits require an Inactive workflow (PA-015); re-activate for the
+        # tests that submit a request afterward.
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition.name, "status", "Inactive")
         workflow.save_stage_settings(self.definition.name, self.stages["System Action"].name, {
             "title": "ثبت سند", "action_type": "Create Document", "document_template": template,
             "document_remark": "ایجاد خودکار بر اساس درخواست {{RequestNo}}", **extra})
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition.name, "status", "Active")
 
     def _submit_and_approve(self, amount=1250):
         frappe.set_user(EMPLOYEE_USER)
@@ -189,8 +197,10 @@ class TestDocumentTemplates(APITestCase):
         mapping = json.loads(frappe.db.get_value("ASOUD Document Template", template["name"], "mapping_json"))
         mapping["debit_account"]["value"] = receivable
         frappe.db.set_value("ASOUD Document Template", template["name"], "mapping_json", json.dumps(mapping))
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition.name, "status", "Inactive")
         workflow.save_stage_routes(self.definition.name, self.stages["System Action"].name,
                                    {"Success": self.stages["End"].name, "Error": ""})
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition.name, "status", "Active")
         before = frappe.db.count("Journal Entry")
         request = self._submit_and_approve()
         instance = frappe.get_doc("ASOUD Workflow Instance", request["workflow_instance"])
@@ -208,8 +218,10 @@ class TestDocumentTemplates(APITestCase):
             "sequence_no": 6, "configuration_status": "Complete",
             "config_json": json.dumps({"title": "بررسی خطا", "assignment_type": "Initiator"}),
         }).insert()
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition.name, "status", "Inactive")
         workflow.save_stage_routes(self.definition.name, self.stages["System Action"].name,
                                    {"Success": self.stages["End"].name, "Error": error_stage.name})
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition.name, "status", "Active")
         created = []
         create_document = document_templates.create_document
 
@@ -266,6 +278,7 @@ class TestDocumentTemplates(APITestCase):
 
     def test_stage_routes_replace_the_default_route(self):
         approval = self.stages["Approval"].name
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition.name, "status", "Inactive")
         design = workflow.save_stage_routes(self.definition.name, approval, {
             "Approve": self.stages["End"].name, "Reject": self.stages["End"].name,
             "Return": self.stages["User Task"].name})["data"]
@@ -543,6 +556,56 @@ class TestDocumentTemplates(APITestCase):
                          [(ITEM, 3, f"Stores - {abbr()}")])
         with self.assertRaises(ValueError):
             document_templates.create_document(saved["name"], {**context, "request": {"items": []}}, self.company)
+
+    # --- PA-069: the new standard documents create native records ----------------
+
+    def _item_context(self):
+        return {"request": {"items": [{"item_code": ITEM, "qty": 2, "uom": "Nos", "stock_uom": "Nos",
+                                       "conversion_factor": 1}]},
+                "user": {}, "organization": {"company": self.company}, "system": {"today": self.future(0)}}
+
+    def test_sales_order_template_creates_a_native_sales_order(self):
+        saved = document_templates.save_document_template(
+            self.company,
+            {"title": "سفارش فروش " + self.token, "module": "Selling", "document_type": "Sales Order",
+             "mapping": {"customer": {"source": "fixed", "value": CUSTOMER},
+                         "transaction_date": {"source": "system", "value": "today"},
+                         "items": {"source": "request", "value": "items"}}},
+            source_workflow=self.definition.name)["data"]
+        doc = document_templates.create_document(saved["name"], self._item_context(), self.company)
+        self.assertEqual(doc.doctype, "Sales Order")
+        self.assertEqual(doc.customer, CUSTOMER)
+        self.assertEqual(doc.docstatus, 0)
+        self.assertEqual([(row.item_code, row.qty) for row in doc.items], [(ITEM, 2)])
+
+    def test_purchase_order_template_creates_a_native_purchase_order(self):
+        saved = document_templates.save_document_template(
+            self.company,
+            {"title": "سفارش خرید " + self.token, "module": "Purchase", "document_type": "Purchase Order",
+             "mapping": {"supplier": {"source": "fixed", "value": SUPPLIER},
+                         "transaction_date": {"source": "system", "value": "today"},
+                         "items": {"source": "request", "value": "items"}}},
+            source_workflow=self.definition.name)["data"]
+        doc = document_templates.create_document(saved["name"], self._item_context(), self.company)
+        self.assertEqual(doc.doctype, "Purchase Order")
+        self.assertEqual(doc.supplier, SUPPLIER)
+        self.assertEqual(doc.docstatus, 0)
+        self.assertEqual([(row.item_code, row.qty) for row in doc.items], [(ITEM, 2)])
+
+    def test_stock_entry_template_creates_a_native_stock_entry(self):
+        saved = document_templates.save_document_template(
+            self.company,
+            {"title": "سند انبار " + self.token, "module": "Stock", "document_type": "Stock Entry",
+             "mapping": {"purpose": {"source": "fixed", "value": "Material Receipt"},
+                         "posting_date": {"source": "system", "value": "today"},
+                         "items": {"source": "request", "value": "items"},
+                         "warehouse": {"source": "fixed", "value": warehouse()}}},
+            source_workflow=self.definition.name)["data"]
+        doc = document_templates.create_document(saved["name"], self._item_context(), self.company)
+        self.assertEqual(doc.doctype, "Stock Entry")
+        self.assertEqual(doc.purpose, "Material Receipt")
+        self.assertEqual([(row.item_code, row.qty, row.t_warehouse) for row in doc.items],
+                         [(ITEM, 2, warehouse())])
 
     def test_request_and_instance_expose_status_and_created_document(self):
         template = self._template()

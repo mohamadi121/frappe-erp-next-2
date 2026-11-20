@@ -41,7 +41,10 @@ Migration adds only `wait_due_utc` (UTC-naive technical Datetime, indexed) and
 definition version, timezone, original scheduled time, current due time and next
 native node. Instance remains Running with no human task while waiting.
 
-The minute scheduler enqueues bounded pages of waiting instances. Worker locks
+The minute scheduler enqueues bounded pages of waiting instances that need work:
+rows whose `wait_due_utc <= now` (UTC, naive), plus rows whose wait snapshot uses
+`date_change_policy == 'Recalculate'` (to poll for source date changes). Instances
+with future non-recalculating due dates are not enqueued. Worker locks
 the instance and verifies Running/current Wait/state before resuming; schedule
 and transition commit in the same transaction. Repeated workers cannot advance
 twice. Queue loss/restart is recovered from the persistent snapshot. Recalculate
@@ -49,6 +52,20 @@ checks actual source values at the scheduler cadence; reads/visits never schedul
 Cancellation/termination or a changed current stage makes an old wait inert.
 Source errors and invalid destinations fail with an audit activity, never False
 or a silent immediate continuation. History stores planned and actual times.
+
+A past due date under the `Error` policy is a business condition, not a technical
+failure, and is handled by recoverability:
+
+- A `Recalculate` wait (the only kind that can recover) parks in a non-terminal
+  `Past` snapshot state: the instance stays `Running`, the owner is notified in-app,
+  and the wait keeps its past due so the scheduler re-checks it and resumes once the
+  source date is corrected to the future.
+- Any other wait (Duration, Date, or a `Keep` FormDate) has nothing that would wake it,
+  so parking it would leave the instance `Running` forever. It instead fails the
+  instance with a Persian business reason (the date is in the past and cannot be
+  corrected automatically) and notifies the requester.
+
+A missing or invalid source date is a technical error and still fails the instance.
 
 Legacy Duration/Date/Event configs are preserved and remain non-executable until
 explicitly saved as v1. Event is not reinterpreted as a form date. No legacy

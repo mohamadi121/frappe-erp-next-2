@@ -33,6 +33,9 @@ class TestStageSupplementaryForm(APITestCase):
     def _definition(self):
         definition, _ = make_definition(self.company, approvals=1,
                                         fields=[{"key": "amount", "label": "مبلغ", "type": "Currency", "required": True}])
+        # Design edits require an Inactive workflow (PA-015); tests that start an
+        # instance re-activate it first.
+        frappe.db.set_value("ASOUD Workflow Definition", definition, "status", "Inactive")
         return definition
 
     def _stage(self, definition, stage_type):
@@ -104,6 +107,7 @@ class TestStageSupplementaryForm(APITestCase):
         form, revision = self._stage_form(self.company, required=required)
         workflow.save_stage_settings(definition, self._stage(definition, "Approval"),
                                      self._approval_config(supplementary_form={"form": form, "revision": revision}))
+        frappe.db.set_value("ASOUD Workflow Definition", definition, "status", "Active")
         request = create(self.company, definition, values={"amount": 100})
         task = open_task(request["workflow_instance"], APPROVER_USER)
         self.assertIsNotNone(task)
@@ -121,6 +125,7 @@ class TestStageSupplementaryForm(APITestCase):
 
     def test_task_without_binding_has_no_supplementary_form(self):
         definition = self._definition()
+        frappe.db.set_value("ASOUD Workflow Definition", definition, "status", "Active")
         request = create(self.company, definition, values={"amount": 100})
         task = open_task(request["workflow_instance"], APPROVER_USER)
         frappe.set_user(APPROVER_USER)

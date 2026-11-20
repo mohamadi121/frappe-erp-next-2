@@ -189,6 +189,8 @@ def publish_revision(form, revision, previous_revision):
         doc = metadata[name]
         if doc.company != form.company or doc.source_form != form.name or doc.source_revision != previous_revision:
             frappe.throw('اتصال نسخهٔ قبلی گردش‌کار سازگار نیست؛ نسخهٔ عملیاتی فرم حفظ شد.')
+        if frappe.db.exists('ASOUD Workflow Instance', {'workflow_definition': name, 'status': 'Running'}):
+            frappe.throw('تا پایان گردش‌های در حال اجرا، انتشار نسخهٔ متصل جدید مجاز نیست.')
         rows = configs[name]['stages']
         if len(rows) > 200:
             frappe.throw('تعداد مراحل بیش از حد مجاز است.')
@@ -209,8 +211,15 @@ def publish_revision(form, revision, previous_revision):
         bind(name, stage, updates[stage], revision_configs=updates)
         for stage, config in updates.items():
             target = frappe.get_doc('ASOUD Workflow Stage', stage)
+            target.check_permission('write')
             target.config_json = json.dumps(config, ensure_ascii=False)
-            target.save()
+            # The existing controller explicitly permits guarded internal writes
+            # with ignore_permissions. Scope, write permission and absence of
+            # Running instances were checked above; only server-owned binding
+            # metadata changes here, never stage design/routes or user payload.
+            # All other native validators (including historical task protection)
+            # still execute. Raw/Desk design writes retain the Active guard.
+            target.save(ignore_permissions=True)
         from asoud_erp.services.workflow_lifecycle import require_activation_ready
 
         updated = frappe.get_doc(DEFINITION, name)
@@ -238,6 +247,24 @@ def routing_configs(names, *, current=False):
         if config.get('submission_source'):
             result[row.workflow_definition]['mode'] = config.get('source_route', 'Default')
     return result
+
+
+def conditional_gate(definition):
+    """True when a Condition stage sits immediately after the single Start.
+
+    Read-only structural check (no locks, no binding validation) used to refuse
+    saving a Conditional start route on a live workflow that has no gate yet.
+    """
+    stages = frappe.get_all('ASOUD Workflow Stage', filters={'workflow_definition': definition},
+        fields=['name', 'stage_type'], limit_page_length=201)
+    starts = [row for row in stages if row.stage_type == 'Start']
+    if len(starts) != 1:
+        return False
+    edges = frappe.get_all('ASOUD Workflow Transition', filters={'workflow_definition': definition,
+        'from_stage': starts[0].name}, fields=['to_stage'], limit_page_length=2)
+    if len(edges) != 1:
+        return False
+    return any(row.name == edges[0].to_stage and row.stage_type == 'Condition' for row in stages)
 
 
 def entry_condition(definition, *, stages=None, edges=None, available=None):
@@ -284,9 +311,11 @@ def route(form, revision, submitted=None):
         if selection_mode == 'Conditional':
             frappe.throw('انتخاب مشروط در این نسخهٔ سرور در دسترس نیست.')
         return None
+    # Read without FOR UPDATE: route() is a read-only routing decision.
+    # Design changes are serialized by bind(); instance creation by start_workflow_instance.
     rows = frappe.db.sql('select name, company, status, readiness_status, source_revision '
         'from `tabASOUD Workflow Definition` where source_form=%s and status!=%s '
-        'order by name limit 201 for update', (form.name, 'Archived'), as_dict=True)
+        'order by name limit 201', (form.name, 'Archived'), as_dict=True)
     if not rows:
         if frappe.db.exists(DEFINITION, {'source_form': form.name, 'status': 'Archived'}):
             frappe.throw('گردش‌کار متصل بایگانی شده است؛ مدیر باید اتصال این فرم را اصلاح کند.')
@@ -298,7 +327,8 @@ def route(form, revision, submitted=None):
     from asoud_erp.services.workflow_condition import evaluate_group
     from asoud_erp.services.workflow_submission_policy import choose_route
 
-    configs = routing_configs([row.name for row in rows], current=True)
+    # Plain read: no FOR UPDATE on stage rows during a submission.
+    configs = routing_configs([row.name for row in rows], current=False)
     starts = [stage.name for config in configs.values() for stage in config['stages'] if stage.stage_type == 'Start']
     outgoing = frappe.get_all('ASOUD Workflow Transition', filters={'from_stage': ['in', starts or ['']]},
         fields=['workflow_definition', 'to_stage'], limit_page_length=40201)
@@ -327,7 +357,10 @@ def route(form, revision, submitted=None):
                 # Metadata already validated; absent optional fields are genuinely empty.
                 candidate['matched'] = evaluate_group(rules, lambda rule: data.get(rule['source_field']))
             candidates.append(candidate)
-        return choose_route(candidates, legacy_default=bool(schema.get('workflow')) and selection_mode != 'Conditional')
+        selected = choose_route(candidates, legacy_default=bool(schema.get('workflow')) and selection_mode != 'Conditional')
+        if selection_mode == 'Conditional' and not selected:
+            raise ValueError('هیچ مسیر معتبر و آماده‌ای برای ارسال فرم مشروط انتخاب نشد.')
+        return selected
     except ValueError as error:
         frappe.throw(str(error))
 

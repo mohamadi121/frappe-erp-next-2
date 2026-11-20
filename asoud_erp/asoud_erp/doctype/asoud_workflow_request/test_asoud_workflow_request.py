@@ -108,6 +108,9 @@ class TestASOUDWorkflowRequest(FrappeTestCase):
 
     def test_stage_form_fields_survive_save_and_reload(self):
         frappe.set_user("Administrator")
+        # Design edits require an Inactive workflow (PA-015); no instance is
+        # started here, so it stays Inactive for the design read below.
+        frappe.db.set_value("ASOUD Workflow Definition", self.definition.name, "status", "Inactive")
         workflow.save_stage_settings(self.definition.name, self.stages[1].name,
             {"title": "Audit form", "activity_type": "Data Entry", "assignment_type": "Initiator",
              "assignee_type": "Initiator", "form_fields": self.fields})

@@ -52,4 +52,9 @@ def choose_route(candidates, *, legacy_default=False):
         return row['name']
     if legacy_default or not candidates:
         return None
+    # Available bindings never auto-route (contract: they do not compete with
+    # the default). With no conditional route and no default, the form is
+    # saved as an ordinary record instead of blocking every submission.
+    if all(row['mode'] == 'Available' for row in candidates):
+        return None
     raise ValueError('هیچ مسیر مشروطی منطبق نیست و گردش‌کار پیش‌فرضی برای این فرم تعیین نشده است.')

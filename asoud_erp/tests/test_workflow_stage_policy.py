@@ -1,6 +1,10 @@
 import pytest
 
-from asoud_erp.services.workflow_stage_policy import normalize_stage_config
+from asoud_erp.services.workflow_stage_policy import (
+    LIMITED_EDIT_REMOVED_MESSAGE,
+    normalize_stage_config,
+    resolve_document_access,
+)
 
 
 def test_user_task_requires_assignee_role() -> None:
@@ -282,3 +286,51 @@ def test_change_status_and_notification_actions() -> None:
 def test_external_api_calls_are_not_system_actions() -> None:
     with pytest.raises(ValueError, match="unsupported"):
         normalize_stage_config("System Action", {"title": "API", "action_type": "Call API", "url": "http://x"})
+
+
+# ------------------------------------------------------------------ PA-066 document_access
+
+
+def test_app_031_rewrite_of_stored_limited_edit_is_protected() -> None:
+    # App 0.31.0 sends Edit for a stored Limited Edit even when the user did not touch it.
+    assert resolve_document_access("Limited Edit", "Edit", changed=False) == "Limited Edit"
+
+
+def test_stored_limited_edit_resent_is_kept() -> None:
+    assert resolve_document_access("Limited Edit", "Limited Edit", changed=False) == "Limited Edit"
+    assert resolve_document_access("Limited Edit", "Limited Edit", changed=True) == "Limited Edit"
+
+
+@pytest.mark.parametrize("stored", ["Read Only", "Edit", None, ""])
+def test_new_limited_edit_choice_is_rejected(stored) -> None:
+    with pytest.raises(ValueError, match="ویرایش محدود دیگر قابل انتخاب نیست"):
+        resolve_document_access(stored, "Limited Edit", changed=False)
+    with pytest.raises(ValueError, match="ویرایش محدود دیگر قابل انتخاب نیست"):
+        resolve_document_access(stored, "Limited Edit", changed=True)
+
+
+def test_explicit_change_from_limited_edit_is_saved() -> None:
+    assert resolve_document_access("Limited Edit", "Edit", changed=True) == "Edit"
+    assert resolve_document_access("Limited Edit", "Read Only", changed=True) == "Read Only"
+
+
+def test_plain_values_pass_through() -> None:
+    assert resolve_document_access("Read Only", "Edit", changed=False) == "Edit"
+    assert resolve_document_access("Edit", "Read Only", changed=False) == "Read Only"
+    assert resolve_document_access(None, "Edit", changed=False) == "Edit"
+
+
+def test_missing_incoming_keeps_stored_value() -> None:
+    assert resolve_document_access("Limited Edit", None, changed=False) == "Limited Edit"
+    assert resolve_document_access("Edit", "", changed=False) == "Edit"
+    assert resolve_document_access(None, None, changed=False) == "Read Only"
+
+
+def test_invalid_incoming_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Invalid document access mode"):
+        resolve_document_access("Read Only", "Full Access", changed=False)
+
+
+def test_limited_edit_removed_message_is_persian() -> None:
+    assert "ویرایش محدود" in LIMITED_EDIT_REMOVED_MESSAGE
+    assert "فقط مشاهده" in LIMITED_EDIT_REMOVED_MESSAGE

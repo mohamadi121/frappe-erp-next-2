@@ -69,8 +69,20 @@ def world(monkeypatch):
     site = fake.Site()
     frappe, utils = fake.install(site)
     runtime = types.ModuleType("asoud_erp.api.v1.workflow_runtime")
+    # cancel_request cancels queued automatic actions; stub the runtime the same way the
+    # fake site cannot import it (its module-level frappe.utils import is not available here).
+    actions = types.ModuleType("asoud_erp.services.automatic_action_runtime")
+
+    def _cancel_queued(instance):
+        queued = {"workflow_instance": instance.name, "status": ["in", ["Pending", "Retry Pending"]]}
+        count = frappe.db.count("ASOUD Action Execution", queued)
+        frappe.db.set_value("ASOUD Action Execution", queued, "status", "Cancelled", update_modified=False)
+        return count
+
+    actions.cancel = _cancel_queued
     for name, module in {"frappe": frappe, "frappe.utils": utils,
-                         "asoud_erp.api.v1.workflow_runtime": runtime}.items():
+                         "asoud_erp.api.v1.workflow_runtime": runtime,
+                         "asoud_erp.services.automatic_action_runtime": actions}.items():
         monkeypatch.setitem(sys.modules, name, module)
     restore = fake.isolate(RELOADED)
     site.add("User", "sara@example.com")
@@ -105,8 +117,11 @@ def world(monkeypatch):
     module = importlib.import_module("asoud_erp.api.v1.workflow_request")
     monkeypatch.setattr(module, "require_company", lambda company: None)
     monkeypatch.setattr(module, "validate_link_values", fake_links)
-    monkeypatch.setattr(module, "request_permission",
-                        lambda doc, user=None, permission_type=None: doc.owner == site.user or "HR Manager" in site.roles)
+    # Read access is decided by the approved policy level (PA-055); the fake world grants
+    # FULL to the owner and HR Managers, NONE to everyone else.
+    monkeypatch.setattr(module.request_access, "request_level",
+                        lambda doc, user=None: "FULL" if (doc.owner == site.user or "HR Manager" in site.roles)
+                        else "NONE")
     state.module = module
     yield state
     restore()

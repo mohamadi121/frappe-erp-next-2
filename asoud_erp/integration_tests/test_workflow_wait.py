@@ -29,7 +29,11 @@ class TestWorkflowWait(APITestCase):
         edge = frappe.db.get_value('ASOUD Workflow Transition', {'from_stage': task.name})
         from asoud_erp.api.v1.workflow import insert_workflow_stage
 
+        # Design edits require an Inactive workflow (PA-015); re-activate for the
+        # tests that start instances.
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         result = insert_workflow_stage(definition, edge, 'Wait')['data']
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         stage = next(row['name'] for row in result['stages'] if row['stage_type'] == 'Wait')
         value = config or {'wait_version': 1, 'title': 'انتظار آزمایشی', 'wait_type': 'Duration',
             'wait_value': 2, 'wait_unit': 'Minute', 'past_policy': 'Continue'}
@@ -82,6 +86,9 @@ class TestWorkflowWait(APITestCase):
                 instance.reload()
                 self.assertEqual(instance.status, 'Completed')
             else:
+                # A past date under the Error policy on a wait that cannot recover (a Date
+                # wait has no source date to correct) fails the instance with a business
+                # reason, not a technical error.
                 self.assertEqual(instance.status, 'Failed')
                 self.assertIn('گذشته', json.loads(instance.wait_snapshot_json)['error'])
 
@@ -96,6 +103,28 @@ class TestWorkflowWait(APITestCase):
         self.assertEqual(instance.status, 'Cancelled')
         self.assertEqual(json.loads(instance.wait_snapshot_json)['state'], 'Cancelled')
         self.assertFalse(frappe.db.exists('ASOUD Workflow Activity', {'workflow_instance': instance.name, 'action': 'Wait Completed'}))
+
+    def test_past_form_date_parks_and_recovers_when_the_date_is_corrected(self):
+        # A past source date under the Error policy parks the wait (recoverable), and a
+        # corrected future date resumes it, instead of burning the instance to Failed.
+        config = {'wait_version': 1, 'title': 'انتظار تاریخ فرم', 'wait_type': 'FormDate',
+            'date_source': {'source_kind': 'Original', 'source_stage': '', 'source_field': 'scheduled', 'field_type': 'Date'},
+            'offset_direction': 'Same', 'clock': '09:00', 'date_change_policy': 'Recalculate',
+            'past_policy': 'Error'}
+        _, _, result, instance = self.enter(config, {'scheduled': '2001-01-01'})
+        instance.reload()
+        self.assertEqual(instance.status, 'Running')
+        self.assertEqual(json.loads(instance.wait_snapshot_json)['state'], 'Past')
+        # Correct the source date to a future day; the parked wait resumes.
+        source = frappe.get_doc('ASOUD Workflow Request', result['name'])
+        source.values_json = json.dumps({'scheduled': (datetime.now(timezone.utc).date() + timedelta(days=10)).isoformat()})
+        source.save()
+        waits.run(instance.name)
+        instance.reload()
+        self.assertEqual(instance.status, 'Running')
+        self.assertEqual(json.loads(instance.wait_snapshot_json)['state'], 'Waiting')
+        self.resume_due(instance)
+        self.assertEqual(instance.status, 'Completed')
 
     def test_form_date_changes_are_recalculated_or_kept_and_invalid_values_fail(self):
         initial = (datetime.now(timezone.utc).date() + timedelta(days=10)).isoformat()
@@ -206,8 +235,10 @@ class TestWorkflowWait(APITestCase):
         forms.transition(saved['name'], 'publish', saved['draft_version'])
         source = forms.get_form(saved['name'])['data']
         task = frappe.db.get_value('ASOUD Workflow Stage', {'workflow_definition': definition, 'stage_type': 'User Task'})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Inactive')
         workflow.save_stage_settings(definition, task, {'title': 'بررسی فرم', 'activity_type': 'Review',
             'assignment_type': 'Initiator', 'submission_source': {'form': source['name'], 'revision': source['revision']}})
+        frappe.db.set_value('ASOUD Workflow Definition', definition, 'status', 'Active')
         frappe.db.set_value('ASOUD Workflow Stage', stage, 'config_json', json.dumps({
             'wait_version': 1, 'wait_type': 'FormDate', 'date_source': {
                 'source_kind': 'Original', 'source_stage': '', 'source_field': 'when', 'field_type': 'DateTime'},
@@ -243,3 +274,29 @@ class TestWorkflowWait(APITestCase):
             self.assertFalse(frappe.db.exists('ASOUD Workflow Instance', {'workflow_definition': definition}))
         finally:
             frappe.conf.pause_scheduler = previous
+
+    def test_dispatch_enqueues_only_due_or_recalculate_waits(self):
+        definition, _ = self.setup_wait({'wait_version': 1, 'title': 'انتظار دور', 'wait_type': 'Duration',
+            'wait_value': 30, 'wait_unit': 'Day', 'past_policy': 'Continue'})
+        res1 = create(self.company, definition=definition)
+        inst1_name = res1['workflow_instance']
+
+        definition_due, _ = self.setup_wait({'wait_version': 1, 'title': 'انتظار گذشته', 'wait_type': 'Date',
+            'wait_value': '2001-01-01T09:00:00', 'past_policy': 'Continue'})
+        res2 = create(self.company, definition=definition_due)
+        inst2_name = res2['workflow_instance']
+
+        future_date = (datetime.now(timezone.utc).date() + timedelta(days=30)).isoformat()
+        config_rec = {'wait_version': 1, 'title': 'انتظار بازمحاسبه', 'wait_type': 'FormDate',
+            'date_source': {'source_kind': 'Original', 'source_stage': '', 'source_field': 'scheduled', 'field_type': 'Date'},
+            'clock': '09:00', 'date_change_policy': 'Recalculate'}
+        _, _, _, inst3 = self.enter(config_rec, {'scheduled': future_date})
+        inst3_name = inst3.name
+
+        enqueued = []
+        with patch('frappe.enqueue', side_effect=lambda *a, **kw: enqueued.append(kw.get('name') or (a[1] if len(a) > 1 else None))):
+            waits.dispatch()
+
+        self.assertNotIn(inst1_name, enqueued)
+        self.assertIn(inst2_name, enqueued)
+        self.assertIn(inst3_name, enqueued)

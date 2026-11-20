@@ -40,3 +40,55 @@ existing runtime resolves the stored transition, or the documented empty-target
 fallback. Returning reactivates a node within the same instance/request; no new
 request is created by destination selection. Existing correction/version history
 and permissions are unchanged. No schema migration is required.
+
+## Approval decision mode (quorum)
+
+An Approval stage with several approvers decides by `approval_mode`, a key of the
+stage config saved through `save_stage_settings`:
+
+- `Any` — one Approve is enough; the other approvers' Open tasks are cancelled.
+- `All` — every assigned approver must Approve.
+- `Majority` — more than half of the assigned approvers must Approve
+  (2 of 3, 3 of 5, …).
+
+The default is the legacy behaviour: a missing or unrecognised value is treated
+as `All`, so configs written before this feature are unchanged. `Majority` is the
+new value; `Any` and `All` behave exactly as before.
+
+Counting is per activation round. A Return route can re-activate the same
+Approval stage with a fresh set of tasks; only the most recent round's tasks
+count toward the decision (the earlier round is already settled). A Reject or
+Return by any approver still cancels the whole stage, as before.
+
+When an Approve does not yet satisfy the mode, the stage stays `Running`, the
+other approvers keep their Open tasks, and a Persian activity is recorded
+(`تأیید ثبت شد؛ برای ادامهٔ مرحله N تأیید دیگر لازم است`, with `N` in Persian
+digits). The stage advances and the remaining Open tasks are cancelled only when
+the mode is met.
+
+`save_stage_settings` rejects any other value with the Persian error
+`حالت رأی‌گیری مرحلهٔ تأیید نامعتبر است؛ فقط هر یک، همه یا اکثریت مجاز است.`
+
+## Editability guard (PA-015)
+
+`save_stage_routes` rechecks editability **under the definition row lock** before
+touching any transition. It is refused with the existing Persian message
+(`برای حفظ اجراها، گردش کار را غیرفعال کنید و تا پایان اجراهای جاری منتظر بمانید؛
+یا یک کپی مستقل برای طراحی بسازید.`) when the workflow is `Active` **or** has a
+`Running` instance, and the database is left unchanged. This is what stops a
+designer from rerouting a stage out from under an in-flight instance (which
+previously let an old instance skip an approval). The same guard now applies to
+`save_stage_settings`, `connect_workflow_stages`, `insert_workflow_stage`,
+`add_workflow_stage`, `add_condition_branch`, `save_start_settings` (legacy path)
+and the `workflow_paths` removals — every graph/config mutation. Pure layout
+(`update_stage_positions`) and presentation text (`update_request_type_info`) are
+deliberately unguarded because they never affect execution.
+
+## Approval assignees and the initiator
+
+Nobody approves their own request. When an Approval stage resolves to the initiator
+only, the stage's `escalation_roles` users (without the initiator) receive the task.
+When no independent approver exists, entering the stage fails with the Persian error
+«برای این مرحلهٔ تأیید، تأییدکننده‌ای غیر از درخواست‌دهنده پیدا نشد؛ تأییدکننده یا نقش تصاعد مستقل تعریف کنید.»
+and the whole transition (start or completion of the previous task) is rolled back;
+no Open task is created.
