@@ -12,6 +12,7 @@ from asoud_erp.services.modules import MODULE_DOCTYPES, normalize_module_key
 from asoud_erp.services.request_access import require_company
 from asoud_erp.services.workflow_contract import (
     ALLOWED_WORKFLOW_STATUSES,
+    START_ROUTE,
     design_details_summary,
     serialize_workflow,
 )
@@ -491,7 +492,9 @@ def connect_workflow_stages(
                 sequence_no=1 if raw['result'] else 2)).insert()
         _touch_workflow(definition)
         return success(_design_payload(definition))
-    _assert_stage_in_definition(to_stage, definition)
+    destination = _assert_stage_in_definition(to_stage, definition)
+    if destination.stage_type == "Start":
+        frappe.throw(START_ROUTE)
     if source.stage_type == "End":
         frappe.throw(_("مرحلهٔ پایان نمی‌تواند مسیر خروجی داشته باشد."))
     if frappe.db.exists(

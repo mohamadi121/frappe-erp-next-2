@@ -7,7 +7,7 @@ it already owns and adds only the graph-shape checks that engine does not cover
 import json
 
 from asoud_erp.services.workflow_auto_chain import AUTO_CYCLE_DESIGN
-from asoud_erp.services.workflow_contract import DISCONNECTED_PATHS, activation_requirements
+from asoud_erp.services.workflow_contract import DISCONNECTED_PATHS, START_ROUTE, activation_requirements
 from asoud_erp.services.workflow_simulation import ACTION_LABELS
 
 # Readiness-engine messages -> stable issue codes (the engine owns these rules).
@@ -18,6 +18,7 @@ _READINESS_CODES = {
     'تنظیمات یا مسیر خروج یکی از مراحل کامل و معتبر نیست.': 'stage_invalid',
     DISCONNECTED_PATHS: 'disconnected',
     AUTO_CYCLE_DESIGN: 'auto_cycle',
+    START_ROUTE: 'start_route',
 }
 # Runtime defaults when a saved config omits the flag (mirrors normalize_stage_config).
 _DECISION_DEFAULTS = {
