@@ -80,3 +80,4 @@ test_workflow_approval_quorum
 test_phase_a_acceptance
 test_office_navigation
 test_office_permission_profiles
+test_workflow_phase_b_core
