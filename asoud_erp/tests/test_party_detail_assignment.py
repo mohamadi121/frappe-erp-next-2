@@ -21,6 +21,7 @@ def test_explicit_group_does_not_allocate_role_default_codes(monkeypatch):
     fake.has_permission = lambda *args, **kwargs: True
     utils = ModuleType("frappe.utils")
     utils.getdate = lambda value=None: value
+    utils.nowdate = lambda: "2026-01-01"
     monkeypatch.setitem(sys.modules, "frappe.utils", utils)
     monkeypatch.setitem(sys.modules, "frappe", fake)
     path = Path(__file__).parents[1] / "api" / "v1" / "party.py"
