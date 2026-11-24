@@ -227,6 +227,17 @@ class FakeDB:
         for row in self._rows(doctype, name):
             row.update(updates)
 
+    def sql(self, query, values=None, as_dict=False, **kwargs):
+        # Only the quorum round read is modelled: Open/Completed tasks of one stage.
+        if "tabASOUD Workflow Task" in query and values:
+            instance, stage = values
+            fields = ("status", "action", "assigned_on", "completed_on")
+            return [Dict({field: row.get(field) for field in fields})
+                    for row in self.site.table("ASOUD Workflow Task").values()
+                    if row.get("workflow_instance") == instance and row.get("workflow_stage") == stage
+                    and row.get("status") in ("Open", "Completed")]
+        return []
+
     def savepoint(self, name):
         pass
 

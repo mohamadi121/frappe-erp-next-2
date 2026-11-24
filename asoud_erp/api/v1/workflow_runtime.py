@@ -1797,18 +1797,16 @@ def complete_workflow_task(
         # Only the current round (the most recent activation) counts: a Return
         # route can re-activate this stage with a fresh set of tasks. The
         # deciding task's assigned_on is the current activation time.
-        round_tasks = frappe.get_all(
-            "ASOUD Workflow Task",
-            filters={"workflow_instance": instance.name, "workflow_stage": stage.name,
-                     "status": ["in", ("Open", "Completed")]},
-            fields=["status", "action", "assigned_on", "completed_on"],
-            # Bounded by the assignee cap per round (check_assignee_cap).
-            limit_page_length=0,
-            # A locking read sees the other approver's committed decision. A plain
-            # read uses the transaction's start snapshot, so two simultaneous
-            # approvers would each see the other's task still Open and the stage
-            # would never advance.
-            for_update=True,
+        # A locking read sees the other approver's committed decision. A plain
+        # read uses the transaction's start snapshot, so two simultaneous
+        # approvers would each see the other's task still Open and the stage
+        # would never advance. Bounded by the assignee cap per round.
+        round_tasks = frappe.db.sql(
+            "select status, action, assigned_on, completed_on from `tabASOUD Workflow Task` "
+            "where workflow_instance=%s and workflow_stage=%s and status in ('Open', 'Completed') "
+            "for update",
+            (instance.name, stage.name),
+            as_dict=True,
         )
         total, approved = decision_counts([dict(t) for t in round_tasks], doc.assigned_on)
         try:
