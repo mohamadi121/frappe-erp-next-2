@@ -205,7 +205,7 @@ class TestQuorumExecution(APITestCase):
         frappe.set_user(APPROVERS[2])
         with patch.object(workflow_runtime, "_notify_user"):
             with self.assertRaises(frappe.ValidationError) as ctx:
-                workflow_runtime.complete_workflow_task(late_task.name, "Approve")
+                workflow_runtime.complete_workflow_task(late_task, "Approve")
         # The instance is already finished, so the guard refuses it as a stale task.
         self.assertIn("دیگر در مرحلهٔ جاری", str(ctx.exception))
         # The two approvals wrote three rows (the first also the "one more needed" note);

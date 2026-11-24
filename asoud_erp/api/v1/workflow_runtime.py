@@ -1804,6 +1804,11 @@ def complete_workflow_task(
             fields=["status", "action", "assigned_on", "completed_on"],
             # Bounded by the assignee cap per round (check_assignee_cap).
             limit_page_length=0,
+            # A locking read sees the other approver's committed decision. A plain
+            # read uses the transaction's start snapshot, so two simultaneous
+            # approvers would each see the other's task still Open and the stage
+            # would never advance.
+            for_update=True,
         )
         total, approved = decision_counts([dict(t) for t in round_tasks], doc.assigned_on)
         try:
