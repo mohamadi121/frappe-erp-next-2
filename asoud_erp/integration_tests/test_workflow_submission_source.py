@@ -332,6 +332,9 @@ class TestWorkflowSubmissionSource(APITestCase):
     def test_failed_conditional_rebind_preserves_operational_revision_and_all_bindings(self):
         chosen = self.conditional_route()
         old = self.source['revision']
+        old_stages = {row.name: row.config_json for row in frappe.get_all(
+            'ASOUD Workflow Stage', filters={'workflow_definition': ['in', [self.definition, chosen]]},
+            fields=['name', 'config_json'])}
         old_count = frappe.db.count('ASOUD Form Revision', {'form': self.source['name']})
         current = forms.get_form(self.source['name'], manage=1)['data']
         draft = schema()
@@ -344,6 +347,8 @@ class TestWorkflowSubmissionSource(APITestCase):
         self.assertEqual(frappe.db.count('ASOUD Form Revision', {'form': current['name']}), old_count)
         for name in (self.definition, chosen):
             self.assertEqual(frappe.db.get_value('ASOUD Workflow Definition', name, 'source_revision'), old)
+        for name, config in old_stages.items():
+            self.assertEqual(frappe.db.get_value('ASOUD Workflow Stage', name, 'config_json'), config)
         frappe.set_user(EMPLOYEE_USER)
         result = forms.submit_form(self.source['name'], old, 'نسخه قبلی سالم', {'note': 'ویژه'}, uuid4().hex)['data']
         self.assertEqual(frappe.db.get_value('ASOUD Workflow Instance', result['workflow_instance'],

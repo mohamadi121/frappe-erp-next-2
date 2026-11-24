@@ -83,7 +83,8 @@ def catalog():
     _read_access()
     installed = set(frappe.get_all("Role", filters={"disabled": 0}, pluck="name"))
     roles = [_row(frappe.get_doc("ASOUD Role Definition", name))
-             for name in frappe.get_all("ASOUD Role Definition", pluck="name", order_by="title asc")]
+             for name in frappe.get_all("ASOUD Role Definition", filters={'template_key': ['is', 'not set']},
+                                        pluck="name", order_by="title asc")]
     categories = [{"code": row.name, "title": row.title, "style": row.style}
                   for row in frappe.get_all("ASOUD Role Category",
                       fields=["name", "title", "style"], order_by="creation asc")]
@@ -173,6 +174,8 @@ def _save(data):
     exists = frappe.db.exists("ASOUD Role Definition", code)
     if exists:
         doc = frappe.get_doc("ASOUD Role Definition", code)
+        if doc.get('template_key'):
+            frappe.throw('این پروفایل باید در پروفایل‌های دسترسی همان دفتر ویرایش شود.', frappe.PermissionError)
         profile = frappe.get_doc("Role Profile", doc.role_profile)
         if (str(doc.modified) != data.get("modified") or
                 str(profile.modified) != data.get("profile_modified")):

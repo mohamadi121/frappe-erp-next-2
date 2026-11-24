@@ -13,3 +13,4 @@ asoud_erp.patches.v0_18.add_workflow_submission_source
 asoud_erp.patches.v0_18.add_workflow_wait
 asoud_erp.patches.v0_18.normalize_module_keys
 asoud_erp.patches.v0_19.backfill_graph_snapshots
+asoud_erp.patches.v0_20.office_access_scope

@@ -64,10 +64,10 @@ class TestHRRoleGrants(APITestCase):
                         # definition's base profile, but remains administrator-only.
                         other = _user(f"hr-editor-{uuid4().hex[:10]}@example.com", ["Sales User"])
                         before = user_access.editor(code, other)["data"]
-                        applied = user_access.apply({"code": code, "user": other, "token": before["token"],
-                            "grants": before["grants"], "advanced_grants": before["advanced_grants"]})["data"]
-                        self.assertTrue(applied["applied"])
-                        self.assertIn(native, frappe.get_roles(other))
+                        with self.assertRaisesRegex(frappe.ValidationError, 'دفتر'):
+                            user_access.apply({"code": code, "user": other, "token": before["token"],
+                                "grants": before["grants"], "advanced_grants": before["advanced_grants"]})
+                        self.assertNotIn(native, frappe.get_roles(other))
                     else:
                         self.assertTrue(frappe.db.exists("ASOUD Office Role Assignment", {
                             "user": target, "role_definition": code, "company": company()}))

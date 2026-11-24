@@ -57,6 +57,7 @@ def _serialize_setup(doc) -> dict:
         "company_type": doc.company_type or "",
         "parent_office": doc.parent_office or "",
         "phone": doc.phone or "",
+        "landline": doc.get('landline') or "",
         "email": doc.email or "",
         "website": doc.website or "",
         "province": doc.province or "Tehran",
@@ -80,10 +81,35 @@ def _serialize_setup(doc) -> dict:
     }
 
 
+def _office_card(doc):
+    data = _serialize_setup(doc)
+    if frappe.has_permission('ASOUD Company Setup', 'read', doc=doc.company):
+        return data
+    # Office membership grants selection, not access to the owner's identity/contact details.
+    return {key: data[key] for key in ('company', 'office_type', 'province', 'city', 'modified',
+        'fiscal_year', 'office_saved', 'accounting_saved', 'roles_saved', 'complete')}
+
+
+@frappe.whitelist()
+def list_offices() -> dict:
+    """The same authorised offices as login, enriched for the existing office cards."""
+    from asoud_erp.api.v1.session import _require_session
+    from asoud_erp.services.login_state import accessible_offices
+    from asoud_erp.services.system_admin import is_system_admin
+
+    user = _require_session()
+    allowed = [row['id'] for row in accessible_offices(user, is_system_admin(user))]
+    rows = frappe.get_all('ASOUD Company Setup', filters={'company': ['in', allowed or ['']]},
+                          fields=['*'], order_by='modified desc', limit_page_length=0)
+    selected = frappe.defaults.get_user_default('company', user=user)
+    return success({'offices': [_office_card(row) for row in rows],
+                    'selected_office': selected if selected in allowed else None})
+
+
 @frappe.whitelist()
 def get_setup_status(company: str | None = None) -> dict:
     require_roles(("System Manager", "Accounts Manager", "Accounts User", "HR Manager"))
-    selected = company
+    selected = company or frappe.defaults.get_user_default('company')
     if not selected:
         candidates = frappe.get_all(
             "ASOUD Company Setup", pluck="company", order_by="roles_saved desc, modified desc"
@@ -101,10 +127,11 @@ def get_setup_status(company: str | None = None) -> dict:
 @frappe.whitelist(methods=["POST"])
 def set_default_office(company: str) -> dict:
     """Select the active company for the current user."""
-    require_roles(("System Manager", "Accounts Manager", "Accounts User"))
-    doc = _setup(str(company or "").strip())
-    frappe.defaults.set_user_default("company", doc.company)
-    return success(_serialize_setup(doc))
+    from asoud_erp.api.v1.session import select_office
+
+    select_office(str(company or '').strip())
+    doc = frappe.get_doc('ASOUD Company Setup', company)
+    return success(_office_card(doc))
 
 
 @frappe.whitelist(methods=["POST"])
@@ -121,6 +148,7 @@ def save_office(
     company_type: str | None = None,
     parent_office: str | None = None,
     phone: str | None = None,
+    landline: str | None = None,
     email: str | None = None,
     website: str | None = None,
     province: str | None = None,
@@ -158,6 +186,7 @@ def save_office(
     try:
         normalized_id = office_validation.identity(national_id, legal=office_type == "Legal")
         phone = office_validation.mobile(phone)
+        landline = office_validation.landline(landline) if landline is not None else None
         postal_code = office_validation.postal_code(postal_code)
         website = office_validation.website(website)
         normalized_economic_code = validate_economic_code(economic_code)
@@ -178,6 +207,7 @@ def save_office(
                     and (existing.national_id or "") == (normalized_id or "")
                 )
                 if same_identity:
+                    require_company(duplicate)
                     return success(_serialize_setup(existing))
             frappe.throw(_("A company with this name already exists"))
         try:
@@ -195,7 +225,13 @@ def save_office(
         )
         # The explicit gate above authorises the creator; Frappe's DocPerm for Company is not
         # what grants it (the creator holds no accounting role).
-        company_doc.insert(ignore_permissions=creator_only)
+        # New-company creation was explicitly authorised above. Existing Company
+        # User Permissions cannot contain an office that does not exist yet.
+        company_doc.insert(ignore_permissions=True)
+        if frappe.session.user != 'Administrator':
+            from frappe.permissions import add_user_permission
+
+            add_user_permission('Company', company_doc.name, frappe.session.user, ignore_permissions=True)
 
     setup_exists = bool(frappe.db.exists("ASOUD Company Setup", company_doc.name))
     setup = (
@@ -213,6 +249,8 @@ def save_office(
     setup.company_type = str(company_type or "").strip()
     setup.parent_office = str(parent_office or "").strip()
     setup.phone = normalize_numeric_text(phone) or ""
+    if landline is not None:
+        setup.landline = landline
     setup.email = str(email or "").strip()
     setup.website = str(website or "").strip()
     setup.province = str(province or "Tehran").strip()

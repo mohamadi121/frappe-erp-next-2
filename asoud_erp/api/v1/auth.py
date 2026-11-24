@@ -108,8 +108,16 @@ def sync_employee_access(
     user.set("roles", [{"role": role} for role in sorted(set(retained) | set(frappe_roles))])
     user.save(ignore_permissions=True)
     employee.user_id = user.name
-    employee.create_user_permission = 1
+    # HR's explicit, company-checked account-management gate authorises the
+    # personal filter. Native Employee.on_update otherwise attempts to insert a
+    # User Permission with HR's unrelated global configuration privileges.
+    employee.create_user_permission = int(bool(frappe.db.exists('User Permission', {
+        'user': user.name, 'allow': 'Employee', 'for_value': employee.name})))
     employee.save(ignore_permissions=True)
+    from frappe.permissions import add_user_permission
+
+    add_user_permission('Employee', employee.name, user.name, ignore_permissions=True)
+    employee.db_set('create_user_permission', 1)
     _ensure_data_scope(employee)
 
     profile.employee_roles = json.dumps(canonical_roles)

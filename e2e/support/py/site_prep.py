@@ -249,6 +249,9 @@ def ensure() -> dict:
     ensure_employee("e2e.outsider@example.com", "E2E Outsider")
     ensure_employee("e2e.hr@example.com", "E2E HR")
     ensure_second_company()
+    # System Manager is not office membership. This fixture manages its own
+    # explicitly assigned office, not every company created on the test site.
+    ensure_company_permission('e2e.admin@example.com', company())
     ensure_company_permission("e2e.accounts@example.com", company())
     ensure_company_permission("e2e.hr@example.com", company())
     frappe.db.commit()
@@ -337,6 +340,30 @@ def main() -> None:
         result = ensure()
     elif action == "status":
         result = state()
+    elif action == 'office-access-fixture':
+        import secrets
+
+        from asoud_erp.services import office_permission_profiles as access
+
+        ensure_user_roles('e2e.admin@example.com', ['System Manager', 'Accounts Manager', 'ASOUD Role Assigner'])
+        employee = frappe.get_doc({'doctype': 'Employee', 'first_name': 'E2E Access',
+            'gender': 'Male', 'date_of_birth': '1990-01-01', 'date_of_joining': '2020-01-01',
+            'company': company(), 'status': 'Active', 'create_user_permission': 0}).insert(ignore_permissions=True)
+        account = access.create_account(company(), employee.name,
+            '09' + str(secrets.randbelow(10**9)).zfill(9), method='mobile')
+        own = frappe.get_doc({'doctype': 'Journal Entry', 'company': company(), 'posting_date': frappe.utils.nowdate(),
+            'accounts': []})
+        # HTTP direct-read fixtures need no business posting: DB insert creates
+        # isolated drafts only, never ledger entries or submitted documents.
+        own.set_new_name()
+        own.db_insert()
+        foreign = frappe.get_doc({'doctype': 'Journal Entry', 'company': ensure_second_company(),
+            'posting_date': frappe.utils.nowdate(), 'accounts': []})
+        foreign.set_new_name()
+        foreign.db_insert()
+        frappe.db.commit()
+        result = {'employee': employee.name, 'user': account['user'], 'token': account['token'],
+            'own': own.name, 'foreign': foreign.name}
     elif action == "activate":
         result = activate(options["definition"])
     elif action == "mark-active":

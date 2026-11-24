@@ -118,6 +118,12 @@ class LoginOnboardingBase(APITestCase):
                 frappe.get_doc({"doctype": "Role", "role_name": role, "desk_access": 0}).insert()
         fresh_user(ADMIN, ["System Manager"])
         fresh_user(ADMIN2, ["System Manager"])
+        from frappe.permissions import add_user_permission
+
+        # A named System Manager is not a global office owner. These legacy
+        # administrative scenarios now declare their actual fixture office.
+        add_user_permission('Company', cls.company, ADMIN, ignore_permissions=True)
+        add_user_permission('Company', cls.company, ADMIN2, ignore_permissions=True)
         # ERPNext strips the Employee role from accounts without a personnel file, so the plain accounts
         # carry another desk role; the HR lead is a real employee of the office.
         fresh_user(HR_USER, ["HR Manager"])
@@ -558,7 +564,7 @@ class TestRoleCatalogAndHrModes(LoginOnboardingBase):
         with self.assertRaises(frappe.ValidationError):
             self.make_role("LOADM", ["System Manager"], scope="office")
 
-    def test_advanced_mode_differs_from_medium_and_is_applied(self):
+    def test_legacy_advanced_catalog_is_readable_but_companyless_write_is_blocked(self):
         self.login(ADMIN)
         self.make_role("LOHR3", ["Employee"])
         editor = user_access.editor("LOHR3")["data"]
@@ -575,11 +581,13 @@ class TestRoleCatalogAndHrModes(LoginOnboardingBase):
         advanced = {dt: [] for dt in rows}
         grants["Leave Application"] = ["read", "create"]
         advanced["Leave Application"] = ["submit", "print"]
-        user_access.apply(json.dumps({"code": "LOHR3", "grants": grants, "advanced_grants": advanced,
-                                      "token": editor["token"]}))
+        audit_count = len(audit('role.permission_change', target='LOHR3'))
+        with self.assertRaisesRegex(frappe.ValidationError, 'دفتر'):
+            user_access.apply(json.dumps({"code": "LOHR3", "grants": grants, "advanced_grants": advanced,
+                                          "token": editor["token"]}))
         after = user_access.editor("LOHR3")["data"]
-        self.assertEqual(after["grants"]["Leave Application"], ["create", "read"])
-        self.assertEqual(after["advanced_grants"]["Leave Application"], ["print", "submit"])
+        self.assertEqual(after["grants"], editor["grants"])
+        self.assertEqual(after["advanced_grants"], editor["advanced_grants"])
         # an action the document type does not offer is refused
         bad = {dt: [] for dt in rows}
         bad["Department"] = ["submit"]
@@ -592,9 +600,9 @@ class TestRoleCatalogAndHrModes(LoginOnboardingBase):
         with self.assertRaises(frappe.ValidationError):
             user_access.apply(json.dumps({"code": "LOHR3", "grants": {dt: [] for dt in rows},
                                           "advanced_grants": nore, "token": after["token"]}))
-        self.assertTrue(audit("role.permission_change", target="LOHR3"))
+        self.assertEqual(len(audit('role.permission_change', target='LOHR3')), audit_count)
 
-    def test_older_client_without_advanced_keys_keeps_extras(self):
+    def test_older_client_companyless_write_does_not_change_existing_extras(self):
         self.login(ADMIN)
         self.make_role("LOHR4", ["Employee"])
         editor = user_access.editor("LOHR4")["data"]
@@ -603,13 +611,21 @@ class TestRoleCatalogAndHrModes(LoginOnboardingBase):
         grants["Leave Application"] = ["read"]
         advanced = {dt: [] for dt in rows}
         advanced["Leave Application"] = ["print"]
-        user_access.apply(json.dumps({"code": "LOHR4", "grants": grants, "advanced_grants": advanced,
-                                      "token": editor["token"]}))
+        from frappe.permissions import add_permission, update_permission_property
+
+        role = user_access._native('LOHR4')
+        frappe.get_doc({'doctype': 'Role', 'role_name': role}).insert(ignore_permissions=True)
+        add_permission('Leave Application', role)
+        update_permission_property('Leave Application', role, 0, 'read', 1, validate=False)
+        update_permission_property('Leave Application', role, 0, 'print', 1, validate=False)
+        frappe.clear_cache(doctype='Leave Application')
         token = user_access.editor("LOHR4")["data"]["token"]
+        previous = user_access.editor('LOHR4')['data']['advanced_grants']
         grants["Leave Application"] = ["read", "write"]
-        user_access.apply(json.dumps({"code": "LOHR4", "grants": grants, "token": token}))
+        with self.assertRaisesRegex(frappe.ValidationError, 'دفتر'):
+            user_access.apply(json.dumps({"code": "LOHR4", "grants": grants, "token": token}))
         after = user_access.editor("LOHR4")["data"]
-        self.assertEqual(after["advanced_grants"]["Leave Application"], ["print"])
+        self.assertEqual(after['advanced_grants'], previous)
 
     def test_role_completion_and_summary(self):
         self.login(ADMIN)
@@ -632,9 +648,10 @@ class TestRoleCatalogAndHrModes(LoginOnboardingBase):
         doctypes = [r["doctype"] for r in editor["catalog"]]
         grants = {dt: [] for dt in doctypes}
         grants["Leave Application"] = ["read"]
-        user_access.apply(json.dumps({"code": "LOEMPTY", "grants": grants, "token": editor["token"]}))
+        with self.assertRaisesRegex(frappe.ValidationError, 'دفتر'):
+            user_access.apply(json.dumps({"code": "LOEMPTY", "grants": grants, "token": editor["token"]}))
         after = {r["code"]: r for r in role_management.catalog()["data"]["roles"]}
-        self.assertEqual(after["LOEMPTY"]["completion"], "complete")
+        self.assertEqual(after["LOEMPTY"]["completion"], "incomplete")
 
 
 class TestRoleAssignment(LoginOnboardingBase):

@@ -14,9 +14,12 @@
     "description",
     "enabled",
     "scope",
-    "is_system"
+    "is_system", "company", "template_permissions", "template_key"
   ],
   "fields": [
+    {"fieldname": "company", "fieldtype": "Link", "options": "Company", "label": "Office", "read_only": 1},
+    {"fieldname": "template_permissions", "fieldtype": "Code", "options": "JSON", "label": "Permission Template", "read_only": 1},
+    {"fieldname": "template_key", "fieldtype": "Data", "label": "Office Template Key", "unique": 1, "read_only": 1},
     {
       "fieldname": "role_code",
       "label": "Role Code",

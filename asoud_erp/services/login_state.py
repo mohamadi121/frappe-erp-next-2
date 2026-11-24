@@ -36,7 +36,7 @@ def accessible_offices(user: str, admin: bool) -> list[dict]:
     offices = []
     for office in saved_offices():
         company = office["company"]
-        if not (admin or company_access(company, user)):
+        if not (user == 'Administrator' or company_access(company, user)):
             continue
         offices.append({
             "id": company, "title": company, "office_type": office.office_type,

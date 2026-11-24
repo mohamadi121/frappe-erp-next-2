@@ -10,12 +10,69 @@
  *    `require_company` with 403 "Company access denied".
  */
 
-import { expect, test } from '../support/fixtures';
+import { ApiSession, expect, test } from '../support/fixtures';
 import { METHOD, errorText } from '../support/api';
 import { RUN_ID, requestId, subject } from '../support/config';
 import { loadState, sitePrep } from '../support/state';
 
 const state = loadState();
+
+test('office profiles copy explicitly and enforce native direct-link boundaries over HTTP', async ({api}) => {
+  const fixture = sitePrep<{employee: string; user: string; token: string; own: string; foreign: string}>('office-access-fixture');
+  const admin = await api.login('admin'); // explicit office delegate, no Employee
+  const outsider = await api.login('employee');
+  const guest = await api.anonymous();
+  const prefix = 'asoud_erp.api.v1.access_profiles.';
+  const profile = await admin.mutate<{name: string; modified: string}>(prefix + 'save_profile', {
+    company: state.company, title: `E2E Profile ${RUN_ID}`, grants: {'Journal Entry': ['read']},
+  });
+  expect((await outsider.get(prefix + 'list_profiles', {company: state.company})).status).toBe(403);
+  expect((await guest.get(prefix + 'list_profiles', {company: state.company})).status).toBe(403);
+  expect((await admin.get(prefix + 'get_profile', {company: state.second_company, name: profile.name})).status).toBe(403);
+  await admin.mutate(prefix + 'save_account_access', {
+    company: state.company, employee: fixture.employee, token: fixture.token,
+    profile: profile.name, grants: {'Journal Entry': ['read']},
+  });
+  const account = await admin.read<{grants: Record<string, string[]>}>(prefix + 'get_account', {
+    company: state.company, employee: fixture.employee,
+  });
+  expect(account.grants['Journal Entry']).toEqual(['read']);
+  // Login uses the existing one-time-password flow, without printing it.
+  const activation = await admin.mutate<{temporary_password: string}>(prefix + 'invite_account', {
+    company: state.company, employee: fixture.employee,
+  });
+  const managed = await ApiSession.login((await api.anonymous()).context, fixture.user, activation.temporary_password);
+  await managed.mutate('asoud_erp.api.v1.account_security.change_password', {
+    current_password: activation.temporary_password,
+    new_password: 'Test-Office-Access-Long-2026!', repeat_password: 'Test-Office-Access-Long-2026!',
+  });
+  expect((await managed.get('frappe.client.get', {doctype: 'Journal Entry', name: fixture.own})).status).toBe(200);
+  expect((await managed.get('frappe.client.get', {doctype: 'Journal Entry', name: fixture.foreign})).status).toBe(403);
+  await admin.mutate(prefix + 'save_profile', {company: state.company, name: profile.name,
+    modified: profile.modified, title: `E2E Profile ${RUN_ID}`, grants: {}});
+  expect((await managed.get('frappe.client.get', {doctype: 'Journal Entry', name: fixture.own})).status).toBe(200);
+});
+
+test('office cards share login scope and reject foreign selection over HTTP', async ({api}) => {
+  const admin = await api.login('admin');
+  const employee = await api.login('employee');
+  const guest = await api.anonymous();
+  const prefix = 'asoud_erp.api.v1.';
+  await admin.mutate(prefix + 'setup.save_office', {
+    company: state.company, company_name: state.company, office_type: 'Personal',
+  });
+  const login = await employee.get<{offices: {id: string}[]}>(prefix + 'session.login_state');
+  const cards = await employee.get<{offices: {company: string; national_id?: string}[]}>(prefix + 'setup.list_offices');
+  expect(cards.status, errorText(cards)).toBe(200);
+  expect(cards.envelope.data.offices.map(row => row.company).sort()).toEqual(
+    login.envelope.data.offices.map(row => row.id).sort());
+  expect(cards.envelope.data.offices.find(row => row.company === state.company)).toBeTruthy();
+  expect(cards.envelope.data.offices.some(row => row.company === state.second_company)).toBe(false);
+  expect(cards.envelope.data.offices.every(row => row.national_id === undefined)).toBe(true);
+  expect((await employee.post(prefix + 'setup.set_default_office', {company: state.company})).status).toBe(200);
+  expect((await employee.post(prefix + 'setup.set_default_office', {company: state.second_company})).status).toBe(403);
+  expect((await guest.get(prefix + 'setup.list_offices')).status).toBe(403);
+});
 
 interface CreatedRequest {
   name: string;

@@ -1,5 +1,7 @@
 # ASOUD ERP API v1 — conventions
 
+Office cards and selection: [shared authorised scope and contact validation](offices.md).
+
 Workflow user actions: [result forms and shared assignment](workflow-user-actions.md).
 
 Draft path editing: [native insertion, cancellation and safe deletion](workflow-paths.md).
@@ -133,4 +135,6 @@ See [workflow start settings](workflow-start-settings.md) for the additive start
 source-selection and start-audit contract on the existing APIs.
 
 End stage: [existing settings, terminal outcomes and history](workflow-end.md).
+
+Access profiles: [office-bound templates, account grants and open limitations](access-profiles.md).
 

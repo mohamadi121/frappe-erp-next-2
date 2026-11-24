@@ -23,9 +23,11 @@ from asoud_erp.services.system_admin import SYSTEM_ADMIN_ROLE, is_system_admin, 
 
 def definition_info(code: str) -> dict:
     row = frappe.db.get_value("ASOUD Role Definition", code,
-                              ["name", "title", "enabled", "scope", "role_profile"], as_dict=True)
+                              ["name", "title", "enabled", "scope", "role_profile", "template_key"], as_dict=True)
     if not row:
         frappe.throw("نقش یافت نشد.", frappe.DoesNotExistError)
+    if row.template_key:
+        frappe.throw('پروفایل دسترسی نقش سازمانی یا فنی نیست؛ از تب دسترسی‌های حساب استفاده کنید.')
     if not row.enabled:
         frappe.throw("نقش غیرفعال است و قابل اختصاص نیست.")
     base = frappe.get_all("Has Role", filters={"parenttype": "Role Profile", "parent": row.role_profile},

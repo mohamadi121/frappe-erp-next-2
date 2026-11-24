@@ -92,3 +92,35 @@ personnel roles) those keys are absent from the response — the rest of the
 profile is unaffected. This follows the personnel contract: bank data is
 manager-only, and the bank account of an employee is never part of any party
 API response.
+
+## Shared form refinements (compatibility mode)
+
+- `get_form_options(company)` returns native `gender`, `employment_type`,
+  `job_title`, `department`, `bank` lists, `can_edit_financial` and
+  `warnings`. IDs are native names. Department is company-filtered; no position
+  assignment is created by this form. Each list is limited to 300 rows.
+- New/changed bank values validate Iranian IBAN (IR + 24 digits, MOD-97) and
+  16-digit card checksum. Unchanged historical bank values are not rewritten.
+- Currency input is validated using Decimal before native Currency storage.
+  Credit needs the existing financial-manager gate. Existing opening-balance
+  metadata is preserved; this endpoint cannot create/change an opening amount
+  without an accounting period/document. Use the existing accounting workflow.
+- Existing profile company cannot be moved through a normal edit.
+- Historical identity uniqueness, global floating-detail codes and Employee/User
+  links are unchanged. Shared per-office codes and shared-login HR membership
+  remain explicitly deferred. No migration or backfill is introduced here.
+
+### Deferred scope, explicitly frozen by owner
+
+The existing global `national_id` uniqueness, global `ASOUD Floating Detail.detail_code`
+primary identity, multiple details per party, Employee/User relationship and old
+personnel creation role gates remain unchanged. Shared-login office/Employee
+membership and the proposed shared display code/migration are NOT implemented.
+No data migration, identity merge, code reassignment or production mutation was run.
+
+The UI offers reuse of a visible existing same-office profile through
+`list_parties(company, search)`; it opens the existing edit flow and adds the
+chosen relationship without creating another profile. It does not infer an
+identity across offices. Financial/bank values remain on the party master and are
+not added to personnel self-service APIs. No new operational role grants login
+or permissions during this form's save.

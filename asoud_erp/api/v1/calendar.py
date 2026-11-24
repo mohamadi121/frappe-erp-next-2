@@ -2,9 +2,10 @@
 import hashlib
 import json
 import re
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from html import escape
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 import frappe
 from frappe.utils import get_datetime, get_system_timezone, now_datetime
@@ -68,30 +69,197 @@ def personal_row(scope, event):
     end = get_datetime(event.ends_on or event.starts_on)
     return dict(id=scope.client_id, kind=scope.kind, title=event.subject,
                 date=str(start.date()), end_date=str((end - timedelta(seconds=1)).date()) if event.all_day else str(start.date()),
-                time=start.strftime('%H:%M'), done=event.status == 'Completed', version=str(event.modified))
+                time=start.strftime('%H:%M'), end_time=end.strftime('%H:%M'),
+                all_day=bool(event.all_day),
+                starts_at=None if event.all_day else _instant(start),
+                ends_at=None if event.all_day else _instant(end),
+                done=event.status == 'Completed', version=str(event.modified))
+
+
+def _instant(value):
+    clock = get_datetime(value)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=ZoneInfo(get_system_timezone()))
+    return clock.astimezone(timezone.utc).isoformat()
+
+
+def _native_items(company, start, end):
+    """Native calendar expansion + existing HR sources, strictly office/personal scoped."""
+    from frappe.desk.doctype.event.event import get_events
+
+    items = []
+    # No office may be guessed for a global Event. Native reference binds it to Company.
+    if frappe.has_permission("Event", "read") and frappe.get_meta("Event").has_field("reference_doctype"):
+        events = get_events(str(start), str(end), filters={
+            "reference_doctype": "Company", "reference_docname": company})
+        completed = frappe.get_list("Event", filters={
+            "reference_doctype": "Company", "reference_docname": company,
+            "status": "Completed", "starts_on": ["<", str(end + timedelta(days=1))],
+            "ends_on": [">=", str(start)]}, pluck="name", limit_page_length=2001)
+        events.extend(frappe.get_doc("Event", name) for name in completed)
+        if len(events) > 2000:
+            fail("تعداد برنامه‌ها زیاد است؛ بازه کوچک‌تری انتخاب کنید.")
+        for event in events:
+            if frappe.db.exists(SCOPE, {'company': company, 'user': frappe.session.user,
+                    'event': event.name, 'active': 1}):
+                continue
+            original = frappe.get_cached_doc("Event", event.name)
+            if original.owner != frappe.session.user and not any(
+                    p.email == frappe.session.user and p.attending != "No"
+                    for p in original.event_participants):
+                continue
+            if not frappe.has_permission("Event", "read", original):
+                continue
+            began = get_datetime(event.starts_on)
+            ended = get_datetime(event.ends_on or event.starts_on)
+            items.append(dict(id="event:" + event.name + ":" + began.isoformat(),
+                source_type="Event", source_id=event.name,
+                kind="Meeting" if original.event_category == "Meeting" else "Event",
+                title=event.subject, date=str(began.date()), end_date=str(ended.date()),
+                time="" if event.all_day else began.strftime("%H:%M"),
+                end_time="" if event.all_day else ended.strftime("%H:%M"),
+                all_day=bool(event.all_day), starts_at=None if event.all_day else _instant(began),
+                ends_at=None if event.all_day else _instant(ended), done=original.status == "Completed",
+                detail=original.location or ""))
+    employees = frappe.get_all("Employee", filters={
+        "company": company, "user_id": frappe.session.user, "status": "Active"}, pluck="name")
+    if not employees:
+        return items
+    # Same self-service boundary as hr_self_service._mine, additionally office-filtered.
+    if frappe.db.exists("DocType", "Attendance Request"):
+        missions = frappe.get_all("Attendance Request", filters={
+            "company": company, "employee": ["in", employees], "reason": "On Duty",
+            "docstatus": ["!=", 2], "from_date": ["<=", end], "to_date": [">=", start]},
+            fields=["name", "from_date", "to_date", "docstatus", "explanation"],
+            limit_page_length=2001)
+        if len(missions) > 2000:
+            fail("تعداد مأموریت‌ها زیاد است؛ بازه کوچک‌تری انتخاب کنید.")
+        for mission in missions:
+            items.append(dict(id="mission:" + mission.name, source_type="Attendance Request",
+                source_id=mission.name, kind="Mission", title="مأموریت",
+                date=str(mission.from_date), end_date=str(mission.to_date),
+                all_day=True, done=False, detail=mission.explanation or "",
+                record_status="ثبت‌شده" if mission.docstatus == 1 else "پیش‌نویس"))
+    if frappe.db.exists("DocType", "Travel Request"):
+        # Filter the native itinerary in SQL before reading documents, never fetch years of records.
+        names = frappe.db.sql_list("""select distinct t.name from `tabTravel Request` t
+            inner join `tabTravel Itinerary` i on i.parent=t.name and i.parenttype='Travel Request'
+            where t.company=%(company)s and t.employee in %(employees)s and t.docstatus!=2
+            and i.departure_date<=%(end)s
+            and coalesce(i.arrival_date,i.departure_date)>=%(start)s limit 2001""",
+            dict(company=company, employees=employees, start=start, end=end))
+        if len(names) > 2000:
+            fail("تعداد مأموریت‌ها زیاد است؛ بازه کوچک‌تری انتخاب کنید.")
+        for name in names:
+            mission = frappe.get_doc("Travel Request", name)
+            for leg in mission.itinerary:
+                if not leg.departure_date:
+                    continue
+                began, ended = day(str(leg.departure_date)), day(str(leg.arrival_date or leg.departure_date))
+                if began > end or ended < start:
+                    continue
+                items.append(dict(id="travel:" + name + ":" + leg.name,
+                    source_type="Travel Request", source_id=name, kind="Mission",
+                    title="مأموریت", date=str(began), end_date=str(ended), all_day=True,
+                    done=False, detail=(leg.travel_from or "") + " ← " + (leg.travel_to or ""),
+                    record_status="ثبت‌شده" if mission.docstatus == 1 else "پیش‌نویس"))
+    return items
+
+
+def _action_items(company, start, end, *, only_range=False):
+    """Read the existing personal inbox; never create calendar copies of tasks."""
+    from asoud_erp.api.v1.workflow_runtime import _assert_generic_access, list_my_workflow_tasks
+    from asoud_erp.services.request_link_values import workflow_company
+
+    counts = dict(waiting=0, overdue=0, high_priority=0)
+    items, scopes, references = [], {}, {}
+    cursor = 0
+    clock = now_datetime()
+    while True:
+        page = list_my_workflow_tasks(status="Open", start=cursor, paged=1)["data"]
+        for task in page["items"]:
+            due = get_datetime(task["due_on"]) if task.get("due_on") else None
+            if only_range and (not due or not start <= due.date() <= end):
+                continue
+            instance_id = task.get("workflow_instance")
+            if not instance_id:
+                continue  # No provable office: never infer from a user's other offices.
+            try:
+                _assert_generic_access(frappe.get_doc('ASOUD Workflow Task', task['name']))
+            except frappe.PermissionError:
+                continue
+            if instance_id not in scopes:
+                scopes[instance_id] = workflow_company(instance_id)
+            if scopes[instance_id] != company:
+                continue
+            if instance_id not in references:
+                instance = frappe.db.get_value("ASOUD Workflow Instance", instance_id,
+                    ["reference_doctype", "reference_name", "status"], as_dict=True)
+                priority = ""
+                if instance and instance.reference_doctype and instance.reference_name:
+                    meta = frappe.get_meta(instance.reference_doctype)
+                    if meta.has_field("priority"):
+                        priority = frappe.db.get_value(instance.reference_doctype,
+                            instance.reference_name, "priority") or ""
+                references[instance_id] = (instance, priority)
+            instance, priority = references[instance_id]
+            if not instance or instance.status != "Running":
+                continue
+            overdue = bool(due and due < clock)
+            counts["waiting"] += 1
+            counts["overdue"] += int(overdue)
+            counts["high_priority"] += int(priority in ("High", "Urgent"))
+            if due and start <= due.date() <= end:
+                items.append(dict(id="task:" + task["name"], source_type="Task",
+                    source_id=task["name"], kind="Deadline", title=task["task_title"],
+                    date=str(due.date()), end_date=str(due.date()), time=due.strftime("%H:%M"),
+                    deadline=True, overdue=overdue, done=False))
+        next_cursor = page.get("next_cursor")
+        if next_cursor is None:
+            break
+        if int(next_cursor) <= cursor:
+            fail("دریافت کامل کارتابل انجام نشد؛ دوباره تلاش کنید.")
+        cursor = int(next_cursor)
+    return counts, items
 
 
 @frappe.whitelist()
-def get_calendar(company, start, end):
+def get_calendar(company, start, end, summary_only=0):
     require_company(company)
     start, end = day(start), day(end)
     if end < start or (end - start).days > 62:
         fail('بازه تقویم حداکثر ۶۳ روز است.')
+    source_warnings = []
+    if str(summary_only) == "1":
+        counts, _ = _action_items(company, start, end)
+        return success(dict(action_counts=counts, timezone=get_system_timezone()))
+    counts, action_items = None, []
+    try:
+        _, action_items = _action_items(company, start, end, only_range=True)
+    except frappe.PermissionError:
+        source_warnings.append("دسترسی به برنامه‌های کارتابل تأیید نشد.")
+    except Exception:
+        frappe.log_error(title="Calendar inbox adapter")
+        source_warnings.append("برنامه‌های کارتابل دریافت نشد؛ دوباره تلاش کنید.")
+    native_items = []
+    try:
+        native_items = _native_items(company, start, end)
+    except Exception:
+        frappe.log_error(title="Calendar native sources")
+        source_warnings.append("جلسه‌ها و مأموریت‌ها کامل دریافت نشدند؛ دوباره تلاش کنید.")
     # Scope is a private binding to native Event, not a duplicate task ledger.
-    records = frappe.db.sql('''select s.name from `tabASOUD Calendar Scope` s
+    records = frappe.db.sql('''select s.client_id, s.kind, e.subject, e.starts_on, e.ends_on,
+        e.all_day, e.status, e.modified from `tabASOUD Calendar Scope` s
         inner join `tabEvent` e on e.name=s.event
-        where s.company=%s and s.user=%s and s.active=1
+        where s.company=%s and s.user=%s and s.active=1 and e.owner=%s and e.status!='Cancelled'
         and e.starts_on < %s and coalesce(e.ends_on,e.starts_on) >= %s
         order by e.starts_on limit 2001''',
-        (company, frappe.session.user, str(end + timedelta(days=1)), str(start)), as_dict=True)
+        (company, frappe.session.user, frappe.session.user, str(end + timedelta(days=1)), str(start)), as_dict=True)
     if len(records) > 2000:
         fail('تعداد موارد زیاد است؛ بازه کوچک‌تری انتخاب کنید.')
-    items = []
+    items = [*action_items, *native_items]
     for record in records:
-        scope = frappe.get_doc(SCOPE, record.name)
-        event = frappe.get_doc('Event', scope.event)
-        if event.owner == frappe.session.user and event.status != 'Cancelled':
-            items.append(personal_row(scope, event))
+        items.append(personal_row(record, record))
     for kind, filters in [('Organization', {'company': company}), ('Official', {'kind': 'Official'})]:
         filters.update(kind=kind, start_date=['<=', end], end_date=['>=', start], active=1)
         holidays = frappe.get_all(HOLIDAY, filters=filters, fields=['name', 'title', 'start_date', 'end_date', 'modified'], limit_page_length=2001)
@@ -107,7 +275,7 @@ def get_calendar(company, start, end):
         and s.user=%s and s.company=%s and s.active=1 and e.owner=%s
         order by n.creation desc limit 20''',
         (frappe.session.user, frappe.session.user, company, frappe.session.user), as_dict=True)
-    return success(dict(items=items, alerts=alerts, can_manage=manager(), timezone=get_system_timezone(),
+    return success(dict(items=items, alerts=alerts, action_counts=counts, source_warnings=source_warnings, can_manage=manager(), timezone=get_system_timezone(),
         official_status='تعطیلات رسمی از آخرین داده تأییدشده نمایش داده می‌شوند.' if frappe.conf.get('asoud_calendar_provider') else
         'فقط تعطیلات رسمی واردشده و تأییدشده نمایش داده می‌شوند؛ اتصال خودکار منبع هنوز فعال نیست.'))
 

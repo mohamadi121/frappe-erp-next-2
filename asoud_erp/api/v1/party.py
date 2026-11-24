@@ -2,16 +2,21 @@ import json
 
 import frappe
 from frappe import _
+from frappe.utils import getdate, nowdate
 
 from asoud_erp.api.v1.responses import success
 from asoud_erp.services.detail_code_service import next_detail_code
 from asoud_erp.services.erp_documents import require_roles
 from asoud_erp.services.party_validation import (
+    financial_amount,
     is_valid_iranian_legal_id,
     is_valid_iranian_mobile,
     is_valid_iranian_national_code,
+    normalize_iban,
     normalize_numeric,
     normalize_optional,
+    valid_card,
+    valid_iban,
 )
 from asoud_erp.services.request_access import require_company
 
@@ -40,6 +45,8 @@ def _parse_detail_groups(detail_groups: str | list[str] | None) -> list[str]:
 
 def _parse_roles(roles: str | list[str]) -> list[str]:
     values = json.loads(roles) if isinstance(roles, str) else roles
+    if not isinstance(values, list):
+        frappe.throw("حداقل یک نوع ارتباط معتبر انتخاب کنید.")
     normalized = list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
     invalid = set(normalized) - ALLOWED_ROLES
     if invalid or not normalized:
@@ -202,6 +209,30 @@ EMPLOYEE_SHARED_FIELDS = ("display_name", "mobile", "email", "province", "city",
 def _require_personnel_master() -> None:
     if not set(PERSONNEL_ROLES).intersection(frappe.get_roles()):
         frappe.throw(_("Personnel records can only be edited by an HR manager"), frappe.PermissionError)
+
+
+@frappe.whitelist()
+def get_form_options(company):
+    require_roles(("System Manager", "Accounts Manager", "Accounts User", "HR Manager"))
+    require_company(company)
+    result = dict(can_edit_financial=_may_read_bank_details(), warnings=[])
+    sources = {"gender": "Gender", "employment_type": "Employment Type",
+               "job_title": "Designation", "department": "Department", "bank": "Bank"}
+    for key, doctype in sources.items():
+        result[key] = []
+        if key == "bank" and not result["can_edit_financial"]:
+            continue
+        filters = {"company": company, "disabled": 0} if key == "department" else {}
+        try:
+            rows = frappe.get_list(doctype, filters=filters, pluck="name",
+                                   order_by="name", limit_page_length=301)
+            if len(rows) > 300:
+                result["warnings"].append("فهرست " + {"department": "واحدها", "job_title": "سمت‌ها"}.get(key, "گزینه‌ها") +
+                                          " طولانی است؛ انتخاب را از صفحه اصلی همان بخش انجام دهید.")
+            result[key] = rows[:300]
+        except frappe.PermissionError:
+            result["warnings"].append("بعضی فهرست‌ها با مجوز حساب شما قابل دریافت نیستند.")
+    return success(result)
 
 
 @frappe.whitelist()
@@ -369,12 +400,6 @@ def save_party(
     national_id = normalize_numeric(national_id)
     mobile = normalize_numeric(mobile)
     email = normalize_optional(email)
-    if national_id and party_type == "Individual" and not is_valid_iranian_national_code(national_id):
-        frappe.throw(_("Iranian national code is not valid"))
-    if national_id and party_type == "Organization" and not is_valid_iranian_legal_id(national_id):
-        frappe.throw(_("Iranian legal entity ID must contain 11 valid digits"))
-    if mobile and not is_valid_iranian_mobile(mobile):
-        frappe.throw(_("Iranian mobile number is not valid"))
 
     if name:
         doc = frappe.get_doc("ASOUD Party Profile", name)
@@ -382,6 +407,10 @@ def save_party(
         # caller scoped to another company load and move it (F-P1).
         if doc.company:
             require_company(doc.company)
+        if doc.employee:
+            _require_personnel_master()
+            if party_type != 'Individual':
+                frappe.throw('پرونده متصل به پرسنل نمی‌تواند به شخص حقوقی تبدیل شود.')
     else:
         duplicate = frappe.db.exists("ASOUD Party Profile", {"national_id": national_id}) if national_id else None
         if duplicate:
@@ -394,6 +423,76 @@ def save_party(
     if target_company:
         require_company(target_company)
 
+    if name and doc.company and target_company != doc.company:
+        frappe.throw("دفتر پرونده از این فرم قابل تغییر نیست.", frappe.PermissionError)
+    identity_unchanged = bool(name and doc.party_type == party_type and
+                              normalize_numeric(doc.national_id) == national_id)
+    if not identity_unchanged and national_id and party_type == "Individual" and not is_valid_iranian_national_code(national_id):
+        frappe.throw(_("Iranian national code is not valid"))
+    if not identity_unchanged and national_id and party_type == "Organization" and not is_valid_iranian_legal_id(national_id):
+        frappe.throw(_("Iranian legal entity ID must contain 11 valid digits"))
+    if mobile and not is_valid_iranian_mobile(mobile):
+        frappe.throw(_("Iranian mobile number is not valid"))
+
+    if normalize_optional(website) != normalize_optional(doc.get("website")):
+        from asoud_erp.services.office_validation import website as validate_website
+
+        try:
+            website = validate_website(website)
+        except ValueError:
+            frappe.throw("نشانی وب‌سایت معتبر نیست.")
+    if department:
+        actual_company = frappe.db.get_value("Department", department, "company")
+        if actual_company and actual_company != target_company:
+            frappe.throw("واحد سازمانی متعلق به این دفتر نیست.", frappe.PermissionError)
+    if birth_date:
+        try:
+            if getdate(birth_date) > getdate(nowdate()):
+                frappe.throw("تاریخ تولد نباید در آینده باشد.")
+        except (TypeError, ValueError):
+            frappe.throw("تاریخ تولد معتبر نیست.")
+    try:
+        old_credit = financial_amount(doc.get("credit_limit"))
+        old_opening = financial_amount(doc.get("opening_balance"))
+        # Optional API fields omitted by partial edits must not silently reset
+        # values already stored on the party profile.
+        credit = old_credit if name and credit_limit is None else financial_amount(credit_limit)
+        opening = old_opening if name and opening_balance is None else financial_amount(opening_balance)
+    except ValueError as exc:
+        frappe.throw(str(exc))
+    requested_balance_type = (
+        (doc.get("balance_type") or "None")
+        if name and balance_type is None
+        else (normalize_optional(balance_type) or "None")
+    )
+    if requested_balance_type not in ("None", "Debit", "Credit"):
+        frappe.throw("نوع مانده اول دوره معتبر نیست.")
+    if opening != old_opening or requested_balance_type != (doc.get("balance_type") or "None"):
+        frappe.throw("مانده اول دوره باید با دوره مالی و سند حسابداری ثبت شود؛ از بخش حسابداری اقدام کنید.")
+    if credit != financial_amount(doc.get("credit_limit")) and not _may_read_bank_details():
+        frappe.throw("مجوز تغییر سقف اعتبار را ندارید.", frappe.PermissionError)
+    if _may_read_bank_details():
+        new_bank_name = doc.get("bank_name") if name and bank_name is None else normalize_optional(bank_name)
+        new_iban = doc.get("iban") if name and iban is None else normalize_iban(iban)
+        new_account_number = (
+            doc.get("account_number")
+            if name and account_number is None
+            else normalize_numeric(account_number)
+        )
+        new_card = (
+            doc.get("card_number")
+            if name and card_number is None
+            else (normalize_numeric(card_number) or "")
+        )
+        new_account_holder = (
+            doc.get("account_holder")
+            if name and account_holder is None
+            else normalize_optional(account_holder)
+        )
+        if new_iban and new_iban != normalize_iban(doc.get("iban")) and not valid_iban(new_iban):
+            frappe.throw("شماره شبا معتبر نیست؛ IR و ۲۴ رقم با رقم کنترل صحیح لازم است.")
+        if new_card and new_card != (doc.get("card_number") or "") and not valid_card(new_card):
+            frappe.throw("شماره کارت باید ۱۶ رقم و دارای رقم کنترل صحیح باشد.")
     title = display_name.strip()
     doc.party_type = party_type
     doc.company = target_company
@@ -408,9 +507,9 @@ def save_party(
     doc.address_line = normalize_optional(address_line)
     doc.postal_code = normalize_numeric(postal_code)
     if _may_read_bank_details():
-        doc.bank_name = normalize_optional(bank_name)
-        doc.iban = normalize_numeric(iban)
-        doc.account_number = normalize_numeric(account_number)
+        doc.bank_name = new_bank_name
+        doc.iban = new_iban or None
+        doc.account_number = new_account_number
     doc.birth_date = normalize_optional(birth_date)
     doc.employee_gender = normalize_optional(employee_gender)
     doc.date_of_joining = normalize_optional(date_of_joining)
@@ -427,12 +526,12 @@ def save_party(
     doc.registration_number = normalize_numeric(registration_number)
     doc.economic_code = normalize_numeric(economic_code)
     doc.founding_date = normalize_optional(founding_date)
-    doc.credit_limit = float(credit_limit or 0)
-    doc.opening_balance = float(opening_balance or 0)
-    doc.balance_type = normalize_optional(balance_type) or "None"
+    doc.credit_limit = credit
+    # Preserve existing opening metadata; this form is not an accounting posting.
+    doc.balance_type = requested_balance_type
     if _may_read_bank_details():
-        doc.card_number = normalize_numeric(card_number)
-        doc.account_holder = normalize_optional(account_holder)
+        doc.card_number = new_card or None
+        doc.account_holder = new_account_holder
     doc.region = normalize_optional(region)
     doc.neighborhood = normalize_optional(neighborhood)
     doc.plaque = normalize_optional(plaque)

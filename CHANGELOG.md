@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Shared party form: native master options, changed-value IBAN/card checksum checks, Decimal currency validation, immutable profile office and future-birth-date rejection. Existing global identity/detail-code schema and account/Employee links are deliberately frozen; no common-code migration/backfill. Standalone opening-balance edits are refused because the current profile has no authoritative accounting-period/document link; historical amounts remain intact. Existing personnel/accounting role gates are retained. No tests run for this delivery.
+- Extend the existing calendar read adapter with office/user-scoped inbox counts, native meetings and existing HR missions, preserving native source IDs, temporal ranges and independent source warnings. No duplicate operational records, schema changes or production deployment for calendar.
+
+- Add office-bound access templates on the existing Role Definition and native per-account Custom DocPerms; separate account creation from grants and preserve legacy global rows read-only. Add direct-link office denials, explicit profile copying and existing activation delivery. **Local work, not deployed:** requires `bench migrate` for optional profile/assignment fields. Specialist API gates, report/field-detail scope and one-login/multiple-active-Employee support remain open; see `docs/api/access-profiles.md`. Existing companyless permission writes now reject rather than guess an office.
+
+- Align office-card listing and selection with the existing login office scope; respect the remembered office in setup status. Add optional separately validated landline; keep mobile and identity checksum rules. Deployment requires `bench migrate` for the optional landline field. No existing offices, profiles or permissions are rewritten.
+
 - Enforce Fixed request workflow start compatibility in selection and publication. Publish explicit conditional form revisions with existing source bindings atomically, validating ready routes and preserving the previous operational revision on failure/running-instance guards. Refuse direct starts from explicit RecordOnly Request entries before reference reuse; existing executions and Document/legacy behavior are unchanged. No schema migration or production deployment.
 
 - Request form workflow intent is read from the published revision: Fixed never yields to source conditions, Conditional reuses existing routing without a record-only fallback, and absent/empty modes preserve legacy behavior. Explicit RecordOnly is blocked pending an authoritative approval-exemption policy; no blanket exemption is inferred. Existing entries, HR presets, document forms and task inbox remain unchanged. No migration or deployment performed.

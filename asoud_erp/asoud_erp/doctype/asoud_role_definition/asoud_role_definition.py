@@ -6,6 +6,16 @@ from frappe.model.document import Document
 
 class ASOUDRoleDefinition(Document):
     def validate(self):
+        before = self.get_doc_before_save()
+        if self.get('template_key') or (before and before.get('template_key')):
+            if frappe.flags.get('asoud_office_template_write') != self.role_code:
+                frappe.throw('پروفایل دفتر فقط از مسیر پروفایل‌های دسترسی قابل تغییر است.', frappe.PermissionError)
+            if before and before.get('company') != self.get('company'):
+                frappe.throw('انتقال پروفایل به دفتر دیگر مجاز نیست.')
+        if self.is_new() and not self.get('template_key'):
+            # Frappe automatically defaults fields named company. An old technical
+            # role has no office provenance: never interpret that default as one.
+            self.company = None
         if not re.fullmatch(r"[A-Z][A-Z0-9_-]{1,39}", self.role_code or ""):
             frappe.throw("کد نقش باید ۲ تا ۴۰ حرف انگلیسی بزرگ، عدد، خط تیره یا زیرخط باشد.")
         self.title = (self.title or "").strip()

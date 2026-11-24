@@ -3,18 +3,14 @@ import hashlib
 import json
 
 import frappe
-from frappe.permissions import add_permission, update_permission_property
 from frappe.utils import cint
 
 from asoud_erp.api.v1.responses import success
-from asoud_erp.api.v1.role_management import _access, _lock_definitions, _object
-from asoud_erp.services import security_audit
+from asoud_erp.api.v1.role_management import _access, _object
 from asoud_erp.services.permission_catalog import (
     ADVANCED_ONLY,
-    ALL_ACTIONS,
     MEDIUM_ACTIONS,
     catalog_rows,
-    validate_grant,
 )
 
 ACTIONS = MEDIUM_ACTIONS  # the legacy matrix; advanced extras travel in the *_advanced keys
@@ -27,6 +23,8 @@ def _native(code, user=""):
 
 def _definition(code):
     doc = frappe.get_doc("ASOUD Role Definition", code)
+    if doc.get('template_key'):
+        frappe.throw('پروفایل دفتر را از بخش پروفایل‌های دسترسی بررسی کنید.', frappe.PermissionError)
     if not doc.enabled:
         frappe.throw("نقش غیرفعال است.")
     return doc
@@ -113,80 +111,21 @@ def editor(code, user=""):
 @frappe.whitelist(methods=["POST"])
 def apply(payload):
     _access()
-    _lock_definitions()
-    data = _object(payload)
-    code, user = str(data.get("code") or ""), str(data.get("user") or "")
-    if user:
-        frappe.db.sql("select name from tabUser where name=%s for update", (user,))
-    before = _snapshot(code, user)
-    if data.get("token") != before["token"]:
-        frappe.throw("اطلاعات دسترسی تغییر کرده؛ صفحه را بازخوانی کنید.", frappe.TimestampMismatchError)
-    grants = data.get("grants")
-    advanced = data.get("advanced_grants")
-    allowed = {row["doctype"]: set(row["actions"]) for row in before["catalog"]}
-    allowed_adv = {row["doctype"]: set(row["actions"]) | set(row["advanced_actions"]) for row in before["catalog"]}
-    if not isinstance(grants, dict) or set(grants) != set(allowed):
-        frappe.throw("ماتریس دسترسی کامل و معتبر نیست.")
-    if advanced is None:
-        # An older client that knows only the four medium actions: extras stay as they are.
-        advanced = before["advanced_grants"]
-    if not isinstance(advanced, dict) or set(advanced) != set(allowed):
-        frappe.throw("ماتریس دسترسی پیشرفته کامل و معتبر نیست.")
-    wanted = {}
-    for dt in allowed:
-        extras = advanced[dt]
-        if (not isinstance(extras, list) or any(not isinstance(a, str) for a in extras)
-                or set(extras) - (allowed_adv[dt] - set(MEDIUM_ACTIONS))):
-            frappe.throw("عملیات پیشرفته مجاز نیست.")
-        error = validate_grant(grants[dt], allowed[dt])
-        if error:
-            frappe.throw(error)
-        combined = set(grants[dt]) | set(extras)
-        if combined and "read" not in combined:
-            frappe.throw("ایجاد، ویرایش، حذف و عملیات پیشرفته نیازمند مشاهده هستند.")
-        wanted[dt] = combined
-    role = _native(code, user)
-    if not frappe.db.exists("Role", role):
-        frappe.get_doc({"doctype": "Role", "role_name": role, "desk_access": 1}).insert()
-    for dt, values in wanted.items():
-        exists = frappe.db.exists("Custom DocPerm", {"parent": dt, "role": role, "permlevel": 0, "if_owner": 0})
-        if not values and not exists:
-            continue
-        if not exists:
-            add_permission(dt, role)
-        for action in ALL_ACTIONS:
-            if action in allowed_adv[dt] or action in values:
-                update_permission_property(dt, role, 0, action, int(action in values), validate=False)
-        from frappe.core.doctype.doctype.doctype import validate_permissions_for_doctype
-        validate_permissions_for_doctype(dt)
-        frappe.clear_cache(doctype=dt)
-    if user:
-        if not frappe.db.exists("ASOUD Access Assignment", {"native_role": role}):
-            frappe.get_doc({"doctype": "ASOUD Access Assignment", "user": user,
-                "managed_role": code, "native_role": role}).insert(ignore_permissions=True)
-        affected = {user}
-    else:
-        profile = _definition(code).role_profile
-        affected = set(frappe.get_all("User", filters={"role_profile_name": profile}, pluck="name"))
-        affected.update(frappe.get_all("ASOUD Access Assignment", filters={"managed_role": code}, pluck="user"))
-    for name in sorted(affected):
-        frappe.get_doc("User", name).save()
-        frappe.clear_cache(user=name)
-    _definition(code).add_comment("Info", text=f"Access settings updated by {frappe.session.user}; scope: {user or 'role'}")
-    changed = sorted(dt for dt in wanted if set(before["grants"][dt]) | set(before["advanced_grants"][dt]) != wanted[dt])
-    security_audit.record("role.permission_change", target_type="ASOUD Role Definition", target=code,
-                          details={"user": user or None, "doctypes": changed[:100],
-                                   "affected_users": len(affected)})
-    return success({"applied": True, "affected_users": len(affected)})
+    # Old global grants remain readable; no new grant may guess its office.
+    frappe.throw('این مسیر مجوز سراسری می‌سازد؛ دفتر و پرونده را از تب دسترسی‌های حساب مشخص کنید.')
 
 
 def attach_roles(doc, method=None):
     """Run after native User.validate repopulates its Role Profile roles."""
     if not frappe.db.exists("DocType", "ASOUD Access Assignment"):
         return
-    doc.set("roles", [r for r in doc.roles if not r.role.startswith("ASOUD-ACCESS-")])
+    doc.set("roles", [r for r in doc.roles if not r.role.startswith(("ASOUD-ACCESS-", "ASOUD-OFFICE-"))])
     codes = set(frappe.get_all("ASOUD Role Definition", filters={"role_profile": doc.role_profile_name}, pluck="name")) if doc.role_profile_name else set()
-    assignments = frappe.get_all("ASOUD Access Assignment", filters={"user": doc.name}, fields=["managed_role", "native_role"])
+    assignments = frappe.get_all("ASOUD Access Assignment", filters={"user": doc.name}, fields=["managed_role", "native_role", "company"])
+    scoped = [row for row in assignments if row.company]
+    assignments = [row for row in assignments if not row.company]
+    for row in scoped:
+        doc.append_roles(row.native_role)
     codes.update(row.managed_role for row in assignments)
     for code in codes:
         definition = frappe.get_doc("ASOUD Role Definition", code)

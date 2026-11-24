@@ -21,6 +21,7 @@ def create_first_office(
     company_type: str | None = None,
     parent_office: str | None = None,
     phone: str | None = None,
+    landline: str | None = None,
     email: str | None = None,
     website: str | None = None,
     province: str | None = None,
@@ -55,7 +56,7 @@ def create_first_office(
             economic_code=economic_code, auto_generate_detail_code=auto_generate_detail_code,
             owner_full_name=owner_full_name, registration_number=registration_number,
             activity_type=activity_type, company_type=company_type, parent_office=parent_office, phone=phone,
-            email=email, website=website, province=province, city=city, address=address,
+            landline=landline, email=email, website=website, province=province, city=city, address=address,
             postal_code=postal_code, fiscal_year=fiscal_year, chart_template=chart_template,
             description=description)["data"]
         service.mark_first_office(office["company"], user)

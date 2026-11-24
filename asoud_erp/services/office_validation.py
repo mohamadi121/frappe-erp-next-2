@@ -35,6 +35,13 @@ def mobile(value):
     return text
 
 
+def landline(value):
+    text = digits(value)
+    if text and not re.fullmatch(r"0[0-9]{10}", text):
+        raise ValueError("تلفن ثابت باید ۱۱ رقم باشد و با ۰ شروع شود.")
+    return text
+
+
 def postal_code(value):
     text = digits(value)
     if text and not re.fullmatch(r"[0-9]{10}", text):

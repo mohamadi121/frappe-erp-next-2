@@ -8,6 +8,12 @@ def company_access(company, user=None):
     user = user or frappe.session.user
     if user == "Guest" or not company:
         return False
+    if user == 'Administrator':
+        return True
+    # Native creation records an explicit owner. This authorises the creator's
+    # own office, not every office merely because he holds System Manager.
+    if frappe.db.get_value('Company', company, 'owner') == user:
+        return True
     conf = getattr(frappe, "conf", None) or {}
     if user == conf.get("asoud_workflow_service_user"):
         from asoud_erp.services.automatic_action_metadata import service_user
@@ -25,9 +31,8 @@ def company_access(company, user=None):
         return True
     if frappe.db.exists("ASOUD Office Role Assignment", {"user": user, "company": company}):
         return True
-    if not roles.intersection({"System Manager", "HR Manager", "Accounts Manager", "Accounts User"}):
-        return bool(frappe.db.exists("Employee", {"user_id": user, "company": company, "status": "Active"}))
-    if frappe.has_permission("Company", "read", company, user=user):
+    if frappe.db.exists('User Permission', {'user': user, 'allow': 'Company', 'for_value': company,
+            'apply_to_all_doctypes': 1}):
         return True
     # A manager (e.g. an HR Manager, who has no Company read right in a standard install) who is
     # an active employee of this very office belongs to it, exactly like any other employee.
