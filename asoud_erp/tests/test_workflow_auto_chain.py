@@ -136,3 +136,18 @@ def test_runtime_lets_a_long_acyclic_condition_chain_finish(runtime_env, monkeyp
     env.runtime._activate_stage(instance, types.SimpleNamespace(**stages[1]))
     assert finished == ["E"]
     assert len(activities(env)) == 7
+
+
+def test_history_rows_use_the_frozen_stage_and_skip_a_deleted_one(runtime_env):
+    env = runtime_env
+    frozen = dict(stage("KEPT", "User Task"), config_json=json.dumps({"form_fields": [{"key": "a"}]}))
+    instance = instance_for([frozen], [])
+    # The live row says something else; the instance must keep its frozen copy.
+    env.site.add("ASOUD Workflow Stage", "KEPT", workflow_definition="DEF", stage_type="User Task",
+                 config_json=json.dumps({"form_fields": []}))
+    for name, stage_name in (("T1", "KEPT"), ("T2", "GONE")):
+        env.site.add("ASOUD Workflow Task", name, workflow_instance="WFI-1", status="Completed",
+                     workflow_stage=stage_name, task_title=name, response_json="{}", completed_on="2026-01-01")
+    rows = env.runtime._completed_task_rows(instance)
+    assert [row["name"] for row in rows] == ["T1"]
+    assert rows[0]["form_fields"] == [{"key": "a"}]

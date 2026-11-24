@@ -393,7 +393,10 @@ def _completed_task_rows(instance, exclude_task: str | None = None) -> list[dict
     )
     result = []
     for row in rows:
-        stage = frappe.get_doc("ASOUD Workflow Stage", row.workflow_stage)
+        # The frozen graph first; a stage that no longer exists is skipped, not a raw error.
+        stage = stage_for(instance, row.workflow_stage)
+        if not stage:
+            continue
         config = json.loads(stage.config_json or "{}")
         result.append(
             {
@@ -1722,12 +1725,16 @@ def complete_workflow_task(
         "Reject": _("Workflow request rejected"),
         "Return": _("Workflow request returned for correction"),
     }
-    _notify_user(
-        instance.started_by,
-        action_labels[action],
-        instance,
-        message=doc.comment or stage.stage_title,
-    )
+    # A multi-approver approval tells the requester only once the stage is decided;
+    # a partial approval gets its own notice below.
+    waits_for_quorum = stage.stage_type == "Approval" and action == "Approve"
+    if not waits_for_quorum:
+        _notify_user(
+            instance.started_by,
+            action_labels[action],
+            instance,
+            message=doc.comment or stage.stage_title,
+        )
     if action == "Reject":
         frappe.db.set_value(
             "ASOUD Workflow Task",
@@ -1806,11 +1813,19 @@ def complete_workflow_task(
                 from asoud_erp.services.digits import to_persian_digits
 
                 needed = required_approvals(mode, total)
-                _record_activity(doc, "Approve",
-                    f"تأیید ثبت شد؛ برای ادامهٔ مرحله {to_persian_digits(needed - approved)} تأیید دیگر لازم است.")
+                partial = f"تأیید ثبت شد؛ برای ادامهٔ مرحله {to_persian_digits(needed - approved)} تأیید دیگر لازم است."
+                _record_activity(doc, "Approve", partial)
+                _notify_user(instance.started_by, "یک تأیید ثبت شد؛ درخواست هنوز در مرحلهٔ تأیید است", instance,
+                             message=partial)
                 return success({"task": doc.name, "instance_status": instance.status})
         except ValueError as error:
             frappe.throw(_(str(error)))
+        _notify_user(
+            instance.started_by,
+            action_labels[action],
+            instance,
+            message=doc.comment or stage.stage_title,
+        )
         frappe.db.set_value(
             "ASOUD Workflow Task",
             {"workflow_instance": instance.name, "workflow_stage": stage.name, "status": "Open"},
