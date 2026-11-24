@@ -442,6 +442,38 @@ def _previous_task_data(instance, exclude_task: str | None = None) -> list[dict]
     return sections
 
 
+def _guard_auto_chain(instance) -> None:
+    """Stops a cycle of automatic stages before it runs another round (see workflow_auto_chain)."""
+    from asoud_erp.services.workflow_auto_chain import (
+        AUTO_ACTIONS,
+        AUTO_LOOP,
+        AUTO_STAGE_TYPES,
+        chain_limit,
+        chain_too_long,
+    )
+    from asoud_erp.services.workflow_graph_snapshot import load
+
+    snap = load(instance)
+    if snap:
+        auto_count = sum(1 for row in snap["stages"] if row["stage_type"] in AUTO_STAGE_TYPES)
+    else:
+        auto_count = frappe.db.count("ASOUD Workflow Stage", {
+            "workflow_definition": instance.workflow_definition, "stage_type": ["in", list(AUTO_STAGE_TYPES)]})
+    limit = chain_limit(auto_count)
+    recent = frappe.get_all("ASOUD Workflow Activity", filters={"workflow_instance": instance.name},
+        fields=["action"], order_by="creation desc, name desc", limit_page_length=limit)
+    hops = 0
+    for row in recent:
+        if row.action not in AUTO_ACTIONS:
+            break
+        hops += 1
+    if chain_too_long(hops, auto_count):
+        frappe.log_error(title='حلقهٔ مراحل خودکار گردش کار', message=AUTO_LOOP,
+                         reference_doctype='ASOUD Workflow Instance', reference_name=instance.name,
+                         defer_insert=True)
+        frappe.throw(AUTO_LOOP)
+
+
 def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -> None:
     previous_stage = instance.current_stage
     if stage.stage_type == 'End':
@@ -451,6 +483,10 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
         return
     if instance.status != 'Running':
         frappe.throw('این اجرای گردش کار خاتمه یافته است و نمی‌تواند ادامه پیدا کند.')
+    from asoud_erp.services.workflow_auto_chain import AUTO_STAGE_TYPES
+
+    if stage.stage_type in AUTO_STAGE_TYPES:
+        _guard_auto_chain(instance)
     instance.current_stage = stage.name
     config = json.loads(stage.config_json or "{}")
     if stage.stage_type == 'Wait' and config.get('wait_version') == 1:
