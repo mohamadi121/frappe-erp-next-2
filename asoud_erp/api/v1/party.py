@@ -216,6 +216,10 @@ def get_form_options(company):
     require_roles(("System Manager", "Accounts Manager", "Accounts User", "HR Manager"))
     require_company(company)
     result = dict(can_edit_financial=_may_read_bank_details(), warnings=[])
+    from asoud_erp.services.personnel_employee import chart_jobs
+
+    result["chart_jobs"] = chart_jobs(company) if {"System Manager", "HR Manager", "HR User"}.intersection(
+        frappe.get_roles()) else []
     sources = {"gender": "Gender", "employment_type": "Employment Type",
                "job_title": "Designation", "department": "Department", "bank": "Bank"}
     for key, doctype in sources.items():
@@ -224,8 +228,14 @@ def get_form_options(company):
             continue
         filters = {"company": company, "disabled": 0} if key == "department" else {}
         try:
-            rows = frappe.get_list(doctype, filters=filters, pluck="name",
-                                   order_by="name", limit_page_length=301)
+            if key == "department":
+                departments = frappe.get_list(doctype, filters=filters, fields=["name", "department_name"],
+                                              order_by="department_name", limit_page_length=301)
+                result["department_labels"] = {row.name: row.department_name for row in departments[:300]}
+                rows = [row.name for row in departments]
+            else:
+                rows = frappe.get_list(doctype, filters=filters, pluck="name",
+                                       order_by="name", limit_page_length=301)
             if len(rows) > 300:
                 result["warnings"].append("فهرست " + {"department": "واحدها", "job_title": "سمت‌ها"}.get(key, "گزینه‌ها") +
                                           " طولانی است؛ انتخاب را از صفحه اصلی همان بخش انجام دهید.")
@@ -402,12 +412,12 @@ def save_party(
     email = normalize_optional(email)
 
     if name:
-        doc = frappe.get_doc("ASOUD Party Profile", name)
+        doc = frappe.get_doc("ASOUD Party Profile", name, for_update=True)
         # The profile's own company is the tenant it was created in; never let a
         # caller scoped to another company load and move it (F-P1).
         if doc.company:
             require_company(doc.company)
-        if doc.employee:
+        if doc.employee or "Employee" in json.loads(doc.roles_text or "[]"):
             _require_personnel_master()
             if party_type != 'Individual':
                 frappe.throw('پرونده متصل به پرسنل نمی‌تواند به شخص حقوقی تبدیل شود.')
@@ -441,9 +451,9 @@ def save_party(
             website = validate_website(website)
         except ValueError:
             frappe.throw("نشانی وب‌سایت معتبر نیست.")
-    if department:
+    if department and department != doc.get("department"):
         actual_company = frappe.db.get_value("Department", department, "company")
-        if actual_company and actual_company != target_company:
+        if not actual_company or actual_company != target_company:
             frappe.throw("واحد سازمانی متعلق به این دفتر نیست.", frappe.PermissionError)
     if birth_date:
         try:
@@ -451,6 +461,11 @@ def save_party(
                 frappe.throw("تاریخ تولد نباید در آینده باشد.")
         except (TypeError, ValueError):
             frappe.throw("تاریخ تولد معتبر نیست.")
+    if date_of_joining:
+        try:
+            getdate(date_of_joining)
+        except (TypeError, ValueError):
+            frappe.throw("تاریخ شروع همکاری معتبر نیست.")
     try:
         old_credit = financial_amount(doc.get("credit_limit"))
         old_opening = financial_amount(doc.get("opening_balance"))
@@ -549,6 +564,19 @@ def save_party(
     if "Employee" in selected_roles:
         if party_type != "Individual":
             frappe.throw(_("An employee must be an individual party"))
+        if not target_company:
+            frappe.throw("برای ثبت پرونده پرسنلی، دفتر کار را انتخاب کنید.")
+        if doc.employee:
+            native = frappe.get_doc("Employee", doc.employee)
+            for field, native_field in (("employee_gender", "gender"), ("birth_date", "date_of_birth"),
+                                        ("date_of_joining", "date_of_joining")):
+                if not doc.get(field):
+                    doc.set(field, native.get(native_field))
+        if doc.employee_gender and not frappe.db.exists("Gender", doc.employee_gender):
+            frappe.throw("جنسیت انتخاب‌شده معتبر نیست.")
+    ready_for_employee = "Employee" in selected_roles and all(
+        doc.get(field) for field in ("employee_gender", "birth_date", "date_of_joining"))
+    if ready_for_employee:
         doc.employee = _ensure_employee(
             doc.employee,
             title,
@@ -559,9 +587,17 @@ def save_party(
             mobile,
             email,
         )
-        from asoud_erp.services.personnel_employee import shared_values, write_shared
+        from asoud_erp.services.personnel_employee import chart_jobs, shared_values, write_shared
 
-        write_shared(doc, {key: doc.get(key) for key in EMPLOYEE_SHARED_FIELDS})
+        values = {key: doc.get(key) for key in EMPLOYEE_SHARED_FIELDS}
+        if doc.job_title and not frappe.db.exists("Designation", doc.job_title) and not frappe.db.exists(
+            "Designation", {"designation_name": doc.job_title}
+        ) and any(row["title"] == doc.job_title and (not doc.department or row["department"] == doc.department)
+                  for row in chart_jobs(target_company)):
+            # A chart position is not a native Designation or an appointment.
+            # Keep its display title on the profile; do not invent a global master.
+            values["job_title"] = None
+        write_shared(doc, values)
         for key, value in shared_values(doc).items():
             doc.set(key, value or None)
     doc.save() if name else doc.insert()

@@ -40,6 +40,30 @@ class TestOfficePermissionProfiles(fixtures.APITestCase):
         with self.assertRaises(frappe.ValidationError):
             access.save_profile(self.company, legacy['title'], grants={}, name=legacy['name'], modified=legacy['modified'])
 
+    def test_delete_only_unlinked_profile_in_own_office(self):
+        profile = self.profile()
+        with self.assertRaises(frappe.PermissionError):
+            access.delete_profile(self.second, profile['name'], profile['modified'])
+        with self.assertRaises(frappe.TimestampMismatchError):
+            access.delete_profile(self.company, profile['name'], 'stale')
+        employee, account = self.account()
+        updated = access.save_account_access(
+            self.company, employee.name, profile['grants'], account['token'], profile['name'])
+        with self.assertRaises(frappe.ValidationError):
+            access.delete_profile(self.company, profile['name'], profile['modified'])
+        access.save_account_access(self.company, employee.name, updated['grants'], updated['token'])
+        access.delete_profile(self.company, profile['name'], profile['modified'])
+        self.assertFalse(frappe.db.exists('ASOUD Role Definition', profile['name']))
+        self.assertEqual(access.get_account(self.company, employee.name)['grants'], updated['grants'])
+
+    def test_account_uses_registered_contact_when_contact_omitted(self):
+        employee = self.employee(self.company)
+        login = 'office.' + frappe.generate_hash(length=12) + '@example.com'
+        frappe.db.set_value('Employee', employee.name, 'personal_email', login)
+        account = access.create_account(self.company, employee.name, method='email')
+        self.assertEqual(account['login'], login)
+        self.assertTrue(account['registered_delivery'])
+
     def test_native_default_company_is_not_legacy_profile_ownership(self):
         from asoud_erp.api.v1 import role_management
 

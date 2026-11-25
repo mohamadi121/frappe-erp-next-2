@@ -80,6 +80,7 @@ def photo_record(party_profile, employee=None):
 
 def _row(doc, include_financial=False):
     row = {"id": doc.name, "employee_code": str(doc.get("employee") or doc.name), "company": doc.company, "disabled": bool(doc.disabled),
+            "needs_employee_details": not bool(doc.get("employee")),
             "photo_record": photo_record(doc.name, doc.get("employee")),
             **{field: str(doc.get(field) or "") for field in PERSONAL_FIELDS}}
     if include_financial:

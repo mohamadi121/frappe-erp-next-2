@@ -4,6 +4,7 @@ Profile columns are retained for backwards compatibility, never preferred over
 an existing Employee. This module does not create payroll or employment masters.
 """
 import hashlib
+import json
 
 import frappe
 
@@ -49,6 +50,14 @@ LINK_FIELDS = {"job_title": ("Designation", "designation_name"),
                "employment_type": ("Employment Type", "employee_type_name"),
                "branch": ("Branch", "branch"),
                "reports_to": ("Employee", "employee_name")}
+
+
+def chart_jobs(company):
+    if not company:
+        return []
+    raw = frappe.db.get_value("ASOUD Organization Chart", {"company": company}, "structure_json")
+    return [{"title": row["title"], "department": row.get("department_id") or ""}
+            for row in json.loads(raw or "[]") if row.get("title")]
 
 
 def resolve_link(key, value, company):
@@ -97,6 +106,8 @@ def shared_values(person):
     result = {key: str(employee.get(field) or "") for key, field in EMPLOYEE_FIELDS.items()
               if employee.meta.has_field(field)}
     result["employee_status"] = employee.status
+    if not result.get("job_title") and person.get("job_title"):
+        result["job_title"] = str(person.job_title)
     result["disabled"] = employee.status != "Active"
     return result
 
@@ -149,6 +160,10 @@ def refresh_profile_cache(employee, method=None):
         if not employee.meta.has_field(field):
             continue
         value = employee.get(field)
+        if key == "job_title" and not value:
+            before = employee.get_doc_before_save()
+            if not before or not before.get(field):
+                continue  # keep a chart title with no native Designation mapping
         values[key] = normalize_numeric_text(value) if field in NUMERIC_EMPLOYEE_FIELDS else value
     for name in frappe.get_all("ASOUD Party Profile", filters={"employee": employee.name,
                               "company": employee.company}, pluck="name"):

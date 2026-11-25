@@ -39,11 +39,12 @@ return the normal Persian validation/conflict error. No offline queued grant wri
 | `list_profiles` | company | profiles, catalog, examples |
 | `get_profile` | company, name | profile |
 | `save_profile` | company, title, grants; optional description, name, modified | saved profile |
-| `list_accounts` | company | active Employee rows: name, employee_name, designation, user_id |
+| `delete_profile` | company, name, modified | deleted template name |
+| `list_accounts` | company | active Employee rows, including department, account_status and available contact_methods (not contact values) |
 | `get_account` | company, employee | employee, title, designation, company, user, legacy, profile, token, grants, catalog |
-| `create_account` | company, employee, contact; method=mobile/email, invite=0 | account; optional activation |
+| `create_account` | company, employee; optional contact; method=mobile/email, invite=0 | account; optional activation |
 | `save_account_access` | company, employee, grants, token; optional profile | account |
-| `invite_account` | company, employee | existing activation-service response |
+| `invite_account` | company, employee; optional registered=1 | activation-service response |
 | `get_legacy_report` | company | assignments, profiles, notice |
 
 Profile shape: `name,title,description,company,modified,readonly,grants`.
@@ -59,6 +60,24 @@ offices may reuse a title. Updates require the returned `modified` token;
 account updates require the assignment `token`. Company and User row locks
 serialize competing changes. Native unique role/template keys prevent duplicates.
 
+Deletion is restricted to an unused template in the same office. Legacy/global
+profiles and templates referenced by accounts cannot be deleted. Detaching a
+template in account access can retain its already-copied grants.
+
+### Adding modules and documents
+
+Register real DocTypes in `services/permission_catalog.py:MODULES`, or use the
+app-side hook `asoud_office_permission_catalog = ["my_app.permissions.catalog_rows"]`.
+A provider returns rows with `module`, `doctype`, `title`, optional `group` and
+`actions` (a subset of read/create/write/delete). It cannot override existing rows.
+Flutter reads this catalog; catalog-only additions need no Flutter code change.
+
+Before adding a document or request, verify office ownership and enforcement in
+lists, direct reads, writes and custom APIs. Only installed, company-bound DocTypes
+with supported native operations are offered. Forms sharing one DocType don't
+automatically gain separate privileges. Child-table and field-detail permissions
+are not offered until the server can enforce them consistently.
+
 ## Account and application behavior
 
 Account creation locks and links an existing active Employee; it never creates an
@@ -67,6 +86,13 @@ plus an empty scoped grant role. No HR/accounting role is inferred from Designat
 The Company User Permission is created explicitly. No permanent Employee or
 Department User Permission is introduced that would prevent a later legitimate
 HR grant. Native personal access is still checked.
+
+Omitting `contact` makes the server use the Employee's saved contact. With
+`invite=1`, email delivers the login and one-time activation code; SMS delivers
+the login and expiring temporary password (not returned to the client). SMS needs
+an HTTPS POST gateway and email needs outgoing mail. Registered re-invites verify
+that the current Employee contact still matches the login. Gateway acceptance does
+not prove handset delivery. Existing explicit-contact clients remain compatible.
 
 An existing login is not silently linked to a second Employee. Native HRMS v15
 forbids a single login on two active Employees. The employer explicitly requires

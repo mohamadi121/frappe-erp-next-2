@@ -20,6 +20,11 @@ def save_profile(company, title, grants, description='', name=None, modified=Non
     return success(service.save_profile(company, title, description, frappe.parse_json(grants), name, modified))
 
 
+@frappe.whitelist(methods=['POST'])
+def delete_profile(company, name, modified):
+    return success(service.delete_profile(company, name, modified))
+
+
 @frappe.whitelist()
 def list_accounts(company):
     return success(service.list_accounts(company))
@@ -31,7 +36,7 @@ def get_account(company, employee):
 
 
 @frappe.whitelist(methods=['POST'])
-def create_account(company, employee, contact, method='email', invite=0):
+def create_account(company, employee, contact=None, method='email', invite=0):
     return success(service.create_account(company, employee, contact, method, bool(frappe.utils.cint(invite))))
 
 
@@ -41,8 +46,8 @@ def save_account_access(company, employee, grants, token, profile=None):
 
 
 @frappe.whitelist(methods=['POST'])
-def invite_account(company, employee):
-    return success(service.invite_account(company, employee))
+def invite_account(company, employee, registered=0):
+    return success(service.invite_account(company, employee, registered=bool(frappe.utils.cint(registered))))
 
 
 @frappe.whitelist()

@@ -28,17 +28,25 @@ def gate(company):
 
 def catalog():
     rows = catalog_rows(lambda dt: frappe.db.exists('DocType', dt), lambda dt: frappe.get_meta(dt).is_submittable)
+    known = {row['doctype'] for row in rows}
+    for provider in frappe.get_hooks('asoud_office_permission_catalog'):
+        for row in frappe.get_attr(provider)():
+            if row['doctype'] not in known and frappe.db.exists('DocType', row['doctype']):
+                rows.append(row)
+                known.add(row['doctype'])
     result = []
     for row in rows:
         meta = frappe.get_meta(row['doctype'])
         # Shared native masters without an office owner cannot safely be made office-specific.
         if not meta.has_field('company'):
             continue
-        supported = [a for a in MEDIUM_ACTIONS if any(p.get(a) for p in meta.permissions)]
+        supported = [a for a in MEDIUM_ACTIONS if a in row['actions']
+                     and any(not p.get('permlevel') and p.get(a) for p in meta.permissions)]
         if not supported:
             continue
-        group = financial_group(row['doctype'])
-        row = {**row, 'module': 'مالی' if group else row['module'],
+        finance = financial_group(row['doctype'])
+        group = finance or row.get('group', '')
+        row = {**row, 'module': 'مالی' if finance else row['module'],
             'actions': supported, 'group': group, 'details': []}
         # Field-level readers currently combine roles site-wide. Do not advertise
         # office-specific field controls until every reader can enforce them.
@@ -156,6 +164,30 @@ def person(company, employee):
     return doc
 
 
+def delete_profile(company, name, modified):
+    gate(company)
+    frappe.db.sql('select name from tabCompany where name=%s for update', (company,))
+    get_profile(company, name)
+    doc = frappe.get_doc('ASOUD Role Definition', name, for_update=True)
+    if doc.company != company or not doc.get('template_key'):
+        frappe.throw('فقط پروفایل ساخته‌شده برای همین دفتر قابل حذف است.', frappe.PermissionError)
+    if str(doc.modified) != modified:
+        frappe.throw('پروفایل تغییر کرده است؛ ابتدا فهرست را تازه کنید.', frappe.TimestampMismatchError)
+    if (frappe.db.exists('ASOUD Access Assignment', {'managed_role': name})
+            or frappe.db.exists('User', {'role_profile_name': doc.role_profile})):
+        frappe.throw('این پروفایل به حساب کاربری متصل است؛ ابتدا اتصال را در مدیریت کاربران بردارید.')
+    native = doc.role_profile
+    previous = frappe.flags.get('asoud_office_template_delete')
+    frappe.flags.asoud_office_template_delete = name
+    try:
+        frappe.delete_doc(doc.doctype, name, ignore_permissions=True)
+        frappe.delete_doc('Role Profile', native, ignore_permissions=True)
+    finally:
+        frappe.flags.asoud_office_template_delete = previous
+    security_audit.record('access.profile_delete', company=company, target_type=doc.doctype, target=name)
+    return {'deleted': name}
+
+
 def account_role(user, company):
     return 'ASOUD-OFFICE-' + hashlib.sha256(json.dumps([user, company]).encode()).hexdigest()[:32]
 
@@ -179,9 +211,11 @@ def get_account(company, employee):
                 fields=['parent', 'permlevel', *MEDIUM_ACTIONS], limit_page_length=0):
             key = p.parent + (f'::{p.permlevel}' if p.permlevel else '')
             grants[key] = [a for a in MEDIUM_ACTIONS if p.get(a)]
+    login = (doc.user_id or '').removesuffix('@users.asoud.invalid')
+    method = 'mobile' if (doc.user_id or '').endswith('@users.asoud.invalid') else 'email'
     return {'employee': employee, 'title': doc.employee_name, 'designation': doc.designation or '',
         'company': company, 'user': doc.user_id or '', 'legacy': bool(doc.user_id and not row),
-        'login': (doc.user_id or '').removesuffix('@users.asoud.invalid'),
+        'login': login, 'registered_delivery': bool(login and login == registered_contact(doc, method)),
         'profile': row.managed_role if row else None, 'token': str(row.modified) if row else None,
         'grants': grants, 'catalog': catalog()}
 
@@ -190,6 +224,7 @@ def save_account_access(company, employee, grants, token, profile=None):
     from frappe.permissions import add_permission, update_permission_property
 
     doc, row = assignment(company, employee)
+    frappe.db.sql('select name from tabCompany where name=%s for update', (company,))
     frappe.db.sql('select name from tabUser where name=%s for update', (row.user,))
     if str(frappe.db.get_value('ASOUD Access Assignment', row.name, 'modified')) != token:
         frappe.throw('دسترسی تغییر کرده است؛ دوباره بارگذاری کنید.', frappe.TimestampMismatchError)
@@ -231,14 +266,50 @@ def save_account_access(company, employee, grants, token, profile=None):
 
 def list_accounts(company):
     gate(company)
-    return frappe.get_all('Employee', filters={'company': company, 'status': 'Active'},
-        fields=['name', 'employee_name', 'designation', 'user_id'], order_by='employee_name asc', limit_page_length=500)
+    rows = frappe.get_all('Employee', filters={'company': company, 'status': 'Active'},
+        fields=['name', 'employee_name', 'designation', 'department', 'user_id',
+                'cell_number', 'personal_email', 'company_email'],
+        order_by='employee_name asc', limit_page_length=500)
+    users = [row.user_id for row in rows if row.user_id]
+    user_rows = frappe.get_all('User', filters={'name': ['in', users or ['']]},
+        fields=['name', 'enabled'], limit_page_length=0)
+    enabled = {row.name: bool(row.enabled) for row in user_rows}
+    states = {}
+    if users and frappe.db.table_exists('ASOUD Account State'):
+        states = {row.user: bool(row.activation_pending) for row in frappe.get_all(
+            'ASOUD Account State', filters={'user': ['in', users]},
+            fields=['user', 'activation_pending'], limit_page_length=0)}
+    for row in rows:
+        row['contact_methods'] = [method for method in ('mobile', 'email') if registered_contact(row, method)]
+        for field in ('cell_number', 'personal_email', 'company_email'):
+            row.pop(field, None)
+        user = row.user_id
+        row['account_status'] = ('no_account' if not user else
+            'disabled' if not enabled.get(user, False) else
+            'pending' if states.get(user, False) else 'active')
+    return rows
 
 
-def create_account(company, employee, contact, method='email', invite=False):
+def registered_contact(doc, method):
+    from asoud_erp.services.credential_policy import normalize_email, normalize_mobile
+
+    try:
+        if method == 'mobile':
+            return normalize_mobile(doc.get('cell_number')) or ''
+        if method == 'email':
+            return normalize_email(doc.get('personal_email') or doc.get('company_email')) or ''
+    except ValueError:
+        pass
+    return ''
+
+
+def create_account(company, employee, contact=None, method='email', invite=False):
     from asoud_erp.services.credential_policy import normalize_email, normalize_mobile
 
     doc = person(company, employee)
+    use_registered_contact = contact is None
+    if use_registered_contact:
+        contact = registered_contact(doc, method)
     if doc.user_id:
         frappe.throw('این پرونده حساب دارد؛ از جزئیات حساب استفاده کنید.')
     try:
@@ -290,7 +361,7 @@ def create_account(company, employee, contact, method='email', invite=False):
         state.save(ignore_permissions=True)
         result = get_account(company, employee)
         if invite:
-            result['activation'] = invite_account(company, employee)
+            result['activation'] = invite_account(company, employee, registered=use_registered_contact)
         security_audit.record('access.account_create', company=company, target_type='User', target=user.name)
         return result
     except Exception:
@@ -298,12 +369,43 @@ def create_account(company, employee, contact, method='email', invite=False):
         raise
 
 
-def invite_account(company, employee):
+def invite_account(company, employee, registered=False):
     from asoud_erp.services.hr_onboarding import _activate
 
-    _, row = assignment(company, employee)
+    doc, row = assignment(company, employee)
     if frappe.db.get_value('User', row.user, 'last_login'):
         frappe.throw('این حساب قبلاً وارد شده است؛ از مسیر بازیابی رمز استفاده کنید.')
+    if registered:
+        is_mobile = row.user.endswith('@users.asoud.invalid')
+        recipient = registered_contact(doc, 'mobile' if is_mobile else 'email')
+        login = row.user.removesuffix('@users.asoud.invalid')
+        if not recipient or recipient != login:
+            frappe.throw('اطلاعات تماس پرونده با شناسه ورود حساب یکسان نیست؛ پرونده را بررسی کنید.')
+        if not is_mobile:
+            return _activate(row.user, recipient, 'invite', include_login=True)
+
+        from frappe.core.doctype.sms_settings.sms_settings import get_headers, send_request
+
+        settings = frappe.get_single('SMS Settings')
+        if not (settings.sms_gateway_url and settings.use_post and settings.receiver_parameter
+                and settings.message_parameter and settings.sms_gateway_url.startswith('https://')):
+            frappe.throw('برای ارسال دعوت‌نامه پیامکی، درگاه امن پیامک با روش POST باید تنظیم شود.')
+        activation = _activate(row.user, '', 'temporary_password')
+        payload = {p.parameter: p.value for p in settings.get('parameters') if not p.header}
+        payload.update({
+            settings.receiver_parameter: recipient,
+            settings.message_parameter: (f"آسود | نام کاربری: {login}\n"
+                f"رمز موقت: {activation['temporary_password']}\n"
+                f"اعتبار: {activation['expires_in_hours']} ساعت؛ پس از ورود رمز را تغییر دهید."),
+        })
+        try:
+            status = send_request(settings.sms_gateway_url, payload, get_headers(settings), use_post=True)
+            if not 200 <= status < 300:
+                raise ValueError('SMS not accepted')
+        except Exception:
+            frappe.throw('درگاه پیامک دعوت‌نامه را نپذیرفت. تنظیمات ارسال را بررسی کنید.')
+        security_audit.record('account.invitation_send', company=company, target_type='User', target=row.user)
+        return {'method': 'sms', 'sent_to': '***' + recipient[-4:]}
     if row.user.endswith('@users.asoud.invalid'):
         # Existing one-time temporary-password delivery; never pretend SMS was sent.
         return _activate(row.user, '', 'temporary_password')

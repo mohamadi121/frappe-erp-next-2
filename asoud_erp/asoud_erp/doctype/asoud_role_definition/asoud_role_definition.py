@@ -5,6 +5,10 @@ from frappe.model.document import Document
 
 
 class ASOUDRoleDefinition(Document):
+    def on_trash(self):
+        if self.get('template_key') and frappe.flags.get('asoud_office_template_delete') != self.name:
+            frappe.throw('پروفایل دفتر فقط از مسیر پروفایل‌های دسترسی قابل حذف است.', frappe.PermissionError)
+
     def validate(self):
         before = self.get_doc_before_save()
         if self.get('template_key') or (before and before.get('template_key')):

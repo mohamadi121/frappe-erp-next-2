@@ -67,3 +67,14 @@ class TestPartyEmployeeSoD(APITestCase):
         frappe.set_user(PERSONNEL_USER)
         party.save_party(**self._payload(job_title=DESIGNATION_OTHER))
         self.assertEqual(frappe.db.get_value("Employee", self.employee, "designation"), DESIGNATION_OTHER)
+
+    def test_minimal_personnel_draft_completes_on_same_profile(self):
+        frappe.set_user(PERSONNEL_USER)
+        payload = {"party_type": "Individual", "roles": ["Employee"],
+                   "company": self.company, "display_name": "ASOUD New Personnel"}
+        draft = party.save_party(**payload)["data"]
+        self.assertFalse(draft.get("employee"))
+        completed = party.save_party(**payload, name=draft["name"], employee_gender="Male",
+                                     birth_date="1990-01-01", date_of_joining="2020-01-01")["data"]
+        self.assertEqual(completed["name"], draft["name"])
+        self.assertTrue(completed["employee"])

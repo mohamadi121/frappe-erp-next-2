@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Personnel: allow initial Party Profile before native Employee prerequisites are filled; return office chart job options without assigning positions.
+
+- Office access: extensible DocType permission catalog, guarded deletion of unused office templates, and account invitation delivery to the contact saved on Employee.
+
 - Shared party form: native master options, changed-value IBAN/card checksum checks, Decimal currency validation, immutable profile office and future-birth-date rejection. Existing global identity/detail-code schema and account/Employee links are deliberately frozen; no common-code migration/backfill. Standalone opening-balance edits are refused because the current profile has no authoritative accounting-period/document link; historical amounts remain intact. Existing personnel/accounting role gates are retained. No tests run for this delivery.
 - Extend the existing calendar read adapter with office/user-scoped inbox counts, native meetings and existing HR missions, preserving native source IDs, temporal ranges and independent source warnings. No duplicate operational records, schema changes or production deployment for calendar.
 

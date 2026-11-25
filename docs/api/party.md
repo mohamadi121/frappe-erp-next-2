@@ -10,6 +10,7 @@ address, bank details).
 | `list_parties(company, search?, role?)` | GET | profiles of one company, newest first (max 200) |
 | `save_party(party_type, display_name, roles, …)` | POST | creates or updates a profile; `name` updates, otherwise creates |
 | `disable_party(name)` | POST | sets `disabled = 1`; never deletes |
+| `get_form_options(company)` | GET | office Department IDs/labels and `chart_jobs` rows (title, department ID), among existing form options |
 
 Roles: `System Manager`, `Accounts Manager`, `Accounts User`.
 
@@ -24,6 +25,14 @@ created without a company; such a profile is not listed by `list_parties`, which
 is always company filtered.
 
 ### Personnel parties
+
+With only the name and the office, the form can save an initial personnel
+profile. It is marked as needing completion in the personnel list and is not an
+operational Employee. Supplying gender, birth date and joining date on the same
+profile creates the native Employee through the existing controller. No placeholder
+values are invented and permissions are unchanged. A title selected from the
+office chart is not an appointment; without a native Designation mapping it is
+retained as a display title on the profile.
 
 A profile whose `roles` contain `Employee` is a personnel record: it owns the
 linked ERPNext `Employee`. `save_party` therefore refuses it unless the caller

@@ -221,7 +221,7 @@ def _tafsili(party, profile, title, groups) -> None:
                                  detail_groups=groups)
 
 
-def _activate(user: str, mail: str, method: str) -> dict:
+def _activate(user: str, mail: str, method: str, *, include_login: bool = False) -> dict:
     state = account_state.ensure(user, lock=True)
     state.activation_pending = 1
     state.save(ignore_permissions=True)
@@ -239,9 +239,12 @@ def _activate(user: str, mail: str, method: str) -> dict:
         frappe.throw("برای ارسال دعوت‌نامه، حساب ایمیل خروجی تنظیم نشده است؛ از روش رمز موقت استفاده کنید.",
                      frappe.ValidationError)
     code = account_recovery.issue(user, "activation")
+    from html import escape
+
+    login_notice = f"<p>نام کاربری: <b dir='ltr'>{escape(user)}</b></p>" if include_login else ""
     frappe.sendmail(
         recipients=[mail], subject="فعال‌سازی حساب آسود",
-        message=(f"<p>برای فعال‌سازی حساب خود در آسود، کد زیر را در برنامه وارد کنید و رمز شخصی خود را تعیین کنید:"
+        message=(f"{login_notice}<p>برای فعال‌سازی حساب خود در آسود، کد زیر را در برنامه وارد کنید و رمز شخصی خود را تعیین کنید:"
                  f"</p><p><b dir='ltr'>{code}</b></p><p>این کد تا {account_recovery.TTL_MINUTES['activation'] // 60} "
                  "ساعت معتبر و یک‌بارمصرف است.</p>"), now=True)
     security_audit.record("account.invitation_send", target_type="User", target=user)
