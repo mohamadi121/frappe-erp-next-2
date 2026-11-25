@@ -163,6 +163,9 @@ class TestDemoSeed(FrappeTestCase):
         self.assertTrue(status["accounting_saved"])
         self.assertTrue(status["roles_saved"])
         self.assertEqual(status["enabled_roles"], ["System Manager"])
+        # Name the demo office as the administrator's default, so the status does not depend on
+        # which company an earlier test left as the default.
+        frappe.defaults.set_user_default("company", m.COMPANY)
         admin_status = setup.get_setup_status()["data"]
         self.assertTrue(admin_status["complete"])
         # ERPNext adds its own standard departments to every new company, so
