@@ -91,6 +91,9 @@ class TestASOUDWorkflowRequest(FrappeTestCase):
         user = frappe.get_doc({"doctype": "User", "email": "accounts-" + self.token + "@example.invalid",
             "first_name": "Accounts", "send_welcome_email": 0,
             "roles": [{"role": "Accounts User"}]}).insert()
+        # A role alone no longer implies access to an office: grant this one, so the
+        # read is allowed and only the salary fields are what must stay hidden.
+        frappe.permissions.add_user_permission("Company", self.person.company, user.name, ignore_permissions=True)
         frappe.set_user(user.name)
         data = get(self.person.doctype, self.person.name)
         self.assertFalse(any(data.get(key) for key in FINANCIAL_FIELDS))

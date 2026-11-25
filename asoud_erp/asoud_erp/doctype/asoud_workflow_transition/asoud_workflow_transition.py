@@ -18,6 +18,10 @@ class ASOUDWorkflowTransition(Document):
             stage_definition = frappe.db.get_value("ASOUD Workflow Stage", self.get(field), "workflow_definition")
             if stage_definition != self.workflow_definition:
                 frappe.throw(_("Transition stages must belong to the same workflow"))
+        if frappe.db.get_value("ASOUD Workflow Stage", self.to_stage, "stage_type") == "Start":
+            from asoud_erp.services.workflow_contract import START_ROUTE
+
+            frappe.throw(START_ROUTE)
 
     def on_trash(self) -> None:
         from asoud_erp.services.workflow_condition_binding import assert_design_editable

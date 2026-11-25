@@ -1,6 +1,7 @@
 import json
 
 ALLOWED_WORKFLOW_STATUSES = {"Active", "Inactive", "Archived"}
+START_ROUTE = 'مسیر نمی‌تواند به مرحلهٔ شروع برگردد.'
 DISCONNECTED_PATHS = 'همهٔ مراحل باید از شروع قابل دسترس و به یک پایان متصل باشند.'
 
 
@@ -102,6 +103,12 @@ def activation_requirements(stages, transitions):
             can_finish = expanded
         if reached != names or can_finish != names:
             errors.append(DISCONNECTED_PATHS)
+    if any(e['to_stage'] in starts for e in transitions):
+        errors.append(START_ROUTE)
+    from asoud_erp.services.workflow_auto_chain import AUTO_CYCLE_DESIGN, auto_cycle_stages
+
+    if auto_cycle_stages(stages, [e for e in transitions if e['from_stage'] in names and e['to_stage'] in names]):
+        errors.append(AUTO_CYCLE_DESIGN)
     return list(dict.fromkeys(errors))
 
 

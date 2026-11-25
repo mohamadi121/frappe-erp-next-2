@@ -359,6 +359,8 @@ class TestDocumentTemplates(APITestCase):
         records = [("ASOUD Workflow Request", request["name"]), ("ASOUD Workflow Instance", instance),
                    ("ASOUD Workflow Task", task), ("ASOUD Workflow Activity", activity)]
         assignee = self._user_with_roles("assignee", ["Accounts User"])
+        # A role alone no longer implies access to an office: the assignee is granted this one.
+        frappe.permissions.add_user_permission("Company", self.company, assignee, ignore_permissions=True)
         frappe.db.set_value("ASOUD Workflow Task", task, "assigned_to", assignee)
         self._foreign_company()
         restricted = self._restricted_accounts("restricted")

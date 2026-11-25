@@ -77,6 +77,8 @@ test_workflow_check
 test_stage_supplementary_form
 test_workflow_return_phase4
 test_workflow_approval_quorum
+test_workflow_phase_b_runtime
 test_phase_a_acceptance
 test_office_navigation
 test_office_permission_profiles
+test_workflow_phase_b_core

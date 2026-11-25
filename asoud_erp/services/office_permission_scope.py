@@ -38,7 +38,10 @@ def document_company(doc):
     if doc.meta.has_field('employee') and doc.get('employee'):
         return frappe.db.get_value('Employee', doc.employee, 'company')
     if doc.get('workflow_instance'):
-        return frappe.db.get_value('ASOUD Workflow Instance', doc.workflow_instance, 'company')
+        # The instance row has no company column; it is derived from its document or definition.
+        from asoud_erp.services.request_link_values import workflow_company
+
+        return workflow_company(doc.workflow_instance)
     return None
 
 
