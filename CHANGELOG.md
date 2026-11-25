@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix «ورود به دفتر کار» showing «اطلاعات واردشده را بررسی کنید»: the app queues `setup.set_default_office`, but the sync allow-list did not accept the `set_` verb and answered `METHOD_NOT_ALLOWED`. The method is now accepted by exact name. No schema change, no migration.
+
 - Workflow designer phase B: a cycle made only of Condition/System Action stages is refused at activation/validation and stopped at run time (the hop limit is the number of automatic stages in the instance's frozen graph; any task, wait or end breaks the chain), with a Persian error instead of a crash. Routes into the Start stage are refused by `connect_workflow_stages`, activation/validation and the Transition DocType (`save_stage_routes` already did). A multi-approver stage notifies the requester «approved» only when the stage is decided; a partial approval gets its own notice. Task history reads stages from the instance's frozen graph and skips a stage that no longer exists. No schema change, no migration; existing designs on the demo site were checked read-only (none had either shape).
 
 - Shared party form: native master options, changed-value IBAN/card checksum checks, Decimal currency validation, immutable profile office and future-birth-date rejection. Existing global identity/detail-code schema and account/Employee links are deliberately frozen; no common-code migration/backfill. Standalone opening-balance edits are refused because the current profile has no authoritative accounting-period/document link; historical amounts remain intact. Existing personnel/accounting role gates are retained. No tests run for this delivery.

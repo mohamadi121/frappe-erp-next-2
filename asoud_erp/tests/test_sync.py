@@ -189,3 +189,12 @@ def test_directive_actions_are_accepted_as_queued_mutations(monkeypatch):
     assert sync._is_mutation("asoud_erp.api.v1.directives.save_draft")
     assert not sync._is_mutation("asoud_erp.api.v1.directives.options")
     assert not sync._is_mutation("asoud_erp.api.v1.other.issue")
+
+
+def test_set_default_office_is_accepted_as_a_queued_mutation(monkeypatch):
+    # Regression: the app queues setup.set_default_office; `set_` was not an allowed verb, so the server
+    # answered METHOD_NOT_ALLOWED and the office list showed a validation error on «ورود به دفتر کار».
+    sync = _load_module(monkeypatch)
+    assert sync._is_mutation("asoud_erp.api.v1.setup.set_default_office")
+    assert not sync._is_mutation("asoud_erp.api.v1.setup.set_something_else")
+    assert not sync._is_mutation("asoud_erp.api.v1.other.set_default_office")

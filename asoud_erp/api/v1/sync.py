@@ -35,8 +35,9 @@ _MUTATION_PREFIXES = (
 # Directive actions are named after the verb (no ``save_``-style prefix) and carry their own request key;
 # the app sends them through the mutation queue, so they must be accepted by their exact method name.
 _MUTATION_METHODS = frozenset(
-    f"asoud_erp.api.v1.directives.{action}"
-    for action in ("issue", "start", "report", "review", "transfer", "close")
+    [f"asoud_erp.api.v1.directives.{action}" for action in ("issue", "start", "report", "review", "transfer", "close")]
+    # The app queues the active-office choice; `set_` is not a general write verb, so it is listed by exact name.
+    + ["asoud_erp.api.v1.setup.set_default_office"]
 )
 
 
