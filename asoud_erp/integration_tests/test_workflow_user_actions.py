@@ -19,6 +19,8 @@ class TestWorkflowUserActions(APITestCase):
         super().setUpClass()
         setup_tenancy()
         cls.account = _user('asoud.action-manager@example.com', ['System Manager'])
+        # System Manager alone no longer implies access to an office: grant it explicitly.
+        frappe.permissions.add_user_permission('Company', cls.company, cls.account, ignore_permissions=True)
         frappe.db.commit()
 
     def make_action(self, rule=None, **settings):

@@ -249,8 +249,8 @@ class TestHrManagerAccess(APITestCase):
         with self.assertRaises(frappe.PermissionError):
             setup.update_account_code_settings(company=self.first)
 
-        with self.assertRaises(frappe.PermissionError):
-            setup.set_default_office(company=self.first)
+        # set_default_office only selects the caller's own office for the session, so an
+        # HR Manager with access to that office may use it; it is not a setup write.
 
     def test_hr_manager_denied_on_other_writes_and_reports(self):
         frappe.set_user(HR_MANAGER_USER)

@@ -393,7 +393,10 @@ def _completed_task_rows(instance, exclude_task: str | None = None) -> list[dict
     )
     result = []
     for row in rows:
-        stage = frappe.get_doc("ASOUD Workflow Stage", row.workflow_stage)
+        # The frozen graph first; a stage that no longer exists is skipped, not a raw error.
+        stage = stage_for(instance, row.workflow_stage)
+        if not stage:
+            continue
         config = json.loads(stage.config_json or "{}")
         result.append(
             {
@@ -442,6 +445,38 @@ def _previous_task_data(instance, exclude_task: str | None = None) -> list[dict]
     return sections
 
 
+def _guard_auto_chain(instance) -> None:
+    """Stops a cycle of automatic stages before it runs another round (see workflow_auto_chain)."""
+    from asoud_erp.services.workflow_auto_chain import (
+        AUTO_ACTIONS,
+        AUTO_LOOP,
+        AUTO_STAGE_TYPES,
+        chain_limit,
+        chain_too_long,
+    )
+    from asoud_erp.services.workflow_graph_snapshot import load
+
+    snap = load(instance)
+    if snap:
+        auto_count = sum(1 for row in snap["stages"] if row["stage_type"] in AUTO_STAGE_TYPES)
+    else:
+        auto_count = frappe.db.count("ASOUD Workflow Stage", {
+            "workflow_definition": instance.workflow_definition, "stage_type": ["in", list(AUTO_STAGE_TYPES)]})
+    limit = chain_limit(auto_count)
+    recent = frappe.get_all("ASOUD Workflow Activity", filters={"workflow_instance": instance.name},
+        fields=["action"], order_by="creation desc, name desc", limit_page_length=limit)
+    hops = 0
+    for row in recent:
+        if row.action not in AUTO_ACTIONS:
+            break
+        hops += 1
+    if chain_too_long(hops, auto_count):
+        frappe.log_error(title='حلقهٔ مراحل خودکار گردش کار', message=AUTO_LOOP,
+                         reference_doctype='ASOUD Workflow Instance', reference_name=instance.name,
+                         defer_insert=True)
+        frappe.throw(AUTO_LOOP)
+
+
 def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -> None:
     previous_stage = instance.current_stage
     if stage.stage_type == 'End':
@@ -451,6 +486,10 @@ def _activate_stage(instance, stage, source_task=None, automatic_trigger=None) -
         return
     if instance.status != 'Running':
         frappe.throw('این اجرای گردش کار خاتمه یافته است و نمی‌تواند ادامه پیدا کند.')
+    from asoud_erp.services.workflow_auto_chain import AUTO_STAGE_TYPES
+
+    if stage.stage_type in AUTO_STAGE_TYPES:
+        _guard_auto_chain(instance)
     instance.current_stage = stage.name
     config = json.loads(stage.config_json or "{}")
     if stage.stage_type == 'Wait' and config.get('wait_version') == 1:
@@ -1686,12 +1725,16 @@ def complete_workflow_task(
         "Reject": _("Workflow request rejected"),
         "Return": _("Workflow request returned for correction"),
     }
-    _notify_user(
-        instance.started_by,
-        action_labels[action],
-        instance,
-        message=doc.comment or stage.stage_title,
-    )
+    # A multi-approver approval tells the requester only once the stage is decided;
+    # a partial approval gets its own notice below.
+    waits_for_quorum = stage.stage_type == "Approval" and action == "Approve"
+    if not waits_for_quorum:
+        _notify_user(
+            instance.started_by,
+            action_labels[action],
+            instance,
+            message=doc.comment or stage.stage_title,
+        )
     if action == "Reject":
         frappe.db.set_value(
             "ASOUD Workflow Task",
@@ -1754,13 +1797,16 @@ def complete_workflow_task(
         # Only the current round (the most recent activation) counts: a Return
         # route can re-activate this stage with a fresh set of tasks. The
         # deciding task's assigned_on is the current activation time.
-        round_tasks = frappe.get_all(
-            "ASOUD Workflow Task",
-            filters={"workflow_instance": instance.name, "workflow_stage": stage.name,
-                     "status": ["in", ("Open", "Completed")]},
-            fields=["status", "action", "assigned_on", "completed_on"],
-            # Bounded by the assignee cap per round (check_assignee_cap).
-            limit_page_length=0,
+        # A locking read sees the other approver's committed decision. A plain
+        # read uses the transaction's start snapshot, so two simultaneous
+        # approvers would each see the other's task still Open and the stage
+        # would never advance. Bounded by the assignee cap per round.
+        round_tasks = frappe.db.sql(
+            "select status, action, assigned_on, completed_on from `tabASOUD Workflow Task` "
+            "where workflow_instance=%s and workflow_stage=%s and status in ('Open', 'Completed') "
+            "for update",
+            (instance.name, stage.name),
+            as_dict=True,
         )
         total, approved = decision_counts([dict(t) for t in round_tasks], doc.assigned_on)
         try:
@@ -1770,11 +1816,19 @@ def complete_workflow_task(
                 from asoud_erp.services.digits import to_persian_digits
 
                 needed = required_approvals(mode, total)
-                _record_activity(doc, "Approve",
-                    f"تأیید ثبت شد؛ برای ادامهٔ مرحله {to_persian_digits(needed - approved)} تأیید دیگر لازم است.")
+                partial = f"تأیید ثبت شد؛ برای ادامهٔ مرحله {to_persian_digits(needed - approved)} تأیید دیگر لازم است."
+                _record_activity(doc, "Approve", partial)
+                _notify_user(instance.started_by, "یک تأیید ثبت شد؛ درخواست هنوز در مرحلهٔ تأیید است", instance,
+                             message=partial)
                 return success({"task": doc.name, "instance_status": instance.status})
         except ValueError as error:
             frappe.throw(_(str(error)))
+        _notify_user(
+            instance.started_by,
+            action_labels[action],
+            instance,
+            message=doc.comment or stage.stage_title,
+        )
         frappe.db.set_value(
             "ASOUD Workflow Task",
             {"workflow_instance": instance.name, "workflow_stage": stage.name, "status": "Open"},

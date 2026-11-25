@@ -35,6 +35,13 @@ Checks (the readiness engine owns the first group; the rest are added here):
   `allow_reject`/`allow_return` is off, so that action is impossible there.
 - `form_missing` (error) — a stage references a form (submission source or result form)
   that no longer exists.
+- `auto_cycle` (error) — a cycle made only of Condition/System Action stages
+  («حلقه‌ای که فقط از مراحل شرط و اقدام خودکار ساخته شده است مجاز نیست؛ میان آن‌ها یک وظیفه یا انتظار قرار دهید.»).
+  At run time an instance that would enter an automatic stage again, without a task, wait or end in
+  between (more finished automatic hops than its frozen graph has automatic stages), is stopped with
+  «مسیرهای خودکار این گردش‌کار به یک حلقهٔ بی‌پایان رسید و متوقف شد؛ …» and the change is rolled back.
+- `start_route` (error) — a route leads into the Start stage («مسیر نمی‌تواند به مرحلهٔ شروع برگردد.»).
+  `connect_workflow_stages` and the Transition DocType refuse it with the same text.
 
 ## `workflow.simulate_workflow` (POST)
 

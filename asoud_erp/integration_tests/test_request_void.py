@@ -27,6 +27,8 @@ class TestRequestVoid(APITestCase):
             'date_of_joining': '2020-01-01', 'status': 'Active', 'create_user_permission': 0,
             'reports_to': self.records['approver']}).insert().name
         self.hr = self._user('hr-' + self.token, 'HR Manager')
+        # HR Manager alone no longer implies access to an office: grant it explicitly.
+        frappe.permissions.add_user_permission('Company', self.company, self.hr, ignore_permissions=True)
 
     def _user(self, name, role):
         user = frappe.get_doc({'doctype': 'User', 'email': name + '@example.test', 'first_name': name,
@@ -361,6 +363,7 @@ class TestRequestVoid(APITestCase):
             self.void(request, user=system)
         # HR Manager restricted to another company.
         other = frappe.get_all('Company', filters={'name': ['!=', self.company]}, pluck='name', limit=1)[0]
+        frappe.db.delete('User Permission', {'user': self.hr, 'allow': 'Company', 'for_value': self.company})
         frappe.get_doc({'doctype': 'User Permission', 'user': self.hr, 'allow': 'Company',
                         'for_value': other}).insert()
         frappe.clear_cache(user=self.hr)

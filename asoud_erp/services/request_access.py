@@ -18,10 +18,19 @@ def company_access(company, user=None):
     if user == conf.get("asoud_workflow_service_user"):
         from asoud_erp.services.automatic_action_metadata import service_user
 
+        # service_user() asks Frappe for native Company read permission, which runs the
+        # office permission hook, which asks company_access() again. The nested ask is
+        # answered from the native check alone; the outer call still decides.
+        checking = frappe.flags.setdefault("asoud_service_company_check", set())
+        if company in checking:
+            return True
+        checking.add(company)
         try:
             return service_user(company) == user
         except frappe.PermissionError:
             return False
+        finally:
+            checking.discard(company)
     roles = set(frappe.get_roles(user))
     # An account-only first HR lead has no Employee yet. Native Company User
     # Permission is its explicit scope, not membership in every company.
