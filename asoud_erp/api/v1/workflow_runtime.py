@@ -241,7 +241,7 @@ def _users_for_stage(stage, instance) -> list[str]:
         users = _scoped_role_users(values, instance)
     result = list(dict.fromkeys(user for user in users if user not in {"Guest", "Administrator"}))
     if not result:
-        frappe.throw(_("برای مقصد ارجاع انتخاب‌شده کاربر فعالی در دسترس نیست."))
+        frappe.throw(_("برای مقصد ارجاع انتخاب‌شده کاربر فعالی در دسترس نیست.") + f" DEBUG[{stage.stage_type}|{assignment_type}|{values}|{users}|{workflow_company(instance.name)}]")
     return result
 
 

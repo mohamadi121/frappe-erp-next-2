@@ -21,6 +21,8 @@ class TestWorkflowStartSettings(APITestCase):
         super().setUpClass()
         cls.second = setup_tenancy()['second']
         cls.initiator = _user('asoud.start-manager@example.com', ['System Manager'])
+        # System Manager alone no longer implies access to an office: grant it explicitly.
+        frappe.permissions.add_user_permission('Company', cls.company, cls.initiator, ignore_permissions=True)
         frappe.db.commit()
 
     def test_selected_employee_role_can_start_only_within_its_company(self):

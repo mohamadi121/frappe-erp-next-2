@@ -27,6 +27,8 @@ class TestRequestVoid(APITestCase):
             'date_of_joining': '2020-01-01', 'status': 'Active', 'create_user_permission': 0,
             'reports_to': self.records['approver']}).insert().name
         self.hr = self._user('hr-' + self.token, 'HR Manager')
+        # HR Manager alone no longer implies access to an office: grant it explicitly.
+        frappe.permissions.add_user_permission('Company', self.company, self.hr, ignore_permissions=True)
 
     def _user(self, name, role):
         user = frappe.get_doc({'doctype': 'User', 'email': name + '@example.test', 'first_name': name,
