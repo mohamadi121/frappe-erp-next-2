@@ -231,7 +231,7 @@ class TestLoginStateAndFirstRun(LoginOnboardingBase):
         self.assertEqual(frappe.db.count("ASOUD Floating Detail"), details)
         self.assertEqual(frappe.db.get_value("ASOUD Party Profile", person, "user"), ADMIN)
         self.assertNotIn("System Manager", [r.role for r in frappe.get_doc("User", ADMIN).roles if r.role != "System Manager"])
-        self.assertEqual(session.login_state()["data"]["next"]["route"], "setup-first-office")
+        self.assertEqual(session.login_state()["data"]["next"]["route"], "home")
         company = frappe.db.get_single_value("ASOUD Settings", "first_office_company")
         frappe.get_doc({"doctype": "Fiscal Year", "year": "LO " + frappe.generate_hash(length=12),
                         "year_start_date": "2041-01-01", "year_end_date": "2041-12-31",
@@ -248,7 +248,7 @@ class TestLoginStateAndFirstRun(LoginOnboardingBase):
         self.assertEqual(session.login_state()["data"]["next"]["route"], "complete-admin-profile")
         onboarding.save_admin_profile(first_name="علی", last_name="رضایی", mobile="09123456789")
         self.assertEqual(session.login_state()["data"]["next"], {
-            "route": "setup-first-office", "office": company, "message": None})
+            "route": "home", "office": company, "message": None})
 
     def test_mobile_unverified_again_when_changed(self):
         self.login(ADMIN)

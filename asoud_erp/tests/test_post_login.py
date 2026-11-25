@@ -61,10 +61,10 @@ def test_admin_profile_precedes_first_office_and_pending_setup():
                          "route": "complete-admin-profile", "office": None, "message": None}
 
 
-def test_completed_profile_proceeds_to_office_then_setup():
+def test_completed_profile_proceeds_to_office_without_forcing_setup_on_login():
     assert route(is_system_admin=True, first_office_exists=False, office_ids=[])["route"] == "create-first-office"
     assert route(is_system_admin=True, pending_fiscal_office="A") == {
-        "route": "setup-first-office", "office": "A", "message": None}
+        "route": "home", "office": "A", "message": None}
 
 
 def test_password_and_disabled_state_precede_incomplete_profile():

@@ -19,8 +19,9 @@ def resolve_next_route(*, active, must_change_password, is_system_admin, first_o
     """``{route, office, message}``.
 
     Order for the system administrator: temporary password, essential profile,
-    first office, setup, then the ordinary office logic. Every other account never reaches the
-    first-office or admin-profile steps, whatever the deployment state is.
+    first office, then the ordinary office logic. Fiscal-year setup is launched
+    by the first-office onboarding flow and must not block later office entry.
+    Every other account never reaches the first-office or admin-profile steps.
     """
     offices = list(dict.fromkeys(office_ids or ()))
     if not active:
@@ -32,8 +33,6 @@ def resolve_next_route(*, active, must_change_password, is_system_admin, first_o
             return {"route": ROUTE_COMPLETE_ADMIN_PROFILE, "office": None, "message": None}
         if not first_office_exists:
             return {"route": ROUTE_CREATE_FIRST_OFFICE, "office": None, "message": None}
-        if pending_fiscal_office in offices:
-            return {"route": ROUTE_SETUP_FIRST_OFFICE, "office": pending_fiscal_office, "message": None}
     if not offices:
         return {"route": ROUTE_NO_OFFICE, "office": None, "message": NO_OFFICE_MESSAGE}
     if len(offices) == 1:
