@@ -363,6 +363,7 @@ class TestRequestVoid(APITestCase):
             self.void(request, user=system)
         # HR Manager restricted to another company.
         other = frappe.get_all('Company', filters={'name': ['!=', self.company]}, pluck='name', limit=1)[0]
+        frappe.db.delete('User Permission', {'user': self.hr, 'allow': 'Company', 'for_value': self.company})
         frappe.get_doc({'doctype': 'User Permission', 'user': self.hr, 'allow': 'Company',
                         'for_value': other}).insert()
         frappe.clear_cache(user=self.hr)

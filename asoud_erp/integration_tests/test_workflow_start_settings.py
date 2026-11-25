@@ -220,7 +220,9 @@ class TestWorkflowStartSettings(APITestCase):
         res3 = workflow_runtime.start_workflow_instance(definition, 'شروع ۳', reason='علت سوم', request_id='test-request-id-02')['data']
         self.assertNotEqual(res1['name'], res3['name'])
 
-        frappe.set_user(_user('asoud.start-manager2@example.com', ['System Manager']))
+        manager2 = _user('asoud.start-manager2@example.com', ['System Manager'])
+        frappe.permissions.add_user_permission('Company', self.company, manager2, ignore_permissions=True)
+        frappe.set_user(manager2)
         res4 = workflow_runtime.start_workflow_instance(definition, 'شروع مدیر دیگر', reason='علت مدیر', request_id=req_id)['data']
         self.assertNotEqual(res1['name'], res4['name'])
 

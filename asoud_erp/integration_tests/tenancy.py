@@ -26,6 +26,7 @@ HR_MANAGER_USER = "asoud.scope-hr@example.com"
 #: HR and accounting in one person: the legitimate way to keep a personnel party.
 PERSONNEL_USER = "asoud.scope-personnel@example.com"
 MANAGER_USER = "asoud.scope-manager@example.com"
+SYSTEM_APPROVER_USER = "asoud.scope-system-approver@example.com"
 EMPLOYEE_A_USER = "asoud.scope-employee-a@example.com"
 EMPLOYEE_B_USER = "asoud.scope-employee-b@example.com"
 
@@ -279,6 +280,11 @@ def setup_tenancy() -> dict:
     _user(PERSONNEL_USER, ["HR Manager", "Accounts Manager"])
     _user(MANAGER_USER, ["Accounts Manager"])
     _user(EMPLOYEE_A_USER, ["Employee"])
+    # Approval stages in these fixtures are addressed to the System Manager role. That
+    # role no longer implies access to an office, so one holder is granted it explicitly.
+    approver = _user(SYSTEM_APPROVER_USER, ["System Manager"])
+    if not frappe.db.exists("User Permission", {"user": approver, "allow": "Company", "for_value": first}):
+        frappe.permissions.add_user_permission("Company", first, approver, ignore_permissions=True)
     _user(EMPLOYEE_B_USER, ["Employee"])
     for user in (ACCOUNTS_A_USER, HR_MANAGER_USER, MANAGER_USER, PERSONNEL_USER):
         if not frappe.db.exists("User Permission", {"user": user, "allow": "Company", "for_value": first}):
