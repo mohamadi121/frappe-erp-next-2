@@ -1,5 +1,7 @@
 """First-run flow: first office and the system administrator's essential profile."""
 
+import json
+
 import frappe
 from frappe.utils import now_datetime
 
@@ -10,10 +12,22 @@ from asoud_erp.services.credential_policy import (
     normalize_mobile,
     normalize_national_id,
 )
+from asoud_erp.services.digits import normalize_numeric_text
 from asoud_erp.services.login_state import first_office_exists
+from asoud_erp.services.personnel_contract import validate_profile_update
 from asoud_erp.services.system_admin import is_system_admin
 
 NOT_ADMIN = "این مرحله فقط برای مدیر کل سیستم است."
+ADMIN_PERSONAL_FIELDS = {"father_name": 140, "birth_date": 10, "phone": 11,
+                         "address_line": 2000, "postal_code": 10}
+
+
+def own_admin_person(user: str):
+    """Use the first-login identity link, not an office, name or national-ID match."""
+    if not is_system_admin(user):
+        return None
+    name = frappe.db.get_value("ASOUD Party Profile", {"user": user}, "name")
+    return frappe.get_doc("ASOUD Party Profile", name) if name else None
 
 
 def require_admin() -> str:
@@ -73,7 +87,8 @@ def person_for_user(user: str, national_id: str | None):
 def read_admin_profile(user: str) -> dict:
     row = frappe.db.get_value("User", user, ["first_name", "last_name", "mobile_no", "enabled"], as_dict=True)
     person = person_for_user(user, None)
-    profile = frappe.db.get_value("ASOUD Party Profile", person, ["national_id", "email"], as_dict=True) if person else None
+    profile = frappe.db.get_value("ASOUD Party Profile", person,
+                                  ["national_id", "email", *ADMIN_PERSONAL_FIELDS], as_dict=True) if person else None
     national_id = profile.national_id if profile else None
     state = account_state.get(user)
     return {
@@ -81,12 +96,13 @@ def read_admin_profile(user: str) -> dict:
         "first_name": row.first_name or "", "last_name": row.last_name or "",
         "mobile": row.mobile_no or "", "national_id": national_id or "",
         "email": (profile.email if profile else "") or "",
+        "personal_details": {key: str(profile.get(key) or "") for key in ADMIN_PERSONAL_FIELDS} if profile else {},
         "mobile_verified": bool(state.get("mobile_verified")), "email_verified": bool(state.get("email_verified")),
         "completed": bool(row.first_name and row.last_name and row.mobile_no),
     }
 
 
-def save_admin_profile(first_name, last_name, mobile, national_id=None, email=None) -> dict:
+def save_admin_profile(first_name, last_name, mobile, national_id=None, email=None, personal_details=None) -> dict:
     user = require_admin()
     try:
         first = clean_name(first_name, "نام")
@@ -106,6 +122,27 @@ def save_admin_profile(first_name, last_name, mobile, national_id=None, email=No
     person = person_for_user(user, nid)
     before_mobile = frappe.db.get_value("User", user, "mobile_no")
     before_mail = frappe.db.get_value("ASOUD Party Profile", person, "email") if person else None
+    extra = {}
+    if personal_details is not None:
+        if not person or frappe.db.get_value("ASOUD Party Profile", person, "user") != user:
+            frappe.throw("ابتدا مشخصات اولیه حساب خود را ثبت کنید.", frappe.PermissionError)
+        try:
+            raw = json.loads(personal_details) if isinstance(personal_details, str) else personal_details
+            if not isinstance(raw, dict) or set(raw) - ADMIN_PERSONAL_FIELDS.keys():
+                raise ValueError("فیلدهای تکمیلی پرونده معتبر نیستند.")
+            for key, value in raw.items():
+                if not isinstance(value, str):
+                    raise ValueError("اطلاعات تکمیلی باید به صورت متن وارد شود.")
+                value = value.strip()
+                if key in {"phone", "postal_code"}:
+                    value = normalize_numeric_text(value)
+                if len(value) > ADMIN_PERSONAL_FIELDS[key]:
+                    raise ValueError("طول یکی از فیلدهای تکمیلی بیش از حد مجاز است.")
+                extra[key] = value or None
+            previous = frappe.db.get_value("ASOUD Party Profile", person, list(ADMIN_PERSONAL_FIELDS), as_dict=True)
+            validate_profile_update(extra, previous or {})
+        except (ValueError, TypeError) as exc:
+            frappe.throw(str(exc), frappe.ValidationError)
     # The login id (User.name / User.email) is never rewritten here; the optional e-mail is a
     # contact detail of the person record.
     doc = frappe.get_doc("User", user)
@@ -113,7 +150,7 @@ def save_admin_profile(first_name, last_name, mobile, national_id=None, email=No
     doc.save(ignore_permissions=True)
 
     full = f"{first} {last}"
-    values = {"display_name": full, "mobile": mobile_n, "party_type": "Individual", "user": user}
+    values = {"display_name": full, "mobile": mobile_n, "party_type": "Individual", "user": user, **extra}
     if nid:
         values["national_id"] = nid
     if mail:
@@ -137,7 +174,7 @@ def save_admin_profile(first_name, last_name, mobile, national_id=None, email=No
     state.save(ignore_permissions=True)
     security_audit.record("admin.profile_complete", target_type="User", target=user,
                           details={"fields": ["first_name", "last_name", "mobile"]
-                                   + (["national_id"] if nid else []) + (["email"] if mail else [])})
+                                   + (["national_id"] if nid else []) + (["email"] if mail else []) + list(extra)})
     return read_admin_profile(user) | {"person": profile.name}
 
 

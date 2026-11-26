@@ -21,6 +21,7 @@ from frappe.utils import cint, flt, get_first_day, getdate, strip_html
 
 from asoud_erp.api.v1 import personnel as personnel_api
 from asoud_erp.api.v1.responses import success
+from asoud_erp.services.onboarding import own_admin_person
 from asoud_erp.services.personnel_employee import EMPLOYEE_FIELD_LABELS, employee_for, profile_revision
 from asoud_erp.services.personnel_file import (
     HISTORY_TITLES,
@@ -412,6 +413,27 @@ def get_personnel_file(name: str) -> dict:
 @frappe.whitelist()
 def get_my_personnel_file() -> dict:
     """The session user's own personnel file («اطلاعات من»)."""
+    user = frappe.session.user
+    person = own_admin_person(user)
+    if person:
+        company = person.company or frappe.defaults.get_user_default("company", user=user)
+        actual_employee = bool(person.employee and frappe.db.exists("Employee", {
+            "name": person.employee, "user_id": user, "status": "Active",
+        }))
+        if actual_employee and "Employee" in frappe.parse_json(person.roles_text or "[]"):
+            return success(build_file(person.name) | {"admin_identity": True})
+        # The initial profile is not an Employee. Do not invent a personnel
+        # number or include access to HR records on the basis of the role.
+        row = personnel_api._row(person)
+        return success({
+            "profile_id": person.name,
+            "can_edit": True,
+            "admin_identity": True,
+            "header": _header(person, None, row, getdate()) | {
+                "designation": "مدیر کل سیستم", "company": company,
+            },
+            "personal": _personal(None, row),
+        })
     return success(build_file(_my_profile()))
 
 
@@ -573,7 +595,23 @@ def get_my_home() -> dict:
     user = frappe.session.user
     employee_name = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "name")
     if not employee_name:
-        frappe.throw(_("No active Employee is linked to this user"), frappe.PermissionError)
+        person = own_admin_person(user)
+        if not person:
+            frappe.throw(_("No active Employee is linked to this user"), frappe.PermissionError)
+        return success({
+            "profile_id": person.name,
+            "name": person.display_name,
+            "admin_identity": True,
+            "designation": "مدیر کل سیستم",
+            "company": person.company or frappe.defaults.get_user_default("company", user=user),
+            "date": str(getdate()),
+            "counts": {
+                "open_requests": frappe.db.count("ASOUD Workflow Instance", {"started_by": user, "status": "Running"}),
+                "open_tasks": frappe.db.count("ASOUD Workflow Task", {"assigned_to": user, "status": "Open"}),
+                "unread_notifications": frappe.db.count("Notification Log", {"for_user": user, "read": 0}),
+            },
+            "announcements": _announcements(),
+        })
     employee = frappe.get_doc("Employee", employee_name)
     profile = frappe.db.get_value("ASOUD Party Profile", {"employee": employee.name, "company": employee.company},
                                   "name")

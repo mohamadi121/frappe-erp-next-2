@@ -14,6 +14,7 @@ from asoud_erp.api.v1 import (
     hr,
     hr_onboarding,
     onboarding,
+    personnel_file,
     role_access,
     role_management,
     session,
@@ -149,6 +150,36 @@ class LoginOnboardingBase(APITestCase):
 
 
 class TestLoginStateAndFirstRun(LoginOnboardingBase):
+    def test_admin_own_file_uses_bootstrap_identity_without_employee(self):
+        frappe.set_user(ADMIN)
+        identity = onboarding.save_admin_profile("مریم", "احمدی", DIGITS_MOBILE)["data"]
+        profile = identity["person"]
+        self.assertTrue(session.login_state()["data"]["admin_profile_complete"])
+        self.assertFalse(frappe.db.exists("Employee", {"user_id": ADMIN}))
+        home = personnel_file.get_my_home()["data"]
+        data = personnel_file.get_my_personnel_file()["data"]
+        self.assertEqual(home["name"], "مریم احمدی")
+        self.assertEqual(home["profile_id"], profile)
+        self.assertEqual(data["profile_id"], profile)
+        self.assertTrue(data["admin_identity"])
+        self.assertIsNone(data["header"]["employee_code"])
+        self.assertFalse(data["header"]["linked"])
+
+        onboarding.save_admin_profile("مریم", "احمدی نیا", DIGITS_MOBILE, personal_details={
+            "father_name": "علی", "address_line": "تهران", "postal_code": "۱۲۳۴۵۶۷۸۹۰",
+        })
+        self.assertEqual(personnel_file.get_my_home()["data"]["name"], "مریم احمدی نیا")
+        file = personnel_file.get_my_personnel_file()["data"]
+        self.assertEqual(file["profile_id"], profile)
+        self.assertEqual(file["personal"]["father_name"], "علی")
+        self.assertEqual(file["personal"]["postal_code"], "1234567890")
+        with self.assertRaises(frappe.ValidationError):
+            onboarding.save_admin_profile("مریم", "احمدی نیا", DIGITS_MOBILE,
+                                          personal_details={"role": "System Manager"})
+        frappe.set_user(PLAIN)
+        with self.assertRaises(frappe.PermissionError):
+            personnel_file.get_my_personnel_file()
+
     def test_non_admin_gets_no_office_message_never_first_office(self):
         self.login(PLAIN)
         state = session.login_state()["data"]

@@ -24,7 +24,8 @@ def admin_profile_complete(user: str) -> bool:
     if not row or not (row.first_name or "").strip() or not (row.last_name or "").strip():
         return False
     try:
-        return bool(normalize_mobile(row.mobile_no))
+        return bool(normalize_mobile(row.mobile_no) and
+                    frappe.db.exists("ASOUD Party Profile", {"user": user}))
     except ValueError:
         return False
 

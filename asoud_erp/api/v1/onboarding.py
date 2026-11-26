@@ -82,9 +82,9 @@ def get_admin_profile() -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def save_admin_profile(first_name: str, last_name: str, mobile: str, national_id: str | None = None,
-                       email: str | None = None) -> dict:
+                       email: str | None = None, personal_details: str | dict | None = None) -> dict:
     """Attach essential identity data to the existing admin account and its person record.
 
     Creates no account, role, personnel file or accounting detail code. Mobile/e-mail stay
     unverified until ownership is proven."""
-    return success(service.save_admin_profile(first_name, last_name, mobile, national_id, email))
+    return success(service.save_admin_profile(first_name, last_name, mobile, national_id, email, personal_details))
