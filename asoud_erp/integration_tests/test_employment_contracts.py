@@ -285,6 +285,11 @@ class TestEmploymentContracts(APITestCase):
         self.assertTrue(print_res["ok"])
         self.assertTrue(print_res["data"]["is_draft"])
         self.assertEqual(print_res["data"]["draft_banner"], "«پیش‌نویس ـ فاقد اعتبار نهایی»")
+        html = print_res["data"]["html"]
+        self.assertIn(frappe.db.get_value("Employee", emp_name, "employee_name"), html)
+        self.assertIn(comp, html)
+        self.assertNotIn("{{company.company_name}}", html)
+        self.assertNotIn("{{personnel.employee_name}}", html)
 
         # After finalization
         api.finalize_contract(contract_id)

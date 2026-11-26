@@ -7,12 +7,18 @@ from asoud_erp.services.digits import normalize_numeric_text
 from asoud_erp.services.personnel_contract import (
     FINANCIAL_FIELDS,
     PERSONAL_FIELDS,
+    derived_net_salary,
+    validate_financial,
+    validate_profile_update,
     validate_record,
 )
 
 #: ``PERSONAL_FIELDS`` stored in identifier/number columns: Persian digits must
 #: never reach the Party Profile or the linked Employee.
-NUMERIC_PERSONAL_FIELDS = ("national_id", "mobile", "phone", "postal_code", "emergency_phone")
+NUMERIC_PERSONAL_FIELDS = (
+    "national_id", "mobile", "phone", "postal_code", "emergency_phone", "notice_number_of_days",
+    "birth_certificate_number",
+)
 
 
 def _normalize_numeric(data: dict) -> dict:
@@ -84,7 +90,8 @@ def _row(doc, include_financial=False):
             "photo_record": photo_record(doc.name, doc.get("employee")),
             **{field: str(doc.get(field) or "") for field in PERSONAL_FIELDS}}
     if include_financial:
-        row.update({field: str(doc.get(field) or "") for field in FINANCIAL_FIELDS})
+        row.update({field: str(value) if (value := doc.get(field)) is not None else ""
+                    for field in FINANCIAL_FIELDS})
         try:
             row["employee_roles"] = json.loads(doc.get("employee_roles") or "[]")
         except (TypeError, ValueError):
@@ -185,8 +192,6 @@ def update_personnel(name, values, revision, request_id=None):
     allowed = PERSONAL_FIELDS | (FINANCIAL_FIELDS if _manager() else set())
     if not isinstance(data, dict) or set(data) - allowed:
         frappe.throw("Only authorized HR profile fields can be edited")
-    from asoud_erp.services.personnel_contract import validate_financial
-
     validate_financial(data)
     _request(request_id)
     # Existing queued requests may have a receipt from the old implementation.
@@ -213,13 +218,33 @@ def update_personnel(name, values, revision, request_id=None):
         employee_for(person, lock=True)
     if profile_revision(person, lock=True) != revision:
         frappe.throw("Profile changed; reload before saving", frappe.TimestampMismatchError)
+    if not person.employee and any(data.get(key) not in (None, "") for key in (
+        "reports_to", "final_confirmation_date", "contract_end_date", "notice_number_of_days",
+        "emergency_contact_name", "emergency_phone", "emergency_relation",
+        "marital_status", "blood_group", "company_email",
+    )):
+        frappe.throw("برای ذخیرهٔ این فیلد، ابتدا تکمیل اطلاعات استخدامی و اتصال پرونده به پرسنل لازم است.")
+    try:
+        stored = {key: person.get(key) for key in data}
+        if person.employee:
+            stored.update(shared_values(person))
+        validate_profile_update(data, stored)
+        derived_net_salary(data)
+    except ValueError as exc:
+        frappe.throw(str(exc))
     if "display_name" in data and not str(data["display_name"] or "").strip():
         frappe.throw("Name is required")
     if person.employee:
         write_shared(person, data)
+    elif {"first_name", "last_name"} <= data.keys():
+        data["display_name"] = f"{data['first_name'].strip()} {data['last_name'].strip()}"
     for key, value in data.items():
+        if key in {"first_name", "last_name"}:
+            continue
         person.set(key, value if value not in (None, "") else None)
     for key, value in shared_values(person).items():
+        if key in {"first_name", "last_name"}:
+            continue
         person.set(key, value or None)
     person.save(ignore_permissions=True)
     # Native Version handles document changes; the receipt contains no HR data.

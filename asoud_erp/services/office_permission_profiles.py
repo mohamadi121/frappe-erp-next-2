@@ -8,7 +8,7 @@ import json
 
 import frappe
 
-from asoud_erp.services import security_audit
+from asoud_erp.services import access_catalog_layout, account_state, security_audit
 from asoud_erp.services.permission_catalog import MEDIUM_ACTIONS, catalog_rows, validate_grant
 
 
@@ -101,6 +101,7 @@ def list_profiles(company):
     available = catalog()
     example = accountant_example(available)
     return {'profiles': [profile_row(row) for row in rows], 'catalog': available,
+        'catalog_layout': access_catalog_layout.read(available),
         'examples': [example] if example['grants'] and not any(row.title == example['title'] for row in rows) else []}
 
 
@@ -213,11 +214,18 @@ def get_account(company, employee):
             grants[key] = [a for a in MEDIUM_ACTIONS if p.get(a)]
     login = (doc.user_id or '').removesuffix('@users.asoud.invalid')
     method = 'mobile' if (doc.user_id or '').endswith('@users.asoud.invalid') else 'email'
+    enabled = bool(doc.user_id and frappe.db.get_value('User', doc.user_id, 'enabled'))
+    available = catalog()
     return {'employee': employee, 'title': doc.employee_name, 'designation': doc.designation or '',
-        'company': company, 'user': doc.user_id or '', 'legacy': bool(doc.user_id and not row),
+        'company': company, 'department': doc.department or '',
+        'user': doc.user_id or '', 'legacy': bool(doc.user_id and not row),
         'login': login, 'registered_delivery': bool(login and login == registered_contact(doc, method)),
+        'account_status': 'no_account' if not doc.user_id else ('active' if enabled else 'disabled'),
+        'activation_pending': bool(row and row.user == doc.user_id and row.user
+            and enabled
+            and account_state.get(row.user)['activation_pending']),
         'profile': row.managed_role if row else None, 'token': str(row.modified) if row else None,
-        'grants': grants, 'catalog': catalog()}
+        'grants': grants, 'catalog': available, 'catalog_layout': access_catalog_layout.read(available)}
 
 
 def save_account_access(company, employee, grants, token, profile=None):
@@ -266,11 +274,18 @@ def save_account_access(company, employee, grants, token, profile=None):
 
 def list_accounts(company):
     gate(company)
+    representation_enabled = (
+        frappe.session.user == 'Administrator'
+        and bool(frappe.conf.get('asoud_enable_personnel_representation'))
+    )
     rows = frappe.get_all('Employee', filters={'company': company, 'status': 'Active'},
         fields=['name', 'employee_name', 'designation', 'department', 'user_id',
                 'cell_number', 'personal_email', 'company_email'],
         order_by='employee_name asc', limit_page_length=500)
     users = [row.user_id for row in rows if row.user_id]
+    profiles = {(row.employee, row.user): row.managed_role for row in frappe.get_all(
+        'ASOUD Access Assignment', filters={'company': company, 'user': ['in', users or ['']]},
+        fields=['employee', 'user', 'managed_role'], limit_page_length=0)}
     user_rows = frappe.get_all('User', filters={'name': ['in', users or ['']]},
         fields=['name', 'enabled'], limit_page_length=0)
     enabled = {row.name: bool(row.enabled) for row in user_rows}
@@ -284,9 +299,11 @@ def list_accounts(company):
         for field in ('cell_number', 'personal_email', 'company_email'):
             row.pop(field, None)
         user = row.user_id
+        row['profile'] = profiles.get((row.name, user))
         row['account_status'] = ('no_account' if not user else
             'disabled' if not enabled.get(user, False) else
             'pending' if states.get(user, False) else 'active')
+        row['can_represent'] = representation_enabled and row['account_status'] == 'active' and user != 'Administrator'
     return rows
 
 
@@ -303,10 +320,12 @@ def registered_contact(doc, method):
     return ''
 
 
-def create_account(company, employee, contact=None, method='email', invite=False):
+def create_account(company, employee, contact=None, method='email', invite=False, delivery=None):
     from asoud_erp.services.credential_policy import normalize_email, normalize_mobile
 
     doc = person(company, employee)
+    if delivery not in (None, 'manual_code') or (delivery and not invite):
+        frappe.throw('روش تحویل دعوت‌نامه معتبر نیست.')
     use_registered_contact = contact is None
     if use_registered_contact:
         contact = registered_contact(doc, method)
@@ -354,14 +373,13 @@ def create_account(company, employee, contact=None, method='email', invite=False
             'company': company, 'employee': employee, 'native_role': role}).insert(ignore_permissions=True)
         user.reload()
         user.save(ignore_permissions=True)
-        from asoud_erp.services import account_state
-
         state = account_state.ensure(user.name)
         state.activation_pending = 1
         state.save(ignore_permissions=True)
         result = get_account(company, employee)
         if invite:
-            result['activation'] = invite_account(company, employee, registered=use_registered_contact)
+            result['activation'] = invite_account(company, employee, registered=use_registered_contact,
+                                                  delivery=delivery)
         security_audit.record('access.account_create', company=company, target_type='User', target=user.name)
         return result
     except Exception:
@@ -369,10 +387,16 @@ def create_account(company, employee, contact=None, method='email', invite=False
         raise
 
 
-def invite_account(company, employee, registered=False):
+def invite_account(company, employee, registered=False, delivery=None):
     from asoud_erp.services.hr_onboarding import _activate
 
     doc, row = assignment(company, employee)
+    if delivery == 'manual_code':
+        if row.user in {'Administrator', 'Guest'} or not frappe.db.get_value('User', row.user, 'enabled'):
+            frappe.throw('صدور کد دعوت برای این حساب مجاز نیست.', frappe.PermissionError)
+        return _activate(row.user, '', 'manual_code', company=company)
+    if delivery is not None:
+        frappe.throw('روش تحویل دعوت‌نامه معتبر نیست.')
     if frappe.db.get_value('User', row.user, 'last_login'):
         frappe.throw('این حساب قبلاً وارد شده است؛ از مسیر بازیابی رمز استفاده کنید.')
     if registered:

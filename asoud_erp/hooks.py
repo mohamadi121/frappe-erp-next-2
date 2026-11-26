@@ -45,6 +45,10 @@ doc_events = {
 }
 
 before_request = ["asoud_erp.services.setup_reset.guard_request", "asoud_erp.services.session_guard.enforce_password_change"]
+auth_hooks = [
+    "asoud_erp.services.personnel_representation.authenticate",
+    "asoud_erp.services.personnel_representation.audit_request",
+]
 on_login = ["asoud_erp.services.session_guard.on_login"]
 before_job = ["asoud_erp.services.setup_reset.guard_job"]
 

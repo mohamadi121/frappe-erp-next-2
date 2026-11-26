@@ -24,6 +24,7 @@ PROFILE_CACHE_FIELDS = {
 
 EMPLOYEE_FIELDS = {
     **PROFILE_CACHE_FIELDS,
+    "first_name": "first_name", "last_name": "last_name",
     "marital_status": "marital_status", "blood_group": "blood_group",
     "emergency_contact_name": "person_to_be_contacted", "emergency_phone": "emergency_phone_number",
     "emergency_relation": "relation", "company_email": "company_email", "branch": "branch",
@@ -33,7 +34,8 @@ EMPLOYEE_FIELDS = {
 
 # Persian labels of Employee fields, for change history. Values are never exposed.
 EMPLOYEE_FIELD_LABELS = {
-    "employee_name": "نام", "cell_number": "موبایل", "personal_email": "ایمیل",
+    "employee_name": "نام", "first_name": "نام", "last_name": "نام خانوادگی",
+    "cell_number": "موبایل", "personal_email": "ایمیل",
     "date_of_birth": "تولد", "date_of_joining": "شروع کار", "gender": "جنسیت",
     "designation": "سمت", "department": "واحد سازمانی", "employment_type": "نوع استخدام",
     "current_address": "آدرس", "marital_status": "وضعیت تأهل", "blood_group": "گروه خونی",
@@ -77,11 +79,18 @@ def resolve_link(key, value, company):
 
 def profile_options(company):
     result = {}
-    for key, (doctype, _) in LINK_FIELDS.items():
+    jobs = {job["title"] for job in chart_jobs(company)}
+    for key, (doctype, label) in LINK_FIELDS.items():
         if key == "reports_to":
             continue
         filters = {"company": company, "is_group": 0} if key == "department" else {}
-        result[key] = frappe.get_all(doctype, filters=filters, pluck="name", order_by="name", limit_page_length=0)
+        if key == "job_title" and jobs:
+            filters["designation_name"] = ["in", sorted(jobs)]
+        result[key] = [
+            {"name": row.name, "label": row.get(label) or row.name}
+            for row in frappe.get_all(doctype, filters=filters, fields=["name", label],
+                                      order_by="name", limit_page_length=0)
+        ]
     result["reports_to"] = frappe.get_all("Employee", filters={"company": company, "status": "Active"},
                                           fields=["name", "employee_name", "designation"],
                                           order_by="employee_name", limit_page_length=0)
@@ -103,7 +112,8 @@ def shared_values(person):
     if not person.get("employee"):
         return {}
     employee = employee_for(person)
-    result = {key: str(employee.get(field) or "") for key, field in EMPLOYEE_FIELDS.items()
+    result = {key: str(value) if (value := employee.get(field)) is not None else ""
+              for key, field in EMPLOYEE_FIELDS.items()
               if employee.meta.has_field(field)}
     result["employee_status"] = employee.status
     if not result.get("job_title") and person.get("job_title"):
@@ -131,13 +141,15 @@ def write_shared(person, values):
         if key == "display_name":
             if not str(value or "").strip():
                 frappe.throw("Name is required")
-            if str(value).strip() != employee.employee_name:
+            if not ({"first_name", "last_name"} & values.keys()) and str(value).strip() != employee.employee_name:
                 employee.first_name = str(value).strip()
                 employee.middle_name = None
                 employee.last_name = None
             continue
         if target in NUMERIC_EMPLOYEE_FIELDS:
             value = normalize_numeric_text(value)
+        if key == "notice_number_of_days" and value is not None:
+            value = int(value)
         # Link validation is intentionally left to the standard controller.
         employee.set(target, value)
     if "department" in values and employee.department:

@@ -25,6 +25,10 @@ def login_state() -> dict:
 @frappe.whitelist(methods=["POST"])
 def logout() -> dict:
     """Revoke the current server session (not just forget it on the device)."""
+    from asoud_erp.services import personnel_representation
+
+    if personnel_representation.active():
+        return success(personnel_representation.stop())
     user = _require_session()
     sid = frappe.session.sid
     frappe.local.login_manager.logout()
@@ -33,6 +37,13 @@ def logout() -> dict:
     security_audit.record("auth.logout_api", actor=user, result="success" if revoked else "failure",
                           target_type="User", target=user, commit=True)
     return success({"revoked": revoked})
+
+
+@frappe.whitelist(methods=["POST"])
+def start_personnel_representation(company: str, employee: str, reason: str) -> dict:
+    from asoud_erp.services import personnel_representation
+
+    return success(personnel_representation.start(company, employee, reason))
 
 
 @frappe.whitelist(methods=["POST"])

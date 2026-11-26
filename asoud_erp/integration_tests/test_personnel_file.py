@@ -107,6 +107,26 @@ class TestPersonnelFile(FrappeTestCase):
         with self.assertRaises(frappe.ValidationError):
             personnel.update_personnel(self.person.name, {"iban": "IR1"}, detail["revision"], "file-update-2")
 
+    def test_profile_edit_round_trips_names_organization_and_calculated_net(self):
+        detail = personnel.get_personnel(self.person.name)["data"]
+        result = personnel.update_personnel(self.person.name, {
+            "first_name": "صبا", "last_name": "آزمایشی", "reports_to": self.manager.name,
+            "final_confirmation_date": "2025-06-01", "contract_end_date": "2027-01-01",
+            "notice_number_of_days": "۰", "emergency_phone": "۰۹۱۲۱۲۳۴۵۶۷",
+            "base_salary": "10000", "housing_allowance": "1000", "transport_allowance": "200",
+            "other_allowances": "100", "deductions": "300", "net_salary": "1",
+        }, detail["revision"], "file-editor-roundtrip")["data"]
+        profile = result["profile"]
+        self.assertEqual((profile["first_name"], profile["last_name"]), ("صبا", "آزمایشی"))
+        self.assertEqual(profile["reports_to"], self.manager.name)
+        self.assertEqual(profile["final_confirmation_date"], "2025-06-01")
+        self.assertEqual(profile["contract_end_date"], "2027-01-01")
+        self.assertEqual(profile["notice_number_of_days"], "0")
+        self.assertEqual(profile["emergency_phone"], "09121234567")
+        self.assertEqual(float(profile["net_salary"]), 11000)
+        with self.assertRaises(frappe.ValidationError):
+            personnel.update_personnel(self.person.name, {"emergency_phone": "123"}, result["revision"], "file-invalid-phone")
+
     def test_employee_sees_only_their_own_file_and_cannot_change_it(self):
         personnel_file.create_announcement("جلسه عمومی", "پنجشنبه ساعت ۱۰", expire_on=add_days(nowdate(), 5))
         frappe.set_user(self.user)

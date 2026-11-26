@@ -10,6 +10,13 @@ def list_profiles(company):
     return success(service.list_profiles(company))
 
 
+@frappe.whitelist(methods=['POST'])
+def save_catalog_layout(company, modules, version):
+    from asoud_erp.services import access_catalog_layout
+
+    return success(access_catalog_layout.save(company, frappe.parse_json(modules), version))
+
+
 @frappe.whitelist()
 def get_profile(company, name):
     return success(service.get_profile(company, name))
@@ -36,8 +43,8 @@ def get_account(company, employee):
 
 
 @frappe.whitelist(methods=['POST'])
-def create_account(company, employee, contact=None, method='email', invite=0):
-    return success(service.create_account(company, employee, contact, method, bool(frappe.utils.cint(invite))))
+def create_account(company, employee, contact=None, method='email', invite=0, delivery=None):
+    return success(service.create_account(company, employee, contact, method, bool(frappe.utils.cint(invite)), delivery))
 
 
 @frappe.whitelist(methods=['POST'])
@@ -46,8 +53,9 @@ def save_account_access(company, employee, grants, token, profile=None):
 
 
 @frappe.whitelist(methods=['POST'])
-def invite_account(company, employee, registered=0):
-    return success(service.invite_account(company, employee, registered=bool(frappe.utils.cint(registered))))
+def invite_account(company, employee, registered=0, delivery=None):
+    return success(service.invite_account(company, employee, registered=bool(frappe.utils.cint(registered)),
+                                          delivery=delivery))
 
 
 @frappe.whitelist()

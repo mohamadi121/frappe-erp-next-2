@@ -61,7 +61,7 @@ def _throttle(key: str) -> bool:
     return blocked
 
 
-def issue(user: str, purpose: str) -> str:
+def issue(user: str, purpose: str, *, company: str | None = None) -> str:
     """Create a fresh code, voiding earlier unused codes of the same purpose."""
     for name in frappe.get_all("ASOUD Account Token", filters={"user": user, "purpose": purpose,
                                                                "consumed_on": ["is", "not set"]}, pluck="name"):
@@ -69,6 +69,7 @@ def issue(user: str, purpose: str) -> str:
     code, salt = token_codes.new_code(), token_codes.new_salt()
     frappe.get_doc({
         "doctype": "ASOUD Account Token", "user": user, "purpose": purpose, "salt": salt,
+        "company": company,
         "token_hash": token_codes.hash_code(code, salt),
         "expires_on": add_to_date(now_datetime(), minutes=TTL_MINUTES[purpose]),
         "requested_from": str(getattr(frappe.local, "request_ip", "") or "")[:140],
@@ -78,12 +79,25 @@ def issue(user: str, purpose: str) -> str:
 
 def consume(user: str, purpose: str, code: str) -> None:
     """Verify and burn the newest code; every failure is the same Persian message."""
-    rows = frappe.get_all("ASOUD Account Token", filters={"user": user, "purpose": purpose},
-                          fields=["name"], order_by="creation desc", limit_page_length=1)
-    if not rows:
+    pending = None
+    if purpose == "activation":
+        # Same lock as activation issuance and password completion. A retry
+        # after a concurrent reissue must see the new token, not a snapshot.
+        pending = frappe.db.get_value("ASOUD Account State", user, "activation_pending", for_update=True)
+    name = frappe.db.get_value("ASOUD Account Token", {"user": user, "purpose": purpose},
+                               "name", order_by="creation desc, name desc", for_update=True)
+    if not name:
         frappe.throw(GENERIC_INVALID, frappe.ValidationError)
-    token = frappe.get_doc("ASOUD Account Token", rows[0].name, for_update=True)
-    expired = get_datetime(token.expires_on) < now_datetime()
+    token = frappe.get_doc("ASOUD Account Token", name, for_update=True)
+    if token.company:
+        employee = frappe.db.get_value(
+            "ASOUD Access Assignment", {"user": user, "company": token.company}, "employee", for_update=True)
+        if not pending or not employee or not frappe.db.get_value(
+            "Employee", {"name": employee, "company": token.company, "user_id": user, "status": "Active"},
+            "name", for_update=True,
+        ):
+            frappe.throw(GENERIC_INVALID, frappe.ValidationError)
+    expired = get_datetime(token.expires_on) <= now_datetime()
     if not token_codes.usable(consumed=token.consumed_on, expired=expired, attempts=token.attempts or 0):
         frappe.throw(GENERIC_INVALID, frappe.ValidationError)
     if not token_codes.matches(code, token.salt, token.token_hash):

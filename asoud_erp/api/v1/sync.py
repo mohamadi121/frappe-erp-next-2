@@ -60,6 +60,11 @@ def execute_mutation(
         return failure("METHOD_NOT_ALLOWED", "این متد برای همگام‌سازی مجاز نیست.")
     if method == "asoud_erp.api.v1.sync.execute_mutation":
         return failure("METHOD_NOT_ALLOWED", "فراخوانی بازگشتی مجاز نیست.")
+    if getattr(getattr(frappe, "local", None), "asoud_personnel_representation", None):
+        from asoud_erp.services import personnel_representation
+
+        if not personnel_representation.allowed_request(f"/api/method/{method}"):
+            frappe.throw("این عملیات امنیتی در حالت نمایندگی مجاز نیست.", frappe.PermissionError)
 
     values = _payload(payload)
     fingerprint = _fingerprint(method, values)

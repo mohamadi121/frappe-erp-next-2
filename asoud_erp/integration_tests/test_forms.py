@@ -41,6 +41,29 @@ def document_schema(title="سند آزمایشی"):
 
 
 class TestForms(APITestCase):
+    def test_document_sections_can_move_existing_fields_without_changing_keys(self):
+        original = document_schema()
+        name = forms.save_form(self.company, original, client_id="f8" * 12)["data"]["name"]
+        draft = forms.get_form(name, manage=1)["data"]
+        moved = draft["schema"]
+        existing = moved["sections"][0]["fields"].pop(0)
+        moved["sections"].insert(0, {"id": "dates", "title": "تاریخ‌ها", "fields": [existing]})
+        saved = forms.save_form(self.company, moved, name=name, expected_version=draft["draft_version"])["data"]
+        reloaded = forms.get_form(name, manage=1)["data"]["schema"]["sections"]
+        self.assertEqual([row["id"] for row in reloaded], ["dates", "main"])
+        self.assertEqual(reloaded[0]["fields"][0], existing)
+        self.assertEqual(existing["key"], "posting_date")
+        self.assertEqual(existing["native_key"], "posting_date")
+        self.assertEqual(saved["draft_version"], draft["draft_version"] + 1)
+
+    def test_request_review_text_round_trips_in_published_schema(self):
+        draft_schema = schema("معرفی‌نامه")
+        draft_schema["review_text"] = "مبلغ {{form.amount}} و اولویت {{form.priority}}"
+        saved = forms.save_form(self.company, draft_schema, client_id="f9" * 12)["data"]
+        forms.transition(saved["name"], "publish", expected_version=saved["draft_version"])
+        loaded = forms.get_form(saved["name"])["data"]["schema"]
+        self.assertEqual(loaded["review_text"], draft_schema["review_text"])
+
     def test_builtin_catalog_is_read_only_until_open_and_removal_preserves_revision(self):
         from asoud_erp.services.form_schema import validate_schema
         from asoud_erp.services.hr_form_catalog import catalog, form_name

@@ -221,8 +221,16 @@ def _tafsili(party, profile, title, groups) -> None:
                                  detail_groups=groups)
 
 
-def _activate(user: str, mail: str, method: str, *, include_login: bool = False) -> dict:
+def _activate(user: str, mail: str, method: str, *, include_login: bool = False, company: str | None = None) -> dict:
     state = account_state.ensure(user, lock=True)
+    if method == "manual_code":
+        if not company or not state.activation_pending:
+            frappe.throw("این حساب در انتظار فعال‌سازی نیست؛ از بازیابی حساب استفاده کنید.")
+        code = account_recovery.issue(user, "activation", company=company)
+        security_audit.record("account.manual_invitation_issue", company=company,
+                              target_type="User", target=user)
+        return {"method": "manual_code", "code": code, "login": user.removesuffix("@users.asoud.invalid"),
+                "expires_in_hours": account_recovery.TTL_MINUTES["activation"] // 60}
     state.activation_pending = 1
     state.save(ignore_permissions=True)
     if method == "temporary_password":

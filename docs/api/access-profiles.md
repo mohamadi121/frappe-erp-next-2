@@ -42,9 +42,9 @@ return the normal Persian validation/conflict error. No offline queued grant wri
 | `delete_profile` | company, name, modified | deleted template name |
 | `list_accounts` | company | active Employee rows, including department, account_status and available contact_methods (not contact values) |
 | `get_account` | company, employee | employee, title, designation, company, user, legacy, profile, token, grants, catalog |
-| `create_account` | company, employee; optional contact; method=mobile/email, invite=0 | account; optional activation |
+| `create_account` | company, employee; optional contact; method=mobile/email, invite=0, delivery=manual_code | account; optional activation |
 | `save_account_access` | company, employee, grants, token; optional profile | account |
-| `invite_account` | company, employee; optional registered=1 | activation-service response |
+| `invite_account` | company, employee; optional registered=1 or delivery=manual_code | activation-service response |
 | `get_legacy_report` | company | assignments, profiles, notice |
 
 Profile shape: `name,title,description,company,modified,readonly,grants`.
@@ -93,6 +93,16 @@ the login and expiring temporary password (not returned to the client). SMS need
 an HTTPS POST gateway and email needs outgoing mail. Registered re-invites verify
 that the current Employee contact still matches the login. Gateway acceptance does
 not prove handset delivery. Existing explicit-contact clients remain compatible.
+
+Manual delivery (`delivery=manual_code`) keeps the existing login identifier
+but requires neither outgoing mail nor an SMS gateway. The response shows the
+identifier and a 72-hour code exactly once; `get_account` exposes only the
+`activation_pending` status, never the code. Reissuing voids older activation
+codes. The existing activation endpoint accepts a manual code only for the
+pending account with a current active Employee and Access Assignment in the
+recorded company, and requires choosing a new password. Deploy with
+`bench migrate` to add the optional company link on existing token records;
+legacy email invitations and password resets retain their previous scope.
 
 An existing login is not silently linked to a second Employee. Native HRMS v15
 forbids a single login on two active Employees. The employer explicitly requires
@@ -148,3 +158,11 @@ grant side effect and parent rows never cascade rights.
 
 These limitations mean the entire requested specialist-permission experience must
 not be advertised as fully finished or deployed yet.
+
+## ویرایش کاتالوگ مشترک
+
+- مسیر: «پروفایل‌های دسترسی ← ساخت یا ویرایش پروفایل ← مدیریت کاتالوگ مشترک».
+- فقط حساب `Administrator` می‌تواند ساختار سه‌سطحی را ذخیره کند. این ساختار بین دفترها مشترک است، ولی مجوزهای هر پروفایل و حساب همچنان دفترمحور هستند.
+- `list_profiles` و `get_account` ساختار نمایشی را در `catalog_layout` برمی‌گردانند. `save_catalog_layout` از طریق POST، درخت `modules` و نسخهٔ `version` را می‌گیرد تا ذخیرهٔ هم‌زمان روی تغییرات دیگری ننویسد.
+- تغییر نام یا حذف از کاتالوگ، اسناد واقعی و مجوزهای قبلی را تغییر نمی‌دهد. «بازیابی سند موجود» ردیف ارائه‌شده توسط سرور را دوباره نمایش می‌دهد. ردیف دستی تا زمان پیاده‌سازی کنترل واقعی سرور هیچ مجوزی نمی‌دهد.
+- در زمان انتشار بک‌اند، به‌روزرسانی معمول DocTypeها باید فیلد نمایشی `access_catalog_layout` را در تنظیمات آسود همگام کند. این تغییر به بازنویسی داده‌های قبلی نیاز ندارد.

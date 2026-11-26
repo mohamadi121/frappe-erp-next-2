@@ -1,8 +1,11 @@
 import base64
+import re
 from datetime import date, time
+from decimal import Decimal
 
 PERSONAL_FIELDS = {
-    "display_name", "national_id", "birth_date", "employee_gender", "father_name",
+    "display_name", "first_name", "last_name", "national_id", "birth_date", "employee_gender", "father_name",
+    "alias_name", "birth_certificate_number", "birth_certificate_issue_place",
     "mobile", "phone", "email", "province", "city", "address_line", "postal_code",
     "date_of_joining", "job_title", "department", "employment_type",
     # Stored on Employee (see personnel_employee.EMPLOYEE_FIELDS).
@@ -72,3 +75,52 @@ def validate_financial(data):
                 raise ValueError("Invalid financial amount")
         except (TypeError, ValueError) as exc:
             raise ValueError(f"Invalid financial amount: {key}") from exc
+
+
+def validate_profile_update(data, previous):
+    """Validate changed inputs; do not invalidate historic records on unrelated edits."""
+    from asoud_erp.services.party_validation import is_valid_iranian_national_code
+
+    for key, pattern, message in (
+        ("mobile", r"09[0-9]{9}", "موبایل باید ۱۱ رقم و با ۰۹ شروع شود."),
+        ("phone", r"0[1-8][0-9]{9}", "تلفن ثابت باید ۱۱ رقم و با پیش‌شمارهٔ ۰ وارد شود."),
+        ("emergency_phone", r"0[1-9][0-9]{9}", "شمارهٔ تماس اضطراری باید ۱۱ رقم و با ۰ شروع شود."),
+        ("postal_code", r"[0-9]{10}", "کد پستی باید ۱۰ رقم باشد."),
+        ("notice_number_of_days", r"[0-9]{1,5}", "مهلت اعلام باید تعداد روز معتبر و غیرمنفی باشد."),
+        ("national_id", r"[0-9]{10}", "کد ملی معتبر نیست."),
+        ("birth_certificate_number", r"[0-9]{1,20}", "شماره شناسنامه باید عددی و حداکثر ۲۰ رقم باشد."),
+    ):
+        value = str(data.get(key) if data.get(key) is not None else "").strip()
+        if value and value != str(previous.get(key) or "") and (
+            not re.fullmatch(pattern, value) or key == "national_id" and not is_valid_iranian_national_code(value)
+        ):
+            raise ValueError(message)
+    for key in ("first_name", "last_name", "emergency_contact_name", "emergency_relation"):
+        if key not in data or data[key] == previous.get(key):
+            continue
+        value = str(data[key] or "").strip()
+        if (not value and key in {"first_name", "last_name"}) or len(value) > 140 or re.search(r"\d", value):
+            raise ValueError("نام، نام خانوادگی و مشخصات تماس اضطراری را به‌صورت متن معتبر وارد کنید.")
+    if "birth_date" in data and data["birth_date"]:
+        if date.fromisoformat(data["birth_date"]) > date.today():
+            raise ValueError("تاریخ تولد نمی‌تواند در آینده باشد.")
+    for field in ("date_of_joining", "final_confirmation_date", "contract_end_date"):
+        if data.get(field):
+            try:
+                date.fromisoformat(data[field])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("تاریخ معتبر را از تقویم انتخاب کنید.") from exc
+
+
+def derived_net_salary(data):
+    components = ("base_salary", "housing_allowance", "transport_allowance", "other_allowances", "deductions")
+    if not all(key in data for key in components):
+        return
+    amounts = [Decimal(str(data[key] or 0)) for key in components]
+    if all(data[key] in (None, "") for key in components):
+        data["net_salary"] = ""
+        return
+    net = sum(amounts[:-1]) - amounts[-1]
+    if net < 0 or net > 10**15:
+        raise ValueError("حقوق خالص معتبر نیست؛ مجموع حقوق، مزایا و کسورات را بررسی کنید.")
+    data["net_salary"] = format(net, "f")
