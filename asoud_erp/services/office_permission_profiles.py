@@ -273,10 +273,12 @@ def save_account_access(company, employee, grants, token, profile=None):
 
 
 def list_accounts(company):
+    from asoud_erp.services.personnel_representation import enabled as representation_is_enabled
+
     gate(company)
     representation_enabled = (
         frappe.session.user == 'Administrator'
-        and bool(frappe.conf.get('asoud_enable_personnel_representation'))
+        and representation_is_enabled()
     )
     rows = frappe.get_all('Employee', filters={'company': company, 'status': 'Active'},
         fields=['name', 'employee_name', 'designation', 'department', 'user_id',

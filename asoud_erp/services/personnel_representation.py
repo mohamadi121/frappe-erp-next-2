@@ -27,7 +27,7 @@ def _key(token):
 
 
 def enabled():
-    return frappe.conf.get("asoud_enable_personnel_representation") in (1, "1")
+    return frappe.conf.get("asoud_enable_personnel_representation", 1) in (1, "1")
 
 
 def _secure_request(request):
@@ -69,9 +69,10 @@ def _audit(action, state, **details):
 
 
 def start(company, employee, reason):
-    if (not enabled() or not _secure_request(frappe.request)
-            or frappe.session.user != "Administrator" or not _active_parent(frappe.session.sid)):
+    if (not enabled() or frappe.session.user != "Administrator" or not _active_parent(frappe.session.sid)):
         frappe.throw("ورود به نمای پرسنل فقط با نشست امن مدیر اصلی مجاز است.", frappe.PermissionError)
+    if not _secure_request(frappe.request):
+        frappe.throw("برای ورود به نمایندگی، با نشانی امن (HTTPS) به سرور وصل شوید.", frappe.PermissionError)
     reason = (reason or "").strip()
     if not 5 <= len(reason) <= 300:
         frappe.throw("دلیل نمایندگی را بین ۵ تا ۳۰۰ نویسه وارد کنید.")

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Enable audited personnel representation by default for the main Administrator; keep explicit site opt-out and the secure transport requirement. No migration is needed for this setting change.
+
 - Personnel: allow initial Party Profile before native Employee prerequisites are filled; return office chart job options without assigning positions.
 
 - Office access: extensible DocType permission catalog, guarded deletion of unused office templates, and account invitation delivery to the contact saved on Employee.

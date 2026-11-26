@@ -8,15 +8,17 @@ from asoud_erp.api.v1 import auth, session, sync
 from asoud_erp.integration_tests.fixtures import APPROVER_USER, EMPLOYEE_USER, APITestCase
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.request_helpers import create, open_task, status_key
+from asoud_erp.services import office_permission_profiles
 from asoud_erp.services import personnel_representation as representation
 
 
 class TestPersonnelRepresentation(APITestCase):
     def setUp(self):
         super().setUp()
-        self.flags = patch.dict(frappe.conf, {"asoud_enable_personnel_representation": 1})
+        self.flags = patch.dict(frappe.conf)
         self.flags.start()
         self.addCleanup(self.flags.stop)
+        frappe.conf.pop("asoud_enable_personnel_representation", None)
         self.sid = secrets.token_hex(20)
         frappe.db.sql(
             "insert into tabSessions (sid, user, status, lastupdate, sessiondata) values (%s,%s,%s,%s,%s)",
@@ -56,6 +58,8 @@ class TestPersonnelRepresentation(APITestCase):
         task = open_task(record["workflow_instance"], APPROVER_USER)
         frappe.set_user("Administrator")
         self.assertTrue(representation._active_parent(self.sid))
+        rows = office_permission_profiles.list_accounts(self.company)
+        self.assertTrue(next(row for row in rows if row.name == self.employee).can_represent)
         token = self._start()
         self._request("asoud_erp.api.v1.sync.execute_mutation", token)
         representation.authenticate()
@@ -75,6 +79,14 @@ class TestPersonnelRepresentation(APITestCase):
         self._request("asoud_erp.api.v1.auth.current_user", token)
         with self.assertRaises(frappe.AuthenticationError):
             representation.authenticate()
+
+    def test_explicit_disable_hides_entry_and_blocks_start(self):
+        frappe.set_user("Administrator")
+        with patch.dict(frappe.conf, {"asoud_enable_personnel_representation": "0"}):
+            rows = office_permission_profiles.list_accounts(self.company)
+            self.assertFalse(next(row for row in rows if row.name == self.employee).can_represent)
+            with self.assertRaises(frappe.PermissionError):
+                self._start()
 
     def test_requires_real_admin_and_rejects_sensitive_routes_and_revoked_parent(self):
         frappe.set_user(EMPLOYEE_USER)
