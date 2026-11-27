@@ -4,6 +4,8 @@
 
 - Password reset: codes are no longer rejected when the token picked up a default Company (Frappe fills missing Link fields from the global default, so a `password_reset` token issued for a Guest request carried the site's default Company and the activation-only company/employee binding check in `consume()` refused it). The company binding check now applies to activation tokens only. No schema change, no migration; sites with a global default Company were affected.
 
+- Persian reason for the repeated-automatic-activation stop: re-entering an automatic (schema_version 2) stage with the same trigger now raises `REPEATED_ACTIVATION` («ورود دوباره به یک مرحلهٔ خودکار با همان محرک مجاز نیست؛ پیش از تکرار این اقدام یک وظیفهٔ انسانی در مسیر قرار دهید.») instead of the old English sentence. New pure test `asoud_erp/tests/test_automatic_action_loop.py` drives the real `schedule`/`run`/`_finish`/`_activate_stage` on the in-memory fake site (not MariaDB, no real RQ worker; `perform()` and the service identity are stubbed) and pins the bounded loop, the Persian receipt error, the no-Error-route `Failed` instance and the fresh-trigger re-entry. No schema change, no migration.
+
 - Personnel: allow initial Party Profile before native Employee prerequisites are filled; return office chart job options without assigning positions.
 
 - Office access: extensible DocType permission catalog, guarded deletion of unused office templates, and account invitation delivery to the contact saved on Employee.
