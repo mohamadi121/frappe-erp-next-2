@@ -24,6 +24,10 @@ from asoud_erp.services.document_templates import build_document
 
 RECEIPT = "ASOUD Action Execution"
 
+REPEATED_ACTIVATION = (
+    "ورود دوباره به یک مرحلهٔ خودکار با همان محرک مجاز نیست؛ پیش از تکرار این اقدام یک وظیفهٔ انسانی در مسیر قرار دهید."
+)
+
 
 def _json(value):
     return json.dumps(value, ensure_ascii=False, default=str)
@@ -532,9 +536,7 @@ def schedule(instance, stage, config, trigger="start"):
     if existing:
         if existing in {"Pending", "Running", "Retry Pending"}:
             return
-        raise ValueError(
-            "Repeated automatic-stage activation; insert a human task before repeating this action"
-        )
+        raise ValueError(REPEATED_ACTIVATION)
     instance.save(ignore_permissions=True)
     routes = {
         key: getattr(_system_route(instance, stage.name, key), "name", None) for key in ("Success", "Error")
