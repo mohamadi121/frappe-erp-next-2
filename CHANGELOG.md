@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Password reset: codes are no longer rejected when the token picked up a default Company (Frappe fills missing Link fields from the global default, so a `password_reset` token issued for a Guest request carried the site's default Company and the activation-only company/employee binding check in `consume()` refused it). The company binding check now applies to activation tokens only. No schema change, no migration; sites with a global default Company were affected.
+
 - Personnel: allow initial Party Profile before native Employee prerequisites are filled; return office chart job options without assigning positions.
 
 - Office access: extensible DocType permission catalog, guarded deletion of unused office templates, and account invitation delivery to the contact saved on Employee.

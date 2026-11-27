@@ -89,7 +89,10 @@ def consume(user: str, purpose: str, code: str) -> None:
     if not name:
         frappe.throw(GENERIC_INVALID, frappe.ValidationError)
     token = frappe.get_doc("ASOUD Account Token", name, for_update=True)
-    if token.company:
+    # The company/employee/pending binding belongs to activation tokens. A password_reset
+    # token can carry an incidental default Company (Frappe fills missing Link fields from
+    # the global default) and must not be subject to the activation check.
+    if purpose == "activation" and token.company:
         employee = frappe.db.get_value(
             "ASOUD Access Assignment", {"user": user, "company": token.company}, "employee", for_update=True)
         if not pending or not employee or not frappe.db.get_value(
