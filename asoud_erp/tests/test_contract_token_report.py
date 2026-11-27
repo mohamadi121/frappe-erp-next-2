@@ -7,7 +7,12 @@ is reported by its raw key. The technical key must never appear in the
 rendered text, and the stored template string must not be mutated.
 """
 
-from asoud_erp.services.employment_contract import render_contract_articles_with_findings
+from asoud_erp.services.employment_contract import (
+    DEFAULT_CLAUSES,
+    build_company_context,
+    build_personnel_context,
+    render_contract_articles_with_findings,
+)
 
 
 def _render(body, context):
@@ -100,3 +105,128 @@ def test_rendering_does_not_mutate_stored_template_text():
     assert clauses[0]["body"] == original_body
     # The rendered output is a new string with placeholders, not the template.
     assert rendered[0]["body"] == "متن قالب با — و —"
+
+
+def test_known_token_zero_value_renders_value():
+    # 0 is a real value, not "missing": it renders "0" and is not reported.
+    rendered, findings = _render("کد ملی: {{personnel.national_id}}",
+                                 {"personnel": {"national_id": 0}})
+    assert rendered[0]["body"] == "کد ملی: 0"
+    assert findings["missing_fields"] == []
+    assert findings["unknown_tokens"] == []
+
+
+def test_known_token_false_value_renders_value():
+    # False is a real (present) value, not "missing": it renders "False".
+    # Documents the renderer's falsy handling so a future change that treats
+    # falsy values as missing is caught.
+    rendered, findings = _render("وضعیت: {{personnel.employee_name}}",
+                                 {"personnel": {"employee_name": False}})
+    assert rendered[0]["body"] == "وضعیت: False"
+    assert findings["missing_fields"] == []
+    assert findings["unknown_tokens"] == []
+
+
+def test_malformed_token_with_space_is_reported_not_leaked():
+    rendered, findings = _render("متن: {{employee name}}", {})
+    assert rendered[0]["body"] == "متن: —"
+    # The raw span (without braces) is reported; the key never leaks.
+    assert "employee name" not in rendered[0]["body"]
+    assert findings["unknown_tokens"] == ["employee name"]
+    assert findings["missing_fields"] == []
+
+
+def test_malformed_token_with_persian_digits_is_reported_not_leaked():
+    rendered, findings = _render("متن: {{personnel.۱۲۳}}", {})
+    assert rendered[0]["body"] == "متن: —"
+    assert "personnel.۱۲۳" not in rendered[0]["body"]
+    assert findings["unknown_tokens"] == ["personnel.۱۲۳"]
+    assert findings["missing_fields"] == []
+
+
+def test_malformed_nested_braces_token_is_reported_not_leaked():
+    # A nested-brace span is matched as a whole (outermost) span and replaced,
+    # so neither the outer fragment nor the inner key leaks.
+    rendered, findings = _render("متن: {{a.{{b}}}}", {})
+    assert rendered[0]["body"] == "متن: —"
+    assert "{{" not in rendered[0]["body"]
+    assert "a." not in rendered[0]["body"]
+    assert findings["unknown_tokens"] == ["a.{{b}}"]
+    assert findings["missing_fields"] == []
+
+
+def test_malformed_spelling_is_never_resolved():
+    # A known field with a malformed spelling (extra space) must NOT resolve to
+    # the field's value; it is reported unknown, not whitespace-trimmed.
+    rendered, findings = _render("متن: {{personnel. employee_name}}",
+                                 {"personnel": {"employee_name": "علی"}})
+    assert rendered[0]["body"] == "متن: —"
+    assert "علی" not in rendered[0]["body"]
+    assert findings["unknown_tokens"] == ["personnel. employee_name"]
+    assert findings["missing_fields"] == []
+
+
+def _fake_employee_and_company():
+    emp = {
+        "name": "HR-EMP-00001",
+        "employee_name": "علی محمدی",
+        "first_name": "علی",
+        "last_name": "محمدی",
+        "father_name": "رضا",
+        "national_id": "0012345678",
+        "department": "امور اداری",
+        "designation": "کارشناس اداری",
+        "date_of_joining": "2020-01-01",
+        "cell_number": "09121234567",
+        "current_address": "تهران",
+        "current_postal_code": "1234567890",
+    }
+    comp = {
+        "company_name": "شرکت نمونه",
+        "tax_id": "10000000000",
+        "phone_no": "02112345678",
+        "email": "info@example.com",
+    }
+    return emp, comp
+
+
+def test_shared_context_helpers_render_default_clauses_without_placeholder():
+    # F1: prepare (preview) and save (stored -> issued) must build the same
+    # personnel/company groups from the shared helpers, so the default
+    # clause_1/clause_2 bodies render with no «—» in BOTH contexts when the
+    # data exists, and the two contexts agree on the shared keys.
+    emp, comp = _fake_employee_and_company()
+    personnel = build_personnel_context(emp)
+    company = build_company_context(comp, "نمونه")
+
+    preview_context = {
+        "personnel": personnel,
+        "company": company,
+        "contract": {"contract_type": "مدت‌معین", "start_date": "1405/08/01",
+                     "end_date": "", "work_location": "شرکت نمونه",
+                     "creation_date": "1405/08/01"},
+    }
+    save_context = {
+        "personnel": personnel,
+        "company": company,
+        "contract": {"contract_type": "مدت‌معین", "start_date": "1405/08/01",
+                     "end_date": "1405/09/01", "work_location": "شرکت نمونه",
+                     "creation_date": "1405/08/01"},
+    }
+
+    # The two contexts agree on the shared personnel and company groups.
+    assert preview_context["personnel"] == save_context["personnel"]
+    assert preview_context["company"] == save_context["company"]
+
+    for context in (preview_context, save_context):
+        rendered, findings = render_contract_articles_with_findings(DEFAULT_CLAUSES, context)
+        # clause_1 (طرفین) and clause_2 (موضوع و محل کار) reference personnel and
+        # company fields that the shared helpers now always populate.
+        assert "—" not in rendered[0]["body"], rendered[0]["body"]
+        assert "—" not in rendered[1]["body"], rendered[1]["body"]
+        # The identity fields that the old narrow save context blanked are present.
+        assert "علی محمدی" in rendered[0]["body"]
+        assert "رضا" in rendered[0]["body"]
+        assert "0012345678" in rendered[0]["body"]
+        assert "کارشناس اداری" in rendered[1]["body"]
+        assert "امور اداری" in rendered[1]["body"]

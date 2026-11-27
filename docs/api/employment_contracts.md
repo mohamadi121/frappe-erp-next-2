@@ -196,8 +196,8 @@ Pre-populates contract data for an employee, rendering clauses and resolving sal
   - Calculates total monthly gross from available items.
   - Clause placeholders are never silently dropped. A known field with no value renders a neutral placeholder (`—`) and is reported; an unknown (legacy) token renders the same placeholder and is reported. The technical key never appears in the rendered clause text.
 - **Response** (additive keys, existing keys unchanged):
-  - `missing_fields` (list[str]): Persian titles of known fields that had no value, de-duplicated in order of first appearance. Lets the designer see which field is empty in the preview.
-  - `unknown_tokens` (list[str]): raw unknown (legacy) tokens found in the template, de-duplicated in order of first appearance. For the designer/support to migrate or remove them; never rendered into the clause text.
+  - `missing_fields` (list[str]): Persian titles of known fields that had no value, de-duplicated in order of first appearance. Lets the designer see which field is empty in the preview. Note: `{{payroll.*}}` tokens in a clause body are always reported here (and render `—`) because the clause render context carries no `payroll` group — payroll values feed only the salary table, so a payroll token in a clause is treated as a known field with no value even for a payroll-authorized caller.
+  - `unknown_tokens` (list[str]): raw unknown (legacy) tokens found in the template, de-duplicated in order of first appearance. For the designer/support to migrate or remove them; never rendered into the clause text. Any `{{...}}` span that is not a known field — including a malformed spelling that does not match the strict token grammar (a space, Persian digits, or nested braces, e.g. `{{employee name}}`, `{{personnel.۱۲۳}}`, `{{a.{{b}}}}`) — is reported here as the raw span text *without* the surrounding braces and replaced with `—`; such a span is never resolved (no whitespace-trimming).
 
 ### 4.2 `list_contracts`
 Lists personnel contracts with server-side search, filtering, and pagination.
@@ -270,6 +270,7 @@ Creates or updates a contract draft.
 - **Behavior**:
   - Draft contracts receive temporary placeholder number («پیش‌نویس») until finalized.
   - Saves rendered snapshot in `values_json`.
+  - The stored snapshot is rendered with the **same full personnel and company context** as `prepare_contract` (built from the shared `build_personnel_context`/`build_company_context` helpers), so the issued document no longer blanks identity fields (father's name, national ID, job title, department, …) that the preview shows. The `contract` group (dates, work location) is unchanged.
   - Rendered clauses never silently drop a token: a known field with no value or an unknown (legacy) token renders a neutral placeholder (`—`) in the stored snapshot and draft print, so the technical key never appears in the document. (The `missing_fields`/`unknown_tokens` report is returned by `prepare_contract`, not here.)
 
 ### 4.5 `finalize_contract`
