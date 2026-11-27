@@ -400,6 +400,26 @@ class TestRecovery(LoginOnboardingBase):
             account_security.confirm_password_reset(PLAIN, code, STRONGER, STRONGER)
         self.assertTrue(audit("auth.password_reset_complete", actor=PLAIN))
 
+    def test_reset_works_when_the_token_carries_a_default_company(self):
+        name = frappe.db.get_value("Company", {}, "name")
+        self.assertTrue(name)
+        previous = frappe.db.get_default("company")
+        try:
+            frappe.db.set_default("company", name)
+            _, sent = self.request(PLAIN)
+            code = self.code_from(sent)
+            stored = frappe.get_all("ASOUD Account Token", filters={"user": PLAIN, "purpose": "password_reset"},
+                                    fields=["company"])[0]
+            self.assertEqual(stored.company, name)
+            result = account_security.confirm_password_reset(PLAIN, code, STRONG, STRONG)["data"]
+            self.assertTrue(result["changed"])
+            self.assertTrue(check_password(PLAIN, STRONG))
+        finally:
+            if previous:
+                frappe.db.set_default("company", previous)
+            else:
+                frappe.defaults.clear_default("company", parent="__default")
+
     def test_expired_code_and_too_many_wrong_attempts_are_refused(self):
         _, sent = self.request(PLAIN)
         code = self.code_from(sent)
