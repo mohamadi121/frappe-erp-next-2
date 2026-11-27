@@ -8,13 +8,18 @@ from __future__ import annotations
 
 import html
 import re
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from asoud_erp.services.digits import to_ascii_digits, to_persian_digits
+from asoud_erp.services.jalali import gregorian_to_jalali
 
 MISSING_PAYROLL_TEXT = "اطلاعات موجود نیست"
 CURRENCY_LABEL = "ریال"
+# Neutral placeholder shown for a known field with no value or an unknown token.
+# The technical key must never appear in rendered output or print.
+MISSING_TOKEN_PLACEHOLDER = "—"
 
 
 def mask_contract_salary(snapshot: dict) -> dict:
@@ -81,6 +86,12 @@ PAYROLL_CATALOG_FIELDS = [
 ]
 
 _PLACEHOLDER_REGEX = re.compile(r"\{\{([a-zA-Z0-9_\.]+)\}\}")
+# Wider matcher used only by render_contract_articles_with_findings: any {{...}}
+# span is a token candidate, so a malformed spelling (spaces, Persian digits,
+# nested braces) is reported and replaced instead of leaking. The content group
+# allows one level of nested {{...}} so a span like {{a.{{b}}}} is matched as a
+# whole (outermost) span rather than leaking its outer fragment.
+_ANY_TOKEN_REGEX = re.compile(r"\{\{((?:[^{}]|\{\{[^{}]*\}\})+)\}\}")
 _ARABIC_TO_PERSIAN_TRANS = str.maketrans({"ي": "ی", "ك": "ک", "ى": "ی"})
 
 
@@ -204,6 +215,149 @@ def render_contract_articles(clauses: list[dict], context: dict[str, dict[str, A
             "body": resolved_body,
         })
     return rendered
+
+
+def _known_field_labels() -> dict[str, str]:
+    """Maps every insertable field id to its Persian title.
+
+    The catalog lists the same field ids regardless of payroll permission (only
+    the ``disabled`` flag changes), so this set is permission-independent: a
+    payroll token is always "known", never "unknown".
+    """
+    labels: dict[str, str] = {}
+    for category in get_field_catalog(has_payroll_permission=True)["categories"]:
+        for field in category["fields"]:
+            labels[field["id"]] = field["label"]
+    return labels
+
+
+def render_contract_articles_with_findings(
+    clauses: list[dict],
+    context: dict[str, dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
+    """Renders placeholders and reports missing and unknown tokens.
+
+    Unlike :func:`render_contract_articles` (which silently drops them), this
+    never drops a token:
+
+    - A known field with no value renders ``MISSING_TOKEN_PLACEHOLDER`` and its
+      Persian title is added to ``missing_fields``.
+    - An unknown (legacy) token renders the same placeholder and its raw key is
+      added to ``unknown_tokens``.
+
+    Any ``{{...}}`` span that is not a known field — including a malformed
+    spelling that does not match the strict token grammar (a space, Persian
+    digits, nested braces) — is reported in ``unknown_tokens`` as the raw span
+    text *without* the surrounding braces and replaced with the placeholder, so
+    the technical key never appears in the rendered text. Such a span is never
+    resolved (no whitespace-trimming). Tokens that resolve to a value render
+    exactly as before (byte-identical). The stored clause ``body`` is not
+    mutated.
+
+    Returns ``(rendered_clauses, findings)`` where ``findings`` is
+    ``{"missing_fields": [...], "unknown_tokens": [...]}``, each de-duplicated
+    in order of first appearance.
+    """
+    labels = _known_field_labels()
+    rendered: list[dict[str, Any]] = []
+    missing_fields: list[str] = []
+    unknown_tokens: list[str] = []
+    seen_missing: set[str] = set()
+    seen_unknown: set[str] = set()
+
+    for clause in clauses:
+        order = clause.get("order", 1)
+        raw_title = clause.get("title", "")
+        # Remove any pre-existing "ماده X:" prefix so we don't duplicate it
+        clean_title = re.sub(r"^ماده\s+[\d۰-۹]+\s*:\s*", "", raw_title).strip()
+        formatted_title = f"ماده {to_persian_digits(order)}: {clean_title}"
+
+        body = clause.get("body", "")
+
+        def _replacer(match: re.Match) -> str:
+            token = match.group(1)
+            if token in labels:
+                group, key = token.split(".", 1)
+                val = context.get(group, {}).get(key)
+                if val not in (None, "") and not isinstance(val, (list, dict)):
+                    return str(val)
+                # Known field with no value (None or empty): placeholder + report the title.
+                if token not in seen_missing:
+                    seen_missing.add(token)
+                    missing_fields.append(labels[token])
+                return MISSING_TOKEN_PLACEHOLDER
+            # Unknown (legacy) token — including a malformed spelling that does not
+            # match the strict token grammar (spaces, Persian digits, nested braces).
+            # Report the raw span text (without braces); never resolve it.
+            if token not in seen_unknown:
+                seen_unknown.add(token)
+                unknown_tokens.append(token)
+            return MISSING_TOKEN_PLACEHOLDER
+
+        resolved_body = _ANY_TOKEN_REGEX.sub(_replacer, body)
+        rendered.append({
+            "id": clause.get("id"),
+            "order": order,
+            "title": formatted_title,
+            "raw_title": clean_title,
+            "body": resolved_body,
+        })
+
+    return rendered, {"missing_fields": missing_fields, "unknown_tokens": unknown_tokens}
+
+
+def _format_jalali_date(value: Any) -> str:
+    """Formats a date/datetime/ISO string as Jalali ``YYYY/MM/DD`` (pure).
+
+    Returns ``""`` for a missing value and the original string if it cannot be
+    parsed, so a caller never crashes on a malformed date.
+    """
+    if not value:
+        return ""
+    try:
+        d = value if isinstance(value, date) else date.fromisoformat(str(value)[:10])
+        y, m, day = gregorian_to_jalali(d)
+        return f"{y}/{m:02d}/{day:02d}"
+    except Exception:
+        return str(value)
+
+
+def build_personnel_context(emp: dict[str, Any]) -> dict[str, Any]:
+    """Builds the ``personnel`` render-context group from an Employee row.
+
+    Pure: takes the Employee fields (as a dict) and returns the context group.
+    Both ``prepare_contract`` and ``save_contract_draft`` use this so the preview
+    and the stored snapshot render the same fields.
+    """
+    return {
+        "employee_name": emp.get("employee_name") or "",
+        "first_name": emp.get("first_name") or "",
+        "last_name": emp.get("last_name") or "",
+        "father_name": emp.get("father_name") or "",
+        "national_id": emp.get("national_id") or "",
+        "employee_number": emp.get("name") or "",
+        "department": emp.get("department") or "",
+        "job_title": emp.get("designation") or "",
+        "date_of_joining": _format_jalali_date(emp.get("date_of_joining")),
+        "mobile": emp.get("cell_number") or "",
+        "address": emp.get("current_address") or "",
+        "postal_code": emp.get("current_postal_code") or "",
+    }
+
+
+def build_company_context(comp: dict[str, Any], company: str) -> dict[str, Any]:
+    """Builds the ``company`` render-context group from a Company row.
+
+    Pure: takes the Company fields (as a dict) and the company id (fallback for
+    the display name) and returns the context group.
+    """
+    return {
+        "company_name": comp.get("company_name") or company,
+        "national_id": comp.get("tax_id") or "",
+        "legal_representative": comp.get("company_name") or company,
+        "phone": comp.get("phone_no") or "",
+        "email": comp.get("email") or "",
+    }
 
 
 def calculate_salary_items(salary_rows: list[dict], values_by_field_ref: dict[str, Any]) -> dict[str, Any]:

@@ -15,12 +15,14 @@ from asoud_erp.api.v1.responses import success
 from asoud_erp.services.employment_contract import (
     DEFAULT_CLAUSES,
     DEFAULT_SALARY_ROWS,
+    build_company_context,
+    build_personnel_context,
     calculate_salary_items,
     generate_contract_print_data,
     get_field_catalog,
     mask_contract_salary,
     normalize_search_term,
-    render_contract_articles,
+    render_contract_articles_with_findings,
     validate_contract_template,
 )
 from asoud_erp.services.erp_documents import require_roles
@@ -370,27 +372,8 @@ def prepare_contract(company: str, employee: str, template_version: int | None =
     salary_calc = calculate_salary_items(salary_rows if has_payroll else [], salary_values)
 
     context = {
-        "personnel": {
-            "employee_name": emp.employee_name or "",
-            "first_name": emp.first_name or "",
-            "last_name": emp.last_name or "",
-            "father_name": emp.father_name or "",
-            "national_id": emp.national_id or "",
-            "employee_number": emp.name,
-            "department": emp.department or "",
-            "job_title": emp.designation or "",
-            "date_of_joining": _format_jalali(emp.date_of_joining),
-            "mobile": emp.cell_number or "",
-            "address": emp.current_address or "",
-            "postal_code": emp.current_postal_code or "",
-        },
-        "company": {
-            "company_name": comp.company_name or company,
-            "national_id": comp.tax_id or "",
-            "legal_representative": comp.company_name or "",
-            "phone": comp.phone_no or "",
-            "email": comp.email or "",
-        },
+        "personnel": build_personnel_context(emp),
+        "company": build_company_context(comp, company),
         "contract": {
             "contract_type": "مدت‌معین",
             "start_date": _format_jalali(nowdate()),
@@ -400,13 +383,15 @@ def prepare_contract(company: str, employee: str, template_version: int | None =
         },
     }
 
-    rendered_clauses = render_contract_articles(clauses, context)
+    rendered_clauses, findings = render_contract_articles_with_findings(clauses, context)
 
     return success({
         "employee_info": context["personnel"],
         "company_info": context["company"],
         "template_version": template_data.get("version", 1),
         "rendered_clauses": rendered_clauses,
+        "missing_fields": findings["missing_fields"],
+        "unknown_tokens": findings["unknown_tokens"],
         "salary_table": salary_calc["items"],
         "total_monthly": salary_calc["total_monthly"],
         "formatted_total_monthly": salary_calc["formatted_total_monthly"],
@@ -529,9 +514,24 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
 
     if not frappe.db.exists("Employee", employee):
         frappe.throw(_("پرسنل مورد نظر در سیستم یافت نشد."))
-    emp = frappe.db.get_value("Employee", employee, ["name", "employee_name", "company"], as_dict=True)
+    # Some fields (father_name, national_id) are custom fields; a site without them
+    # must not fail the draft, so only select columns the Employee doctype has.
+    employee_meta = frappe.get_meta("Employee")
+    wanted = ["name", "employee_name", "first_name", "last_name", "father_name", "national_id",
+              "department", "designation", "date_of_joining", "cell_number", "current_address",
+              "current_postal_code", "company"]
+    emp = frappe.db.get_value(
+        "Employee", employee,
+        [f for f in wanted if f == "name" or employee_meta.has_field(f)],
+        as_dict=True,
+    )
     if emp.company != company:
         frappe.throw(_("این پرسنل متعلق به شرکت دیگری است."), frappe.PermissionError)
+    comp = frappe.db.get_value(
+        "Company", company,
+        ["company_name", "tax_id", "phone_no", "email"],
+        as_dict=True,
+    )
 
     if client_id and not contract_id:
         existing_entry = frappe.db.get_value(
@@ -559,14 +559,8 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
     salary_calc = calculate_salary_items(salary_rows, salary_values)
 
     context = {
-        "personnel": {
-            "employee_name": emp.employee_name or "",
-            "employee_number": emp.name,
-        },
-        "company": {
-            "company_name": company,
-            "legal_representative": company,
-        },
+        "personnel": build_personnel_context(emp),
+        "company": build_company_context(comp, company),
         "contract": {
             "contract_type": contract_type or "مدت‌معین",
             "start_date": _format_jalali(start_date),
@@ -575,7 +569,7 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
             "creation_date": _format_jalali(nowdate()),
         },
     }
-    rendered_clauses = render_contract_articles(clauses, context)
+    rendered_clauses, _findings = render_contract_articles_with_findings(clauses, context)
 
     if contract_id:
         contract = frappe.get_doc("Contract", contract_id)
