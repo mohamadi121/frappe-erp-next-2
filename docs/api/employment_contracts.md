@@ -194,6 +194,10 @@ Pre-populates contract data for an employee, rendering clauses and resolving sal
 - **Behavior**:
   - Missing salary values are explicitly flagged: `has_value: false`, `formatted_amount: "اطلاعات موجود نیست"`. Never silently 0.
   - Calculates total monthly gross from available items.
+  - Clause placeholders are never silently dropped. A known field with no value renders a neutral placeholder (`—`) and is reported; an unknown (legacy) token renders the same placeholder and is reported. The technical key never appears in the rendered clause text.
+- **Response** (additive keys, existing keys unchanged):
+  - `missing_fields` (list[str]): Persian titles of known fields that had no value, de-duplicated in order of first appearance. Lets the designer see which field is empty in the preview.
+  - `unknown_tokens` (list[str]): raw unknown (legacy) tokens found in the template, de-duplicated in order of first appearance. For the designer/support to migrate or remove them; never rendered into the clause text.
 
 ### 4.2 `list_contracts`
 Lists personnel contracts with server-side search, filtering, and pagination.
@@ -266,6 +270,7 @@ Creates or updates a contract draft.
 - **Behavior**:
   - Draft contracts receive temporary placeholder number («پیش‌نویس») until finalized.
   - Saves rendered snapshot in `values_json`.
+  - Rendered clauses never silently drop a token: a known field with no value or an unknown (legacy) token renders a neutral placeholder (`—`) in the stored snapshot and draft print, so the technical key never appears in the document. (The `missing_fields`/`unknown_tokens` report is returned by `prepare_contract`, not here.)
 
 ### 4.5 `finalize_contract`
 Finalizes or submits an employment contract through direct issuance or a configured approval workflow.
@@ -315,4 +320,6 @@ Returns A4 RTL print payload including company letterhead and draft banner.
     }
   }
   ```
+- **Behavior**:
+  - `rendered_clauses` and the print `html` are read from the stored snapshot (`ASOUD Form Entry.values_json`), never re-rendered from the template. Already-issued documents are therefore byte-identical to what was saved at draft/finalize time; the token-reporting change does not rewrite them.
   *Note*: If `is_draft` is true, `draft_banner` is `«پیش‌نویس ـ فاقد اعتبار نهایی»` and `contract_number` is `«شماره پس از صدور»`.

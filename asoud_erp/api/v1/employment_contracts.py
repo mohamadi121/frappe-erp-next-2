@@ -20,7 +20,7 @@ from asoud_erp.services.employment_contract import (
     get_field_catalog,
     mask_contract_salary,
     normalize_search_term,
-    render_contract_articles,
+    render_contract_articles_with_findings,
     validate_contract_template,
 )
 from asoud_erp.services.erp_documents import require_roles
@@ -400,13 +400,15 @@ def prepare_contract(company: str, employee: str, template_version: int | None =
         },
     }
 
-    rendered_clauses = render_contract_articles(clauses, context)
+    rendered_clauses, findings = render_contract_articles_with_findings(clauses, context)
 
     return success({
         "employee_info": context["personnel"],
         "company_info": context["company"],
         "template_version": template_data.get("version", 1),
         "rendered_clauses": rendered_clauses,
+        "missing_fields": findings["missing_fields"],
+        "unknown_tokens": findings["unknown_tokens"],
         "salary_table": salary_calc["items"],
         "total_monthly": salary_calc["total_monthly"],
         "formatted_total_monthly": salary_calc["formatted_total_monthly"],
@@ -575,7 +577,7 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
             "creation_date": _format_jalali(nowdate()),
         },
     }
-    rendered_clauses = render_contract_articles(clauses, context)
+    rendered_clauses, _findings = render_contract_articles_with_findings(clauses, context)
 
     if contract_id:
         contract = frappe.get_doc("Contract", contract_id)

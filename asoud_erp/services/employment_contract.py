@@ -15,6 +15,9 @@ from asoud_erp.services.digits import to_ascii_digits, to_persian_digits
 
 MISSING_PAYROLL_TEXT = "اطلاعات موجود نیست"
 CURRENCY_LABEL = "ریال"
+# Neutral placeholder shown for a known field with no value or an unknown token.
+# The technical key must never appear in rendered output or print.
+MISSING_TOKEN_PLACEHOLDER = "—"
 
 
 def mask_contract_salary(snapshot: dict) -> dict:
@@ -204,6 +207,88 @@ def render_contract_articles(clauses: list[dict], context: dict[str, dict[str, A
             "body": resolved_body,
         })
     return rendered
+
+
+def _known_field_labels() -> dict[str, str]:
+    """Maps every insertable field id to its Persian title.
+
+    The catalog lists the same field ids regardless of payroll permission (only
+    the ``disabled`` flag changes), so this set is permission-independent: a
+    payroll token is always "known", never "unknown".
+    """
+    labels: dict[str, str] = {}
+    for category in get_field_catalog(has_payroll_permission=True)["categories"]:
+        for field in category["fields"]:
+            labels[field["id"]] = field["label"]
+    return labels
+
+
+def render_contract_articles_with_findings(
+    clauses: list[dict],
+    context: dict[str, dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
+    """Renders placeholders and reports missing and unknown tokens.
+
+    Unlike :func:`render_contract_articles` (which silently drops them), this
+    never drops a token:
+
+    - A known field with no value renders ``MISSING_TOKEN_PLACEHOLDER`` and its
+      Persian title is added to ``missing_fields``.
+    - An unknown (legacy) token renders the same placeholder and its raw key is
+      added to ``unknown_tokens``.
+
+    The technical key never appears in the rendered text. Tokens that resolve
+    to a value render exactly as before (byte-identical). The stored clause
+    ``body`` is not mutated.
+
+    Returns ``(rendered_clauses, findings)`` where ``findings`` is
+    ``{"missing_fields": [...], "unknown_tokens": [...]}``, each de-duplicated
+    in order of first appearance.
+    """
+    labels = _known_field_labels()
+    rendered: list[dict[str, Any]] = []
+    missing_fields: list[str] = []
+    unknown_tokens: list[str] = []
+    seen_missing: set[str] = set()
+    seen_unknown: set[str] = set()
+
+    for clause in clauses:
+        order = clause.get("order", 1)
+        raw_title = clause.get("title", "")
+        # Remove any pre-existing "ماده X:" prefix so we don't duplicate it
+        clean_title = re.sub(r"^ماده\s+[\d۰-۹]+\s*:\s*", "", raw_title).strip()
+        formatted_title = f"ماده {to_persian_digits(order)}: {clean_title}"
+
+        body = clause.get("body", "")
+
+        def _replacer(match: re.Match) -> str:
+            token = match.group(1)
+            if token in labels:
+                group, key = token.split(".", 1)
+                val = context.get(group, {}).get(key)
+                if val not in (None, "") and not isinstance(val, (list, dict)):
+                    return str(val)
+                # Known field with no value (None or empty): placeholder + report the title.
+                if token not in seen_missing:
+                    seen_missing.add(token)
+                    missing_fields.append(labels[token])
+                return MISSING_TOKEN_PLACEHOLDER
+            # Unknown (legacy) token: placeholder + report the raw key.
+            if token not in seen_unknown:
+                seen_unknown.add(token)
+                unknown_tokens.append(token)
+            return MISSING_TOKEN_PLACEHOLDER
+
+        resolved_body = _PLACEHOLDER_REGEX.sub(_replacer, body)
+        rendered.append({
+            "id": clause.get("id"),
+            "order": order,
+            "title": formatted_title,
+            "raw_title": clean_title,
+            "body": resolved_body,
+        })
+
+    return rendered, {"missing_fields": missing_fields, "unknown_tokens": unknown_tokens}
 
 
 def calculate_salary_items(salary_rows: list[dict], values_by_field_ref: dict[str, Any]) -> dict[str, Any]:
