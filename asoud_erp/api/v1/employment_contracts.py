@@ -514,11 +514,15 @@ def save_contract_draft(company: str, employee: str, start_date: str, end_date: 
 
     if not frappe.db.exists("Employee", employee):
         frappe.throw(_("پرسنل مورد نظر در سیستم یافت نشد."))
+    # Some fields (father_name, national_id) are custom fields; a site without them
+    # must not fail the draft, so only select columns the Employee doctype has.
+    employee_meta = frappe.get_meta("Employee")
+    wanted = ["name", "employee_name", "first_name", "last_name", "father_name", "national_id",
+              "department", "designation", "date_of_joining", "cell_number", "current_address",
+              "current_postal_code", "company"]
     emp = frappe.db.get_value(
         "Employee", employee,
-        ["name", "employee_name", "first_name", "last_name", "father_name", "national_id",
-         "department", "designation", "date_of_joining", "cell_number", "current_address",
-         "current_postal_code", "company"],
+        [f for f in wanted if f == "name" or employee_meta.has_field(f)],
         as_dict=True,
     )
     if emp.company != company:
