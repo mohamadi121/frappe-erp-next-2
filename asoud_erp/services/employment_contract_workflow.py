@@ -37,6 +37,19 @@ def _store(entry, data, fingerprint=None):
     frappe.db.set_value("ASOUD Form Entry", entry.name, values)
 
 
+def _record_failure(entry, data, reason):
+    """Marks the contract entry Failed with a Persian reason; the caller persists it.
+
+    Reloads the entry's stored (pre-finalize) state so a failed entry never carries the
+    half-finalized fields a partial ``_finalize`` may have set in memory. The approval is
+    kept: only the entry's stored state is rewritten, never the instance.
+    """
+    fresh = json.loads(frappe.db.get_value("ASOUD Form Entry", entry.name, "values_json") or "{}")
+    fresh.update(status="failed", status_label="ناموفق", is_draft=True, failure_reason=reason)
+    data.clear()
+    data.update(fresh)
+
+
 def _build_response(contract, data):
     is_final = contract.docstatus == 1 or data.get("status") == "final"
     is_pending = data.get("status") in {"pending", "in_progress"}
@@ -210,7 +223,15 @@ def on_instance_update(instance, method=None):
         return
     contract = frappe.get_doc("Contract", entry.reference_name, for_update=True)
     if status == "Completed":
-        _finalize(contract, entry, data)
+        from asoud_erp.services.completion_guard import persian_reason, run_guarded
+
+        run_guarded(
+            lambda: _finalize(contract, entry, data),
+            lambda reason: _record_failure(entry, data, persian_reason(reason,
+                _("ثبت نتیجهٔ قرارداد ناموفق بود؛ برای جزئیات با واحد فناوری تماس بگیرید."))),
+            savepoint="contract_finalize_completion",
+            log_title="Contract finalization failed",
+        )
     else:
         key, label = {
             "Rejected": ("rejected", "ردشده"),

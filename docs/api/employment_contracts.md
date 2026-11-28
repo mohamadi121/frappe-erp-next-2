@@ -324,3 +324,8 @@ Returns A4 RTL print payload including company letterhead and draft banner.
 - **Behavior**:
   - `rendered_clauses` and the print `html` are read from the stored snapshot (`ASOUD Form Entry.values_json`), never re-rendered from the template. Already-issued documents are therefore byte-identical to what was saved at draft/finalize time; the token-reporting change does not rewrite them.
   *Note*: If `is_draft` is true, `draft_banner` is `«پیش‌نویس ـ فاقد اعتبار نهایی»` and `contract_number` is `«شماره پس از صدور»`.
+
+
+## ثبت نتیجهٔ نهایی پس از تأیید
+
+وقتی گردش‌کار سند به `Completed` می‌رسد، نهایی‌سازی/صدور سند در یک savepoint اجرا می‌شود. اگر در این مرحله خطایی رخ دهد، تغییرات به savepoint بازمی‌گردند، سند در وضعیت ناموفق ثبت می‌شود (با دلیل فارسی در `failure_reason`) و خود تأیید/تکمیل گردش‌کار حفظ می‌شود؛ خطا در Error Log ثبت می‌گردد و هیچ‌گاه بی‌صدا قورت داده نمی‌شود. این محافظت با مسیر بومی درخواست‌ها (`dispatch_native_document`) مشترک است.
