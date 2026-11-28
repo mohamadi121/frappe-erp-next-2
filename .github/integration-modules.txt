@@ -85,3 +85,4 @@ test_office_permission_profiles
 test_workflow_phase_b_core
 test_workflow_completion_guard
 test_security_audit_agent
+test_ai_assistant

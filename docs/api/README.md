@@ -25,6 +25,7 @@ Module references: [module map](../backend-roadmap.md) ·
 [projects](projects.md) · [financial reports](financial_reports.md) · [ledger reports](report.md) · [chart of accounts](account.md) · [parties](party.md) · [payroll](payroll.md) · [POS](pos.md) · [personnel file](personnel_file.md) · [account operations](account_ops.md) · [document templates](document_templates.md) · [organization units and import](organization.md) ·
 [support](support.md) · [request types](../workflow-runtime-v1.md#request-types) · [request templates](request_templates.md) ·
 [login, onboarding and roles](login-onboarding.md) · [form execution](form-execution.md) · [form builder](forms.md) · [employment contracts](employment_contracts.md) · [directives](../directives-implementation.md) · [گواهی‌های اشتغال](employment_certificates.md) · [احکام استخدام](hiring_orders.md) · [personnel introduction letters](personnel_introduction_letters.md) · [salary change orders](salary_change_orders.md) · [method classification registry](registry.md)
+[login, onboarding and roles](login-onboarding.md) · [form execution](form-execution.md) · [form builder](forms.md) · [employment contracts](employment_contracts.md) · [directives](../directives-implementation.md) · [گواهی‌های اشتغال](employment_certificates.md) · [احکام استخدام](hiring_orders.md) · [personnel introduction letters](personnel_introduction_letters.md) · [salary change orders](salary_change_orders.md) · [دستیار هوشمند (LLM layer)](ai_assistant.md)
 
 ## Calling a method
 
