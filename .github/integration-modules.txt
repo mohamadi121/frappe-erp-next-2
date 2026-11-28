@@ -20,6 +20,7 @@ test_workflow_card_actions
 test_workflow_submission_source
 test_workflow_start_phase3
 test_workflow_return_route
+test_workflow_task_detail
 test_workflow_graph_snapshot
 test_workflow_design_guard
 test_automatic_action_audit

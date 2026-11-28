@@ -1326,13 +1326,22 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
     original_access = config.get('action_contract_version') != 1 or config.get('allow_original_access', True)
     history = _workflow_history(
         doc.workflow_instance,
-        ["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
+        ["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on",
+         *(["change_json"] if frappe.db.has_column("ASOUD Workflow Activity", "change_json") else [])],
     )
     # Approved policy (PA-055 close-out): a MASKED previous assignee sees only their own
-    # activity rows in the task history; another actor's comment is not their history.
+    # activity rows in the task history; another actor's comment or change lines are not
+    # their history. The instance endpoint applies the same policy to the same rows.
     if request is not None:
         history = request_access_policy.visible_activities(
             request_access.request_level(request), frappe.session.user, history)
+    for activity in history:
+        activity.update(activity_change(activity.pop("change_json", None)))
+    actors = list({activity.actor for activity in history if activity.actor})
+    names = {row.name: row.full_name for row in frappe.get_all(
+        "User", filters={"name": ["in", actors]}, fields=["name", "full_name"])} if actors else {}
+    for activity in history:
+        activity["actor_name"] = names.get(activity.actor) or activity.actor or ""
     document_context = {}
     from asoud_erp.services.workflow_submission_source import task_snapshot
 
@@ -1378,6 +1387,9 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
                     "label": field.label or field.fieldname,
                     "value": reference.get(field.fieldname),
                     "read_only": bool(field.read_only),
+                    # Additive (F3): the field's type lets the app render file/image
+                    # values instead of raw paths. Omitted when the type is unknown.
+                    **({"fieldtype": field.fieldtype} if field.fieldtype else {}),
                 }
                 for field in visible_fields
                 if reference.get(field.fieldname) not in (None, "", [])

@@ -24,6 +24,15 @@ retain their rule. Subject/manager direct assignments may transfer within the
 resolved person's active unit; an account without Employee has no such expansion.
 Native enabled-user, company and pinned-result-form access are rechecked at write.
 
+Additive (no existing key changes): each `history` row carries `actor_name` (the
+actor's full name, falling back to the raw actor value when the User row is
+missing) and the parsed change lines `before`/`after`/`labels` (the raw
+`change_json` column is never returned), exactly as `get_workflow_instance` does.
+A MASKED previous assignee sees only their own rows (PA-055 close-out). Each
+`document` value (the reference-document context) carries the additive `fieldtype`
+(the form field's type, e.g. `Data`, `Attach`, `Attach Image`, `Signature`) where
+the field definition is known; the key is omitted when it is not.
+
 Existing `complete_workflow_task` accepts `action: Reassign, assignee: <user>`.
 It checks allow_reassign, locks instance then the same task, rejects self/unknown/
 ineligible recipients, preserves response/draft/files, transfers assigned_to and
