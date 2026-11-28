@@ -24,7 +24,7 @@ Module references: [module map](../backend-roadmap.md) ·
 [stock](stock.md) · [buying](buying.md) · [HR self-service](hr_self_service.md) · [leave requests](leave_request.md) ·
 [projects](projects.md) · [financial reports](financial_reports.md) · [ledger reports](report.md) · [chart of accounts](account.md) · [parties](party.md) · [payroll](payroll.md) · [POS](pos.md) · [personnel file](personnel_file.md) · [account operations](account_ops.md) · [document templates](document_templates.md) · [organization units and import](organization.md) ·
 [support](support.md) · [request types](../workflow-runtime-v1.md#request-types) · [request templates](request_templates.md) ·
-[login, onboarding and roles](login-onboarding.md) · [form execution](form-execution.md) · [form builder](forms.md) · [employment contracts](employment_contracts.md) · [directives](../directives-implementation.md) · [گواهی‌های اشتغال](employment_certificates.md) · [احکام استخدام](hiring_orders.md) · [personnel introduction letters](personnel_introduction_letters.md) · [salary change orders](salary_change_orders.md)
+[login, onboarding and roles](login-onboarding.md) · [form execution](form-execution.md) · [form builder](forms.md) · [employment contracts](employment_contracts.md) · [directives](../directives-implementation.md) · [گواهی‌های اشتغال](employment_certificates.md) · [احکام استخدام](hiring_orders.md) · [personnel introduction letters](personnel_introduction_letters.md) · [salary change orders](salary_change_orders.md) · [method classification registry](registry.md)
 
 ## Calling a method
 
@@ -53,12 +53,14 @@ Frappe wraps the return value in `message`:
 
 ## Errors
 
-Validation and permission failures are raised with `frappe.throw` and reach the
-client as standard Frappe errors, never as `ok: true`:
+See [the error contract](errors.md) for the full table, the stable `title` codes and
+the additive `retryable`/`field`/`hint` keys. In short, validation and permission
+failures are raised with `frappe.throw` and reach the client as standard Frappe
+errors, never as `ok: true`:
 
 | HTTP | `exc_type` | Meaning for the client |
 | --- | --- | --- |
-| 403 | `PermissionError` | The user's ERPNext roles or company access do not allow it. Do not retry, do not fall back to cache. |
+| 403 | `PermissionError` | The user's ERPNext roles or company access do not allow it. `title` is `ROLE_REQUIRED` or `COMPANY_ACCESS_DENIED`. Do not retry, do not fall back to cache. |
 | 417 | `ValidationError` (and subclasses) | Input was rejected; `_server_messages` carries the translated message to show. |
 | 404 | `DoesNotExistError` | The referenced record does not exist or is hidden. |
 | 5xx / network | — | Transient; the client may keep the mutation in its outbox and retry. |
@@ -66,6 +68,13 @@ client as standard Frappe errors, never as `ok: true`:
 `sync.execute_mutation` returns `{"ok": false, "error": {"code", "message"}}`
 only for its own protocol errors (`INVALID_REQUEST_KEY`, `METHOD_NOT_ALLOWED`,
 `REQUEST_KEY_CONFLICT`, `REQUEST_IN_PROGRESS`).
+
+## Machine-readable contract
+
+`api_contract.manifest()` (and the committed [manifest](manifest.json)) lists every
+public method with its read/write classification, effectful flag, pilot flag, HTTP
+methods and parameter schema. It is discovery metadata, not authorization, and lists
+methods only — never business data.
 
 ## Authorization
 
@@ -84,9 +93,14 @@ The shared [HR document role matrix](hr-documents-lifecycle.md) covers document 
 
 ## Idempotent writes (offline outbox)
 
-Every mutating method is named with a prefix from
-`sync._MUTATION_PREFIXES` (`create_`, `submit_`, `cancel_`, ...). To make a write
-safe to retry, call it through:
+The offline outbox accepts a method when the
+[method classification registry](registry.md) marks it a queued mutation: a
+write-verb prefix (`create_`, `submit_`, `cancel_`, ...) or one of the exact names
+in `registry.QUEUED_EXACT` (`directives.issue`/`start`/`report`/`review`/`transfer`/`close`,
+`setup.set_default_office`, `workflow_request.void_native_document`,
+`workflow_request.reissue_native_document`). `sync._is_mutation` reads from the
+registry, so the outbox and the read/write classification live in one place. To
+make a write safe to retry, call it through:
 
 ```
 POST /api/method/asoud_erp.api.v1.sync.execute_mutation

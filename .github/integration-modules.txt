@@ -12,6 +12,7 @@ test_projects
 test_financial_reports
 test_pos
 test_dashboard_support_sync
+test_api_contract
 test_personnel_file
 test_document_templates
 test_workflow_templates

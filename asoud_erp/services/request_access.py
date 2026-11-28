@@ -50,7 +50,8 @@ def company_access(company, user=None):
 
 def require_company(company):
     if not company_access(company):
-        frappe.throw("شما به اطلاعات این شرکت دسترسی ندارید.", frappe.PermissionError)
+        frappe.throw("شما به اطلاعات این شرکت دسترسی ندارید.", frappe.PermissionError,
+                     title="COMPANY_ACCESS_DENIED")
 
 
 #: Activity actions that are a decision the user made on a task. Claiming a shared task,

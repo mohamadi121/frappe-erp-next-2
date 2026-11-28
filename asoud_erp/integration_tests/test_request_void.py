@@ -7,7 +7,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, nowdate
 
-from asoud_erp.api.v1 import forms, workflow_request, workflow_runtime
+from asoud_erp.api.v1 import forms, sync, workflow_request, workflow_runtime
 from asoud_erp.integration_tests.fixtures import APITestCase
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.request_helpers import open_task
@@ -421,3 +421,83 @@ class TestVoidIsRegistered(FrappeTestCase):
         options = frappe.get_meta(REQUEST).get_field('native_status').options.split('\n')
         self.assertIn('Voided', options)
         self.assertTrue(json.dumps(options))
+
+
+class TestVoidThroughSyncQueue(APITestCase):
+    """The app queues void/reissue through sync.execute_mutation; the allow-list must accept both names."""
+
+    def setUp(self):
+        super().setUp()
+        self.token = uuid.uuid4().hex[:10]
+        self.user = self._user('req-' + self.token, 'Employee')
+        self.employee = frappe.get_doc({
+            'doctype': 'Employee', 'first_name': 'درخواست‌کننده', 'company': self.company,
+            'user_id': self.user, 'gender': 'Male', 'date_of_birth': '1990-01-01',
+            'date_of_joining': '2020-01-01', 'status': 'Active', 'create_user_permission': 0,
+            'reports_to': self.records['approver']}).insert().name
+        self.hr = self._user('hr-' + self.token, 'HR Manager')
+        frappe.permissions.add_user_permission('Company', self.company, self.hr, ignore_permissions=True)
+
+    def _user(self, name, role):
+        user = frappe.get_doc({'doctype': 'User', 'email': name + '@example.test', 'first_name': name,
+                               'send_welcome_email': 0, 'user_type': 'System User',
+                               'roles': [{'role': role}]}).insert().name
+        for extra in dict.fromkeys(['Employee', role]):
+            if not frappe.db.exists('Has Role', {'parent': user, 'role': extra}):
+                frappe.get_doc({'doctype': 'Has Role', 'parent': user, 'parenttype': 'User',
+                                'parentfield': 'roles', 'role': extra}).insert(ignore_permissions=True)
+        frappe.clear_cache(user=user)
+        return user
+
+    def _executed_request(self):
+        definition, _ = make_definition(self.company, fields=[])
+        schema = {'kind': 'Request', 'title': 'درخواست ابطال از صف', 'workflow': definition,
+                  'execution': {'kind': 'employee_advance'},
+                  'sections': [{'id': 'main', 'title': 'اصلی', 'fields': [
+                      {'key': 'asked', 'label': 'مبلغ', 'type': 'Money', 'execution_key': 'amount'},
+                      {'key': 'why', 'label': 'شرح', 'type': 'LongText', 'execution_key': 'purpose'}]}]}
+        saved = forms.save_form(self.company, schema, client_id=frappe.generate_hash(length=24))['data']
+        revision = forms.transition(saved['name'], 'publish', saved['draft_version'])['data']['active_revision']
+        frappe.set_user(self.user)
+        entry = forms.submit_form(saved['name'], revision, 'اجرای نهایی',
+                                  {'asked': 1250, 'why': 'هزینه ضروری'},
+                                  frappe.generate_hash(length=24))['data']
+        request = workflow_request.get_request(entry['reference_name'])['data']
+        task = open_task(request['workflow_instance'])
+        frappe.set_user(task.assigned_to)
+        workflow_runtime.complete_workflow_task(task.name, 'Approve')
+        frappe.set_user('Administrator')
+        return workflow_request.get_request(request['name'])['data']
+
+    def test_void_and_reissue_run_through_the_sync_queue(self):
+        request = self._executed_request()
+        old = request['native']['name']
+        frappe.set_user(self.hr)
+        try:
+            key = 'void-' + frappe.generate_hash(length=20)
+            voided = sync.execute_mutation(key, 'asoud_erp.api.v1.workflow_request.void_native_document',
+                                           {'name': request['name'], 'reason': REASON})
+            self.assertTrue(voided['ok'], voided)
+            self.assertEqual(voided['data']['native']['status'], 'Voided')
+            # Replay with the same key returns the stored envelope without a second void.
+            again = sync.execute_mutation(key, 'asoud_erp.api.v1.workflow_request.void_native_document',
+                                          {'name': request['name'], 'reason': REASON})
+            self.assertEqual(again, voided)
+            self.assertEqual(len(self.activities(request, 'Voided')), 1)
+
+            rkey = 'reissue-' + frappe.generate_hash(length=20)
+            reissued = sync.execute_mutation(rkey, 'asoud_erp.api.v1.workflow_request.reissue_native_document',
+                                             {'name': request['name']})
+            self.assertTrue(reissued['ok'], reissued)
+            self.assertEqual(reissued['data']['native']['status'], 'Created')
+            self.assertNotEqual(reissued['data']['native']['name'], old)
+        finally:
+            frappe.set_user('Administrator')
+
+    def activities(self, request, action=None):
+        filters = {'workflow_instance': request['workflow_instance']}
+        if action:
+            filters['action'] = action
+        return frappe.get_all('ASOUD Workflow Activity', filters=filters, order_by='creation asc, name asc',
+                              fields=['action', 'comment', 'actor', 'created_on', 'reference_doctype',
+                                      'reference_name'])
