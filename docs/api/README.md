@@ -24,7 +24,7 @@ Module references: [module map](../backend-roadmap.md) ·
 [stock](stock.md) · [buying](buying.md) · [HR self-service](hr_self_service.md) · [leave requests](leave_request.md) ·
 [projects](projects.md) · [financial reports](financial_reports.md) · [ledger reports](report.md) · [chart of accounts](account.md) · [parties](party.md) · [payroll](payroll.md) · [POS](pos.md) · [personnel file](personnel_file.md) · [account operations](account_ops.md) · [document templates](document_templates.md) · [organization units and import](organization.md) ·
 [support](support.md) · [request types](../workflow-runtime-v1.md#request-types) · [request templates](request_templates.md) ·
-[login, onboarding and roles](login-onboarding.md) · [form execution](form-execution.md) · [form builder](forms.md) · [employment contracts](employment_contracts.md) · [directives](../directives-implementation.md) · [گواهی‌های اشتغال](employment_certificates.md) · [احکام استخدام](hiring_orders.md) · [personnel introduction letters](personnel_introduction_letters.md) · [salary change orders](salary_change_orders.md)
+[login, onboarding and roles](login-onboarding.md) · [form execution](form-execution.md) · [form builder](forms.md) · [employment contracts](employment_contracts.md) · [directives](../directives-implementation.md) · [گواهی‌های اشتغال](employment_certificates.md) · [احکام استخدام](hiring_orders.md) · [personnel introduction letters](personnel_introduction_letters.md) · [salary change orders](salary_change_orders.md) · [method classification registry](registry.md)
 
 ## Calling a method
 
@@ -84,13 +84,14 @@ The shared [HR document role matrix](hr-documents-lifecycle.md) covers document 
 
 ## Idempotent writes (offline outbox)
 
-Every mutating method is named with a prefix from
-`sync._MUTATION_PREFIXES` (`create_`, `submit_`, `cancel_`, ...). A few writes are
-named after a verb with no write prefix and are accepted by exact name instead
-(`directives.issue`/`start`/`report`/`review`/`transfer`/`close`,
+The offline outbox accepts a method when the
+[method classification registry](registry.md) marks it a queued mutation: a
+write-verb prefix (`create_`, `submit_`, `cancel_`, ...) or one of the exact names
+in `registry.QUEUED_EXACT` (`directives.issue`/`start`/`report`/`review`/`transfer`/`close`,
 `setup.set_default_office`, `workflow_request.void_native_document`,
-`workflow_request.reissue_native_document`). To make a write safe to retry, call it
-through:
+`workflow_request.reissue_native_document`). `sync._is_mutation` reads from the
+registry, so the outbox and the read/write classification live in one place. To
+make a write safe to retry, call it through:
 
 ```
 POST /api/method/asoud_erp.api.v1.sync.execute_mutation
