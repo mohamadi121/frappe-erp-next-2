@@ -39,7 +39,7 @@ class TestSpecialisedCompletionGuard(APITestCase):
 
     def _publish_template(self, definition):
         template = hiring.get_hiring_order_template(company())["data"]["template"]
-        template["workflow"] = definition.name
+        template["workflow"] = definition
         saved = hiring.save_hiring_order_template(company(), template=template)["data"]
         hiring.publish_hiring_order_template(company(), revision=saved["revision"])
 
@@ -115,12 +115,12 @@ class TestNonConfiguredStartIdempotency(APITestCase):
         definition, _ = make_definition(company(), approvals=1, fields=[])
         request_id = "req-" + uuid4().hex[:16]
         first = workflow_runtime.start_workflow_instance(
-            definition=definition.name, subject="آزمون شروع تکراری", request_id=request_id)["data"]
+            definition=definition, subject="آزمون شروع تکراری", request_id=request_id)["data"]
         second = workflow_runtime.start_workflow_instance(
-            definition=definition.name, subject="آزمون شروع تکراری", request_id=request_id)["data"]
+            definition=definition, subject="آزمون شروع تکراری", request_id=request_id)["data"]
         self.assertEqual(first["name"], second["name"])
         self.assertEqual(
-            frappe.db.count("ASOUD Workflow Instance", {"workflow_definition": definition.name}), 1)
+            frappe.db.count("ASOUD Workflow Instance", {"workflow_definition": definition}), 1)
         # The receipt activity carries the request_id so the lookup can match it.
         activity = frappe.db.get_value("ASOUD Workflow Activity",
                                        {"workflow_instance": first["name"], "action": "Workflow Started"},
@@ -131,9 +131,9 @@ class TestNonConfiguredStartIdempotency(APITestCase):
         frappe.set_user(HR_MANAGER_USER)
         definition, _ = make_definition(company(), approvals=1, fields=[])
         first = workflow_runtime.start_workflow_instance(
-            definition=definition.name, subject="آزمون شروع بدون شناسه")["data"]
+            definition=definition, subject="آزمون شروع بدون شناسه")["data"]
         second = workflow_runtime.start_workflow_instance(
-            definition=definition.name, subject="آزمون شروع بدون شناسه")["data"]
+            definition=definition, subject="آزمون شروع بدون شناسه")["data"]
         self.assertNotEqual(first["name"], second["name"])
         self.assertEqual(
-            frappe.db.count("ASOUD Workflow Instance", {"workflow_definition": definition.name}), 2)
+            frappe.db.count("ASOUD Workflow Instance", {"workflow_definition": definition}), 2)
