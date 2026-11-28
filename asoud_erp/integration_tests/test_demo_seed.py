@@ -217,6 +217,12 @@ class TestDemoSeed(FrappeTestCase):
         newcomer = m.demo_email("newcomer")
         self.assertFalse(frappe.db.get_value("User", newcomer, "last_login"))
         self.assertIn("HR Manager", frappe.get_roles(m.demo_email("hr-manager")))
+        # The second seed run created no users, so Employee.user_id must still be
+        # linked for every demo user (the Employee fallback of company_access()).
+        for local_part, _emp_index, _roles, _note in m.USERS:
+            self.assertTrue(
+                frappe.db.exists("Employee", {"user_id": m.demo_email(local_part)}),
+                local_part)
         employee = frappe.db.get_value(
             "Employee", {"user_id": m.demo_email("employee")},
             ["reports_to", "designation"], as_dict=True)
