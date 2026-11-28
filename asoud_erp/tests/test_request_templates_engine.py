@@ -17,6 +17,7 @@ RELOADED = [
     "asoud_erp.services.erp_documents", "asoud_erp.services.request_link_values",
     "asoud_erp.services.request_comments", "asoud_erp.services.request_templates.seed",
     "asoud_erp.services.request_templates.lifecycle", "asoud_erp.services.request_native_documents",
+    "asoud_erp.services.completion_guard",
 ]
 
 

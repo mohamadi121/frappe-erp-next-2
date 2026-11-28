@@ -31,6 +31,10 @@ are enforced; a nonblank reason is mandatory. When `request_id` is provided, if 
 ASOUD Workflow Activity 'Workflow Started' already exists for the same actor + definition
 + request_id, the existing instance (`success({'name', 'status'})`) is returned
 idempotently without creating another one. Malformed request IDs are rejected with a Persian error.
+The 'Workflow Started' activity is the idempotency receipt: it is written for every configured
+(v1) start, and for a non-configured start whenever a `request_id` is supplied, so the
+duplicate-start lookup works for non-configured starts too. A non-configured start **without** a
+`request_id` still writes no activity (unchanged); no caller sends `request_id` today.
 Manual mode cannot be started by submitted Form Entry. A v1 Document Event workflow requires its
 validated original Form Entry. Legacy workflows keep their existing entry paths.
 
