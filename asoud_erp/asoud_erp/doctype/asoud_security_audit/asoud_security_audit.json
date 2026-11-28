@@ -8,7 +8,7 @@
   "title_field": "action",
   "sort_field": "occurred_on",
   "sort_order": "DESC",
-  "field_order": ["occurred_on", "actor", "action", "result", "source", "target_type", "target", "company", "details"],
+  "field_order": ["occurred_on", "actor", "action", "result", "source", "target_type", "target", "company", "details", "agent"],
   "fields": [
     {"fieldname": "occurred_on", "label": "Occurred On", "fieldtype": "Datetime", "reqd": 1, "read_only": 1, "search_index": 1, "in_list_view": 1},
     {"fieldname": "actor", "label": "Actor", "fieldtype": "Data", "read_only": 1, "search_index": 1, "in_list_view": 1, "description": "User id of the acting account, or the attempted login name for a failed login."},
@@ -18,7 +18,8 @@
     {"fieldname": "target_type", "label": "Target Type", "fieldtype": "Data", "read_only": 1},
     {"fieldname": "target", "label": "Target", "fieldtype": "Data", "read_only": 1, "search_index": 1},
     {"fieldname": "company", "label": "Office", "fieldtype": "Data", "read_only": 1},
-    {"fieldname": "details", "label": "Details (sanitised JSON)", "fieldtype": "Long Text", "read_only": 1}
+    {"fieldname": "details", "label": "Details (sanitised JSON)", "fieldtype": "Long Text", "read_only": 1},
+    {"fieldname": "agent", "label": "Agent", "fieldtype": "Data", "read_only": 1, "search_index": 1, "description": "Name of the acting agent when the row was written by an agent on behalf of the principal; empty when a human acted directly."}
   ],
   "permissions": [{"role": "System Manager", "read": 1, "export": 1, "report": 1}]
 }

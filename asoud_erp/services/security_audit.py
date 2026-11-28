@@ -32,10 +32,10 @@ def redact(value, depth: int = 0):
 
 
 def build_row(*, actor, action, result="success", source="", target_type="", target="", company="",
-              details=None, occurred_on=None) -> dict:
+              details=None, occurred_on=None, agent=None) -> dict:
     if result not in RESULTS:
         raise ValueError("invalid audit result")
-    return {
+    row = {
         "doctype": "ASOUD Security Audit",
         "occurred_on": occurred_on,
         "actor": str(actor or "")[:140],
@@ -47,6 +47,12 @@ def build_row(*, actor, action, result="success", source="", target_type="", tar
         "company": str(company or "")[:140],
         "details": json.dumps(redact(details or {}), ensure_ascii=False),
     }
+    # ``agent`` names the acting agent (B-WP3). ``actor`` stays the principal.
+    # The key is added only when a non-empty agent is given, so the default
+    # path is byte-identical to the pre-change row.
+    if agent:
+        row["agent"] = str(agent)[:140]
+    return row
 
 
 def request_source() -> str:
@@ -65,11 +71,14 @@ def request_source() -> str:
 
 
 def record(action, *, result="success", actor=None, target_type="", target="", company="",
-           details=None, source=None, commit=False) -> None:
+           details=None, source=None, commit=False, agent=None) -> None:
     """Write one audit row. Never raises into the caller's business flow.
 
     ``commit=True`` is for failures/denials where the caller is about to raise (which
     rolls the transaction back); the row is kept.
+
+    ``agent`` optionally names the acting agent (B-WP3); ``actor`` stays the
+    principal. Without it the row is identical to the pre-change behaviour.
     """
     import frappe
     from frappe.utils import now_datetime
@@ -78,7 +87,8 @@ def record(action, *, result="success", actor=None, target_type="", target="", c
         row = build_row(
             actor=actor if actor is not None else frappe.session.user, action=action, result=result,
             source=source if source is not None else request_source(), target_type=target_type,
-            target=target, company=company, details=details, occurred_on=now_datetime())
+            target=target, company=company, details=details, occurred_on=now_datetime(),
+            agent=agent)
         frappe.get_doc(row).insert(ignore_permissions=True)
         if commit and not frappe.flags.in_test:
             # keeps the row when the caller is about to raise (which rolls the request back)
