@@ -85,8 +85,12 @@ The shared [HR document role matrix](hr-documents-lifecycle.md) covers document 
 ## Idempotent writes (offline outbox)
 
 Every mutating method is named with a prefix from
-`sync._MUTATION_PREFIXES` (`create_`, `submit_`, `cancel_`, ...). To make a write
-safe to retry, call it through:
+`sync._MUTATION_PREFIXES` (`create_`, `submit_`, `cancel_`, ...). A few writes are
+named after a verb with no write prefix and are accepted by exact name instead
+(`directives.issue`/`start`/`report`/`review`/`transfer`/`close`,
+`setup.set_default_office`, `workflow_request.void_native_document`,
+`workflow_request.reissue_native_document`). To make a write safe to retry, call it
+through:
 
 ```
 POST /api/method/asoud_erp.api.v1.sync.execute_mutation

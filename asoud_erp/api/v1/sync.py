@@ -38,6 +38,12 @@ _MUTATION_METHODS = frozenset(
     [f"asoud_erp.api.v1.directives.{action}" for action in ("issue", "start", "report", "review", "transfer", "close")]
     # The app queues the active-office choice; `set_` is not a general write verb, so it is listed by exact name.
     + ["asoud_erp.api.v1.setup.set_default_office"]
+    # The app queues void/reissue of an executed native document; neither verb carries a write prefix,
+    # so both are listed by exact name (F-1: they were rejected with METHOD_NOT_ALLOWED on every call).
+    + ["asoud_erp.api.v1.workflow_request.void_native_document",
+       "asoud_erp.api.v1.workflow_request.reissue_native_document"]
+    # The app queues void/reissue of an executed native document; neither verb carries a write prefix,
+    # so both are listed by exact name (F-1: they were rejected with METHOD_NOT_ALLOWED on every call).
 )
 
 
