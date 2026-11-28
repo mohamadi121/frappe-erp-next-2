@@ -10,6 +10,17 @@ def validate_request_id(request_id: str | None) -> None:
             raise ValueError('شناسهٔ درخواست (request_id) معتبر نیست؛ باید بین ۸ تا ۶۴ نویسه و شامل حروف، ارقام، خط تیره یا زیرخط باشد.')
 
 
+def should_record_start_activity(configured_start: bool, request_id: str | None) -> bool:
+    """Whether a start writes the 'Workflow Started' activity.
+
+    Configured (v1) starts always record it (start auditing). Non-configured starts record it
+    only when a `request_id` is supplied, because that activity is the idempotency receipt the
+    duplicate-start lookup reads. No caller sends `request_id` today, so existing non-configured
+    starts keep writing no activity.
+    """
+    return bool(configured_start) or bool(request_id)
+
+
 def start_change_data(start_mode, previous_instance=None, request_id=None, reference_modified=None):
     """The 'Workflow Started' activity payload; always JSON-serializable."""
     data = {'start_mode': start_mode, 'previous_instance': previous_instance}

@@ -39,7 +39,11 @@ from asoud_erp.services.workflow_graph_snapshot import (
 )
 from asoud_erp.services.workflow_history import carried_draft, merge_completed_responses, select_return_stage
 from asoud_erp.services.workflow_response import normalize_form_response
-from asoud_erp.services.workflow_start_policy import start_change_data, validate_request_id
+from asoud_erp.services.workflow_start_policy import (
+    should_record_start_activity,
+    start_change_data,
+    validate_request_id,
+)
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".xlsx", ".docx"}
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
@@ -978,7 +982,10 @@ def start_workflow_instance(
     if graph_ready():
         instance.graph_snapshot_json = capture_graph(definition)
         instance.save(ignore_permissions=True)
-    if configured_start:
+    # The 'Workflow Started' activity is the idempotency receipt for `request_id`: configured
+    # starts always write it (start auditing), non-configured starts write it only when a
+    # `request_id` is supplied so the duplicate-start lookup above can find it.
+    if should_record_start_activity(configured_start, request_id):
         reference_modified = (frappe.db.get_value(reference_doctype, reference_name, 'modified')
                               if reference_name else None)
         change_data = start_change_data(start_config.get('trigger_type', 'Manual'),
