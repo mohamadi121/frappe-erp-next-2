@@ -14,7 +14,7 @@ from uuid import uuid4
 import frappe
 
 from asoud_erp.api.v1 import workflow, workflow_runtime
-from asoud_erp.integration_tests.fixtures import APPROVER_USER, EMPLOYEE_USER, APITestCase, _user
+from asoud_erp.integration_tests.fixtures import APPROVER_USER, EMPLOYEE_USER, APITestCase, _employee, _user
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.request_helpers import act, create
 
@@ -110,7 +110,9 @@ class TestWorkflowTaskDetailHistory(APITestCase):
         # The MASKED viewer sees only their own rows: the other actor's comment and
         # change lines are not part of their authorized history.
         self.assertEqual({row['actor'] for row in data['history']}, {APPROVER_USER})
-        blob = json.dumps(data['history'], ensure_ascii=False)
+        # default=str serializes the datetime columns (created_on); the Persian strings
+        # being checked are plain strings and serialize unchanged, so the leak check holds.
+        blob = json.dumps(data['history'], ensure_ascii=False, default=str)
         self.assertNotIn('نظر شرکت‌کنندهٔ دیگر', blob)
         self.assertNotIn(OTHER_SECRET, blob)
         # Their own row keeps the readable name.
@@ -120,22 +122,25 @@ class TestWorkflowTaskDetailHistory(APITestCase):
 
 class TestWorkflowTaskDetailDocumentFieldtype(APITestCase):
     def test_document_values_carry_the_fieldtype(self):
-        # A native document with an Attach field (certificate_attachement).
-        log = frappe.get_doc({"doctype": "Asset Maintenance Log", "naming_series": "ACC-AML-.YYYY.-",
-                              "maintenance_status": "Planned",
-                              "certificate_attachement": "/files/madrak.pdf"}).insert(ignore_permissions=True)
+        # A native document with a non-hidden Attach field (scanned_cheque) and a Select
+        # field (cheque_size). Cheque Print Template is controller-free and needs only
+        # bank_name, so the fixture stays focused on the document-context contract.
+        template = frappe.get_doc({"doctype": "Cheque Print Template",
+                                   "bank_name": f"بانک آزمون {uuid4().hex[:8]}",
+                                   "cheque_size": "Regular",
+                                   "scanned_cheque": "/files/madrak.pdf"}).insert(ignore_permissions=True)
         token = uuid4().hex[:8]
         definition = frappe.get_doc({
-            "doctype": "ASOUD Workflow Definition", "workflow_code": f"aml-{token}",
-            "workflow_title": f"بررسی نگهداری {token}", "company": self.company,
-            "module_key": "Manufacturing", "target_doctype": "Asset Maintenance Log",
+            "doctype": "ASOUD Workflow Definition", "workflow_code": f"cpt-{token}",
+            "workflow_title": f"بررسی چک {token}", "company": self.company,
+            "module_key": "Finance", "target_doctype": "Cheque Print Template",
             "status": "Active", "readiness_status": "Ready", "creation_mode": "Custom",
             "allow_user_submission": 1,
         }).insert(ignore_permissions=True)
         stages = []
         for index, (kind, config) in enumerate([
             ("Start", {"title": "شروع", "trigger_type": "Manual",
-                       "initiator_roles": ["Manufacturing User"]}),
+                       "initiator_roles": ["Accounts User"]}),
             ("User Task", {"title": "بررسی", "activity_type": "Data Entry",
                            "assignment_type": "Initiator"}),
             ("End", {"title": "پایان", "outcome": "Completed"}),
@@ -149,12 +154,15 @@ class TestWorkflowTaskDetailDocumentFieldtype(APITestCase):
             frappe.get_doc({"doctype": "ASOUD Workflow Transition", "workflow_definition": definition.name,
                             "from_stage": first.name, "to_stage": second.name,
                             "condition_json": "{}"}).insert(ignore_permissions=True)
-        viewer = _user(f"asoud.aml-{uuid4().hex[:8]}@example.com", ["Manufacturing User"])
+        # Accounts User: a start role, read on Cheque Print Template, and (via the active
+        # Employee below) company access to self.company.
+        viewer = _user(f"asoud.cpt-{uuid4().hex[:8]}@example.com", ["Accounts User"])
+        _employee(viewer, "Cheque Viewer", company=self.company)
         frappe.set_user(viewer)
         try:
             instance = workflow_runtime.start_workflow_instance(
-                definition.name, 'بررسی نگهداری', reference_doctype='Asset Maintenance Log',
-                reference_name=log.name, reason='آزمون')['data']['name']
+                definition.name, 'بررسی چک', reference_doctype='Cheque Print Template',
+                reference_name=template.name, reason='آزمون')['data']['name']
         finally:
             frappe.set_user('Administrator')
         task = frappe.db.get_value('ASOUD Workflow Task',
@@ -167,7 +175,7 @@ class TestWorkflowTaskDetailDocumentFieldtype(APITestCase):
             frappe.set_user('Administrator')
         by_key = {item['key']: item for item in data['document']['values']}
         # The Attach field carries its fieldtype; values and read_only are unchanged.
-        self.assertEqual(by_key['certificate_attachement']['value'], '/files/madrak.pdf')
-        self.assertEqual(by_key['certificate_attachement']['fieldtype'], 'Attach')
-        self.assertFalse(by_key['certificate_attachement']['read_only'])
-        self.assertEqual(by_key['maintenance_status']['fieldtype'], 'Select')
+        self.assertEqual(by_key['scanned_cheque']['value'], '/files/madrak.pdf')
+        self.assertEqual(by_key['scanned_cheque']['fieldtype'], 'Attach')
+        self.assertFalse(by_key['scanned_cheque']['read_only'])
+        self.assertEqual(by_key['cheque_size']['fieldtype'], 'Select')
