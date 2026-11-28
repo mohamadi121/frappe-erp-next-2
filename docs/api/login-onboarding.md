@@ -6,6 +6,13 @@ Every answer uses the standard envelope `{ok, data, meta}` (see [README](README.
 sentences. Audit: every security event is written to the append-only `ASOUD Security Audit` DocType
 (`SEC-YYYY-#######`) with actor, time, result, target, company and source, never a password, token or one-time code.
 
+### The `agent` field (B-WP3)
+
+`ASOUD Security Audit` carries an optional, nullable `agent` (Data) field. `security_audit.record(..., agent=...)`
+fills it with the name of the acting agent; `actor` stays the principal (the acting account). When no `agent` is
+passed the field is left empty, so the default path is byte-identical to before and existing rows are untouched.
+This is additive: no existing key, type or HTTP meaning changes.
+
 ## System administrator («مدیر کل سیستم»)
 
 The administrator is an enabled System User holding the native `System Manager` role. It is recognised by
@@ -199,6 +206,6 @@ and reports are routed to the manager pool when there is no direct manager. Nobo
 
 `bench --site <site> migrate` (new DocTypes `ASOUD Security Audit`, `ASOUD Account State`, `ASOUD Account Token`,
 `ASOUD Office Role Assignment`; new fields on `ASOUD Settings`, `ASOUD Company Setup`, `ASOUD Role Definition`,
-`ASOUD Party Profile`, `ASOUD Work Report`; patch `v0_18.ensure_security_roles_and_backfill` creates the roles
-`ASOUD Office Creator` and `ASOUD Role Assigner` and backfills). Restart afterwards so the new `doc_events`,
-`before_request` and `on_login` hooks load.
+`ASOUD Party Profile`, `ASOUD Work Report`, and the optional `agent` field on `ASOUD Security Audit`; patch
+`v0_18.ensure_security_roles_and_backfill` creates the roles `ASOUD Office Creator` and `ASOUD Role Assigner` and
+backfills). Restart afterwards so the new `doc_events`, `before_request` and `on_login` hooks load.
