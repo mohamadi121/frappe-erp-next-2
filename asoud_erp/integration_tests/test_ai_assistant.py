@@ -15,6 +15,8 @@ things that only a real site can prove:
 No live model call is made: the orchestrator is driven with a fake client.
 """
 
+import json
+
 import frappe
 
 from asoud_erp.api.v1 import sync
@@ -30,7 +32,9 @@ class _FakeClient:
         self.calls = []
 
     def create_message(self, messages, **kwargs):
-        self.calls.append(kwargs)
+        # The orchestrator passes ``messages`` positionally; record it explicitly
+        # so assertions can inspect what went back to the model.
+        self.calls.append({"messages": messages, **kwargs})
         if len(self.calls) == 1:
             return {"content": [{"type": "tool_use", "id": "toolu_1",
                                  "name": self.tool_name, "input": {}}]}
@@ -87,7 +91,15 @@ class TestAiAssistant(APITestCase):
         self.assertEqual(result["answer"], "پاسخ")
         self.assertEqual(len(result["tool_calls"]), 1)
         self.assertTrue(result["tool_calls"][0]["ok"])
-        # The tool result went back to the model as a tool_result block.
+        # The tool result went back to the model as a tool_result block for the
+        # routed tool call, and its content is the real read result: the v1
+        # envelope of ``list_my_issues`` (JSON string, masked and truncated).
         tool_result = client.calls[1]["messages"][-1]["content"][0]
         self.assertEqual(tool_result["type"], "tool_result")
+        self.assertEqual(tool_result["tool_use_id"], "toolu_1")
         self.assertFalse(tool_result["is_error"])
+        payload = json.loads(tool_result["content"])
+        self.assertTrue(payload["ok"])
+        self.assertIsInstance(payload["data"], list)
+        self.assertEqual(payload["meta"]["api_version"], "v1")
+        self.assertIn("count", payload["meta"])
