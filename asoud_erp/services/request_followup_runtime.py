@@ -100,8 +100,14 @@ def detail_document(marker: dict) -> dict:
               ("transaction_date", "تاریخ تحویل", str(movement.transaction_date)[:10] if movement else None),
               ("target_location", "مکان تحویل", row.target_location if row else None),
               ("movement_status", "وضعیت", STATUS_LABELS.get(movement.docstatus) if movement else "لغوشده")]
+    # Additive (F3): the field's type lets the app render file/image values instead of
+    # raw paths. `movement_status` is the standard docstatus (not a form field), so it
+    # has no fieldtype and the key is omitted there.
+    fieldtypes = {field.fieldname: field.fieldtype for doctype in (marker["doctype"], "Asset Movement Item")
+                  for field in frappe.get_meta(doctype).fields}
     return {"doctype": marker["doctype"], "name": marker["name"],
-            "values": [{"key": key, "label": label, "value": value, "read_only": True}
+            "values": [{"key": key, "label": label, "value": value, "read_only": True,
+                        **({"fieldtype": fieldtypes[key]} if fieldtypes.get(key) else {})}
                        for key, label, value in values if value not in (None, "")]}
 
 

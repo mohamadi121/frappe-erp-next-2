@@ -72,6 +72,12 @@ absent), read from the new optional `ASOUD Workflow Activity.change_json`
 the form (task page, print) show the field label.
 The migration only adds that column; existing rows return `{}`.
 
+`get_workflow_task`'s `history` rows are additive-equal to the instance activity rows: they carry
+the same `actor_name` (the actor's full name, falling back to the raw actor value when the User row
+is missing) and the same parsed `before`/`after`/`labels` (the raw `change_json` column is never
+returned). A MASKED previous assignee sees only their own rows in both endpoints (PA-055 close-out):
+another actor's comment or change lines are not part of their authorized history.
+
 ### Companies and scoping
 
 Every endpoint that takes `company` calls `request_access.require_company`; name-based
