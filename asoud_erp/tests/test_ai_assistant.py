@@ -363,6 +363,38 @@ def test_sensitive_fields_are_masked_before_the_model_sees_them():
     assert masked["list"][0]["net_salary"] == "مخفی"
 
 
+def test_every_sensitive_stem_masks_a_value_under_it():
+    # A key is masked when it CONTAINS any sensitive stem (case-insensitive).
+    sensitive = {
+        "national_id": "001", "national_code": "002",
+        "iban": "IR1", "bank_account": "acc", "bank_name": "بانک",
+        "salary": 1, "gross_salary": 2, "wage": 3,
+        "mobile": "0912", "phone": "021", "cell_number": "0935",
+        "address": "تهران", "postal_code": "12345",
+        "birth_date": "1990-01-01", "passport_number": "P1",
+        "email": "a@b.c", "company_email": "c@d.e", "father_name": "علی",
+        "emergency_phone": "0912", "emergency_contact_name": "فانی",
+        "tax_id": "T1", "insurance_number": "I1",
+    }
+    masked = orchestrator.mask_sensitive(sensitive)
+    for key, value in sensitive.items():
+        assert masked[key] == "مخفی", f"{key} was not masked"
+
+
+def test_harmless_keys_are_not_masked():
+    # Business/structural keys that do not contain a sensitive stem stay intact.
+    payload = {
+        "status": "Open", "title": "درخواست مرخصی", "leave_type": "سالانه",
+        "name": "REQ-0001", "request_name": "درخواست", "subject": "تیکت",
+        "opening_date": "2026-11-28", "due_on": "2026-12-01", "as_of": "2026-11-28",
+        "company": "شرکت آسود", "employee": "HR-EMP-0001", "total": 3,
+        "remaining": 5.5, "available": 4.0, "category": "annual",
+        "workflow_stage": "تأیید", "assigned_to": "user@example.com",
+    }
+    masked = orchestrator.mask_sensitive(payload)
+    assert masked == payload
+
+
 def test_masking_applies_to_the_tool_result_in_the_round_trip():
     client = ScriptedClient([
         _tool_use("get_my_personnel_file", "toolu_1"),
@@ -433,8 +465,44 @@ def test_thinking_disabled_for_routing_and_low_for_the_answer():
     assert client.calls[0]["tool_choice"] == {"type": "auto"}
     assert client.calls[0]["temperature"] == 0.2
     assert client.calls[0]["max_tokens"] == orchestrator.MAX_TOKENS
+    # The answer turn runs with thinking (budget 1024) and a larger max_tokens,
+    # because reasoning tokens count inside max_tokens.
     assert client.calls[1]["thinking"] == {"type": "enabled", "budget_tokens": 1024}
+    assert client.calls[1]["max_tokens"] == orchestrator.ANSWER_MAX_TOKENS
+    assert client.calls[1]["max_tokens"] > orchestrator.MAX_TOKENS
     assert not client.calls[1].get("tools")
+
+
+def test_answer_turn_uses_a_larger_max_tokens_than_routing():
+    client = ScriptedClient([_text("routing done"), _text("پاسخ")])
+    orchestrator.run_assistant("x", "u", client, tool_catalog.catalog(), executor=_executor({}))
+    assert client.calls[0]["max_tokens"] == orchestrator.MAX_TOKENS
+    assert client.calls[1]["max_tokens"] == orchestrator.ANSWER_MAX_TOKENS
+    assert orchestrator.ANSWER_MAX_TOKENS >= 2048
+
+
+def test_max_tokens_stop_with_no_text_yields_the_persian_message():
+    # The answer budget was spent on reasoning: stop_reason max_tokens and no
+    # text block. The user must get a Persian message, not an empty string.
+    client = ScriptedClient([
+        _text("routing done"),
+        {"content": [{"type": "thinking", "thinking": "...", "signature": ""}],
+         "stop_reason": "max_tokens"},
+    ])
+    result = orchestrator.run_assistant("x", "u", client, tool_catalog.catalog(), executor=_executor({}))
+    assert result["stop_reason"] == "end_turn"
+    assert result["answer"] == orchestrator.ANSWER_TRUNCATED_MESSAGE
+    assert result["answer"] != ""
+
+
+def test_max_tokens_stop_with_some_text_keeps_the_text():
+    # A partial answer is still better than nothing: keep the text that came out.
+    client = ScriptedClient([
+        _text("routing done"),
+        {"content": [{"type": "text", "text": "پاسخ ناقص"}], "stop_reason": "max_tokens"},
+    ])
+    result = orchestrator.run_assistant("x", "u", client, tool_catalog.catalog(), executor=_executor({}))
+    assert result["answer"] == "پاسخ ناقص"
 
 
 def test_default_executor_calls_the_whitelisted_method_in_the_session(monkeypatch):

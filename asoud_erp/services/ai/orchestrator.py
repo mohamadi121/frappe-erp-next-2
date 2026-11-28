@@ -36,6 +36,10 @@ SYSTEM_PROMPT = (
 MAX_TOOL_CALLS = 5
 WALL_CLOCK_SECONDS = 60.0
 MAX_TOKENS = 1024
+# The answer turn runs with thinking enabled (budget 1024) and reasoning tokens
+# count inside max_tokens, so it needs a larger budget than the routing turn or
+# the visible answer can be cut to nothing.
+ANSWER_MAX_TOKENS = 2048
 TEMPERATURE = 0.2
 # ~6k tokens of tool output for Persian-heavy text; the model must not be fed
 # more than this from a single tool result.
@@ -51,22 +55,32 @@ TOOL_CALL_CAP_MESSAGE = "سقف فراخوانی ابزارها در این پا
 TIME_BUDGET_MESSAGE = "زمان پاسخ‌دهی تمام شد؛ نتیجه کامل نشد."
 UNKNOWN_TOOL_MESSAGE = "ابزار نامعتبر است."
 TOOL_ERROR_MESSAGE = "ابزار خطا داد؛ دوباره تلاش کنید."
+ANSWER_TRUNCATED_MESSAGE = "پاسخ کامل نشد؛ لطفاً دوباره بپرسید."
 
-# Sensitive keys are masked before a tool result goes back to the model: the
-# operator may retain request bodies, so national IDs, bank details and salary
-# values must never be sent.
-SENSITIVE_KEYS = frozenset({
-    "national_id", "national_code",
-    "iban", "bank_account", "bank_name", "account_number", "account_holder", "ifsc",
-    "salary", "gross_salary", "net_salary", "basic_salary", "total_salary", "salary_amount",
-})
+# Sensitive stems are masked before a tool result goes back to the model: the
+# operator may retain request bodies, so personal data (national ID, bank,
+# salary, contact, address, ...) must never be sent. A key is masked when it
+# CONTAINS any of these stems (case-insensitive), so ``national_id``,
+# ``gross_salary``, ``mobile_number`` and ``emergency_phone`` are all caught.
+# This is a conservative default; the owner can relax it per field.
+SENSITIVE_KEYS = (
+    "national", "iban", "bank", "salary", "wage",
+    "mobile", "phone", "cell_number", "address", "postal",
+    "birth", "passport", "email", "father_name", "emergency",
+    "tax_id", "insurance",
+)
 MASKED_VALUE = "مخفی"
+
+
+def _is_sensitive_key(key) -> bool:
+    lowered = str(key).lower()
+    return any(stem in lowered for stem in SENSITIVE_KEYS)
 
 
 def mask_sensitive(value):
     """Recursively replace the values of sensitive keys with a Persian marker."""
     if isinstance(value, dict):
-        return {key: (MASKED_VALUE if str(key).lower() in SENSITIVE_KEYS else mask_sensitive(item))
+        return {key: (MASKED_VALUE if _is_sensitive_key(key) else mask_sensitive(item))
                 for key, item in value.items()}
     if isinstance(value, list):
         return [mask_sensitive(item) for item in value]
@@ -134,11 +148,16 @@ def run_assistant(question: str, acting_user: str, client, catalog: list, *,
         uses = tool_use_blocks(content)
         if not uses:
             # The model stopped routing: produce the final answer with thinking
-            # low and no tools.
+            # low and no tools. The answer turn uses a larger max_tokens because
+            # reasoning tokens count inside it.
             final = client.create_message(
-                messages, system=SYSTEM_PROMPT, max_tokens=max_tokens, temperature=temperature,
+                messages, system=SYSTEM_PROMPT, max_tokens=ANSWER_MAX_TOKENS, temperature=temperature,
                 thinking=ANSWER_THINKING)
-            return _stopped("end_turn", extract_text(final.get("content") or []))
+            answer = extract_text(final.get("content") or [])
+            if not answer and final.get("stop_reason") == "max_tokens":
+                # The budget was spent on reasoning and no visible text came out.
+                return _stopped("end_turn", ANSWER_TRUNCATED_MESSAGE)
+            return _stopped("end_turn", answer)
 
         for use in uses:
             key = (use.get("name"), json.dumps(use.get("input") or {}, sort_keys=True, ensure_ascii=False))

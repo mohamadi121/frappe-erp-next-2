@@ -34,7 +34,12 @@ The layer is therefore designed for a weak router:
   answer uses `{"type": "enabled", "budget_tokens": 1024}` (a low level).
 - **Low temperature** (`0.2`).
 - **Hard caps:** at most **5 tool calls per conversation turn**, a bounded
-  `max_tokens` (default 1024), and a **wall-clock budget** (default 60 s).
+  `max_tokens` (1024 for the tool-routing turn; **2048 for the answer turn**,
+  because reasoning tokens count inside `max_tokens` and a 1024 budget with a
+  1024 thinking budget can cut the visible answer to nothing), and a
+  **wall-clock budget** (default 60 s). If the answer turn stops on
+  `max_tokens` with no visible text, the user gets a Persian
+  «پاسخ کامل نشد؛ لطفاً دوباره بپرسید.» message instead of an empty string.
 - **Result truncation:** a tool result is never fed back to the model in more
   than ~6k tokens (12 000 characters of JSON, Persian-heavy).
 - **Strict loop guard:** the same tool with the same arguments twice stops the
@@ -102,11 +107,19 @@ is not the acting user** — so the user's own Frappe permissions decide what co
 back and there is no privilege elevation.
 
 **Masking is on by default.** Before a tool result goes back to the model, the
-values of sensitive keys (national ID, bank/IBAN, salary) are replaced with a
-Persian marker («مخفی»). This is an explicit deny-list
-(`orchestrator.SENSITIVE_KEYS`); it reuses the same intent as the PA-055 masking
-but is independent so the assistant layer does not depend on the request
-serializer.
+values of sensitive keys are replaced with a Persian marker («مخفی»). A key is
+masked when it **contains** any of the sensitive stems in
+`orchestrator.SENSITIVE_KEYS` (case-insensitive): `national`, `iban`, `bank`,
+`salary`, `wage`, `mobile`, `phone`, `cell_number`, `address`, `postal`,
+`birth`, `passport`, `email`, `father_name`, `emergency`, `tax_id`,
+`insurance`. This is a **conservative default** — the read tools return more
+personal data than just national ID / bank / salary (contact, address, birth
+date, …), and the operator may retain request bodies — so the deny-list is
+deliberately broad. Harmless business keys (`status`, `title`, `leave_type`,
+request names and dates, `company`, `employee`, …) are not masked. The owner can
+relax it per field by removing a stem from `SENSITIVE_KEYS`. It reuses the same
+intent as the PA-055 masking but is independent so the assistant layer does not
+depend on the request serializer.
 
 ## Privacy — what is sent
 
