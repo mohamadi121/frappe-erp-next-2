@@ -20,6 +20,7 @@ from asoud_erp.api.v1 import workflow_runtime
 from asoud_erp.integration_tests.fixtures import APITestCase, company
 from asoud_erp.integration_tests.request_fixtures import make_definition
 from asoud_erp.integration_tests.tenancy import HR_MANAGER_USER, setup_tenancy
+from asoud_erp.services.hiring_orders import default_template
 
 
 class TestSpecialisedCompletionGuard(APITestCase):
@@ -38,7 +39,9 @@ class TestSpecialisedCompletionGuard(APITestCase):
         return definition
 
     def _publish_template(self, definition):
-        template = hiring.get_hiring_order_template(company())["data"]["template"]
+        # Build from the default template: get_hiring_order_template returns
+        # {"template": None} on a fresh site where nothing is published yet.
+        template = default_template()
         template["workflow"] = definition
         saved = hiring.save_hiring_order_template(company(), template=template)["data"]
         hiring.publish_hiring_order_template(company(), revision=saved["revision"])
