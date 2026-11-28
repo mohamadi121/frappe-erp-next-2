@@ -31,7 +31,7 @@ class _FakeClient:
 
     def create_message(self, messages, **kwargs):
         self.calls.append(kwargs)
-        if not self.calls:
+        if len(self.calls) == 1:
             return {"content": [{"type": "tool_use", "id": "toolu_1",
                                  "name": self.tool_name, "input": {}}]}
         return {"content": [{"type": "text", "text": "پاسخ"}]}
@@ -49,7 +49,14 @@ class TestAiAssistant(APITestCase):
             module = frappe.get_module(module_path)
             func = getattr(module, func_name, None)
             self.assertIsNotNone(func, f"{method} is not a real function")
-            self.assertTrue(getattr(func, "whitelisted", False), f"{method} is not whitelisted")
+            # Frappe v15 registers whitelisted methods in a module-level set; the
+            # function carries no ``whitelisted`` attribute. ``is_whitelisted`` is
+            # the authoritative check: it returns None when whitelisted and raises
+            # PermissionError otherwise, so a raise means the method is not exposed.
+            try:
+                frappe.is_whitelisted(func)
+            except Exception:
+                self.fail(f"{method} is not whitelisted")
             self.assertFalse(sync._is_mutation(method), f"{method} is a mutation, not read-only")
             self.assertEqual(entry["risk"], "read")
 
