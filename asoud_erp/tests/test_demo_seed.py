@@ -1,9 +1,15 @@
 """Pure tests for the demo-seed markers and safety guard (no site needed)."""
 
+import importlib
+import sys
+import types
 import unittest
 from datetime import date
 
+import pytest
+
 from asoud_erp.demo import markers as m
+from asoud_erp.tests import _fake_site as fake
 
 
 class TestDemoSiteGuard(unittest.TestCase):
@@ -172,3 +178,76 @@ if __name__ == "__main__":
 def test_demo_setup_apps_excludes_uninstalled_and_unrelated_apps():
     assert m.setup_apps(["frappe", "erpnext", "unrelated", "frappe"]) == ["erpnext", "frappe"]
     assert m.setup_apps([]) == []
+
+
+# ------------------------------------------------------------------ _ensure_users
+
+@pytest.fixture
+def seed_env(monkeypatch):
+    """The demo seed module re-imported against the in-memory fake frappe."""
+    site = fake.Site()
+    frappe, utils = fake.install(site)
+    utils.cint = int
+    utils.add_days = lambda day, days: day
+    utils.get_first_day = lambda day: day
+    utils.get_year_start = lambda day: day
+    utils.get_year_ending = lambda day: day
+    password_mod = types.ModuleType("frappe.utils.password")
+    password_mod.update_password = lambda email, pwd, logout_all_sessions=False: None
+    for name, module in {"frappe": frappe, "frappe.utils": utils,
+                         "frappe.utils.password": password_mod}.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    restore = fake.isolate(["asoud_erp.demo.seed"])
+    seed = importlib.import_module("asoud_erp.demo.seed")
+    env = types.SimpleNamespace(site=site, seed=seed, monkeypatch=monkeypatch)
+    yield env
+    restore()
+
+
+def _seeded_profiles(site):
+    """One Employee per USERS entry, unlinked (user_id unset), like a fresh site."""
+    profiles = {}
+    for local_part, emp_index, _roles, _note in m.USERS:
+        if emp_index not in profiles:
+            row = site.add("Employee", name=f"EMP-{emp_index:04d}", company=m.COMPANY, user_id=None)
+            profiles[emp_index] = (f"PROFILE-{emp_index}", row["name"])
+    return profiles
+
+
+def _existing_users(site):
+    for local_part, _emp_index, _roles, _note in m.USERS:
+        site.add("User", name=m.demo_email(local_part))
+
+
+def test_user_linking_runs_when_no_user_is_created(seed_env):
+    """A re-run where every demo user already exists must still link Employee.user_id."""
+    site, seed = seed_env.site, seed_env.seed
+    profiles = _seeded_profiles(site)
+    _existing_users(site)
+    password, created = seed._ensure_users(profiles, "demo-pass")
+    assert created is False
+    assert password == "demo-pass"
+    for local_part, emp_index, _roles, _note in m.USERS:
+        row = site.table("Employee")[profiles[emp_index][1]]
+        assert row["user_id"] == m.demo_email(local_part), local_part
+        assert row["create_user_permission"] == 0
+
+
+def test_correct_user_link_is_not_resaved(seed_env):
+    """An already-correct Employee.user_id is left untouched (idempotent re-run)."""
+    site, seed = seed_env.site, seed_env.seed
+    profiles = _seeded_profiles(site)
+    _existing_users(site)
+    for local_part, emp_index, _roles, _note in m.USERS:
+        site.table("Employee")[profiles[emp_index][1]]["user_id"] = m.demo_email(local_part)
+    saves = []
+    original_save = fake.FakeDoc.save
+
+    def tracking_save(self, **kwargs):
+        saves.append((self.doctype, self.name))
+        return original_save(self, **kwargs)
+
+    seed_env.monkeypatch.setattr(fake.FakeDoc, "save", tracking_save)
+    password, created = seed._ensure_users(profiles, "demo-pass")
+    assert (password, created) == ("demo-pass", False)
+    assert saves == []

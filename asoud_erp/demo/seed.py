@@ -354,20 +354,23 @@ def _ensure_users(profiles: dict, password: str | None) -> tuple[str, bool]:
         }).insert(ignore_permissions=True)
         created_any = True
         _count("users", created=1)
-    if not created_any:
-        return (password or ""), False
-    pwd = password or secrets.token_urlsafe(9)
-    from frappe.utils.password import update_password
-
+    # Link Employee.user_id on every run: without it the Employee fallback of
+    # company_access() denies the demo users when no user was created this run.
     for local_part, emp_index, _roles, _note in m.USERS:
         email = m.demo_email(local_part)
-        update_password(email, pwd, logout_all_sessions=True)
         _profile, employee = profiles[emp_index]
         doc = frappe.get_doc("Employee", employee)
         if doc.user_id != email:
             doc.user_id = email
             doc.create_user_permission = 0
             doc.save(ignore_permissions=True)
+    if not created_any:
+        return (password or ""), False
+    pwd = password or secrets.token_urlsafe(9)
+    from frappe.utils.password import update_password
+
+    for local_part, _emp_index, _roles, _note in m.USERS:
+        update_password(m.demo_email(local_part), pwd, logout_all_sessions=True)
     if not password:
         # Printed once: the generated default is shared by all demo users.
         print(f"[asoud_demo_seed] demo user password (all {m.EMAIL_DOMAIN} users): {pwd}")
