@@ -29,6 +29,18 @@ def _store(entry, data):
                         json.dumps(data, ensure_ascii=False))
 
 
+def _record_failure(entry, data, reason):
+    """Marks the hiring order entry Failed with a Persian reason; the caller persists it.
+
+    Reloads the stored (pre-finalize) state so a failed entry never carries the half-finalized
+    fields a partial ``_finalize`` may have set in memory.
+    """
+    fresh = json.loads(frappe.db.get_value("ASOUD Form Entry", entry.name, "values_json") or "{}")
+    fresh.update(status="failed", status_label="ناموفق", failure_reason=reason)
+    data.clear()
+    data.update(fresh)
+
+
 def _finalize(data, company):
     from asoud_erp.api.v1.hiring_orders import _letterhead
 
@@ -99,7 +111,15 @@ def on_instance_update(instance):
     if request_company != entry.company or data["template_snapshot"].get("workflow") != instance.workflow_definition:
         frappe.throw(_("گردش‌کار با شرکت یا نسخهٔ حکم تطابق ندارد."), frappe.PermissionError)
     if status == "Completed":
-        _finalize(data, entry.company)
+        from asoud_erp.services.completion_guard import persian_reason, run_guarded
+
+        run_guarded(
+            lambda: _finalize(data, entry.company),
+            lambda reason: _record_failure(entry, data, persian_reason(reason,
+                _("ثبت نتیجهٔ حکم استخدام ناموفق بود؛ برای جزئیات با واحد فناوری تماس بگیرید."))),
+            savepoint="hiring_order_finalize_completion",
+            log_title="Hiring order finalization failed",
+        )
     else:
         key, label = {"Rejected": ("rejected", "ردشده"), "Cancelled": ("cancelled", "لغوشده"),
                       "Failed": ("failed", "ناموفق")}[status]

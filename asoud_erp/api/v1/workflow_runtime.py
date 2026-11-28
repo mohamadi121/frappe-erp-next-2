@@ -39,7 +39,11 @@ from asoud_erp.services.workflow_graph_snapshot import (
 )
 from asoud_erp.services.workflow_history import carried_draft, merge_completed_responses, select_return_stage
 from asoud_erp.services.workflow_response import normalize_form_response
-from asoud_erp.services.workflow_start_policy import start_change_data, validate_request_id
+from asoud_erp.services.workflow_start_policy import (
+    should_record_start_activity,
+    start_change_data,
+    validate_request_id,
+)
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".xlsx", ".docx"}
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
@@ -978,7 +982,10 @@ def start_workflow_instance(
     if graph_ready():
         instance.graph_snapshot_json = capture_graph(definition)
         instance.save(ignore_permissions=True)
-    if configured_start:
+    # The 'Workflow Started' activity is the idempotency receipt for `request_id`: configured
+    # starts always write it (start auditing), non-configured starts write it only when a
+    # `request_id` is supplied so the duplicate-start lookup above can find it.
+    if should_record_start_activity(configured_start, request_id):
         reference_modified = (frappe.db.get_value(reference_doctype, reference_name, 'modified')
                               if reference_name else None)
         change_data = start_change_data(start_config.get('trigger_type', 'Manual'),
@@ -1319,13 +1326,22 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
     original_access = config.get('action_contract_version') != 1 or config.get('allow_original_access', True)
     history = _workflow_history(
         doc.workflow_instance,
-        ["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on"],
+        ["name", "workflow_task", "workflow_stage", "actor", "action", "comment", "created_on",
+         *(["change_json"] if frappe.db.has_column("ASOUD Workflow Activity", "change_json") else [])],
     )
     # Approved policy (PA-055 close-out): a MASKED previous assignee sees only their own
-    # activity rows in the task history; another actor's comment is not their history.
+    # activity rows in the task history; another actor's comment or change lines are not
+    # their history. The instance endpoint applies the same policy to the same rows.
     if request is not None:
         history = request_access_policy.visible_activities(
             request_access.request_level(request), frappe.session.user, history)
+    for activity in history:
+        activity.update(activity_change(activity.pop("change_json", None)))
+    actors = list({activity.actor for activity in history if activity.actor})
+    names = {row.name: row.full_name for row in frappe.get_all(
+        "User", filters={"name": ["in", actors]}, fields=["name", "full_name"])} if actors else {}
+    for activity in history:
+        activity["actor_name"] = names.get(activity.actor) or activity.actor or ""
     document_context = {}
     from asoud_erp.services.workflow_submission_source import task_snapshot
 
@@ -1371,6 +1387,9 @@ def get_workflow_task(task: str, candidate_query=None, candidate_start=0) -> dic
                     "label": field.label or field.fieldname,
                     "value": reference.get(field.fieldname),
                     "read_only": bool(field.read_only),
+                    # Additive (F3): the field's type lets the app render file/image
+                    # values instead of raw paths. Omitted when the type is unknown.
+                    **({"fieldtype": field.fieldtype} if field.fieldtype else {}),
                 }
                 for field in visible_fields
                 if reference.get(field.fieldname) not in (None, "", [])

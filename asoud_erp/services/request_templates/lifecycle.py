@@ -73,19 +73,16 @@ def dispatch_native_document(request_name: str) -> None:
     Anything else is caught here, rolled back to a savepoint and recorded as `Failed`,
     so the final approval is always kept.
     """
+    from asoud_erp.services.completion_guard import run_guarded
     from asoud_erp.services.request_native_documents import dispatch
 
     request = frappe.get_doc(REQUEST_DOCTYPE, request_name)
-    frappe.db.savepoint("asoud_native_dispatch")
-    try:
-        dispatch(request)
-    except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):
-        raise
-    except Exception as error:  # the approval must survive any native failure
-        frappe.db.rollback(save_point="asoud_native_dispatch")
-        frappe.clear_messages()
-        frappe.log_error(title="Native document creation failed", message=frappe.get_traceback())
-        record_native_failure(request_name, str(error) or error.__class__.__name__)
+    run_guarded(
+        lambda: dispatch(request),
+        lambda reason: record_native_failure(request_name, reason),
+        savepoint="asoud_native_dispatch",
+        log_title="Native document creation failed",
+    )
 
 
 def record_native_failure(request_name: str, error: str) -> None:

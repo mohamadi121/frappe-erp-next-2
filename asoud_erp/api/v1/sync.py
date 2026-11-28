@@ -4,45 +4,16 @@ from typing import Any
 
 import frappe
 
+from .registry import is_queued_mutation
 from .responses import failure
 
 _ALLOWED_PREFIX = "asoud_erp.api.v1."
-_MUTATION_PREFIXES = (
-    "add_",
-    "apply_",
-    "approve_",
-    "archive_",
-    "cancel_",
-    "complete_",
-    "connect_",
-    "create_",
-    "delete_",
-    "disable_",
-    "import_",
-    "insert_",
-    "link_",
-    "mark_",
-    "publish_",
-    "reject_",
-    "return_",
-    "save_",
-    "seed_",
-    "start_",
-    "submit_",
-    "update_",
-    "upload_",
-)
-# Directive actions are named after the verb (no ``save_``-style prefix) and carry their own request key;
-# the app sends them through the mutation queue, so they must be accepted by their exact method name.
-_MUTATION_METHODS = frozenset(
-    [f"asoud_erp.api.v1.directives.{action}" for action in ("issue", "start", "report", "review", "transfer", "close")]
-    # The app queues the active-office choice; `set_` is not a general write verb, so it is listed by exact name.
-    + ["asoud_erp.api.v1.setup.set_default_office"]
-)
 
 
 def _is_mutation(method: str) -> bool:
-    return method in _MUTATION_METHODS or method.rsplit(".", 1)[-1].startswith(_MUTATION_PREFIXES)
+    # The allow-list lives in the single classification registry (api/v1/registry.py);
+    # this keeps the offline outbox and the read/write classification in one place.
+    return is_queued_mutation(method)
 
 
 @frappe.whitelist(methods=["POST"])

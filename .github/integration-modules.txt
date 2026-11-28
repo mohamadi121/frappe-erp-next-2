@@ -12,6 +12,7 @@ test_projects
 test_financial_reports
 test_pos
 test_dashboard_support_sync
+test_api_contract
 test_personnel_file
 test_document_templates
 test_workflow_templates
@@ -19,6 +20,7 @@ test_workflow_card_actions
 test_workflow_submission_source
 test_workflow_start_phase3
 test_workflow_return_route
+test_workflow_task_detail
 test_workflow_graph_snapshot
 test_workflow_design_guard
 test_automatic_action_audit
@@ -82,3 +84,6 @@ test_phase_a_acceptance
 test_office_navigation
 test_office_permission_profiles
 test_workflow_phase_b_core
+test_workflow_completion_guard
+test_security_audit_agent
+test_ai_assistant

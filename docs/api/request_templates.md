@@ -28,6 +28,12 @@ are `frappe.throw` with a code in `_server_messages[].title` (see the table at t
 | `void_native_document(name, reason)` | POST | `void_` | HR Manager only: void the executed native document (see «Void and reissue» in `form-execution.md`) |
 | `reissue_native_document(name)` | POST | `reissue_` | HR Manager only: run the executor again after a void |
 
+`create_native_document` is the retry for a request whose instance is `Completed` but whose
+`native_status` is `Failed` (the approval is kept, only the native document failed); any other
+state is refused with `NATIVE_NOT_RETRYABLE`. It re-runs the same guarded dispatch, so a second
+failure is recorded again rather than lost. The app currently has no button for it (E-07); the
+endpoint is available for a manager to call directly.
+
 `create_request` takes `workflow_definition` or `template_key`; the key wins and resolves
 the company's active definition (`TEMPLATE_NOT_AVAILABLE` otherwise). `request_id` is the
 idempotency key (8–100 characters): a repeat with the same payload returns the same
@@ -71,6 +77,12 @@ absent), read from the new optional `ASOUD Workflow Activity.change_json`
 (`{"before": {...}, "after": {...}, "labels": {key: field label}}`); `labels` lets a client without
 the form (task page, print) show the field label.
 The migration only adds that column; existing rows return `{}`.
+
+`get_workflow_task`'s `history` rows are additive-equal to the instance activity rows: they carry
+the same `actor_name` (the actor's full name, falling back to the raw actor value when the User row
+is missing) and the same parsed `before`/`after`/`labels` (the raw `change_json` column is never
+returned). A MASKED previous assignee sees only their own rows in both endpoints (PA-055 close-out):
+another actor's comment or change lines are not part of their authorized history.
 
 ### Companies and scoping
 

@@ -198,3 +198,37 @@ def test_set_default_office_is_accepted_as_a_queued_mutation(monkeypatch):
     assert sync._is_mutation("asoud_erp.api.v1.setup.set_default_office")
     assert not sync._is_mutation("asoud_erp.api.v1.setup.set_something_else")
     assert not sync._is_mutation("asoud_erp.api.v1.other.set_default_office")
+
+
+def test_void_native_document_is_accepted_as_a_queued_mutation(monkeypatch):
+    # Regression (F-1): the app queues workflow_request.void_native_document; `void_` was not an allowed
+    # verb, so the server answered METHOD_NOT_ALLOWED and voiding a native document failed on every call.
+    sync = _load_module(monkeypatch)
+    assert sync._is_mutation("asoud_erp.api.v1.workflow_request.void_native_document")
+    assert not sync._is_mutation("asoud_erp.api.v1.other.void_native_document")
+    assert not sync._is_mutation("asoud_erp.api.v1.workflow_request.void_something_else")
+
+
+def test_reissue_native_document_is_accepted_as_a_queued_mutation(monkeypatch):
+    # Regression (F-1): the app queues workflow_request.reissue_native_document; `reissue_` was not an
+    # allowed verb, so the server answered METHOD_NOT_ALLOWED and reissue failed on every call.
+    sync = _load_module(monkeypatch)
+    assert sync._is_mutation("asoud_erp.api.v1.workflow_request.reissue_native_document")
+    assert not sync._is_mutation("asoud_erp.api.v1.other.reissue_native_document")
+    assert not sync._is_mutation("asoud_erp.api.v1.workflow_request.reissue_something_else")
+
+
+def test_unknown_method_names_are_still_rejected(monkeypatch):
+    # The allow-list is closed: a name that matches no write prefix and no exact entry stays rejected,
+    # so accepting void/reissue did not open the queue to arbitrary methods.
+    sync = _load_module(monkeypatch)
+    for name in (
+        "asoud_erp.api.v1.workflow_request.void",
+        "asoud_erp.api.v1.workflow_request.reissue",
+        "asoud_erp.api.v1.workflow_request.void_native_document_extra",
+        "asoud_erp.api.v1.workflow_request.reissue_native_document_extra",
+        "asoud_erp.api.v1.setup.set_default_office_extra",
+        "asoud_erp.api.v1.directives.issue_extra",
+        "asoud_erp.api.v1.sync.execute_mutation",
+    ):
+        assert not sync._is_mutation(name), name

@@ -223,9 +223,11 @@ it is written only by the server. Consequences:
   `task_title` (which carries the asset name) instead of the request subject.
 - `get_workflow_task` returns for it `stage_type = "User Task"`, `config = {"activity_type":
   "ConfirmReceipt", "allow_reject": true, "allow_return": false, "comment_required": false, "form_fields": []}`,
-  `document = {"doctype": "Asset Movement", "name": "<movement>", "values": [{key, label, value}...]}` with the keys
-  `asset` (تجهیز), `transaction_date` (تاریخ تحویل), `target_location` (مکان تحویل) and `movement_status`
-  (وضعیت: «پیش‌نویس», «تأییدشده», «لغوشده»), and `draft = {}`.
+  `document = {"doctype": "Asset Movement", "name": "<movement>", "values": [{key, label, value, read_only, fieldtype?}...]}`
+  with the keys `asset` (تجهیز), `transaction_date` (تاریخ تحویل), `target_location` (مکان تحویل) and
+  `movement_status` (وضعیت: «پیش‌نویس», «تأییدشده», «لغوشده»), and `draft = {}`. Each value carries the
+  additive `fieldtype` (the form field's type, e.g. `Link`, `Datetime`) where the field definition is
+  known; `movement_status` is the standard docstatus, not a form field, so it has no `fieldtype`.
 - `complete_workflow_task`, `save_workflow_task_draft` and `upload_workflow_attachment` refuse it with
   «این وظیفه فقط با تأیید یا عدم دریافت تجهیز قابل اقدام است.» (PermissionError); only the endpoints below act on it.
 - Cancelling (or deleting) the Asset Movement marks the open task `Cancelled` (doc event `on_cancel`/`on_trash`).

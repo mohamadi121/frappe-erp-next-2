@@ -1,6 +1,11 @@
 import pytest
 
-from asoud_erp.services.workflow_start_policy import normalize_settings, start_decision, validate_request_id
+from asoud_erp.services.workflow_start_policy import (
+    normalize_settings,
+    should_record_start_activity,
+    start_decision,
+    validate_request_id,
+)
 
 
 def test_shared_form_route_modes_are_preserved():
@@ -75,3 +80,14 @@ def test_form_submission_does_not_require_a_manual_reason():
 def test_runtime_cannot_disable_mandatory_reason_with_a_stale_config():
     with pytest.raises(ValueError):
         start_decision({'trigger_type': 'Manual', 'require_manual_reason': False}, None, False, False, '')
+
+
+@pytest.mark.parametrize('configured, request_id, expected', [
+    (True, None, True),      # configured start always audits
+    (True, 'req-12345678', True),
+    (False, None, False),    # non-configured start without request_id writes no activity (unchanged)
+    (False, '', False),      # empty request_id is treated as absent
+    (False, 'req-12345678', True),  # non-configured start with request_id records the receipt
+])
+def test_start_activity_is_recorded_for_configured_or_request_id_starts(configured, request_id, expected):
+    assert should_record_start_activity(configured, request_id) is expected

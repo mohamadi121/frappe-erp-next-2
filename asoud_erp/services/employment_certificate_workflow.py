@@ -33,6 +33,18 @@ def _store(entry, data, fingerprint=None):
     frappe.db.set_value("ASOUD Form Entry", entry.name, values)
 
 
+def _record_failure(entry, data, reason):
+    """Marks the certificate entry Failed with a Persian reason; the caller persists it.
+
+    Reloads the stored (pre-issuance) state so a failed entry never carries the half-issued
+    fields a partial ``_issue`` may have set in memory.
+    """
+    fresh = json.loads(frappe.db.get_value("ASOUD Form Entry", entry.name, "values_json") or "{}")
+    fresh.update(status="Failed", failure_reason=reason)
+    data.clear()
+    data.update(fresh)
+
+
 def _issue(entry, data):
     from asoud_erp.api.v1.employment_certificates import (
         SERIES,
@@ -129,7 +141,15 @@ def on_instance_update(instance, method=None):
         frappe.throw(_("گردش‌کار با نسخهٔ گواهی تطابق ندارد."), frappe.PermissionError)
     status = instance.status or frappe.db.get_value("ASOUD Workflow Instance", instance.name, "status")
     if status == "Completed":
-        _issue(entry, data)
+        from asoud_erp.services.completion_guard import persian_reason, run_guarded
+
+        run_guarded(
+            lambda: _issue(entry, data),
+            lambda reason: _record_failure(entry, data, persian_reason(reason,
+                _("ثبت نتیجهٔ گواهی ناموفق بود؛ برای جزئیات با واحد فناوری تماس بگیرید."))),
+            savepoint="certificate_issue_completion",
+            log_title="Certificate issuance failed",
+        )
     elif status in {"Rejected", "Cancelled", "Failed"}:
         data["status"] = status
     else:
