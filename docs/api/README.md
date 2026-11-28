@@ -53,12 +53,14 @@ Frappe wraps the return value in `message`:
 
 ## Errors
 
-Validation and permission failures are raised with `frappe.throw` and reach the
-client as standard Frappe errors, never as `ok: true`:
+See [the error contract](errors.md) for the full table, the stable `title` codes and
+the additive `retryable`/`field`/`hint` keys. In short, validation and permission
+failures are raised with `frappe.throw` and reach the client as standard Frappe
+errors, never as `ok: true`:
 
 | HTTP | `exc_type` | Meaning for the client |
 | --- | --- | --- |
-| 403 | `PermissionError` | The user's ERPNext roles or company access do not allow it. Do not retry, do not fall back to cache. |
+| 403 | `PermissionError` | The user's ERPNext roles or company access do not allow it. `title` is `ROLE_REQUIRED` or `COMPANY_ACCESS_DENIED`. Do not retry, do not fall back to cache. |
 | 417 | `ValidationError` (and subclasses) | Input was rejected; `_server_messages` carries the translated message to show. |
 | 404 | `DoesNotExistError` | The referenced record does not exist or is hidden. |
 | 5xx / network | — | Transient; the client may keep the mutation in its outbox and retry. |
@@ -66,6 +68,13 @@ client as standard Frappe errors, never as `ok: true`:
 `sync.execute_mutation` returns `{"ok": false, "error": {"code", "message"}}`
 only for its own protocol errors (`INVALID_REQUEST_KEY`, `METHOD_NOT_ALLOWED`,
 `REQUEST_KEY_CONFLICT`, `REQUEST_IN_PROGRESS`).
+
+## Machine-readable contract
+
+`api_contract.manifest()` (and the committed [manifest](manifest.json)) lists every
+public method with its read/write classification, effectful flag, pilot flag, HTTP
+methods and parameter schema. It is discovery metadata, not authorization, and lists
+methods only — never business data.
 
 ## Authorization
 

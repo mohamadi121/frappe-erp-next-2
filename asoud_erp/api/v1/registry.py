@@ -198,6 +198,8 @@ EXACT: dict[str, str] = {
     "asoud_erp.api.v1.workflow_paths.discard_inserted_stage": "write",
     "asoud_erp.api.v1.workflow_paths.remove_path": "write",
     # --- reads that carry no read rule ---
+    # The contract discovery endpoint; lists methods and their schema, never data.
+    "asoud_erp.api.v1.api_contract.manifest": "read",
     "asoud_erp.api.v1.account_security.recovery_status": "read",
     "asoud_erp.api.v1.forms.employee_schedule": "read",
     "asoud_erp.api.v1.organization.employee_photo": "read",
